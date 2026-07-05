@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1340 1060" font-family="ui-sans-serif,Segoe UI,Helvetica,Arial,sans-serif">
+  <style>
+    .bg{fill:#ffffff}
+    .title{font-size:26px;font-weight:700;fill:#0f172a}
+    .subtitle{font-size:13px;fill:#64748b}
+    .band{rx:14;stroke-width:1.5}
+    .bl{font-size:15px;font-weight:700}
+    .step{rx:9;fill:#ffffff;stroke-width:1.3}
+    .sh{font-size:12px;font-weight:700;fill:#0f172a}
+    .st{font-size:10.5px;fill:#334155}
+    .n{font-size:11px;font-weight:700;fill:#fff}
+    .note{font-size:10.5px;font-style:italic;fill:#64748b}
+    .sec{font-size:10.5px;font-weight:700;fill:#e11d48}
+    .arrow{stroke:#64748b;stroke-width:1.8;fill:none;marker-end:url(#a)}
+    .arrowx{stroke:#e11d48;stroke-width:1.8;fill:none;marker-end:url(#ax);stroke-dasharray:5 4}
+  </style>
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#64748b"/></marker>
+    <marker id="ax" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#e11d48"/></marker>
+  </defs>
+  <rect class="bg" width="1340" height="1060"/>
+  <text class="title" x="28" y="40">ArtifactFlow: Design &amp; Workflows</text>
+  <text class="subtitle" x="28" y="60">the two-origin “cage” + the request flows that matter · untrusted HTML is contained by isolation, not sanitisation</text>
+  <line x1="28" y1="74" x2="1312" y2="74" stroke="#e2e8f0" stroke-width="1.5"/>
+
+  <!-- A: two-origin model -->
+  <rect class="band" x="28" y="92" width="1284" height="244" fill="#fff1f2" stroke="#fecdd3"/>
+  <text class="bl" x="44" y="116" fill="#e11d48">A · The two-origin security model (one codebase, runtime_role splits behaviour)</text>
+  <!-- browser -->
+  <rect class="step" x="560" y="130" width="220" height="46" stroke="#94a3b8"/>
+  <text class="sh" x="670" y="150" text-anchor="middle">Browser (the victim)</text>
+  <text class="st" x="670" y="166" text-anchor="middle">loads app pages + the artifact iframe</text>
+  <!-- app origin -->
+  <rect class="step" x="60" y="206" width="560" height="112" stroke="#2563eb" fill="#eff6ff"/>
+  <text class="sh" x="76" y="228" fill="#2563eb">APP origin  ·  APP_RUNTIME_ROLE=app</text>
+  <text class="st" x="76" y="248">cookie/session · CSRF · RejectArtifactHostRuntime (404s /artifact-previews/*)</text>
+  <text class="st" x="76" y="266">AddSecurityHeaders: nonce CSP (no unsafe-inline) · X-Frame-Options DENY · HSTS</text>
+  <text class="st" x="76" y="284">renders the app + the Markdown {!! … !!} (CommonMark, scheme-allowlisted)</text>
+  <text class="sec" x="76" y="306">trust boundary: the user's session lives here, nothing untrusted executes</text>
+  <!-- artifact origin -->
+  <rect class="step" x="720" y="206" width="560" height="112" stroke="#7c3aed" fill="#f5f3ff"/>
+  <text class="sh" x="736" y="228" fill="#7c3aed">ARTIFACT-HOST origin  ·  APP_RUNTIME_ROLE=artifact-host</text>
+  <text class="st" x="736" y="248">cookieless · RequireArtifactHostRuntime (only serves /artifact-previews/*)</text>
+  <text class="st" x="736" y="266">CSP: sandbox allow-scripts · default-src/connect-src/frame-src none · base-uri none</text>
+  <text class="st" x="736" y="284">untrusted artifact HTML/JS EXECUTES here, by design</text>
+  <text class="sec" x="736" y="306">contained: opaque origin · no cookies · no network · cannot reach the app origin</text>
+  <!-- bridges -->
+  <path class="arrowx" d="M620 250 L716 250"/>
+  <text class="sec" x="624" y="242">signed URL (HMAC over origin|page|version|expires|accessRev, ≤60s)</text>
+  <path class="arrow" d="M660 176 L640 206"/>
+  <path class="arrow" d="M690 176 L880 206"/>
+  <text class="note" x="700" y="196">iframe sandbox="allow-scripts" (no allow-same-origin)</text>
+
+  <!-- B: create page -->
+  <rect class="band" x="28" y="352" width="1284" height="150" fill="#eef2ff" stroke="#c7d2fe"/>
+  <text class="bl" x="44" y="376" fill="#4f46e5">B · Create / version a page (write pipeline)</text>
+  <g>
+    <rect class="step" x="44" y="392" width="150" height="92" stroke="#a5b4fc"/>
+    <circle cx="60" cy="408" r="9" fill="#4f46e5"/><text class="n" x="60" y="412" text-anchor="middle">1</text>
+    <text class="sh" x="76" y="412">POST /pages</text>
+    <text class="st" x="56" y="432">StorePageRequest</text>
+    <text class="st" x="56" y="448">validate + authorize</text>
+    <text class="st" x="56" y="464">+ installation limits</text>
+    <text class="sec" x="56" y="479">mass-assign strict</text>
+    <rect class="step" x="226" y="392" width="150" height="92" stroke="#a5b4fc"/>
+    <circle cx="242" cy="408" r="9" fill="#4f46e5"/><text class="n" x="242" y="412" text-anchor="middle">2</text>
+    <text class="sh" x="258" y="412">Controller</text>
+    <text class="st" x="238" y="432">PageController::store</text>
+    <text class="st" x="238" y="448">→ command DTO</text>
+    <text class="st" x="238" y="464">→ CreatePage::handle</text>
+    <rect class="step" x="408" y="392" width="470" height="92" stroke="#a5b4fc" fill="#f5f3ff"/>
+    <circle cx="424" cy="408" r="9" fill="#4f46e5"/><text class="n" x="424" y="412" text-anchor="middle">3</text>
+    <text class="sh" x="440" y="412">CreatePage::handle, inside one DB::transaction</text>
+    <text class="st" x="420" y="432">normalize → PageContentScanner → workspace storage quota → unique slug</text>
+    <text class="st" x="420" y="448">→ persist Page → write blob to Artifacts disk → PageVersion (lockForUpdate)</text>
+    <text class="st" x="420" y="464">→ sync Tags → DomainEventRecorder (outbox) → AuditLogger</text>
+    <text class="sec" x="420" y="479">on failure: compensating Storage::delete (object writes can't tx-rollback)</text>
+    <rect class="step" x="910" y="392" width="150" height="92" stroke="#a5b4fc"/>
+    <circle cx="926" cy="408" r="9" fill="#4f46e5"/><text class="n" x="926" y="412" text-anchor="middle">4</text>
+    <text class="sh" x="942" y="412">Redirect</text>
+    <text class="st" x="922" y="432">→ pages.show</text>
+    <text class="st" x="922" y="448">version provenance</text>
+    <text class="st" x="922" y="464">recorded (editor/</text>
+    <text class="st" x="922" y="480">upload/restore)</text>
+    <path class="arrow" d="M194 438 L226 438"/>
+    <path class="arrow" d="M376 438 L408 438"/>
+    <path class="arrow" d="M878 438 L910 438"/>
+  </g>
+
+  <!-- C: artifact preview cross-origin -->
+  <rect class="band" x="28" y="518" width="1284" height="196" fill="#fff1f2" stroke="#fecdd3"/>
+  <text class="bl" x="44" y="542" fill="#e11d48">C · Render an HTML artifact (cross-origin: the crown-jewel flow)</text>
+  <g>
+    <rect class="step" x="44" y="558" width="196" height="120" stroke="#2563eb" fill="#eff6ff"/>
+    <circle cx="60" cy="574" r="9" fill="#2563eb"/><text class="n" x="60" y="578" text-anchor="middle">1</text>
+    <text class="sh" x="76" y="578">APP origin</text>
+    <text class="st" x="56" y="598">GET /pages/{page}</text>
+    <text class="st" x="56" y="614">PageController::show</text>
+    <text class="st" x="56" y="630">→ PageAccess::ensureCanView</text>
+    <text class="st" x="56" y="646">→ ArtifactPreviewUrl mints</text>
+    <text class="st" x="56" y="662">a signed, ≤60s HMAC URL</text>
+    <rect class="step" x="272" y="558" width="196" height="120" stroke="#2563eb" fill="#eff6ff"/>
+    <circle cx="288" cy="574" r="9" fill="#2563eb"/><text class="n" x="288" y="578" text-anchor="middle">2</text>
+    <text class="sh" x="304" y="578">Blade embeds iframe</text>
+    <text class="st" x="284" y="598">show.blade.php</text>
+    <text class="st" x="284" y="614">&lt;iframe sandbox=</text>
+    <text class="st" x="284" y="630">"allow-scripts"</text>
+    <text class="st" x="284" y="646">src="{signed url}"&gt;</text>
+    <text class="sec" x="284" y="664">no allow-same-origin</text>
+    <rect class="step" x="500" y="558" width="220" height="120" stroke="#7c3aed" fill="#f5f3ff"/>
+    <circle cx="516" cy="574" r="9" fill="#7c3aed"/><text class="n" x="516" y="578" text-anchor="middle">3</text>
+    <text class="sh" x="532" y="578">browser → ARTIFACT host</text>
+    <text class="st" x="512" y="598">GET /artifact-previews/{…}</text>
+    <text class="st" x="512" y="614">throttle:artifact-previews</text>
+    <text class="st" x="512" y="630">(per-IP + per-path ceilings)</text>
+    <text class="st" x="512" y="650">a separate, cookieless</text>
+    <text class="st" x="512" y="666">origin: no session rides along</text>
+    <rect class="step" x="752" y="558" width="300" height="120" stroke="#7c3aed" fill="#f5f3ff"/>
+    <circle cx="768" cy="574" r="9" fill="#7c3aed"/><text class="n" x="768" y="578" text-anchor="middle">4</text>
+    <text class="sh" x="784" y="578">ArtifactPreviewController</text>
+    <text class="st" x="764" y="598">origin check · HMAC verify (hash_equals)</text>
+    <text class="st" x="764" y="614">· current_version match · canonical expires</text>
+    <text class="st" x="764" y="630">ArtifactContentReader: byte-cap read (fail-closed)</text>
+    <text class="st" x="764" y="646">→ DocumentGuard.harden() (cosmetic JS guard)</text>
+    <text class="sec" x="764" y="664">serve 200 + sandbox CSP: JS runs, contained</text>
+    <rect class="step" x="1064" y="558" width="232" height="120" stroke="#94a3b8"/>
+    <circle cx="1080" cy="574" r="9" fill="#475569"/><text class="n" x="1080" y="578" text-anchor="middle">5</text>
+    <text class="sh" x="1096" y="578">Contained execution</text>
+    <text class="st" x="1076" y="598">opaque origin: no cookies,</text>
+    <text class="st" x="1076" y="614">no storage, connect-src none</text>
+    <text class="st" x="1076" y="630">→ nothing to steal, nowhere</text>
+    <text class="st" x="1076" y="646">to send it, can't touch parent</text>
+    <text class="sec" x="1076" y="664">cage held across 5 audits</text>
+    <path class="arrow" d="M240 618 L272 618"/>
+    <path class="arrow" d="M468 618 L500 618"/>
+    <path class="arrowx" d="M720 618 L752 618"/>
+    <path class="arrow" d="M1052 618 L1064 618"/>
+  </g>
+
+  <!-- D: admin step-up + outbox -->
+  <rect class="band" x="28" y="730" width="636" height="300" fill="#eef2ff" stroke="#c7d2fe"/>
+  <text class="bl" x="44" y="754" fill="#4f46e5">D · Privileged actions: admin step-up (“sudo”)</text>
+  <rect class="step" x="44" y="770" width="576" height="60" stroke="#a5b4fc"/>
+  <text class="sh" x="56" y="790">1 · /admin/* gated by RequireRecentSystemAdminPasswordConfirmation</text>
+  <text class="st" x="56" y="808">non-system-admin → 403 (fail-closed) · stale confirmation → re-prompt password</text>
+  <text class="st" x="56" y="824">throttle:artifactflow-admin-step-up · SafeIntendedRedirect (no open-redirect)</text>
+  <rect class="step" x="44" y="842" width="576" height="58" stroke="#a5b4fc"/>
+  <text class="sh" x="56" y="862">2 · InstallationSettingsController → UpdateInstallationLimits</text>
+  <text class="st" x="56" y="880">authorize ×4 (mw · request · controller · handler) · forceFill (no mass-assign)</text>
+  <text class="st" x="56" y="896">DB tx + lockForUpdate + DomainEvent + Audit</text>
+  <rect class="step" x="44" y="912" width="576" height="106" stroke="#a5b4fc" fill="#f5f3ff"/>
+  <text class="sh" x="56" y="932">Authorization model: PageAccess (thin Policies delegate; Gate backstop)</text>
+  <text class="st" x="56" y="952">canView → owner | ws-role | access_mode | page grant</text>
+  <text class="st" x="56" y="968">canEdit → content   ·   canManageAccess / canHardDelete → admin-class</text>
+  <text class="st" x="56" y="984">grants: Shared-only · member-required · removal revokes direct grants</text>
+  <text class="note" x="56" y="1004">⚠ enforced by convention per-handler: the structural refactor candidate</text>
+
+  <!-- outbox -->
+  <rect class="band" x="676" y="730" width="636" height="300" fill="#f0fdfa" stroke="#99f6e4"/>
+  <text class="bl" x="692" y="754" fill="#0d9488">E · Transactional outbox + audit (every state change)</text>
+  <rect class="step" x="692" y="770" width="604" height="62" stroke="#5eead4"/>
+  <text class="sh" x="704" y="790">1 · handler records DomainEvent IN the same DB transaction</text>
+  <text class="st" x="704" y="808">DomainEventRecorder → domain_events  ·  AuditLogger → audit_entries</text>
+  <text class="st" x="704" y="824">no “event fired then tx rolled back”: they commit together</text>
+  <rect class="step" x="692" y="844" width="604" height="58" stroke="#5eead4"/>
+  <text class="sh" x="704" y="864">2 · scheduler (every minute): DispatchDomainEvents</text>
+  <text class="st" x="704" y="882">lockForUpdate unsent rows · dispatch · stamp dispatched_at</text>
+  <text class="st" x="704" y="898">runs in the scheduler container (schedule:work, every minute)</text>
+  <rect class="step" x="692" y="914" width="604" height="44" stroke="#5eead4"/>
+  <text class="sh" x="704" y="934">3 · LogStoredDomainEventDispatch (after-commit listener)</text>
+  <text class="st" x="704" y="950">structured audit log line per dispatched event</text>
+  <rect class="step" x="692" y="970" width="604" height="48" stroke="#94a3b8" fill="#f8fafc"/>
+  <text class="sh" x="704" y="990">Runtime: FrankenPHP (app + artifact-host, same image) · Postgres · Caddy edge</text>
+  <text class="note" x="704" y="1008">queue worker · scheduler · opt-in Reverb realtime presence (off by default)</text>
+  <path class="arrow" d="M994 832 L994 844"/>
+  <path class="arrow" d="M994 902 L994 914"/>
+</svg>

@@ -1,0 +1,11 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Domain\PageCatalog;
+
+use App\Domain\DomainRuleViolation;
+
+final class CategoryRuleViolation extends DomainRuleViolation
+{
+}

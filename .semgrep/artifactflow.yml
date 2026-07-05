@@ -1,0 +1,116 @@
+rules:
+  - id: artifactflow.no-request-input-mass-assignment
+    languages:
+      - php
+    severity: ERROR
+    message: Route boundary input must be mapped into typed commands or explicit attributes before Eloquent writes.
+    paths:
+      include:
+        - /app/**
+        - /routes/**
+    pattern-either:
+      - pattern: $MODEL::create($REQUEST->all())
+      - pattern: $MODEL::query()->create($REQUEST->all())
+      - pattern: $MODEL::forceCreate($REQUEST->all())
+      - pattern: $MODEL::query()->forceCreate($REQUEST->all())
+      - pattern: $MODEL::firstOrCreate($REQUEST->all())
+      - pattern: $MODEL::query()->firstOrCreate($REQUEST->all())
+      - pattern: $MODEL->fill($REQUEST->all())
+      - pattern: $MODEL->forceFill($REQUEST->all())
+      - pattern: $MODEL->update($REQUEST->all())
+      - pattern: $MODEL::create($REQUEST->validated())
+      - pattern: $MODEL::query()->create($REQUEST->validated())
+      - pattern: $MODEL::forceCreate($REQUEST->validated())
+      - pattern: $MODEL::query()->forceCreate($REQUEST->validated())
+      - pattern: $MODEL::firstOrCreate($REQUEST->validated())
+      - pattern: $MODEL::query()->firstOrCreate($REQUEST->validated())
+      - pattern: $MODEL->fill($REQUEST->validated())
+      - pattern: $MODEL->forceFill($REQUEST->validated())
+      - pattern: $MODEL->update($REQUEST->validated())
+      - pattern: $MODEL::create($REQUEST->input())
+      - pattern: $MODEL::query()->create($REQUEST->input())
+      - pattern: $MODEL::forceCreate($REQUEST->input())
+      - pattern: $MODEL::query()->forceCreate($REQUEST->input())
+      - pattern: $MODEL::firstOrCreate($REQUEST->input())
+      - pattern: $MODEL::query()->firstOrCreate($REQUEST->input())
+      - pattern: $MODEL->fill($REQUEST->input())
+      - pattern: $MODEL->forceFill($REQUEST->input())
+      - pattern: $MODEL->update($REQUEST->input())
+
+  - id: artifactflow.no-sensitive-page-fillable-fields
+    languages:
+      - generic
+    severity: ERROR
+    message: Page privilege, ownership, status, and current-version fields must not be fillable.
+    paths:
+      include:
+        - /app/Models/Page.php
+    pattern-regex: "protected\\s+\\$fillable\\s*=\\s*\\[[^\\]]*['\"](workspace_uid|owner_user_uid|current_version_uid|access_mode|type|status)['\"]"
+
+  - id: artifactflow.no-page-version-fillable
+    languages:
+      - generic
+    severity: ERROR
+    message: PageVersion is immutable security-sensitive content metadata and must be written through explicit forceCreate use cases only.
+    paths:
+      include:
+        - /app/Models/PageVersion.php
+    pattern-regex: "protected\\s+\\$fillable\\s*="
+
+  - id: artifactflow.no-sensitive-workspace-fillable-fields
+    languages:
+      - generic
+    severity: ERROR
+    message: Workspace type and ownership fields must not be fillable.
+    paths:
+      include:
+        - /app/Models/Workspace.php
+    pattern-regex: "protected\\s+\\$fillable\\s*=\\s*\\[[^\\]]*['\"](type|personal_owner_uid|created_by_user_uid)['\"]"
+
+  - id: artifactflow.no-artifact-sandbox-origin-escape
+    languages:
+      - generic
+    severity: ERROR
+    message: Artifact iframes must not opt into same-origin, forms, or top-navigation permissions.
+    paths:
+      include:
+        - /app/**
+        - /resources/**
+        - /routes/**
+        - /config/**
+    pattern-either:
+      - pattern: allow-same-origin
+      - pattern: allow-forms
+      - pattern: allow-top-navigation
+      - pattern: allow-top-navigation-by-user-activation
+
+  - id: artifactflow.no-sensitive-url-logging
+    languages:
+      - php
+    severity: ERROR
+    message: Do not put signed URLs or authorization material into logs.
+    paths:
+      include:
+        - /app/**
+        - /routes/**
+    pattern-either:
+      - pattern: Log::$LEVEL($MESSAGE, [..., 'url' => $VALUE, ...])
+      - pattern: Log::$LEVEL($MESSAGE, [..., 'signed_url' => $VALUE, ...])
+      - pattern: Log::$LEVEL($MESSAGE, [..., 'temporary_url' => $VALUE, ...])
+      - pattern: Log::$LEVEL($MESSAGE, [..., 'authorization' => $VALUE, ...])
+      - pattern: Log::$LEVEL($MESSAGE, [..., 'token' => $VALUE, ...])
+      - pattern: logger($MESSAGE, [..., 'url' => $VALUE, ...])
+      - pattern: logger($MESSAGE, [..., 'signed_url' => $VALUE, ...])
+      - pattern: logger($MESSAGE, [..., 'temporary_url' => $VALUE, ...])
+      - pattern: logger($MESSAGE, [..., 'authorization' => $VALUE, ...])
+      - pattern: logger($MESSAGE, [..., 'token' => $VALUE, ...])
+
+  - id: artifactflow.no-private-content-in-traceability
+    languages:
+      - generic
+    severity: ERROR
+    message: Domain events and audit metadata must not persist raw artifact content.
+    paths:
+      include:
+        - /app/**
+    pattern-regex: "(payload|metadata)\\s*:\\s*\\[[\\s\\S]{0,800}['\"]content['\"]\\s*=>"

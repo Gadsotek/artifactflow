@@ -1,0 +1,10 @@
+# Default owner for everything in the repository.
+* @Gadsotek
+
+# Security-critical surfaces: changes here need explicit owner review.
+/app/Infrastructure/Security/ @Gadsotek
+/app/Http/Controllers/ArtifactPreviewController.php @Gadsotek
+/app/Application/PageCatalog/ArtifactPreviewUrl.php @Gadsotek
+/app/Application/Mcp/ @Gadsotek
+/THREAT-MODEL.md @Gadsotek
+/SECURITY.md @Gadsotek

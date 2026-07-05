@@ -1,0 +1,130 @@
+name: Release
+
+# Tag-driven release: build the production image, gate it on the same Trivy
+# scan the quality suite uses, push it to GHCR, and publish a GitHub Release
+# whose notes carry the immutable image digest for operators to pin.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  DOCKER_BUILDKIT: "1"
+  IMAGE: ghcr.io/gadsotek/artifactflow
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write
+      packages: write
+      id-token: write # keyless (OIDC) signing for the provenance/SBOM attestations
+      attestations: write # store the build-provenance and SBOM attestations
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Publish guard
+        run: make publish-guard
+
+      - name: Set up Docker Buildx
+        run: docker buildx create --use --driver docker-container
+
+      - name: Build production image
+        run: |
+          make build-prod \
+            DOCKER_BUILD='docker buildx build --load' \
+            DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha,scope=production --cache-to type=gha,scope=production,mode=max,ignore-error=true'
+
+      - name: Cache Trivy database
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-${{ runner.os }}
+
+      - name: Scan production image (Trivy)
+        run: make scan-image
+
+      - name: Log in to GHCR
+        run: printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push image
+        id: push
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          docker tag artifactflow-app:production "$IMAGE:$VERSION"
+          docker push "$IMAGE:$VERSION"
+          # Only move :latest for a final release (vMAJOR.MINOR.PATCH). A
+          # pre-release tag (v1.2.0-rc1, v2.0.0-beta, ...) publishes its exact
+          # version tag but must never become :latest, so `docker pull …:latest`
+          # cannot silently land on an unfinished build.
+          if printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            docker tag artifactflow-app:production "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+            echo "Moved :latest to $VERSION (final release)."
+          else
+            echo "Left :latest unchanged ($VERSION is a pre-release)."
+          fi
+          REPO_DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:$VERSION")"
+          echo "digest=$REPO_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "digest_only=${REPO_DIGEST#*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -v "$PWD:/out" \
+            aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
+            image --format cyclonedx --output /out/sbom.cdx.json artifactflow-app:production
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest_only }}
+          push-to-registry: true
+
+      - name: Attest SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest_only }}
+          sbom-path: sbom.cdx.json
+          push-to-registry: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "Container image (pin by digest):"
+            echo
+            echo '```'
+            echo "${{ steps.push.outputs.digest }}"
+            echo '```'
+            echo
+            echo "Verify build provenance and SBOM before running (needs the GitHub CLI):"
+            echo
+            echo '```'
+            echo "gh attestation verify oci://${{ steps.push.outputs.digest }} --repo ${{ github.repository }}"
+            echo '```'
+            echo
+            echo "SLSA build provenance and a CycloneDX SBOM are keyless-signed (Sigstore) and attested to the image digest, and pushed alongside it in the registry; the SBOM is also attached to this release as sbom.cdx.json."
+            echo "The image was scanned with Trivy (vuln, secret, misconfig; HIGH/CRITICAL gate) before publishing."
+            echo "Self-hosting docs: docs/OPERATIONS.md. AGPL Section 13 applies to network use; see COMMERCIAL.md for the commercial path."
+          } > release-notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            --title "ArtifactFlow $GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            --generate-notes \
+            --verify-tag \
+            sbom.cdx.json
+
+      - name: Normalize Trivy cache ownership
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" ~/.cache/trivy || true

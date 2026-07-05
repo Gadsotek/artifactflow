@@ -1,0 +1,60 @@
+.DS_Store
+.agents/
+.claude/
+.codex/
+.idea/
+.tmp/
+
+# Local DB dumps and artifact backups (scripts/backup.sh writes ./backups/);
+# the dev stage COPYs the whole context, so these must never enter the build.
+/backups/
+*.dump
+
+# Broad glob (mirrors .gitignore) so variants like .env_backup / .env.local are
+# excluded too, then re-include the two committed examples.
+.env*
+!.env.example
+!.env.production.example
+
+.git
+.github
+docker-compose.override.yml
+
+# Keep docs out of image build contexts even though .gitignore allowlists
+# publishable docs for the public repository.
+/docs/
+
+/vendor/
+/node_modules/
+/public/build/
+/public/hot
+
+/bootstrap/cache/*.php
+/storage/app/
+# Keep the (empty) e2e artifact root in the dev image: the e2e-artifacts named
+# volume copies its ownership from the image on first use. Without it Docker
+# creates the mountpoint root-owned and every artifact save fails with HTTP 500
+# on fresh volumes (always in CI, never on a warm local volume).
+!/storage/app/e2e_private_artifacts
+!/storage/app/e2e_private_artifacts/**
+/storage/*.key
+/storage/logs/*.log
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/testing/*
+/storage/framework/views/*
+/storage/phpstan/
+
+/.phpunit.cache/
+/phpunit.result.cache
+/coverage/
+
+/playwright-report/
+/test-results/
+/playwright/.cache/
+/.playwright/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

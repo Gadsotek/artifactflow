@@ -1,0 +1,117 @@
+name: Nightly audit
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  DOCKER_BUILDKIT: "1"
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Secret scan (Gitleaks)
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
+      - name: Export host UID and GID
+        run: |
+          echo "APP_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "APP_GID=$(id -g)" >> "$GITHUB_ENV"
+
+      - name: Prepare environment
+        run: cp .env.example .env
+
+      - name: Cache Composer vendor
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor
+          key: composer-vendor-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-vendor-${{ runner.os }}-
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Set up Docker Buildx
+        run: docker buildx create --use --driver docker-container
+
+      - name: Build cached dev image
+        run: |
+          docker buildx build \
+            --load \
+            --pull \
+            --target dev \
+            --tag artifactflow-app:dev \
+            --build-arg APP_UID="$(id -u)" \
+            --build-arg APP_GID="$(id -g)" \
+            --cache-from type=gha,scope=dev \
+            --cache-to type=gha,scope=dev,mode=max,ignore-error=true \
+            .
+
+      - name: Composer audit
+        run: make audit-php
+
+      - name: npm audit
+        run: |
+          node scripts/verify-dompurify.mjs
+          npm audit --audit-level=moderate
+
+      - name: Cache Trivy database
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-${{ runner.os }}
+
+      - name: Build production image
+        run: |
+          make build-prod \
+            DOCKER_BUILD='docker buildx build --load' \
+            DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha,scope=production --cache-to type=gha,scope=production,mode=max,ignore-error=true'
+
+      - name: Scan production image (Trivy)
+        run: make scan-image
+
+      - name: Normalize Trivy cache ownership
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" ~/.cache/trivy || true
+
+      - name: Open an issue on failure
+        # Scheduled workflows fail silently (and GitHub disables them after 60
+        # days of repository inactivity); an issue makes the failure visible.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'Nightly audit failed in:title' --json number --jq '.[0].number // empty')"
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "Nightly audit failed again: $url"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "Nightly audit failed" \
+              --body "The scheduled nightly audit failed: $url"
+          fi

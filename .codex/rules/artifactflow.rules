@@ -1,0 +1,153 @@
+# artifactflow project policy for Codex execpolicy.
+# These rules are intentionally conservative. They supplement AGENTS.md and hooks.
+
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "prompt",
+    justification = "Every git push requires explicit user approval for that exact push.",
+    match = [
+        "git push",
+        "git push origin main",
+        "git push --force-with-lease origin feature/example",
+    ],
+)
+
+prefix_rule(
+    pattern = ["rm", ["-r", "-R", "-rf", "-fr", "--recursive"]],
+    decision = "prompt",
+    justification = "Recursive deletion requires explicit user approval.",
+    match = [
+        "rm -rf storage/framework/views",
+        "rm -R public/build",
+    ],
+    not_match = [
+        "rm public/hot",
+    ],
+)
+
+prefix_rule(
+    pattern = ["rm", "-f", ["-r", "-R"]],
+    decision = "prompt",
+    justification = "Recursive deletion requires explicit user approval.",
+    match = [
+        "rm -f -r node_modules",
+    ],
+)
+
+prefix_rule(
+    pattern = ["rm", ["-r", "-R"], "-f"],
+    decision = "prompt",
+    justification = "Recursive deletion requires explicit user approval.",
+    match = [
+        "rm -r -f node_modules",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "prompt",
+    justification = "Discarding worktree changes requires explicit user approval.",
+    match = [
+        "git reset --hard",
+        "git reset --hard HEAD~1",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", "clean"],
+    decision = "prompt",
+    justification = "Deleting untracked files requires explicit user approval.",
+    match = [
+        "git clean -fd",
+        "git clean -fdx",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", "checkout", "--"],
+    decision = "prompt",
+    justification = "Discarding file changes requires explicit user approval.",
+    match = [
+        "git checkout -- composer.json",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", "restore"],
+    decision = "prompt",
+    justification = "Restoring files can discard local changes and requires explicit user approval.",
+    match = [
+        "git restore app/Models/User.php",
+        "git restore --source HEAD -- .",
+    ],
+)
+
+prefix_rule(
+    pattern = ["docker", "compose", "down", ["--volumes", "-v"]],
+    decision = "prompt",
+    justification = "Removing Docker volumes can delete local databases and requires approval.",
+    match = [
+        "docker compose down --volumes",
+        "docker compose down -v",
+    ],
+)
+
+prefix_rule(
+    pattern = ["docker", "volume", ["rm", "prune"]],
+    decision = "prompt",
+    justification = "Deleting Docker volumes requires explicit user approval.",
+    match = [
+        "docker volume rm artifactflow_db",
+        "docker volume prune",
+    ],
+)
+
+prefix_rule(
+    pattern = ["docker", "system", "prune"],
+    decision = "prompt",
+    justification = "Docker system pruning can delete local build/cache state and requires approval.",
+    match = [
+        "docker system prune",
+        "docker system prune -a",
+    ],
+)
+
+prefix_rule(
+    pattern = ["make", ["down-reset", "test-db-reset"]],
+    decision = "prompt",
+    justification = "Reset targets delete local data and require explicit approval.",
+    match = [
+        "make down-reset",
+        "make test-db-reset",
+    ],
+)
+
+prefix_rule(
+    pattern = ["php", "artisan", "test"],
+    decision = "prompt",
+    justification = "Direct Laravel tests can inherit the local app database. Use make test or make test TEST_FILTER=... so tests run against an isolated temporary database. The shared AI hook hard-denies this command.",
+    match = [
+        "php artisan test",
+        "php artisan test --filter=PageCreationHttpTest",
+    ],
+)
+
+prefix_rule(
+    pattern = ["./vendor/bin/pest"],
+    decision = "prompt",
+    justification = "Direct Pest runs can inherit the local app database. Use make test or make test TEST_FILTER=... instead. The shared AI hook hard-denies this command.",
+    match = [
+        "./vendor/bin/pest",
+        "./vendor/bin/pest --filter PageCreationHttpTest",
+    ],
+)
+
+prefix_rule(
+    pattern = ["./vendor/bin/phpunit"],
+    decision = "prompt",
+    justification = "Direct PHPUnit runs can inherit the local app database. Use make test or make test TEST_FILTER=... instead. The shared AI hook hard-denies this command.",
+    match = [
+        "./vendor/bin/phpunit",
+        "./vendor/bin/phpunit --filter PageCreationHttpTest",
+    ],
+)

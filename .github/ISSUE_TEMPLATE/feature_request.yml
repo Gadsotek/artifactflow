@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest a scoped product improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep requests within ArtifactFlow's self-hosted knowledge-base and artifact-preview scope.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow or user need is not handled well today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What should ArtifactFlow do differently?
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security considerations
+      description: How should this preserve permissions, auditability, and artifact isolation?
+    validations:
+      required: true

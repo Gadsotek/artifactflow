@@ -1,0 +1,315 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  DOCKER_BUILDKIT: "1"
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # gitleaks-action switches to PR mode on pull_request and reads
+    # /pulls/{n}/commits; the workflow-level contents:read alone makes that 403,
+    # so the scan fails on every PR while push events pass.
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Secret scan (Gitleaks)
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Publish guard
+        run: make publish-guard
+
+      - name: Cache Composer vendor
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor
+          key: composer-vendor-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-vendor-${{ runner.os }}-
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chromium OS dependencies
+        run: npx playwright install-deps chromium
+
+      - name: Install Playwright Chromium browser
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+
+      - name: Export host UID and GID
+        run: |
+          echo "APP_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "APP_GID=$(id -g)" >> "$GITHUB_ENV"
+
+      - name: Prepare environment
+        run: cp .env.example .env
+
+      - name: Set up Docker Buildx
+        run: docker buildx create --use --driver docker-container
+
+      - name: Build cached dev image
+        run: |
+          docker buildx build \
+            --load \
+            --pull \
+            --target dev \
+            --tag artifactflow-app:dev \
+            --build-arg APP_UID="$(id -u)" \
+            --build-arg APP_GID="$(id -g)" \
+            --build-arg INSTALL_PCOV=1 \
+            --cache-from type=gha,scope=dev \
+            --cache-to type=gha,scope=dev,mode=max,ignore-error=true \
+            .
+
+      - name: Assert dev image includes PCOV
+        run: docker run --rm artifactflow-app:dev php -m | grep -qi pcov
+
+      - name: Validate compose config
+        run: make compose-config
+
+      - name: Validate AI hook harness
+        run: make ai-hooks-test
+
+      - name: Install Composer dependencies
+        # Populate ./vendor before the app boots. The dev container's
+        # ensure-vendor.sh installs Composer deps on startup only when vendor is
+        # incomplete; running that install here, in its own step, keeps it off
+        # the healthcheck-gated boot. Without this, a composer.lock change misses
+        # the vendor cache, the install runs during `make up`, overruns the app
+        # healthcheck window, and the container is reported unhealthy.
+        run: |
+          docker run --rm \
+            -v "$PWD:/var/www/html" -w /var/www/html \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp -e COMPOSER_HOME=/tmp/composer \
+            --entrypoint composer \
+            artifactflow-app:dev \
+            install --no-interaction --no-progress --prefer-dist
+
+      - name: Generate application key
+        # The container's start-local.sh would generate a key on first boot;
+        # doing it explicitly here keeps CI deterministic and surfaces key
+        # problems as their own step instead of inside the boot sequence.
+        run: make key-generate
+
+      - name: Migrate database
+        # /up is exempt from session middleware, so the healthcheck does not
+        # require migrations — but migrating before the stack starts keeps the
+        # boot deterministic and reports migration failures as their own step.
+        # make migrate's one-off container does NOT start the db service, so
+        # bring db up (and healthy) first.
+        run: |
+          docker compose up -d --wait db
+          make migrate
+
+      - name: Start app stack
+        run: |
+          make up UP_BUILD= || {
+            echo "::group::compose ps"; docker compose ps || true; echo "::endgroup::"
+            echo "::group::app container logs"; docker compose logs app || true; echo "::endgroup::"
+            echo "::group::artifact-host container logs"; docker compose logs artifact-host || true; echo "::endgroup::"
+            echo "::group::Laravel logs"; tail -n 200 storage/logs/*.log 2>/dev/null || echo "(no laravel logs)"; echo "::endgroup::"
+            exit 1
+          }
+
+      - name: ECS
+        run: make ecs
+
+      - name: Larastan max
+        run: make stan
+
+      - name: Install Semgrep
+        run: |
+          python3 -m pip install --user semgrep==1.167.0
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Semgrep
+        run: make semgrep
+
+      - name: Composer audit
+        run: make audit-php
+
+      - name: npm audit
+        run: |
+          node scripts/verify-dompurify.mjs
+          npm audit --audit-level=moderate
+
+      - name: Test suite
+        run: make test
+
+      - name: Type coverage
+        run: make type-coverage
+
+      - name: Line coverage
+        run: make coverage
+
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: E2E browser suite
+        run: make e2e
+
+      - name: Upload Playwright trace and screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+      - name: Stop containers
+        if: always()
+        run: make down-reset
+
+  container-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Docker Buildx
+        run: docker buildx create --use --driver docker-container
+
+      - name: Cache Trivy database
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-${{ runner.os }}
+
+      - name: Build production image
+        run: |
+          make build-prod \
+            DOCKER_BUILD='docker buildx build --load' \
+            DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha,scope=production --cache-to type=gha,scope=production,mode=max,ignore-error=true'
+
+      - name: Assert production image excludes dev bootstrap files
+        run: |
+          docker run --rm artifactflow-app:production sh -lc '
+            set -e
+            test ! -f /var/www/html/docker/start-local.sh
+            test ! -f /var/www/html/docker/Caddyfile.local
+            test ! -f /var/www/html/docker/ensure-vendor.sh
+            test ! -f /var/www/html/docker/ensure-node-modules.sh
+            ! php -m | grep -qi pcov
+          '
+
+      - name: Scan production image (Trivy)
+        run: make scan-image
+
+      - name: Normalize Trivy cache ownership
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" ~/.cache/trivy || true
+
+  # CONTRIBUTING.md requires a DCO sign-off (commit provenance) on every PR
+  # commit. Together with the CLA signature -- enforced by the separate CLA
+  # workflow, which cannot join this aggregate because it runs on
+  # pull_request_target -- it is the paper trail that keeps dual licensing
+  # viable, so CI must enforce the sign-off on incoming PRs. Push builds are
+  # exempt: the check grades contribution commits, and the job is explicitly
+  # allowed to be skipped in ci-required below.
+  dco:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Require Signed-off-by on every PR commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for sha in $(git rev-list --no-merges "$BASE_SHA".."$HEAD_SHA"); do
+            if ! git log -1 --format=%B "$sha" | grep -qiE '^Signed-off-by: .+ <.+@.+>$'; then
+              echo "Commit $sha is missing a Signed-off-by trailer; use 'git commit -s' (see CONTRIBUTING.md)." >&2
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+  ci-required:
+    runs-on: ubuntu-latest
+    needs:
+      - secret-scan
+      - quality
+      - container-image
+      - dco
+    if: always()
+    steps:
+      - name: Require all CI jobs
+        env:
+          NEEDS_JSON: ${{ toJson(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          # dco only runs on pull_request events; a skipped dco on push builds
+          # is expected and must not fail the aggregate.
+          allowed = {"dco": {"success", "skipped"}}
+
+          failed = {
+              name: job.get("result")
+              for name, job in json.loads(os.environ["NEEDS_JSON"]).items()
+              if job.get("result") not in allowed.get(name, {"success"})
+          }
+
+          if failed:
+              for name, result in failed.items():
+                  print(f"{name}: {result}", file=sys.stderr)
+              sys.exit(1)
+          PY

@@ -1,0 +1,141 @@
+# Environment and secrets
+.env
+.env*
+!.env.example
+!.env.production.example
+.envrc
+auth.json
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.csr
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+.secrets/
+secrets/
+secret/
+docker/secrets/
+.aws/
+.azure/
+.gcp/
+.kube/
+
+# Local overrides
+docker-compose.override.yml
+compose.override.yml
+docker-compose.local.yml
+compose.local.yml
+*.override.yml
+
+# Private working docs only (audit notes, handoff, task/spec docs). Everything
+# else under docs/ -- ARCHITECTURE, OPERATIONS, the architecture diagrams -- is
+# public and published.
+/docs/internal
+
+# Private AI/agent working files at the repo root. These must never be tracked.
+# Note: agent tooling may also snapshot them into checkpoint refs (for example
+# refs/codex/turn-diffs/...), which .gitignore cannot cover -- see the
+# "Before Publishing the Repository" section in RELEASE-CHECKLIST.md.
+/HANDOFF.md
+/SECURITY-AUDIT*.md
+/_img.php
+
+.claude/settings.local.json
+.claude/*.local.json
+.claude/projects/
+.claude/logs/
+.claude/todos/
+.codex/*.local.toml
+.codex/auth.json
+.codex/history.jsonl
+.codex/models_cache.json
+.codex/.codex-global-state.json
+.codex/attachments/
+.codex/browser/
+.codex/cache/
+.codex/logs/
+.codex/memories/
+.codex/process_manager/
+.codex/sessions/
+.codex/tmp/
+.codex/state/
+.codex/rules/*.local.rules
+
+# Dependencies
+/vendor/
+/node_modules/
+
+# Python runtime output
+__pycache__/
+*.py[cod]
+
+# Laravel runtime output
+/bootstrap/cache/*.php
+/storage/*.key
+/storage/app/*
+!/storage/app/.gitignore
+/storage/framework/cache/*
+!/storage/framework/cache/.gitignore
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitignore
+/storage/framework/testing/*
+!/storage/framework/testing/.gitignore
+/storage/framework/views/*
+!/storage/framework/views/.gitignore
+/storage/logs/*
+!/storage/logs/.gitignore
+/storage/phpstan/
+
+# Frontend builds and dev-server state
+/public/build/
+/public/hot
+/.vite/
+
+# Test, QA, and coverage output
+/.phpunit.cache/
+/phpunit.result.cache
+/coverage/
+/.playwright/
+/playwright-report/
+/test-results/
+/blob-report/
+/.nyc_output/
+/.tmp/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Database dumps and local data exports
+*.dump
+*.backup
+*.sql
+*.sql.gz
+*.psql
+*.pgsql
+*.mysql
+*.sqlite
+*.sqlite3
+/database/dumps/
+/backups/
+!/database/sql/**/*.sql
+!/docker/db/init/**/*.sql
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+*.swp
+*.swo
+*~

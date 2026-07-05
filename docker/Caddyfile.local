@@ -1,0 +1,11 @@
+{
+	auto_https off
+}
+
+app.artifactflow.test, localhost {
+	reverse_proxy {$APP_UPSTREAM}
+}
+
+artifacts.artifactflow.test {
+	reverse_proxy {$ARTIFACT_UPSTREAM}
+}

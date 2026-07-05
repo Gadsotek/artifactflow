@@ -1,0 +1,48 @@
+{
+	skip_install_trust
+
+	{$CADDY_GLOBAL_OPTIONS}
+
+	frankenphp
+}
+
+{$SERVER_NAME:localhost} {
+	root /var/www/html/public
+	encode zstd br gzip
+
+	@artifactDraftPreview path /artifact-previews/draft
+	request_body @artifactDraftPreview {
+		# The unsigned preview endpoint accepts multipart form data so the edge can
+		# reject oversized drafts before PHP buffers or parses them. This default
+		# leaves headroom above the 5 MiB application content limit.
+		max_size {$ARTIFACT_DRAFT_PREVIEW_MAX_BODY:6MB}
+	}
+
+	@otherRequestBodies {
+		not path /artifact-previews/draft
+	}
+	request_body @otherRequestBodies {
+		max_size 25MB
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		?Referrer-Policy strict-origin-when-cross-origin
+		?Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		# HSTS fallback for responses Caddy serves without invoking PHP (e.g. static
+		# files). The AddSecurityHeaders middleware is authoritative for PHP
+		# responses and keeps includeSubDomains/preload opt-in (HSTS_INCLUDE_SUBDOMAINS
+		# / HSTS_PRELOAD). This fallback mirrors that safe host-scoped default; both
+		# directives reach past this host and are hard to undo, so they are NOT sent
+		# here by default. An operator who has enabled them app-side can set CADDY_HSTS
+		# to the matching value (e.g. "max-age=63072000; includeSubDomains; preload").
+		?Strict-Transport-Security "{$CADDY_HSTS:max-age=63072000}"
+	}
+
+	@storage path /storage/* /storage
+	handle @storage {
+		respond 404
+	}
+
+	php_server
+}

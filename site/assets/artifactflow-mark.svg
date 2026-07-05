@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">ArtifactFlow</title>
+  <desc id="desc">A triangular band with a twisted inner edge, faceted in ink and violet.</desc>
+  <path fill="#675df6" d="M256 56L429.2 356L318.4 312.2L273.5 173.8Z"/>
+  <path fill="#5146e5" d="M429.2 356L82.8 356L176.1 282L318.4 312.2Z"/>
+  <path fill="#151a18" d="M82.8 356L256 56L273.5 173.8L176.1 282Z"/>
+</svg>

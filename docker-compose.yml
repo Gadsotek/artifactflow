@@ -1,0 +1,430 @@
+# Local development compose file. It intentionally uses loopback-bound ports,
+# local credentials, APP_DEBUG=true defaults, and non-TLS PostgreSQL. Do not use
+# this file as a production deployment template.
+services:
+  db:
+    image: postgres:17.2-alpine@sha256:7e5df973a74872482e320dcbdeb055e178d6f42de0558b083892c50cda833c96
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-artifactflow}
+      POSTGRES_USER: ${DB_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${DB_SUPERPASS:-postgres}
+      APP_DB_USER: ${DB_USERNAME:-app_user}
+      APP_DB_PASS: ${DB_PASSWORD:-app_local_password}
+    ports:
+      - "127.0.0.1:${DB_HOST_PORT:-55440}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./docker/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_SUPERUSER:-postgres} -d ${DB_DATABASE:-artifactflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  db-test:
+    profiles: ["test"]
+    image: postgres:17.2-alpine@sha256:7e5df973a74872482e320dcbdeb055e178d6f42de0558b083892c50cda833c96
+    environment:
+      POSTGRES_DB: ${TEST_DB_DATABASE:-artifactflow_test}
+      POSTGRES_USER: ${TEST_DB_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${TEST_DB_SUPERPASS:-postgres_test_password}
+      APP_DB_USER: ${TEST_DB_USERNAME:-app_user}
+      APP_DB_PASS: ${TEST_DB_PASSWORD:-app_local_password}
+    ports:
+      - "127.0.0.1:${TEST_DB_HOST_PORT:-55442}:5432"
+    volumes:
+      - db-test-data:/var/lib/postgresql/data
+      - ./docker/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TEST_DB_SUPERUSER:-postgres} -d ${TEST_DB_DATABASE:-artifactflow_test}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+        INSTALL_XDEBUG: ${INSTALL_XDEBUG:-0}
+        INSTALL_PCOV: ${INSTALL_PCOV:-1}
+    image: artifactflow-app:dev
+    environment: &app-environment
+      APP_NAME: ${APP_NAME:-artifactflow}
+      APP_ENV: ${APP_ENV:-local}
+      APP_DEBUG: ${APP_DEBUG:-true}
+      APP_URL: ${APP_URL:-http://localhost:18080}
+      # The artifact origin must differ from the app origin by HOST, not just
+      # port: cookies ignore the port, so localhost/127.0.0.1 keeps the app
+      # session cookie off artifact requests.
+      ARTIFACT_URL: ${ARTIFACT_URL:-http://127.0.0.1:18081}
+      # Host-port mappings mirrored into the container so `artifactflow:doctor`
+      # can warn when a port and its URL were not changed together.
+      APP_HOST_PORT: ${APP_PORT:-18080}
+      ARTIFACT_HOST_PORT: ${ARTIFACT_HOST_PORT:-18081}
+      ARTIFACT_FRAME_ANCESTORS: ${ARTIFACT_FRAME_ANCESTORS:-http://localhost:18080}
+      ARTIFACT_URL_SIGNING_KEY: ${ARTIFACT_URL_SIGNING_KEY:-}
+      ARTIFACT_PREVIEW_URL_TTL_SECONDS: ${ARTIFACT_PREVIEW_URL_TTL_SECONDS:-60}
+      ARTIFACT_MAX_BYTES: ${ARTIFACT_MAX_BYTES:-10485760}
+      ARTIFACT_DRAFT_PREVIEW_MAX_BODY: ${ARTIFACT_DRAFT_PREVIEW_MAX_BODY:-6MB}
+      APP_RUNTIME_ROLE: ${APP_RUNTIME_ROLE:-app}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1,::1,172.16.0.0/12}
+      DEFAULT_THEME: ${DEFAULT_THEME:-system}
+      LOG_CHANNEL: ${LOG_CHANNEL:-stack}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      DB_CONNECTION: pgsql
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_DATABASE: ${DB_DATABASE:-artifactflow}
+      DB_USERNAME: ${DB_USERNAME:-app_user}
+      DB_PASSWORD: ${DB_PASSWORD:-app_local_password}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      DB_SSLROOTCERT: ${DB_SSLROOTCERT:-}
+      BROADCAST_CONNECTION: ${BROADCAST_CONNECTION:-null}
+      REVERB_APP_ID: ${REVERB_APP_ID:-artifactflow-local}
+      REVERB_APP_KEY: ${REVERB_APP_KEY:-artifactflow-local-key}
+      REVERB_APP_SECRET: ${REVERB_APP_SECRET:-}
+      REVERB_HOST: ${REVERB_HOST:-localhost}
+      REVERB_PORT: ${REVERB_PORT:-8080}
+      REVERB_SCHEME: ${REVERB_SCHEME:-http}
+      REVERB_PUBLIC_URL: ${REVERB_PUBLIC_URL:-http://localhost:8080}
+      REVERB_ALLOWED_ORIGINS: ${REVERB_ALLOWED_ORIGINS:-http://localhost:18080}
+      REVERB_APP_MAX_CONNECTIONS: ${REVERB_APP_MAX_CONNECTIONS:-1000}
+      REVERB_APP_RATE_LIMITING_ENABLED: ${REVERB_APP_RATE_LIMITING_ENABLED:-true}
+      VITE_REVERB_APP_KEY: ${VITE_REVERB_APP_KEY:-artifactflow-local-key}
+      VITE_REVERB_HOST: ${VITE_REVERB_HOST:-localhost}
+      VITE_REVERB_PORT: ${VITE_REVERB_PORT:-8080}
+      VITE_REVERB_SCHEME: ${VITE_REVERB_SCHEME:-http}
+      CACHE_STORE: ${CACHE_STORE:-file}
+      SESSION_DRIVER: ${SESSION_DRIVER:-database}
+      SESSION_DOMAIN: ${SESSION_DOMAIN:-}
+      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
+      SESSION_ENCRYPT: ${SESSION_ENCRYPT:-false}
+      SESSION_HTTP_ONLY: ${SESSION_HTTP_ONLY:-true}
+      SESSION_SAME_SITE: ${SESSION_SAME_SITE:-lax}
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+      COMPOSER_ALLOW_SUPERUSER: "1"
+      COMPOSER_HOME: /home/app/.composer
+      XDEBUG_MODE: ${XDEBUG_MODE:-off}
+      XDEBUG_CONFIG: "client_host=${XDEBUG_CLIENT_HOST:-host.docker.internal} client_port=${XDEBUG_CLIENT_PORT:-9010} idekey=${XDEBUG_IDEKEY:-VSCODE} start_with_request=${XDEBUG_START_WITH_REQUEST:-trigger}"
+      MAIL_MAILER: ${MAIL_MAILER:-smtp}
+      MAIL_HOST: ${MAIL_HOST:-mailpit}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-null}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-dev@artifactflow.local}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-artifactflow}
+      ARTIFACT_STORAGE_ROOT: ${ARTIFACT_STORAGE_ROOT:-/var/www/html/storage/app/private_artifacts}
+    ports:
+      - "127.0.0.1:${APP_PORT:-18080}:8000"
+    volumes: &app-volumes
+      - ./:/var/www/html:delegated
+      - ./vendor:/var/www/html/vendor
+      - node-modules:/var/www/html/node_modules
+      - composer-cache:/home/app/.composer/cache
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  artifact-host:
+    image: artifactflow-app:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+        INSTALL_XDEBUG: ${INSTALL_XDEBUG:-0}
+        INSTALL_PCOV: ${INSTALL_PCOV:-1}
+    environment:
+      <<: *app-environment
+      APP_RUNTIME_ROLE: artifact-host
+      APP_URL: ${ARTIFACT_URL:-http://127.0.0.1:18081}
+      APP_HOST_PORT: ${ARTIFACT_HOST_PORT:-18081}
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+    ports:
+      - "127.0.0.1:${ARTIFACT_HOST_PORT:-18081}:8000"
+    volumes: *app-volumes
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  e2e-app:
+    profiles: ["e2e"]
+    image: artifactflow-app:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+        INSTALL_XDEBUG: ${INSTALL_XDEBUG:-0}
+        INSTALL_PCOV: ${INSTALL_PCOV:-1}
+    environment:
+      <<: *app-environment
+      APP_ENV: ${E2E_APP_ENV:-local}
+      # e2e-only throwaway key (public; never reuse in a real deployment). It is a valid
+      # 32-byte key, so it passes the strength check — it is safe ONLY because e2e runs
+      # APP_ENV=local, where the production boot guard does not execute.
+      APP_KEY: ${E2E_APP_KEY:-base64:YXJ0aWZhY3RmbG93LWUyZS1hcHAta2V5LTAwMDAwMDA=}
+      APP_URL: ${E2E_APP_URL:-http://localhost:18180}
+      ARTIFACT_URL: ${E2E_ARTIFACT_URL:-http://127.0.0.1:18181}
+      APP_HOST_PORT: ${E2E_APP_PORT:-18180}
+      ARTIFACT_HOST_PORT: ${E2E_ARTIFACT_HOST_PORT:-18181}
+      ARTIFACT_FRAME_ANCESTORS: ${E2E_ARTIFACT_FRAME_ANCESTORS:-http://localhost:18180}
+      # e2e-only throwaway signing key: rejected by the production boot guard; never reuse in a real deployment.
+      ARTIFACT_URL_SIGNING_KEY: ${E2E_ARTIFACT_URL_SIGNING_KEY:-artifact-preview-test-signing-key}
+      DB_HOST: db-test
+      DB_DATABASE: ${E2E_DB_DATABASE:-artifactflow_test_e2e}
+      DB_USERNAME: ${TEST_DB_USERNAME:-app_user}
+      DB_PASSWORD: ${TEST_DB_PASSWORD:-app_local_password}
+      QUEUE_CONNECTION: sync
+      MAIL_MAILER: array
+      ARTIFACT_STORAGE_ROOT: /var/www/html/storage/app/e2e_private_artifacts
+      VITE_HOT_FILE: /tmp/artifactflow-e2e-no-hot
+    ports:
+      - "127.0.0.1:${E2E_APP_PORT:-18180}:8000"
+    volumes:
+      - ./:/var/www/html:delegated
+      - ./vendor:/var/www/html/vendor
+      - node-modules:/var/www/html/node_modules
+      - composer-cache:/home/app/.composer/cache
+      - e2e-artifacts:/var/www/html/storage/app/e2e_private_artifacts
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  e2e-artifact-host:
+    profiles: ["e2e"]
+    image: artifactflow-app:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+        INSTALL_XDEBUG: ${INSTALL_XDEBUG:-0}
+        INSTALL_PCOV: ${INSTALL_PCOV:-1}
+    environment:
+      <<: *app-environment
+      APP_ENV: ${E2E_APP_ENV:-local}
+      # e2e-only throwaway key (public; never reuse in a real deployment). It is a valid
+      # 32-byte key, so it passes the strength check — it is safe ONLY because e2e runs
+      # APP_ENV=local, where the production boot guard does not execute.
+      APP_KEY: ${E2E_APP_KEY:-base64:YXJ0aWZhY3RmbG93LWUyZS1hcHAta2V5LTAwMDAwMDA=}
+      APP_RUNTIME_ROLE: artifact-host
+      APP_URL: ${E2E_ARTIFACT_URL:-http://127.0.0.1:18181}
+      ARTIFACT_URL: ${E2E_ARTIFACT_URL:-http://127.0.0.1:18181}
+      APP_HOST_PORT: ${E2E_ARTIFACT_HOST_PORT:-18181}
+      ARTIFACT_HOST_PORT: ${E2E_ARTIFACT_HOST_PORT:-18181}
+      ARTIFACT_FRAME_ANCESTORS: ${E2E_ARTIFACT_FRAME_ANCESTORS:-http://localhost:18180}
+      # e2e-only throwaway signing key: rejected by the production boot guard; never reuse in a real deployment.
+      ARTIFACT_URL_SIGNING_KEY: ${E2E_ARTIFACT_URL_SIGNING_KEY:-artifact-preview-test-signing-key}
+      DB_HOST: db-test
+      DB_DATABASE: ${E2E_DB_DATABASE:-artifactflow_test_e2e}
+      DB_USERNAME: ${TEST_DB_USERNAME:-app_user}
+      DB_PASSWORD: ${TEST_DB_PASSWORD:-app_local_password}
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      MAIL_MAILER: array
+      ARTIFACT_STORAGE_ROOT: /var/www/html/storage/app/e2e_private_artifacts
+      VITE_HOT_FILE: /tmp/artifactflow-e2e-no-hot
+    ports:
+      - "127.0.0.1:${E2E_ARTIFACT_HOST_PORT:-18181}:8000"
+    volumes:
+      - ./:/var/www/html:delegated
+      - ./vendor:/var/www/html/vendor
+      - node-modules:/var/www/html/node_modules
+      - composer-cache:/home/app/.composer/cache
+      - e2e-artifacts:/var/www/html/storage/app/e2e_private_artifacts
+    depends_on:
+      db-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    image: artifactflow-app:dev
+    command: ["sh", "/var/www/html/docker/start-worker.sh"]
+    environment:
+      <<: *app-environment
+      APP_RUNTIME_ROLE: worker
+    volumes: *app-volumes
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  scheduler:
+    image: artifactflow-app:dev
+    command: ["sh", "/var/www/html/docker/start-scheduler.sh"]
+    environment:
+      <<: *app-environment
+      APP_RUNTIME_ROLE: scheduler
+    volumes: *app-volumes
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  reverb:
+    profiles: ["realtime"]
+    image: artifactflow-app:dev
+    command: ["sh", "-lc", "php artisan reverb:start --host=0.0.0.0 --port=8080"]
+    environment:
+      <<: *app-environment
+      # APP_KEY is not in the shared anchor (the app service reads it from the mounted
+      # .env, which artifactflow:install / key:generate populates). In normal operation
+      # this worker reads .env the same way; the pass-through below only matters for the
+      # verify-reverb-origin gate, which exports a production APP_KEY (and APP_ENV=production)
+      # so the worker boots the real production security gate. That boot gate -- not this
+      # line -- is the fail-closed check that rejects a missing or weak key, so keep this a
+      # plain pass-through. Never a ":-" empty default: that form silently shadows the
+      # mounted key (see E2eIsolationConfigurationTest) and Compose cannot hard-require the
+      # key here because it is not present at compose-interpolation time for other commands.
+      APP_KEY: ${APP_KEY}
+      APP_RUNTIME_ROLE: worker
+      # verify-reverb-origin boots this worker with APP_ENV=production, so the boot gate
+      # rejects the app_local_password dev fixture that .env feeds the shared anchor's
+      # ${DB_PASSWORD:-...}. This worker only serves WebSockets and never opens the DB
+      # connection, so it just needs a non-fixture value to satisfy the gate's config-level
+      # password check. A dedicated variable (unset everywhere) is used so .env's DB_PASSWORD
+      # cannot shadow the default; reverb is started exclusively by that gate (realtime
+      # profile), so this never affects local dev.
+      DB_PASSWORD: ${REVERB_SMOKE_DB_PASSWORD:-reverb-origin-smoke-secret}
+      BROADCAST_CONNECTION: reverb
+      REVERB_SERVER_HOST: 0.0.0.0
+      REVERB_SERVER_PORT: 8080
+    ports:
+      - "127.0.0.1:${REVERB_PORT:-8080}:8080"
+    volumes: *app-volumes
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "php -r '$$port=(int) (getenv(\"REVERB_SERVER_PORT\") ?: 8080); $$socket=@fsockopen(\"127.0.0.1\", $$port); if (is_resource($$socket)) { fclose($$socket); exit(0); } exit(1);'"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+
+  vite:
+    profiles: ["frontend"]
+    # Must match the node digest of the Dockerfile frontend-build stage (Dependabot
+    # only tracks the Dockerfile pin) so local dev and production assets build on
+    # the same Node.
+    image: node:26-alpine@sha256:725aeba2364a9b16beae49e180d83bd597dbd0b15c47f1f28875c290bfd255b9
+    working_dir: /var/www/html
+    command: >
+      sh -lc '
+        set -eu;
+        /var/www/html/docker/ensure-node-modules.sh;
+        npm run dev -- --host 0.0.0.0 --port ${VITE_PORT:-5181}
+      '
+    environment:
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-0}
+      VITE_PORT: ${VITE_PORT:-5181}
+      WATCHPACK_POLLING: ${WATCHPACK_POLLING:-false}
+    ports:
+      - "127.0.0.1:${VITE_PORT:-5181}:5181"
+    volumes:
+      - ./:/var/www/html:delegated
+      - node-modules:/var/www/html/node_modules
+      - npm-cache:/home/node/.npm
+    depends_on:
+      app:
+        condition: service_healthy
+
+  edge:
+    profiles: ["edge"]
+    image: caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
+    environment:
+      APP_UPSTREAM: app:8000
+      ARTIFACT_UPSTREAM: artifact-host:8000
+    ports:
+      - "127.0.0.1:${EDGE_HTTP_PORT:-18085}:80"
+    volumes:
+      - ./docker/Caddyfile.local:/etc/caddy/Caddyfile:ro
+    depends_on:
+      app:
+        condition: service_healthy
+      artifact-host:
+        condition: service_healthy
+
+  # Local-only diagnostic profiles. Keep these loopback-bound and do not enable
+  # them on shared, staging, or production hosts.
+  adminer:
+    profiles: ["adminer"]
+    image: adminer:4.8.1-standalone@sha256:34d37131366c5aa84e1693dbed48593ed6f95fb450b576c1a7a59d3a9c9e8802
+    environment:
+      ADMINER_DEFAULT_SERVER: ${ADMINER_DEFAULT_SERVER:-db}
+      ADMINER_DESIGN: ${ADMINER_DESIGN:-dracula}
+    ports:
+      - "127.0.0.1:${ADMINER_PORT:-18089}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  mailpit:
+    profiles: ["mail"]
+    image: axllent/mailpit:v1.22@sha256:f7f7c31de4de59540ad6515a0ca057a77525bca2069b6e747d873ca66c10fe08
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-11033}:1025"
+      - "127.0.0.1:${MAILPIT_WEB_PORT:-18033}:8025"
+
+volumes:
+  db-data:
+  db-test-data:
+  e2e-artifacts:
+  node-modules:
+  composer-cache:
+  npm-cache:

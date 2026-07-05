@@ -1,0 +1,106 @@
+{
+  "$schema": "https://getcomposer.org/schema.json",
+  "name": "artifactflow/artifactflow",
+  "type": "project",
+  "description": "Self-hosted vault for safely storing, searching, versioning, and previewing AI-generated HTML artifacts.",
+  "homepage": "https://github.com/Gadsotek/artifactflow",
+  "keywords": [
+    "artifactflow",
+    "laravel",
+    "html-artifacts"
+  ],
+  "license": "AGPL-3.0-or-later",
+  "support": {
+    "issues": "https://github.com/Gadsotek/artifactflow/issues",
+    "source": "https://github.com/Gadsotek/artifactflow"
+  },
+  "authors": [
+    {
+      "name": "Gadsotek",
+      "email": "gadsotek@gmail.com"
+    }
+  ],
+  "require": {
+    "php": "^8.5",
+    "bacon/bacon-qr-code": "^3.0",
+    "laravel/framework": "^13.0",
+    "laravel/reverb": "^1.10",
+    "pragmarx/google2fa": "^9.0",
+    "resend/resend-php": "^1.0"
+  },
+  "require-dev": {
+    "fakerphp/faker": "^1.23",
+    "larastan/larastan": "^3.1",
+    "laravel/pail": "^1.2",
+    "laravel/tinker": "^3.0",
+    "mockery/mockery": "^1.6",
+    "nunomaduro/collision": "^8.6",
+    "pestphp/pest": "^4.4",
+    "pestphp/pest-plugin-laravel": "^4.1",
+    "pestphp/pest-plugin-type-coverage": "^4.0",
+    "phpunit/phpunit": "^12.5",
+    "symplify/easy-coding-standard": "^13.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "App\\": "app/",
+      "Database\\Factories\\": "database/factories/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "setup": [
+      "composer install",
+      "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
+      "@php artisan key:generate",
+      "@php scripts/ensure-artifact-signing-key.php",
+      "@php artisan migrate --force",
+      "npm ci",
+      "npm run build"
+    ],
+    "dev": [
+      "Composer\\Config::disableProcessTimeout",
+      "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=0\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,queue,logs,vite --kill-others"
+    ],
+    "test": [
+      "make test"
+    ],
+    "post-autoload-dump": [
+      "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
+      "@php artisan package:discover --ansi"
+    ],
+    "post-update-cmd": [
+      "@php artisan vendor:publish --tag=laravel-assets --ansi --force"
+    ],
+    "post-root-package-install": [
+      "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
+    ],
+    "post-create-project-cmd": [
+      "@php artisan key:generate --ansi",
+      "@php artisan migrate --graceful --ansi"
+    ],
+    "pre-package-uninstall": [
+      "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+    ]
+  },
+  "extra": {
+    "laravel": {
+      "dont-discover": []
+    }
+  },
+  "config": {
+    "optimize-autoloader": true,
+    "preferred-install": "dist",
+    "sort-packages": true,
+    "allow-plugins": {
+      "pestphp/pest-plugin": true,
+      "php-http/discovery": true
+    }
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}

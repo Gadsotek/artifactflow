@@ -1,0 +1,4 @@
+<p class="inline-flex items-start gap-2 rounded-md border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm text-sky-900 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-200" role="note">
+    <svg class="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 1.5a1 1 0 0 1 .48.123l6.5 3.545A1 1 0 0 1 17.5 6.05v7.9a1 1 0 0 1-.52.877l-6.5 3.545a1 1 0 0 1-.96 0l-6.5-3.545a1 1 0 0 1-.52-.877v-7.9a1 1 0 0 1 .52-.877l6.5-3.545A1 1 0 0 1 10 1.5Zm0 2.14L5.02 6.05 10 8.77l4.98-2.72L10 3.64ZM4 7.74v6.02l5 2.727v-6.02L4 7.74Zm7 8.747 5-2.727V7.74l-5 2.727v6.02Z" clip-rule="evenodd" /></svg>
+    <span>Artifacts must be a <strong class="font-semibold">single self-contained HTML file</strong>. The sandbox blocks external scripts, styles, and network calls, so a linked CDN (React, Tailwind, Chart.js…) will not load. Ask your AI to inline all dependencies into one file.</span>
+</p>

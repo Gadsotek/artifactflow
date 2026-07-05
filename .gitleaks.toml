@@ -1,0 +1,33 @@
+# Gitleaks configuration for ArtifactFlow.
+#
+# ArtifactFlow is a security tool: its PageContentScanner and AI-hook policy
+# guard are secret-DETECTION features, so the test suite deliberately embeds
+# fake / example secrets (AWS's published EXAMPLE keys, a fake Stripe-shaped
+# key, a sample JWT, XKCD passwords, a placeholder PRIVATE KEY marker) to prove
+# detection works. Those are NOT real credentials.
+#
+# We therefore exempt only the two files that deliberately embed those fixtures
+# -- the scanner test corpus and the AI-hook harness fixture -- and scan
+# everything else, including the rest of tests/, with the full default ruleset.
+# Narrowing to those exact files means a real secret pasted into any other test
+# is still caught, instead of the whole tests/ tree being a blind spot.
+
+title = "ArtifactFlow"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Intentional fake/example secrets in secret-detection test fixtures"
+paths = [
+    '''(^|/)tests/Feature/PageCatalog/PageContentScannerTest\.php''',
+    '''scripts/ai-hooks/run_harness\.py''',
+]
+# The canonical fake credential several feature tests feed to PageContentScanner
+# to prove blocking works (an alphabet-sequence value, obviously not real).
+# Allowlisted by exact value -- not by file -- so those test files stay fully
+# scanned for anything else. The bare value (no key= prefix) so it matches
+# whether the scanner compares the secret, the match, or the line.
+regexes = [
+    '''abcdefghijklmnopqrstuvwxyz1234567890''',
+]
