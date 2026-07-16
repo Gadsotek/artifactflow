@@ -320,7 +320,7 @@ Production artifact preview also requires:
 - `ARTIFACT_URL_SIGNING_KEY` set to a dedicated signing key, not `APP_KEY`.
 - `ARTIFACT_FRAME_ANCESTORS` set to the trusted app origin.
 - `ARTIFACT_PREVIEW_URL_TTL_SECONDS` kept short; defaults to 60 seconds, which is also the
-  hard cap enforced in code (`ArtifactPreviewUrl`).
+  hard cap enforced for both saved URLs and draft capabilities.
 - `ARTIFACT_MAX_BYTES` set to the maximum accepted single-file HTML size.
 
 ## Tunables
@@ -339,6 +339,7 @@ Rate limits:
 | `WORKSPACE_INVITATIONS_PER_MINUTE` | 10 | Invitations sent per user |
 | `WORKSPACE_INVITATION_ACCEPTS_PER_MINUTE` | 10 | Invitation accepts per user |
 | `MARKDOWN_PREVIEW_RATE_LIMIT_PER_MINUTE` | 30 | Markdown preview renders per user |
+| `DRAFT_PREVIEW_CAPABILITY_RATE_LIMIT_PER_MINUTE` | 30 | Authenticated draft capabilities issued per user |
 | `ARTIFACT_PREVIEWS_PER_MINUTE` | 60 | Artifact preview loads per IP and per path |
 | `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` | 300 | MCP requests per IP before authentication |
 | `MCP_RATE_LIMIT_PER_MINUTE` | 60 | MCP requests per token |
@@ -358,7 +359,7 @@ Content and storage limits:
 | `PAGE_MARKDOWN_MAX_BYTES` | 5 MiB | Markdown source size per version |
 | `PAGE_HTML_MAX_BYTES` | 5 MiB | HTML artifact size accepted on write |
 | `ARTIFACT_MAX_BYTES` | 10 MiB | HTML artifact size served on read (must be ≥ the write limit) |
-| `ARTIFACT_DRAFT_PREVIEW_MAX_BODY` | 6 MB | Edge request-body cap for the unsigned draft-preview route; keep above `PAGE_HTML_MAX_BYTES` for multipart overhead |
+| `ARTIFACT_DRAFT_PREVIEW_MAX_BODY` | 6 MB | Edge request-body cap for the capability-protected draft-preview route; keep above `PAGE_HTML_MAX_BYTES` for multipart overhead |
 | `PAGE_WORKSPACE_MAX_STORAGE_BYTES` | 1 GiB | Total artifact storage per workspace |
 | `PAGE_MAX_PAGE_STORAGE_BYTES` | 100 MiB | Total artifact storage per page |
 | `PAGE_MAX_PAGE_VERSIONS` | 200 | Retained versions per page (retention cap: appends past it prune the oldest, never block the edit) |

@@ -114,6 +114,7 @@ final class PageController
 
         return view('pages.create', [
             'categories' => $this->pickerOptions->categoriesFor($editableWorkspaceUids),
+            'draftPreviewCapabilityUrl' => route('artifact-previews.draft-capabilities.store'),
             'draftPreviewUrl' => app(ArtifactPreviewUrl::class)->draftEndpointUrl(),
             'editableWorkspaces' => $editableWorkspaces,
             'parentPages' => $parentPages,

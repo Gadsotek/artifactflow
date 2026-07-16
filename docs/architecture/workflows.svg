@@ -46,7 +46,8 @@
   <text class="sec" x="736" y="306">contained: opaque origin · no cookies · no network · cannot reach the app origin</text>
   <!-- bridges -->
   <path class="arrowx" d="M620 250 L716 250"/>
-  <text class="sec" x="624" y="242">signed URL (HMAC over origin|page|version|expires|accessRev, ≤60s)</text>
+  <text class="sec" x="624" y="238">≤60s HMAC bearer: saved URL or content-bound draft capability</text>
+  <text class="note" x="624" y="253">draft: authenticated Editor issuance · origin + workspace + exact bytes</text>
   <path class="arrow" d="M660 176 L640 206"/>
   <path class="arrow" d="M690 176 L880 206"/>
   <text class="note" x="700" y="196">iframe sandbox="allow-scripts" (no allow-same-origin)</text>
@@ -89,7 +90,7 @@
 
   <!-- C: artifact preview cross-origin -->
   <rect class="band" x="28" y="518" width="1284" height="196" fill="#fff1f2" stroke="#fecdd3"/>
-  <text class="bl" x="44" y="542" fill="#e11d48">C · Render an HTML artifact (cross-origin: the crown-jewel flow)</text>
+  <text class="bl" x="44" y="542" fill="#e11d48">C · Render a saved HTML artifact (cross-origin: the crown-jewel flow)</text>
   <g>
     <rect class="step" x="44" y="558" width="196" height="120" stroke="#2563eb" fill="#eff6ff"/>
     <circle cx="60" cy="574" r="9" fill="#2563eb"/><text class="n" x="60" y="578" text-anchor="middle">1</text>

@@ -168,6 +168,13 @@ final class AppServiceProvider extends ServiceProvider
                 ->by($this->rateLimitKey($request));
         });
 
+        RateLimiter::for('artifactflow-draft-preview-capabilities', function (Request $request): Limit {
+            return Limit::perMinute($this->configuredRateLimit(
+                'rate_limits.draft_preview_capabilities_per_minute',
+                30,
+            ))->by($this->rateLimitKey($request));
+        });
+
         RateLimiter::for('artifact-previews', function (Request $request): array {
             $ip = $request->ip() ?? 'unknown';
             $limit = $this->configuredRateLimit('rate_limits.artifact_previews_per_minute', 60);

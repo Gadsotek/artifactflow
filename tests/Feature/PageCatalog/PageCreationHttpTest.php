@@ -63,6 +63,7 @@ final class PageCreationHttpTest extends TestCase
             ->assertDontSee('name="owner_user_uid"', false)
             ->assertSee('Preview HTML before saving')
             ->assertSee('data-html-draft-preview', false)
+            ->assertSee('data-html-draft-preview-capability-endpoint', false)
             ->assertSee('Never enter sensitive data such as passwords, emails, or logins into an artifact.')
             ->assertSee('Artifacts must be a')
             ->assertSee('single self-contained HTML file')

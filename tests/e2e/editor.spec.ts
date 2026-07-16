@@ -1,5 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 type ManifestEntry = {
   file: string;
@@ -20,6 +23,63 @@ const artifactBaseUrl = (process.env.E2E_ARTIFACT_URL ?? 'http://127.0.0.1:18181
 );
 const draftPreviewEndpoint = `${artifactBaseUrl}/artifact-previews/draft`;
 const draftPreviewFrameName = 'artifactflow-html-draft-preview';
+const draftPreviewCapabilityEndpoint = `${baseUrl}/pages/draft-preview-capabilities`;
+const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
+const appCommandTarget = process.env.E2E_APP_COMMAND_TARGET ?? 'run-e2e-app-cmd';
+
+function runAppCommand(appCommand: string, failureMessage: string): void {
+  if (!['run-e2e-app-cmd', 'run-app-cmd'].includes(appCommandTarget)) {
+    throw new Error('Unsupported e2e app command target.');
+  }
+
+  try {
+    execFileSync('make', [appCommandTarget, `APP_CMD=${appCommand}`], {
+      cwd: repoRoot,
+      stdio: 'ignore',
+    });
+  } catch {
+    throw new Error(failureMessage);
+  }
+}
+
+async function prepareAuthenticatedDraftPreviewFixture(page: Page): Promise<{
+  cspNonce: string;
+  csrfToken: string;
+  workspaceUid: string;
+}> {
+  const runSuffix = randomUUID().replaceAll('-', '').slice(0, 12);
+  const email = `draft-preview-e2e-${runSuffix}@example.test`;
+  const password = `af${randomUUID().replaceAll('-', '')}`;
+
+  runAppCommand(
+    `php artisan artifactflow:create-user --name=DraftPreviewE2E --email=${email} --password=${password}`,
+    'Failed to prepare the draft preview e2e account.',
+  );
+
+  await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill(password);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL(/\/dashboard$/u);
+
+  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'networkidle' });
+  const createForm = page.locator('[data-html-draft-preview-form]');
+  const csrfToken = await createForm.locator('input[name="_token"]').inputValue();
+  const workspaceUid = await createForm.locator('select[name="workspace_uid"]').inputValue();
+
+  // Start the synthetic fixture in a fresh document. The real create page has
+  // already imported the preview module; ES modules execute once per document,
+  // so setContent() in that same document would not initialise the replacement form.
+  const fixtureResponse = await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
+  const csp = fixtureResponse?.headers()['content-security-policy'] ?? '';
+  const cspNonce = /'nonce-([^']+)'/u.exec(csp)?.[1] ?? '';
+
+  expect(cspNonce).not.toBe('');
+  expect(csrfToken).not.toBe('');
+  expect(workspaceUid).not.toBe('');
+
+  return { cspNonce, csrfToken, workspaceUid };
+}
 
 async function loadAppOriginCspNonce(page: Page): Promise<string> {
   const response = await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
@@ -1460,9 +1520,12 @@ test('copy page link writes the stable page URL and announces success', async ({
 });
 
 test('HTML draft preview executes only inside an opaque no-network sandbox', async ({ page }) => {
+  test.setTimeout(120_000);
+
   let outboundRequests = 0;
   const leakedConsoleMessages: string[] = [];
-  const cspNonce = await loadAppOriginCspNonce(page);
+  const { cspNonce, csrfToken, workspaceUid } =
+    await prepareAuthenticatedDraftPreviewFixture(page);
 
   page.on('console', (message) => {
     if (message.text().includes('artifactflow-console-leak')) {
@@ -1478,7 +1541,9 @@ test('HTML draft preview executes only inside an opaque no-network sandbox', asy
     <!doctype html>
     <html>
       <body>
-        <form data-content-editor data-editor-language="html" data-html-draft-preview-form data-html-draft-preview-endpoint="${draftPreviewEndpoint}">
+        <form data-content-editor data-editor-language="html" data-html-draft-preview-form data-html-draft-preview-capability-endpoint="${draftPreviewCapabilityEndpoint}" data-html-draft-preview-endpoint="${draftPreviewEndpoint}">
+          <input name="_token" type="hidden" value="${csrfToken}">
+          <select name="workspace_uid"><option value="${workspaceUid}" selected>Workspace</option></select>
           <select name="type"><option value="html_artifact" selected>HTML artifact</option></select>
           <select name="mode"><option value="html_paste" selected>Paste HTML</option></select>
           <div data-source-editor-mount></div>
@@ -1566,6 +1631,7 @@ test('HTML draft preview executes only inside an opaque no-network sandbox', asy
   await expect(frame).not.toHaveAttribute('src', /^(?:blob|data):/u);
   await expect(page.frameLocator('[data-html-draft-preview-frame]').locator('#result')).toHaveText(
     'parent-blocked network-blocked cookies-blocked storage-blocked rtc-blocked',
+    { timeout: 20_000 },
   );
   await expect(page.locator('body')).not.toHaveAttribute('data-artifactflow-preview-owned', 'yes');
   await expect(page.locator('[data-html-draft-preview-status]')).toHaveText(
@@ -1578,8 +1644,11 @@ test('HTML draft preview executes only inside an opaque no-network sandbox', asy
 test('HTML draft preview refuses external script sources while inline scripts run', async ({
   page,
 }) => {
+  test.setTimeout(120_000);
+
   let externalScriptRequests = 0;
-  const cspNonce = await loadAppOriginCspNonce(page);
+  const { cspNonce, csrfToken, workspaceUid } =
+    await prepareAuthenticatedDraftPreviewFixture(page);
 
   await page.route('**/draft-preview-external-script.js', async (route) => {
     externalScriptRequests += 1;
@@ -1592,7 +1661,9 @@ test('HTML draft preview refuses external script sources while inline scripts ru
     <!doctype html>
     <html>
       <body>
-        <form data-content-editor data-editor-language="html" data-html-draft-preview-form data-html-draft-preview-endpoint="${draftPreviewEndpoint}">
+        <form data-content-editor data-editor-language="html" data-html-draft-preview-form data-html-draft-preview-capability-endpoint="${draftPreviewCapabilityEndpoint}" data-html-draft-preview-endpoint="${draftPreviewEndpoint}">
+          <input name="_token" type="hidden" value="${csrfToken}">
+          <select name="workspace_uid"><option value="${workspaceUid}" selected>Workspace</option></select>
           <select name="type"><option value="html_artifact" selected>HTML artifact</option></select>
           <select name="mode"><option value="html_paste" selected>Paste HTML</option></select>
           <div data-source-editor-mount></div>
@@ -1617,10 +1688,19 @@ test('HTML draft preview refuses external script sources while inline scripts ru
     </html>
   `);
 
+  const capabilityResponsePromise = page.waitForResponse(
+    (response) => response.url() === draftPreviewCapabilityEndpoint,
+  );
+  const draftResponsePromise = page.waitForResponse(
+    (response) => response.url() === draftPreviewEndpoint,
+  );
   await page.getByRole('button', { name: 'Preview HTML before saving' }).click();
+  await expect((await capabilityResponsePromise).status()).toBe(200);
+  await expect((await draftResponsePromise).status()).toBe(200);
 
   await expect(page.frameLocator('[data-html-draft-preview-frame]').locator('#result')).toHaveText(
     'inline-ran',
+    { timeout: 20_000 },
   );
   // The artifact-host CSP (script-src 'unsafe-inline', no external hosts) blocks
   // the external script before any request leaves the browser.
@@ -1628,18 +1708,23 @@ test('HTML draft preview refuses external script sources while inline scripts ru
 });
 
 test('HTML draft preview renders inline styles like the saved artifact', async ({ page }) => {
+  test.setTimeout(120_000);
+
   // Regression: the draft used to render via `srcdoc` on the app origin, which
   // inherits the app CSP (`style-src 'self' 'nonce-…'`, no unsafe-inline) and
   // silently dropped the artifact's inline styles. Rendering from the artifact
   // host origin gives the draft the same permissive sandbox CSP as a saved
   // artifact, so inline <style> and style="" attributes apply.
-  const cspNonce = await loadAppOriginCspNonce(page);
+  const { cspNonce, csrfToken, workspaceUid } =
+    await prepareAuthenticatedDraftPreviewFixture(page);
 
   await page.setContent(`
     <!doctype html>
     <html>
       <body>
-        <form data-content-editor data-editor-language="html" data-html-draft-preview-form data-html-draft-preview-endpoint="${draftPreviewEndpoint}">
+        <form data-content-editor data-editor-language="html" data-html-draft-preview-form data-html-draft-preview-capability-endpoint="${draftPreviewCapabilityEndpoint}" data-html-draft-preview-endpoint="${draftPreviewEndpoint}">
+          <input name="_token" type="hidden" value="${csrfToken}">
+          <select name="workspace_uid"><option value="${workspaceUid}" selected>Workspace</option></select>
           <select name="type"><option value="html_artifact" selected>HTML artifact</option></select>
           <select name="mode"><option value="html_paste" selected>Paste HTML</option></select>
           <div data-source-editor-mount></div>
@@ -1673,7 +1758,7 @@ test('HTML draft preview renders inline styles like the saved artifact', async (
     .locator('#styled');
   const styledByAttribute = page.frameLocator('[data-html-draft-preview-frame]').locator('#attr');
 
-  await expect(styledByStylesheet).toBeVisible();
+  await expect(styledByStylesheet).toBeVisible({ timeout: 20_000 });
   await expect
     .poll(() => styledByStylesheet.evaluate((element) => getComputedStyle(element).backgroundColor))
     .toBe('rgb(9, 8, 7)');

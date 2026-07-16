@@ -128,14 +128,21 @@ test('artifact preview requests carry no application cookies', async ({ page }) 
 </html>`);
   await expect(page.locator('[data-editor-textarea]')).toHaveValue(/artifact-executed/u);
 
-  // Flow 1: draft preview. The button form-POSTs the unsaved HTML into the
-  // sandbox iframe on the artifact origin. The POST is initiated by the app
-  // document, so its request event is delivered reliably.
+  // Flow 1: the authenticated app first issues a content-bound short-lived
+  // capability, then form-POSTs the exact HTML plus that capability into the
+  // sandbox iframe on the artifact origin.
+  const capabilityRequestPromise = page.waitForRequest(
+    (request) =>
+      request.url() === `${baseUrl}/pages/draft-preview-capabilities` &&
+      request.method() === 'POST',
+    { timeout: 20_000 },
+  );
   const draftRequestPromise = page.waitForRequest(
     (request) => request.url() === `${artifactBaseUrl}/artifact-previews/draft` && request.method() === 'POST',
     { timeout: 20_000 },
   );
   await page.getByRole('button', { name: 'Preview HTML before saving' }).click();
+  const capabilityRequest = await capabilityRequestPromise;
   const draftRequest = await draftRequestPromise;
   await expect(
     page.frameLocator('[data-html-draft-preview-frame]').locator('#result'),
@@ -186,6 +193,16 @@ test('artifact preview requests carry no application cookies', async ({ page }) 
     draftHeaders['cookie'] ?? '',
     'The draft preview POST must not carry any cookies; the app session cookie must never reach the artifact host.',
   ).toBe('');
+  expect(draftHeaders['content-type'] ?? '').toContain('multipart/form-data; boundary=');
+
+  const capabilityHeaders = await capabilityRequest.allHeaders();
+  expect(capabilityHeaders['cookie'] ?? '').toContain('artifactflow_session');
+  expect(capabilityHeaders['x-csrf-token'] ?? '').not.toBe('');
+  const capabilityClaims = capabilityRequest.postDataJSON() as Record<string, unknown>;
+  expect(capabilityClaims.content_bytes).toBeGreaterThan(0);
+  expect(capabilityClaims.content_sha256).toMatch(/^[a-f0-9]{64}$/u);
+  expect(capabilityClaims.workspace_uid).toMatch(/^[0-9a-hjkmnp-tv-z]{26}$/u);
+  expect(capabilityClaims).not.toHaveProperty('content');
 
   const savedHeaders = await savedRequest.allHeaders();
   expect(savedHeaders['sec-fetch-dest']).toBe('iframe');

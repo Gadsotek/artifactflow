@@ -6,7 +6,6 @@ namespace App\Application\PageCatalog;
 
 use App\Domain\PageCatalog\ArtifactPreviewPurpose;
 use App\Infrastructure\Security\OriginNormalizer;
-use App\Infrastructure\Security\SecretStrength;
 use App\Models\Page;
 use App\Models\PageVersion;
 use Illuminate\Http\Request;
@@ -17,7 +16,10 @@ final class ArtifactPreviewUrl
 {
     private const int MAX_EXPIRES_DIGITS = 12;
 
-    private const int MAX_TTL_SECONDS = 60;
+    public function __construct(
+        private readonly ArtifactPreviewConfiguration $configuration,
+    ) {
+    }
 
     public function temporaryUrl(Page $page, PageVersion $version): string
     {
@@ -75,7 +77,7 @@ final class ArtifactPreviewUrl
         PageVersion $version,
         ArtifactPreviewPurpose $purpose,
     ): string {
-        $expiresAt = Carbon::now()->addSeconds($this->ttlSeconds())->getTimestamp();
+        $expiresAt = Carbon::now()->addSeconds($this->configuration->ttlSeconds())->getTimestamp();
         $signature = $this->signature(
             $page->uid,
             $version->uid,
@@ -96,7 +98,7 @@ final class ArtifactPreviewUrl
 
         return sprintf(
             '%s/artifact-previews/%s/versions/%s?%s',
-            $this->artifactOrigin(),
+            $this->configuration->artifactOrigin(),
             rawurlencode($page->uid),
             rawurlencode($version->uid),
             $query,
@@ -104,18 +106,17 @@ final class ArtifactPreviewUrl
     }
 
     /**
-     * Absolute URL of the stateless draft-preview endpoint on the artifact origin.
-     * Unsigned by design: it renders unsaved, caller-supplied HTML with no stored
-     * record to authorize against, and the opaque sandbox is the boundary.
+     * Absolute URL of the capability-protected draft-preview endpoint on the
+     * artifact origin. It remains stateless and cookieless.
      */
     public function draftEndpointUrl(): string
     {
-        return $this->artifactOrigin() . '/artifact-previews/draft';
+        return $this->configuration->artifactOrigin() . '/artifact-previews/draft';
     }
 
     public function requestMatchesArtifactOrigin(Request $request): bool
     {
-        return $this->originFromUrl($request->getSchemeAndHttpHost()) === $this->artifactOrigin();
+        return $this->originFromUrl($request->getSchemeAndHttpHost()) === $this->configuration->artifactOrigin();
     }
 
     private function signature(
@@ -125,7 +126,13 @@ final class ArtifactPreviewUrl
         int $accessRevision,
         ArtifactPreviewPurpose $purpose,
     ): string {
-        $signatureParts = [$this->artifactOrigin(), $pageUid, $versionUid, (string) $expiresAt, (string) $accessRevision];
+        $signatureParts = [
+            $this->configuration->artifactOrigin(),
+            $pageUid,
+            $versionUid,
+            (string) $expiresAt,
+            (string) $accessRevision,
+        ];
 
         // Preserve the current-preview signature shape for compatibility. Historical
         // access is a separate signed capability and can never be obtained by adding
@@ -137,7 +144,7 @@ final class ArtifactPreviewUrl
         return hash_hmac(
             'sha256',
             implode('|', $signatureParts),
-            $this->signingKey(),
+            $this->configuration->signingKey(),
         );
     }
 
@@ -146,11 +153,6 @@ final class ArtifactPreviewUrl
         $revision = $page->getAttribute('preview_access_revision');
 
         return is_int($revision) || is_string($revision) ? (int) $revision : 0;
-    }
-
-    private function artifactOrigin(): string
-    {
-        return $this->originFromUrl($this->stringConfig('app.artifact_url'));
     }
 
     private function originFromUrl(string $url): string
@@ -162,39 +164,5 @@ final class ArtifactPreviewUrl
         }
 
         return $origin->compact();
-    }
-
-    private function ttlSeconds(): int
-    {
-        $configuredTtl = config('app.artifact_preview_url_ttl_seconds', self::MAX_TTL_SECONDS);
-        $ttlSeconds = is_int($configuredTtl) || is_string($configuredTtl)
-            ? (int) $configuredTtl
-            : self::MAX_TTL_SECONDS;
-
-        return min(self::MAX_TTL_SECONDS, max(1, $ttlSeconds));
-    }
-
-    private function signingKey(): string
-    {
-        $key = $this->stringConfig('app.artifact_url_signing_key');
-
-        if ($key === '') {
-            throw new LogicException('Artifact preview signing key is not configured.');
-        }
-
-        $normalized = SecretStrength::isStrong($key) ? SecretStrength::normalized($key) : null;
-
-        if ($normalized === null) {
-            throw new LogicException('Artifact preview signing key must be a non-placeholder 32-byte secret.');
-        }
-
-        return $normalized;
-    }
-
-    private function stringConfig(string $key): string
-    {
-        $value = config($key);
-
-        return is_string($value) ? $value : '';
     }
 }

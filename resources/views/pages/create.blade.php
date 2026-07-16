@@ -35,6 +35,7 @@
                 data-editor-language-select="type"
                 data-editor-layout="rich"
                 data-html-draft-preview-form
+                data-html-draft-preview-capability-endpoint="{{ $draftPreviewCapabilityUrl }}"
                 data-html-draft-preview-endpoint="{{ $draftPreviewUrl }}"
                 data-create-page-category
             >
