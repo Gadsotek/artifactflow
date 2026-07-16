@@ -117,7 +117,7 @@ EXPOSE 8000
 
 CMD ["sh", "/var/www/html/docker/start-local.sh"]
 
-FROM dunglas/frankenphp:1-php8.5-alpine@sha256:bb8548297abefadebb58e6490264c0d0c89561ae922522432f09c1733304f105 AS production
+FROM dunglas/frankenphp:1-php8.5-alpine@sha256:070d9a37e02bf65c3cb14793218a8375f06839b0af6a5ccc6ab94379bbbf0517 AS production
 
 # The base image is pinned by digest for a reproducible build graph, which also
 # freezes its OS packages at whatever the digest shipped. Rather than a blanket
