@@ -88,6 +88,30 @@ Honest boundaries a self-hoster should understand before relying on ArtifactFlow
   write path (no database trigger backstop). If you extend the code, preserve that refresh contract
   or rebuild with `php artisan artifactflow:reindex-search`.
 
+## Repository-shipped AI agent hooks
+
+This repository ships agent guard hooks: `.claude/settings.json` for Claude Code and
+`.codex/hooks.json` for Codex, both backed by the Python scripts in `scripts/ai-hooks/`. Because a
+repository that ships agent hooks runs them locally in the agent of anyone who opens it, they are a
+fair thing to inspect before you trust them, and we would rather point you at them than have you
+wonder.
+
+- **What they are.** Pre-action guard scripts. Before the assistant writes a file or runs a command,
+  the relevant script (`guard_file_write.py`, `guard_command.py`, `guard_prompt.py`, driven by
+  `policy.py`) inspects the proposed action and returns a verdict: allow, ask for confirmation, or
+  deny. As Claude Code and Codex pre-tool-use hooks, that verdict is their only influence over the
+  assistant: they gate the assistant's own actions, they do not grant it new capabilities.
+- **What they block.** The actions this project treats as unsafe for an assistant to take on its own,
+  for example editing security-control files (the Makefile, the hook and policy files themselves),
+  reading secret-bearing files such as `.env`, running recursive deletions, pushing to a remote
+  without explicit approval, and running database-touching test commands directly instead of through
+  the isolated `make test` wrapper.
+- **Verify rather than trust.** The full source is in `scripts/ai-hooks/`, the wiring is in
+  `.claude/settings.json` and `.codex/hooks.json`, and the behavior is covered by
+  `scripts/ai-hooks/run_harness.py` (run in CI via `make ai-hooks-test`). They are deliberately small
+  so you can read them in a few minutes. The same habit applies to any repository that ships agent
+  hooks: read them first.
+
 ## Supported versions
 
 This project is pre-1.0; security fixes are applied to the latest `main`. Pin a commit and update
