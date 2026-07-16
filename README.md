@@ -23,7 +23,7 @@ AI tools now generate dashboards, diagrams, runbooks, and one‑file HTML apps b
 Most tools try to *scrub* untrusted HTML safe. ArtifactFlow doesn't trust scrubbing; it **quarantines execution to a separate origin**:
 
 - **App origin**: your authenticated, cookie‑bearing surface. Untrusted artifact bytes never execute on this origin at all — even the pre‑save draft preview renders on the isolated artifact origin, exactly like a saved artifact.
-- **Artifact‑host origin**: cookieless, on a different origin. Saved artifacts are served through short‑lived **HMAC‑signed URLs**; the pre‑save draft preview is a stateless, unsigned endpoint whose boundary is the same opaque sandbox, not a signature. Both render inside a `sandbox` iframe under a strict CSP (`default-src 'none'; connect-src 'none'`).
+- **Artifact‑host origin**: cookieless, on a different origin. Saved artifacts are served through short‑lived **HMAC‑signed URLs**. Before a draft can be posted cross-origin, the authenticated app issues a short-lived **HMAC capability** bound to its purpose, artifact origin, workspace, nonce, exact UTF-8 byte length, and SHA-256. Both render inside a `sandbox` iframe under a strict CSP (`default-src 'none'; connect-src 'none'`).
 
 The artifact's JavaScript really *runs*, but in an opaque origin with no cookies, no network, and no reach back to your app. Same codebase, one config flag flips the runtime role. The two runtimes serve deliberately different HTTP surfaces: the app can't serve artifact HTML, and the artifact host can't expose login, dashboard, or management routes. **Isolation is the boundary; scanning is only advisory on top.**
 
@@ -34,7 +34,7 @@ The artifact's JavaScript really *runs*, but in an opaque origin with no cookies
 ## Features
 
 **🔒 Safe artifact rendering**
-- Single‑file HTML artifacts execute only from the isolated, cookieless artifact origin behind sandboxed iframes; saved artifacts are reached through renewable signed short‑lived URLs, and the pre‑save draft preview through the same opaque sandbox. There is no expiry timer or parent-window reload: when a prototype self‑reload encounters an expired URL, the authenticated parent renews and restores only the iframe.
+- Single‑file HTML artifacts execute only from the isolated, cookieless artifact origin behind sandboxed iframes; saved artifacts are reached through renewable signed short‑lived URLs, and pre‑save drafts through authenticated, content-bound short-lived capabilities. There is no expiry timer or parent-window reload: when a prototype self‑reload encounters an expired saved URL, the authenticated parent renews and restores only the iframe.
 - Paste‑or‑upload preview in an opaque, no‑network sandbox *before* saving.
 - Artifacts must be a **single self‑contained HTML file**: the sandbox blocks external scripts, styles, and network calls, so CDN‑linked dependencies (React, Tailwind, Chart.js…) will not load. Ask your AI to inline everything into one file. This is a deliberate boundary, not a limitation to work around — [it keeps the artifact offline, immutable, and sealed](THREAT-MODEL.md).
 - Best‑effort secret‑blocking on save (credentials, private keys, JWTs, provider tokens) without persisting matched values; suspicious JS patterns are recorded as advisory findings. Scanning is advisory and bypassable by light obfuscation — a clean scan is not proof no secret was stored; isolation is the boundary.
@@ -118,7 +118,7 @@ The full topology, runtime-role, TLS, proxy, database, storage, mail, and backup
 Isolation is the execution boundary; everything else is defense in depth. Highlights:
 
 - Untrusted inputs: HTML, Markdown, Mermaid, filenames, metadata, and search queries.
-- Artifacts render only from the isolated origin behind sandboxed iframes, strict CSP, and no app cookies; saved artifacts additionally require signed short‑lived URLs, and the pre‑save draft preview is a stateless, unsigned endpoint contained by the same opaque sandbox.
+- Artifacts render only from the isolated origin behind sandboxed iframes, strict CSP, and no app cookies; saved artifacts require signed short‑lived URLs, while draft previews require an authenticated Editor to obtain a short‑lived capability bound to the exact content before the cookieless artifact endpoint will render it.
 - Production boot fails closed on overlapping app/artifact origins, a missing/reused signing key, mismatched frame‑ancestors, public artifact storage, an absent admin‑bootstrap path, or a misconfigured realtime secret.
 - TOTP secrets are `APP_KEY`‑encrypted at rest; recovery codes are one‑way hashes; trusted‑device cookies carry only opaque tokens.
 

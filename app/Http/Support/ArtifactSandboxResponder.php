@@ -52,7 +52,7 @@ final readonly class ArtifactSandboxResponder
     }
 
     /**
-     * Stricter, fail-CLOSED companion for the unsigned draft-preview endpoint: it
+     * Stricter, fail-CLOSED companion for the capability-protected draft-preview endpoint: it
      * serves only an explicit iframe embed. The legitimate draft POST is a form
      * submission into the sandbox iframe and always carries Sec-Fetch-Dest: iframe,
      * so anything else — an absent header, a top-level navigation, a cross-site

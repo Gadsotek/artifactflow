@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\ArtifactDraftPreviewCapabilityController;
 use App\Http\Controllers\ArtifactDraftPreviewController;
 use App\Http\Controllers\ArtifactHistoryPreviewUrlController;
 use App\Http\Controllers\ArtifactPreviewController;
@@ -61,11 +62,11 @@ Route::get('/artifact-previews/{pageUid}/versions/{versionUid}', ArtifactPreview
         'versionUid' => '[0-9A-Za-z]{26}',
     ]);
 
-// Pre-save draft preview. Renders unsaved HTML on the isolated artifact origin
-// with the same hardened sandbox response as a saved artifact, so the preview is
-// a true match. Session-free and CSRF-exempt like the saved-preview route above:
-// the host is cookieless, the app posts here cross-origin, and the opaque-origin
-// sandbox — not a session token — is the boundary that contains the reflected HTML.
+// Pre-save draft preview. The app origin first issues a short-lived, content-bound
+// capability to an authenticated workspace Editor. This artifact-host receiver
+// stays session-free and CSRF-exempt so application cookies never cross origins;
+// it verifies the capability before reflecting the exact authorized bytes into
+// the same opaque-origin sandbox response as a saved artifact.
 Route::post('/artifact-previews/draft', ArtifactDraftPreviewController::class)
     ->name('artifact-previews.draft')
     ->middleware([RequireArtifactHostRuntime::class, 'throttle:artifact-previews'])
@@ -144,6 +145,9 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
             ->name('demo-content.store');
         Route::get('/pages', [PageController::class, 'index'])->name('pages.index');
         Route::get('/pages/create', [PageController::class, 'create'])->name('pages.create');
+        Route::post('/pages/draft-preview-capabilities', ArtifactDraftPreviewCapabilityController::class)
+            ->middleware('throttle:artifactflow-draft-preview-capabilities')
+            ->name('artifact-previews.draft-capabilities.store');
         Route::post('/pages', [PageController::class, 'store'])
             ->middleware('throttle:artifactflow-page-writes')
             ->name('pages.store');

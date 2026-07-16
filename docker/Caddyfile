@@ -12,7 +12,7 @@
 
 	@artifactDraftPreview path /artifact-previews/draft
 	request_body @artifactDraftPreview {
-		# The unsigned preview endpoint accepts multipart form data so the edge can
+		# The capability-protected preview endpoint accepts multipart form data so the edge can
 		# reject oversized drafts before PHP buffers or parses them. This default
 		# leaves headroom above the 5 MiB application content limit.
 		max_size {$ARTIFACT_DRAFT_PREVIEW_MAX_BODY:6MB}

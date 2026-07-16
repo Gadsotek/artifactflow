@@ -20,7 +20,73 @@ async function previewContent(form, mode, textarea) {
   return fileInput.files[0].text();
 }
 
-function submitDraftToSandbox(frame, endpoint, content) {
+async function contentClaims(content) {
+  if (typeof window.crypto?.subtle?.digest !== 'function') {
+    throw new Error('Secure draft preview signing is unavailable in this browser.');
+  }
+
+  const bytes = new TextEncoder().encode(content);
+  const digest = await window.crypto.subtle.digest('SHA-256', bytes);
+  const sha256 = Array.from(new Uint8Array(digest), (value) =>
+    value.toString(16).padStart(2, '0'),
+  ).join('');
+
+  return { bytes: bytes.byteLength, sha256 };
+}
+
+async function issueCapability(form, endpoint, workspaceUid, content) {
+  const csrfInput = form.querySelector('input[name="_token"]');
+
+  if (!(csrfInput instanceof HTMLInputElement) || csrfInput.value === '') {
+    throw new Error('Draft preview security token is unavailable. Reload the page and try again.');
+  }
+
+  const claims = await contentClaims(content);
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-CSRF-TOKEN': csrfInput.value,
+    },
+    body: JSON.stringify({
+      workspace_uid: workspaceUid,
+      content_bytes: claims.bytes,
+      content_sha256: claims.sha256,
+    }),
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const validationMessage = Object.values(payload?.errors ?? {})
+      .flat()
+      .find((message) => typeof message === 'string');
+
+    if (typeof validationMessage === 'string') {
+      throw new Error(validationMessage);
+    }
+
+    if (response.status === 401 || response.status === 419) {
+      throw new Error('Your session expired. Reload the page and try again.');
+    }
+
+    if (response.status === 403) {
+      throw new Error('You cannot preview HTML in the selected workspace.');
+    }
+
+    throw new Error('Draft preview authorization failed.');
+  }
+
+  if (typeof payload?.capability !== 'string' || payload.capability === '') {
+    throw new Error('Draft preview authorization returned an invalid response.');
+  }
+
+  return payload.capability;
+}
+
+function submitDraftToSandbox(frame, endpoint, capability, content) {
   const submission = document.createElement('form');
   submission.method = 'POST';
   submission.action = endpoint;
@@ -31,11 +97,23 @@ function submitDraftToSandbox(frame, endpoint, content) {
   // URL encoding can expand arbitrary HTML to roughly three times its size.
   submission.enctype = 'multipart/form-data';
 
-  const field = document.createElement('input');
-  field.type = 'hidden';
-  field.name = 'content';
-  field.value = content;
-  submission.append(field);
+  const capabilityField = document.createElement('input');
+  capabilityField.type = 'hidden';
+  capabilityField.name = 'capability';
+  capabilityField.value = capability;
+  submission.append(capabilityField);
+
+  // Text controls are newline-normalized during form submission. Send the
+  // draft as an in-memory file so multipart preserves the exact UTF-8 bytes
+  // whose length and SHA-256 the app origin signed.
+  const transfer = new DataTransfer();
+  transfer.items.add(new File([content], 'artifactflow-draft.html', { type: 'text/html' }));
+  const contentField = document.createElement('input');
+  contentField.type = 'file';
+  contentField.name = 'content';
+  contentField.hidden = true;
+  contentField.files = transfer.files;
+  submission.append(contentField);
 
   document.body.append(submission);
 
@@ -54,7 +132,9 @@ function initialiseHtmlDraftPreview(form) {
   const textarea = form.querySelector('[data-editor-textarea]');
   const type = form.querySelector('select[name="type"]');
   const mode = form.querySelector('select[name="mode"]');
+  const workspace = form.querySelector('select[name="workspace_uid"]');
   const endpoint = form.getAttribute('data-html-draft-preview-endpoint') ?? '';
+  const capabilityEndpoint = form.getAttribute('data-html-draft-preview-capability-endpoint') ?? '';
 
   if (
     !(panel instanceof HTMLElement) ||
@@ -63,7 +143,8 @@ function initialiseHtmlDraftPreview(form) {
     !(status instanceof HTMLElement) ||
     !(textarea instanceof HTMLTextAreaElement) ||
     !(type instanceof HTMLSelectElement) ||
-    !(mode instanceof HTMLSelectElement)
+    !(mode instanceof HTMLSelectElement) ||
+    !(workspace instanceof HTMLSelectElement)
   ) {
     return;
   }
@@ -97,7 +178,7 @@ function initialiseHtmlDraftPreview(form) {
   });
 
   button.addEventListener('click', async () => {
-    if (endpoint === '' || frameName === '') {
+    if (endpoint === '' || capabilityEndpoint === '' || frameName === '') {
       status.textContent = 'Draft preview is unavailable.';
 
       return;
@@ -113,7 +194,8 @@ function initialiseHtmlDraftPreview(form) {
         throw new Error('Add HTML content before previewing.');
       }
 
-      submitDraftToSandbox(frame, endpoint, content);
+      const capability = await issueCapability(form, capabilityEndpoint, workspace.value, content);
+      submitDraftToSandbox(frame, endpoint, capability, content);
       status.textContent = 'Draft preview running in the isolated sandbox.';
     } catch (error) {
       status.textContent =

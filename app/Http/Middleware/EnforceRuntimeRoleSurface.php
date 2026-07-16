@@ -47,8 +47,8 @@ final class EnforceRuntimeRoleSurface
         // The mirror direction (artifact runtime answering the app hostname) needs
         // no check here: the artifact runtime serves only /artifact-previews/*, the
         // saved-preview controller already refuses any request whose origin is not
-        // the artifact origin, and the draft reflector renders under an opaque
-        // sandbox regardless of the hostname it is served on.
+        // the artifact origin, and the draft receiver verifies an artifact-origin-
+        // bound capability before rendering under an opaque sandbox.
         if (!$isArtifactHost && !$request->is('up') && $this->requestTargetsArtifactHost($request)) {
             abort(404);
         }

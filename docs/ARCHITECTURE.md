@@ -34,8 +34,8 @@ write transaction, not on the worker; see [Events And Audit](#events-and-audit) 
 
 | Role | Responsibility |
 | --- | --- |
-| `app` | Authenticated web UI, sessions, CSRF, page/workspace management, MCP endpoint, search, and signed preview URL issuance. |
-| `artifact-host` | Cookieless artifact origin: serves immutable saved HTML versions via signed URLs, plus the stateless, non-persisting pre-save draft preview (`POST /artifact-previews/draft`). |
+| `app` | Authenticated web UI, sessions, CSRF, page/workspace management, MCP endpoint, search, saved-preview URL issuance, and Editor-authorized content-bound draft-capability issuance. |
+| `artifact-host` | Cookieless artifact origin: serves immutable saved HTML versions via signed URLs and verifies short-lived capabilities before reflecting a non-persisted pre-save draft (`POST /artifact-previews/draft`). |
 | `worker` | Queue worker (`queue:work`). The only queued work today is outbound mail (invitations, membership notices, password resets). |
 | `scheduler` | Laravel scheduler (`schedule:work`): runs the outbox relay `artifactflow:dispatch-domain-events` every minute and the nightly `prune-domain-events` / `prune-credentials` retention jobs. |
 | `db` | PostgreSQL for app data, search vectors, queues, audit entries, and durable domain events. |
@@ -168,6 +168,13 @@ Untrusted artifact HTML is contained by isolation, not sanitization.
 3. The artifact-host reads immutable content from private storage only after size and signature checks.
 4. The response uses strict headers and no app session middleware.
 5. The app embeds the preview in an iframe sandboxed with `allow-scripts` and without `allow-same-origin`.
+
+Unsaved draft preview follows the same execution boundary without storing a version. The
+authenticated app origin authorizes page creation in the selected workspace and signs a capability
+over the artifact origin, purpose, workspace, expiry, nonce, exact UTF-8 byte length, and SHA-256.
+Only that capability and the exact matching HTML are accepted by the session-free artifact-host
+receiver. The capability lasts at most 60 seconds and may be replayed only for the same exact draft
+within that window; it cannot be moved to another artifact origin or different content.
 
 The artifact response CSP is intentionally restrictive:
 

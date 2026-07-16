@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Application\Administration\InstallationLimitSettings;
+use App\Application\PageCatalog\ArtifactDraftPreviewCapabilities;
 use App\Http\Support\ArtifactSandboxResponder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\File\Exception\FileException;
 
 /**
  * Renders unsaved HTML draft content on the isolated artifact origin, using the
@@ -23,12 +26,36 @@ final class ArtifactDraftPreviewController
     public function __construct(
         private ArtifactSandboxResponder $responder,
         private InstallationLimitSettings $limits,
+        private ArtifactDraftPreviewCapabilities $capabilities,
     ) {
     }
 
     public function __invoke(Request $request): Response
     {
-        // Fail closed: the unsigned reflector serves only an explicit iframe embed,
+        $capability = $request->input('capability');
+        $contentUpload = $request->file('content');
+
+        if (!is_string($capability) || !$this->capabilities->hasValidEnvelope($capability)) {
+            abort(404);
+        }
+
+        if (!$contentUpload instanceof UploadedFile || !$contentUpload->isValid()) {
+            abort(404);
+        }
+
+        try {
+            $content = $contentUpload->getContent();
+        } catch (FileException) {
+            abort(404);
+        }
+
+        if (
+            !$this->capabilities->matches($capability, $content)
+        ) {
+            abort(404);
+        }
+
+        // A valid bearer capability still serves only an explicit iframe embed,
         // so an absent/`document` Sec-Fetch-Dest cannot turn it into a top-level page.
         if (!$this->responder->isEmbeddedIframeRequest($request)) {
             Log::warning('artifact_draft_preview.rejected', ['reason' => 'not_iframe_embed']);
@@ -36,9 +63,7 @@ final class ArtifactDraftPreviewController
             return $this->responder->topLevelNavigationNotice($this->openInAppUrl());
         }
 
-        $content = $request->input('content');
-
-        if (!is_string($content) || trim($content) === '') {
+        if (trim($content) === '') {
             return $this->rejectInvalid('empty_content', 'Add HTML content before previewing.');
         }
 

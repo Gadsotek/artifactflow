@@ -9,7 +9,7 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 First public release.
 
 - Markdown/wiki pages with a rich editor over portable Markdown source, inline Mermaid diagrams (strict security mode, no external calls), and authorization-aware `[[Page Name]]` wiki links.
-- Single-file HTML artifact pages (paste or upload) rendered only from an isolated, cookieless artifact origin behind sandboxed iframes and short-lived HMAC-signed URLs; pre-save draft preview in an opaque no-network sandbox.
+- Single-file HTML artifact pages (paste or upload) rendered only from an isolated, cookieless artifact origin behind sandboxed iframes and short-lived HMAC-signed URLs; pre-save draft preview uses an authenticated, short-lived HMAC capability bound to the exact content before rendering in the same opaque no-network sandbox.
 - Immutable page versioning with restore, archive/unarchive, and Admin-only hard delete.
 - Weighted PostgreSQL full-text search across metadata, tags, and extracted content.
 - Personal and shared workspaces with Reader/Editor/Admin roles and per-page access overrides.

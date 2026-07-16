@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Security;
 
+use App\Application\PageCatalog\ArtifactDraftPreviewCapabilities;
+use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
 
 /**
@@ -78,14 +80,23 @@ final class RuntimeRoleHostBindingTest extends TestCase
     {
         $this->configureOrigins('artifact-host');
 
-        // A well-formed but unknown preview URL on the correct host passes the host
-        // binding and reaches the controller, which 404s the missing record -- i.e.
-        // the host binding did not itself reject it. A draft embed is a cleaner
-        // positive signal: on the artifact host it is served (422 for empty body),
-        // proving the artifact surface is reachable on its own hostname.
+        $content = ' ';
+        $capability = app(ArtifactDraftPreviewCapabilities::class)->issue(
+            str_repeat('A', 26),
+            strlen($content),
+            hash('sha256', $content),
+        );
+
+        // A content-bound empty draft reaches the controller only after passing
+        // the artifact runtime's route and host binding. Its 422 validation result
+        // proves the surface is reachable without reopening an unsigned public
+        // reflector or requiring this host-binding test to migrate the database.
         $this
             ->withServerVariables(['HTTP_SEC_FETCH_DEST' => 'iframe'])
-            ->post(self::ARTIFACT_ORIGIN . '/artifact-previews/draft', ['content' => ''])
+            ->post(self::ARTIFACT_ORIGIN . '/artifact-previews/draft', [
+                'capability' => $capability->token,
+                'content' => UploadedFile::fake()->createWithContent('draft.html', $content),
+            ])
             ->assertStatus(422);
     }
 

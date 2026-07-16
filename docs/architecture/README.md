@@ -32,7 +32,7 @@ Untrusted AI-generated HTML is contained by **isolation, not sanitisation**:
 
 - **App origin** (`APP_RUNTIME_ROLE=app`): cookie/session, CSRF, nonce-CSP, `RejectArtifactHostRuntime`. The user's trust boundary; nothing untrusted executes here.
 - **Artifact-host origin** (`APP_RUNTIME_ROLE=artifact-host`): cookieless, `RequireArtifactHostRuntime`, serves untrusted artifact bytes with `sandbox allow-scripts; connect-src 'none'; default-src 'none'`. The artifact's JS *runs* here: in an opaque origin with no cookies, no network, and no reach back to the app origin.
-- They're the **same codebase**; `runtime_role` (config) flips the behaviour. They're bridged by a short-lived **HMAC-signed URL** loaded into an `<iframe sandbox="allow-scripts">` (no `allow-same-origin`).
+- They're the **same codebase**; `runtime_role` (config) flips the behaviour. Saved versions cross the boundary through short-lived **HMAC-signed URLs**; unsaved drafts use short-lived HMAC capabilities bound to the exact content. Both load into an `<iframe sandbox="allow-scripts">` (no `allow-same-origin`).
 
 See `workflows.svg` for the full create-page write pipeline, the cross-origin preview flow, the admin step-up, and the outbox.
 
