@@ -30,4 +30,5 @@ paths = [
 # whether the scanner compares the secret, the match, or the line.
 regexes = [
     '''abcdefghijklmnopqrstuvwxyz1234567890''',
+    '''capability-fuzz-signing-key-0001''',
 ]

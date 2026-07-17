@@ -38,7 +38,7 @@ TYPE_COVERAGE_MIN ?= 100
 TYPE_COVERAGE_REPORT ?= storage/framework/testing/type-coverage.json
 COVERAGE_MIN ?= 94
 
-.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps run-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test type-coverage coverage audit audit-php audit-js ai-hooks-test verify-reverb-origin reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty scan-image quality quality-full config-refresh lint-js doctor install
+.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps run-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test fuzz-capabilities type-coverage coverage audit audit-php audit-js ai-hooks-test verify-reverb-origin reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty scan-image quality quality-full config-refresh lint-js doctor install
 
 ensure-env:
 	@test -f .env || cp .env.example .env
@@ -359,6 +359,9 @@ test:
 			echo "$(APP_SERVICE) is not running, using one-off container for tests"; \
 			$(COMPOSE) run --rm --no-deps $(APP_SERVICE) sh -lc "$$test_cmd"; \
 		fi
+
+fuzz-capabilities:
+	$(MAKE) test TEST_FILTER=ArtifactDraftPreviewCapabilitiesFuzzTest
 
 type-coverage:
 	@mkdir -p "$(dir $(TYPE_COVERAGE_REPORT))"

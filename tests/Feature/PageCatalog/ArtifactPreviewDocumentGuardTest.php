@@ -93,4 +93,53 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         $this->assertStringNotContainsString('mixed.evil.example.test', $hardened);
         $this->assertStringContainsString('rel="stylesheet"', $hardened);
     }
+
+    public function test_nested_browsing_contexts_are_neutralized_at_every_static_nesting_depth(): void
+    {
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><html><body>'
+            . '<iframe id="outer" srcdoc="&lt;iframe id=&quot;middle&quot; '
+            . 'srcdoc=&quot;&amp;lt;iframe id=&amp;quot;inner&amp;quot;&amp;gt;&amp;lt;/iframe&amp;gt;&quot;&gt;'
+            . '&lt;/iframe&gt;">fallback content</iframe>'
+            . '<frame id="legacy" src="data:text/html,legacy">'
+            . '<fencedframe id="fenced"></fencedframe>'
+            . '<portal id="portal" src="data:text/html,portal"></portal>'
+            . '<p id="safe-content">Safe artifact content</p>'
+            . '</body></html>',
+        );
+
+        $this->assertStringNotContainsString('<iframe id="outer"', strtolower($hardened));
+        $this->assertStringNotContainsString('<frame id="legacy"', strtolower($hardened));
+        $this->assertStringNotContainsString('<fencedframe id="fenced"', strtolower($hardened));
+        $this->assertStringNotContainsString('<portal id="portal"', strtolower($hardened));
+        $this->assertStringContainsString('fallback content', $hardened);
+        $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+    }
+
+    public function test_nested_context_neutralization_preserves_script_text_textarea_text_and_safe_bytes(): void
+    {
+        $script = 'if(i<frame.count&&j<portal.count){window.result="<iframe data-literal>";}';
+        $textarea = '<iframe src="/textarea-literal.html">textarea bytes</iframe>';
+        $safeTemplateAndStrayClosing = '<template id="safe-template"><p>kept</p></template></iframe>';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><html><body><p>before</p>'
+            . '<script>' . $script . '</script>'
+            . '<textarea>' . $textarea . '</textarea>'
+            . $safeTemplateAndStrayClosing
+            . '<iframe src="/real-frame.html"><script>window.fallbackRan=true</script></iframe>'
+            . '<p>after</p></body></html>',
+        );
+
+        $this->assertStringContainsString('<script>' . $script . '</script>', $hardened);
+        $this->assertStringContainsString('<textarea>' . $textarea . '</textarea>', $hardened);
+        $this->assertStringContainsString($safeTemplateAndStrayClosing, $hardened);
+        $this->assertStringContainsString('<p>before</p>', $hardened);
+        $this->assertStringContainsString('<p>after</p>', $hardened);
+        $this->assertStringNotContainsString('<iframe src="/real-frame.html">', $hardened);
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context src="/real-frame.html">',
+            $hardened,
+        );
+        $this->assertStringContainsString('window.fallbackRan=true', $hardened);
+    }
 }

@@ -116,6 +116,7 @@ final readonly class ArtifactSandboxResponder
             "base-uri 'none'",
             "form-action 'none'",
             "frame-src 'none'",
+            "fenced-frame-src 'none'",
             "child-src 'none'",
             "worker-src 'none'",
             "webrtc 'block'",

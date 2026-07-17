@@ -100,6 +100,20 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('make coverage', $readme);
     }
 
+    public function test_capability_verifier_fuzz_corpus_has_a_focused_target_without_duplicate_ci_execution(): void
+    {
+        $makefile = $this->readProjectFile('Makefile');
+        $workflow = $this->readProjectFile('.github/workflows/ci.yml');
+
+        $this->assertStringContainsString('fuzz-capabilities:', $makefile);
+        $this->assertStringContainsString(
+            '$(MAKE) test TEST_FILTER=ArtifactDraftPreviewCapabilitiesFuzzTest',
+            $makefile,
+        );
+        $this->assertStringNotContainsString('name: Capability verifier fuzz corpus', $workflow);
+        $this->assertStringNotContainsString('run: make fuzz-capabilities', $workflow);
+    }
+
     public function test_release_security_gates_include_general_sast_trivy_secret_misconfig_and_moderate_npm_audit(): void
     {
         $makefile = $this->readProjectFile('Makefile');

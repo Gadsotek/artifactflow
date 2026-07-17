@@ -115,6 +115,14 @@ final class OriginHostSeparationConfigurationTest extends TestCase
         }
     }
 
+    public function test_playwright_runs_the_e2e_suite_on_chromium(): void
+    {
+        $config = $this->readProjectFile('playwright.config.ts');
+
+        $this->assertStringContainsString("name: 'chromium'", $config);
+        $this->assertStringContainsString("devices['Desktop Chrome']", $config);
+    }
+
     private function assertHostsDiffer(string $appUrl, string $artifactUrl, string $where): void
     {
         $appHost = $this->canonicalHost($appUrl, $where);

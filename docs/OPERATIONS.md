@@ -383,6 +383,19 @@ make quality-full
 
 `make e2e` is isolated from the normal local development app. It creates a temporary database on `db-test`, starts dedicated `e2e-app` and `e2e-artifact-host` services on `http://localhost:18180` and `http://127.0.0.1:18181` (different hosts on purpose, so app session cookies never reach the artifact origin), runs migrations, routes browser-test setup commands to the isolated app, and drops the temporary database when the run exits. The e2e containers are created with `--env-file docker/e2e.env` (a committed, comments-only interpolation guard), so values from your personal `.env` never leak into the e2e services — their configuration comes only from the compose-file defaults and the `E2E_*` variables the Makefile passes explicitly. Use `E2E_APP_PORT` and `E2E_ARTIFACT_HOST_PORT` if those ports are already occupied.
 
+Run the deterministic draft-capability mutation corpus independently when changing the token
+format, signing context, claim validation, expiry, or content binding:
+
+```sh
+make fuzz-capabilities
+```
+
+This first proves that a pristine issued token is accepted, then mutates every payload character
+and signature nibble, exercises malformed-token and correctly signed invalid-claim corpora, and
+checks exact-byte content binding. It is deterministic and runs as part of the ordinary Pest suite;
+the focused command is for local iteration. Signature comparison uses PHP's `hash_equals`, while
+cryptographic review or a dedicated statistical timing assessment remains separate work.
+
 CI runs:
 
 - Gitleaks secret scan.
@@ -391,16 +404,51 @@ CI runs:
 - Larastan at max level (empty baseline).
 - Semgrep with the ArtifactFlow rules plus the general PHP and security-audit rulesets.
 - Composer audit and npm audit at moderate-or-higher severity.
-- Pest test suite.
+- Pest test suite, including the deterministic draft-capability verifier mutation corpus.
 - 100% type-coverage enforcement.
 - PCOV line-coverage enforcement against the committed `COVERAGE_MIN` floor.
 - Vite asset build.
-- Playwright Chromium E2E smoke suite.
+- Playwright E2E suite on Chromium (cross-engine Firefox and WebKit coverage is planned; tracked separately).
 - Production Caddy/FrankenPHP image build.
 - Trivy image scan with vulnerability, secret, and misconfiguration scanners.
 - Trivy filesystem scan combining repository secret and misconfiguration checks.
 
 Nightly audit repeats dependency audits, production image build, and Trivy so new CVEs are surfaced even when no code has changed. Branch protection for protected release branches must require two status checks, or the gates are advisory rather than enforced: the aggregate `ci-required` check (which folds in the DCO sign-off gate) and the `cla` check from the separate `CLA` workflow. The CLA runs on `pull_request_target` and therefore cannot be a dependency of `ci-required`, so it must be required in branch protection in its own right — otherwise a pull request could merge without a signed CLA.
+
+### Manual Safari and iOS security pass
+
+Automated e2e currently runs on Chromium only (cross-engine Firefox and WebKit coverage is
+planned but deferred), so an occasional run in released Safari matters more, not less. Before a
+security-sensitive release, and after changing artifact CSP,
+iframe sandbox flags, preview routing, fullscreen behavior, or browser-facing guard code—exercise
+current macOS Safari plus a physical iPhone or iPad Safari. Use a test/staging deployment with real
+TLS and genuinely distinct app/artifact hostnames; an iOS device cannot validate the production
+origin boundary through the desktop-only `localhost`/`127.0.0.1` fixture.
+
+Use non-sensitive test content and record the Safari/iOS versions and results:
+
+1. Load both saved and draft malicious fixtures. Confirm the artifact request goes only to the
+   artifact hostname, carries no app session cookie, and receives the complete header CSP,
+   `no-store`, and `nosniff` headers.
+2. Mutate one byte, newline style, Unicode normalization, and trailing whitespace after capability
+   issuance. Each changed draft must receive the same not-found response; the exact original may
+   replay only during its short TTL.
+3. Attempt static and dynamic `iframe`/`frame`/`fencedframe`/`portal`, `<object>`, `<embed>`, SVG
+   `foreignObject`, worker, popup, download, form, and external-network paths. No nested browsing
+   context, popup/download, form submission, worker, or outbound connection should succeed.
+4. Attempt `requestFullscreen()` and `requestPointerLock()` from artifact code. They must be denied
+   or unavailable; on iOS, absence of pointer-lock support is expected. Then use ArtifactFlow's
+   Fullscreen control and confirm it only CSS-maximizes the existing sandboxed iframe and exits
+   cleanly without navigating or replacing the application document.
+5. Open or paste a saved signed URL as a top-level document and attempt the equivalent draft POST.
+   Modern Safari should receive the refusal notice rather than rendered artifact code. Also verify
+   that a parent-page `<meta>` CSP cannot relax the artifact response's header policy.
+6. Revoke access, archive the page, and move it between workspaces while a preview is open. Reloading
+   the old URL must fail and renewal must require live access; already-rendered bytes remaining on
+   screen are the documented non-revocable browser-delivery residual.
+
+Any divergence is a release blocker until it is reproduced, added to the automated corpus where
+possible, and reflected in `THREAT-MODEL.md`.
 
 ## Verifying Release Images
 

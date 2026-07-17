@@ -19,5 +19,9 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    // Cross-engine Firefox and WebKit coverage is planned but deferred: the
+    // existing suite is flaky on those engines (pervasive `networkidle` waits
+    // trip WebKit; sub-pixel layout trips a tight Firefox assertion). Tracked
+    // separately so the sandbox specs can be hardened and scoped for it.
   ],
 });

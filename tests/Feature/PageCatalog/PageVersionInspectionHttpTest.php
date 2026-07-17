@@ -136,7 +136,7 @@ final class PageVersionInspectionHttpTest extends TestCase
             ->get($historyUrl)
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
-            ->assertHeader('Content-Security-Policy', "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; webrtc 'block'; frame-ancestors http://localhost:18080")
+            ->assertHeader('Content-Security-Policy', "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; fenced-frame-src 'none'; child-src 'none'; worker-src 'none'; webrtc 'block'; frame-ancestors http://localhost:18080")
             ->assertSee('Historical Cage')
             ->assertSee('window.historyMarker', false);
 
