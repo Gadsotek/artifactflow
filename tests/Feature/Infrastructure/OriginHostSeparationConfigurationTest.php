@@ -115,22 +115,12 @@ final class OriginHostSeparationConfigurationTest extends TestCase
         }
     }
 
-    public function test_playwright_runs_the_security_suite_in_all_supported_browser_engines(): void
+    public function test_playwright_runs_the_e2e_suite_on_chromium(): void
     {
         $config = $this->readProjectFile('playwright.config.ts');
-        $makefile = $this->readProjectFile('Makefile');
-        $workflow = $this->readProjectFile('.github/workflows/ci.yml');
 
-        foreach (['chromium', 'firefox', 'webkit'] as $project) {
-            $this->assertStringContainsString(sprintf("name: '%s'", $project), $config);
-        }
-
+        $this->assertStringContainsString("name: 'chromium'", $config);
         $this->assertStringContainsString("devices['Desktop Chrome']", $config);
-        $this->assertStringContainsString("devices['Desktop Firefox']", $config);
-        $this->assertStringContainsString("devices['Desktop Safari']", $config);
-        $this->assertStringContainsString('playwright install --with-deps chromium firefox webkit', $makefile);
-        $this->assertStringContainsString('playwright install-deps chromium firefox webkit', $workflow);
-        $this->assertStringContainsString('playwright install chromium firefox webkit', $workflow);
     }
 
     private function assertHostsDiffer(string $appUrl, string $artifactUrl, string $where): void

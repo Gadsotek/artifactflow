@@ -408,7 +408,7 @@ CI runs:
 - 100% type-coverage enforcement.
 - PCOV line-coverage enforcement against the committed `COVERAGE_MIN` floor.
 - Vite asset build.
-- Playwright E2E suite across Chromium, Firefox, and WebKit (the Safari-compatible engine).
+- Playwright E2E suite on Chromium (cross-engine Firefox and WebKit coverage is planned; tracked separately).
 - Production Caddy/FrankenPHP image build.
 - Trivy image scan with vulnerability, secret, and misconfiguration scanners.
 - Trivy filesystem scan combining repository secret and misconfiguration checks.
@@ -417,8 +417,9 @@ Nightly audit repeats dependency audits, production image build, and Trivy so ne
 
 ### Manual Safari and iOS security pass
 
-Playwright WebKit is the automated Safari-compatible engine, not a substitute for an occasional
-run in released Safari. Before a security-sensitive release—and after changing artifact CSP,
+Automated e2e currently runs on Chromium only (cross-engine Firefox and WebKit coverage is
+planned but deferred), so an occasional run in released Safari matters more, not less. Before a
+security-sensitive release, and after changing artifact CSP,
 iframe sandbox flags, preview routing, fullscreen behavior, or browser-facing guard code—exercise
 current macOS Safari plus a physical iPhone or iPad Safari. Use a test/staging deployment with real
 TLS and genuinely distinct app/artifact hostnames; an iOS device cannot validate the production

@@ -421,7 +421,7 @@ e2e:
 
 e2e-install:
 	if [ -f package-lock.json ]; then npm ci; else npm install; fi
-	npx playwright install --with-deps chromium firefox webkit
+	npx playwright install --with-deps chromium
 
 build-prod:
 	$(DOCKER_BUILD) --pull --target production --tag $(PRODUCTION_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) .

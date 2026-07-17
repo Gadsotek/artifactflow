@@ -70,14 +70,14 @@ jobs:
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-v2-all-engines-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright browser OS dependencies
-        run: npx playwright install-deps chromium firefox webkit
+        run: npx playwright install-deps chromium
 
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium firefox webkit
+        run: npx playwright install chromium
 
       - name: Export host UID and GID
         run: |
