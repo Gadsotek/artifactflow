@@ -42,6 +42,19 @@ final class ArtifactPreviewDocumentGuard
         'title',
     ];
 
+    /**
+     * RAW_TEXT_TAGS whose content is raw text in the HTML namespace but is parsed
+     * as ordinary markup inside SVG/MathML foreign content (they are not foreign
+     * raw-text elements there). Inside such a subtree the guard must keep scanning
+     * their content so a nested browsing context is still recognized -- e.g.
+     * `<svg><title><iframe srcdoc=...>`, where SVG `<title>` is an HTML integration
+     * point and the browser makes the iframe live. `script`/`style` stay raw text in
+     * every namespace, so they are deliberately excluded.
+     *
+     * @var list<string>
+     */
+    private const array FOREIGN_PARSED_TEXT_TAGS = ['title', 'textarea', 'xmp', 'noembed', 'noframes'];
+
     private static ?string $guardBody = null;
 
     /**
@@ -86,16 +99,24 @@ final class ArtifactPreviewDocumentGuard
         $result = '';
         $rawTextTag = null;
         $neutralizedContainers = [];
+        // Depth of the current SVG/MathML foreign-content subtree. Inside it, the
+        // context-sensitive raw-text tags above are parsed as markup, not skipped.
+        $foreignDepth = 0;
 
         while ($offset < $length) {
             if ($rawTextTag !== null) {
                 $closingOffset = $this->findRawTextClosingTag($html, $rawTextTag, $offset);
 
                 if ($closingOffset === null) {
-                    return $result . substr($html, $offset);
+                    // Unterminated raw-text element: everything to EOF is its
+                    // interior. A neutralized iframe's interior was relocated into a
+                    // parsed template, so it must be escaped here too -- otherwise an
+                    // embedded </template> closes the wrapper and following bytes
+                    // (e.g. <iframe srcdoc>) parse as a live nested browsing context.
+                    return $result . $this->relocatedRawText(substr($html, $offset), $rawTextTag);
                 }
 
-                $result .= substr($html, $offset, $closingOffset - $offset);
+                $result .= $this->relocatedRawText(substr($html, $offset, $closingOffset - $offset), $rawTextTag);
                 $closingTag = $this->tagAt($html, $closingOffset);
 
                 if ($closingTag === null) {
@@ -160,6 +181,10 @@ final class ArtifactPreviewDocumentGuard
             $offset = $tag['end'] + 1;
 
             if ($tag['closing']) {
+                if ($foreignDepth > 0 && ($tag['name'] === 'svg' || $tag['name'] === 'math')) {
+                    $foreignDepth--;
+                }
+
                 $openContainer = end($neutralizedContainers);
 
                 if ($openContainer === $tag['name']) {
@@ -202,12 +227,45 @@ final class ArtifactPreviewDocumentGuard
                 return $result . substr($html, $offset);
             }
 
-            if (in_array($tag['name'], self::RAW_TEXT_TAGS, true)) {
+            // Enter foreign content on a non-self-closing <svg>/<math>. A self-closing
+            // element (<svg/>) has no subtree, so it must not shift the depth.
+            if (
+                ($tag['name'] === 'svg' || $tag['name'] === 'math')
+                && ($html[$tag['end'] - 1] ?? '') !== '/'
+            ) {
+                $foreignDepth++;
+            }
+
+            if (
+                in_array($tag['name'], self::RAW_TEXT_TAGS, true)
+                && !($foreignDepth > 0 && in_array($tag['name'], self::FOREIGN_PARSED_TEXT_TAGS, true))
+            ) {
                 $rawTextTag = $tag['name'];
             }
         }
 
         return $result;
+    }
+
+    /**
+     * Interior bytes of a raw-text element that is being relocated. Only a
+     * neutralized nested-browsing-context tag (iframe) has its opening tag
+     * rewritten to a <template>, moving its former RAWTEXT interior into a parsed
+     * context; there, '<' and '&' would become markup/character references, so a
+     * literal </template> could close the inert wrapper and a following
+     * <iframe srcdoc> would start a live fresh realm. Escaping both bytes keeps the
+     * interior inspectable while making it inert. Non-nested raw-text tags (script,
+     * style, textarea, ...) keep their bytes verbatim.
+     */
+    private function relocatedRawText(string $rawText, string $rawTextTag): string
+    {
+        if (!in_array($rawTextTag, self::NESTED_BROWSING_CONTEXT_TAGS, true)) {
+            return $rawText;
+        }
+
+        // Escape '&' before '<' so the '&' introduced by '<' -> '&lt;' is not
+        // re-escaped; str_replace applies the pairs left to right in one pass each.
+        return str_replace(['&', '<'], ['&amp;', '&lt;'], $rawText);
     }
 
     /**
