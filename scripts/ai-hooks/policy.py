@@ -129,6 +129,37 @@ SECRET_AWARE_EDITORS = {
     "vim",
 }
 
+SHELL_EXECUTORS = {
+    "bash",
+    "dash",
+    "fish",
+    "ksh",
+    "sh",
+    "zsh",
+}
+
+INLINE_INTERPRETER_OPTIONS = {
+    "node": {"-e", "--eval"},
+    "perl": {"-e", "-E", "-ne", "-nE", "-pe", "-pE"},
+    "php": {"-r"},
+    "python": {"-c"},
+    "python3": {"-c"},
+    "ruby": {"-e"},
+}
+
+DYNAMIC_PATH_COMMANDS = SECRET_FILE_ACCESS_COMMANDS | SECRET_AWARE_EDITORS | {
+    ".",
+    "curl",
+    "ln",
+    "mapfile",
+    "mv",
+    "openssl",
+    "read",
+    "sed",
+    "source",
+    "tee",
+}
+
 GENERATED_PATH_PREFIXES = (
     "node_modules/",
     "vendor/",
@@ -223,7 +254,7 @@ def extract_prompt(event: dict[str, Any]) -> str:
     return raw if isinstance(raw, str) else ""
 
 
-def extract_file_path(event: dict[str, Any]) -> str:
+def extract_file_paths(event: dict[str, Any]) -> list[str]:
     candidates = (
         ("tool_input", "file_path"),
         ("tool_input", "path"),
@@ -236,12 +267,66 @@ def extract_file_path(event: dict[str, Any]) -> str:
         ("path",),
     )
 
+    paths: list[str] = []
+    for path in candidates:
+        value = get_nested(event, path)
+        if isinstance(value, str) and value not in paths:
+            paths.append(value)
+
+    tool_name = event.get("tool_name")
+    if isinstance(tool_name, str) and normalize_tool_name(tool_name) == "apply_patch":
+        for path in extract_apply_patch_paths(extract_patch_payload(event)):
+            if path not in paths:
+                paths.append(path)
+
+    return paths
+
+
+def normalize_tool_name(tool_name: str) -> str:
+    return re.sub(r"[./:_]+", "_", tool_name.strip().lower())
+
+
+def extract_patch_payload(event: dict[str, Any]) -> str:
+    candidates = (
+        ("tool_input", "patch"),
+        ("tool_input", "command"),
+        ("tool_input", "input"),
+        ("input", "patch"),
+        ("input", "command"),
+        ("parameters", "patch"),
+        ("parameters", "command"),
+        ("patch",),
+        ("command",),
+    )
+
     for path in candidates:
         value = get_nested(event, path)
         if isinstance(value, str):
             return value
 
     return ""
+
+
+def extract_apply_patch_paths(patch: str) -> list[str]:
+    target_prefixes = (
+        "*** Add File: ",
+        "*** Update File: ",
+        "*** Delete File: ",
+        "*** Move to: ",
+    )
+    paths: list[str] = []
+
+    for line in patch.splitlines():
+        for prefix in target_prefixes:
+            if not line.startswith(prefix):
+                continue
+
+            path = line[len(prefix):].strip()
+            if path and path not in paths:
+                paths.append(path)
+            break
+
+    return paths
 
 
 def tokenize(command: str) -> list[str]:
@@ -290,25 +375,55 @@ def normalize_relative_path_token(token: str) -> str:
     while normalized.startswith("./"):
         normalized = normalized[2:]
 
-    if os.path.isabs(normalized):
-        real_path = os.path.realpath(normalized)
-        try:
-            relative = os.path.relpath(real_path, REPOSITORY_ROOT)
-        except ValueError:
-            relative = normalized
+    candidate = normalized if os.path.isabs(normalized) else os.path.join(REPOSITORY_ROOT, normalized)
+    real_path = os.path.realpath(candidate)
+    try:
+        relative = os.path.relpath(real_path, REPOSITORY_ROOT)
+    except ValueError:
+        relative = normalized
 
-        if (
-            relative != "."
-            and relative != ".."
-            and not relative.startswith("../")
-            and not os.path.isabs(relative)
-        ):
-            normalized = relative
+    if (
+        relative != "."
+        and relative != ".."
+        and not relative.startswith(f"..{os.sep}")
+        and not os.path.isabs(relative)
+    ):
+        normalized = relative
+    elif os.path.isabs(normalized):
+        normalized = real_path
+    else:
+        normalized = os.path.normpath(normalized)
 
     while normalized.startswith("./"):
         normalized = normalized[2:]
 
-    return normalized
+    return normalized.replace(os.sep, "/")
+
+
+def is_shell_assignment(token: str) -> bool:
+    return re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", token) is not None
+
+
+def segment_command_position(segment: list[str]) -> int | None:
+    for index, token in enumerate(segment):
+        if not is_shell_assignment(token):
+            return index
+
+    return None
+
+
+def segment_command(segment: list[str]) -> tuple[str, list[str]] | None:
+    position = segment_command_position(segment)
+    if position is None:
+        return None
+
+    command = os.path.basename(normalize_path_token(segment[position]))
+    return command, segment[position + 1:]
+
+
+def has_shell_expansion(token: str) -> bool:
+    normalized = normalize_path_token(token)
+    return "$" in normalized or "`" in normalized or "<(" in normalized or ">(" in normalized
 
 
 def is_secret_path(path: str) -> bool:
@@ -328,6 +443,8 @@ def is_secret_path(path: str) -> bool:
         key, possible_path = normalized.split("=", 1)
         if key != "" and is_secret_path(possible_path):
             return is_secret_path(possible_path)
+
+    normalized = normalize_relative_path_token(normalized)
 
     base = os.path.basename(normalized)
     if base in SAFE_TEMPLATE_FILES:
@@ -505,6 +622,39 @@ def find_recursive_rm(segment: list[str]) -> Finding | None:
         action="ask",
         reason="Recursive deletion commands such as rm -rf require explicit user approval.",
     )
+
+
+def find_file_deletion_or_dispatch(segment: list[str]) -> Finding | None:
+    parsed = segment_command(segment)
+    if parsed is None:
+        return None
+
+    command, arguments = parsed
+    if command in {"rm", "shred", "unlink"}:
+        return Finding(
+            code="file_deletion",
+            action="deny",
+            reason="Refusing file deletion commands from an AI hook.",
+        )
+
+    if command == "find" and any(
+        argument in {"-delete", "-exec", "-execdir", "-ok", "-okdir"}
+        for argument in arguments
+    ):
+        return Finding(
+            code="find_execution",
+            action="deny",
+            reason="Refusing find deletion or command-execution actions from an AI hook.",
+        )
+
+    if command == "xargs":
+        return Finding(
+            code="xargs_execution",
+            action="deny",
+            reason="Refusing xargs command dispatch because the executed command is data-dependent.",
+        )
+
+    return None
 
 
 def find_git_risk(segment: list[str]) -> Finding | None:
@@ -731,10 +881,12 @@ def file_write_findings(path: str) -> list[Finding]:
 
 
 def command_write_targets(segment: list[str]) -> list[str]:
-    if not segment:
+    position = segment_command_position(segment)
+    if position is None:
         return []
 
-    command = os.path.basename(segment[0])
+    command_segment = segment[position:]
+    command = os.path.basename(command_segment[0])
     targets: list[str] = []
 
     for index, _token in enumerate(segment):
@@ -743,16 +895,16 @@ def command_write_targets(segment: list[str]) -> list[str]:
             targets.append(target)
 
     if command in {"cp", "install", "mv"}:
-        targets.extend(copy_like_targets(segment))
+        targets.extend(copy_like_targets(command_segment))
 
     if command == "rm":
-        targets.extend(rm_targets(segment))
+        targets.extend(rm_targets(command_segment))
 
     if command == "sed":
-        targets.extend(sed_in_place_targets(segment))
+        targets.extend(sed_in_place_targets(command_segment))
 
     if command == "tee":
-        targets.extend(non_option_operands(segment[1:]))
+        targets.extend(non_option_operands(command_segment[1:]))
 
     return targets
 
@@ -762,6 +914,209 @@ def find_file_write_risk(segment: list[str]) -> Finding | None:
         findings = file_write_findings(target)
         if findings:
             return findings[0]
+
+    return None
+
+
+def find_dynamic_command_execution(segment: list[str]) -> Finding | None:
+    parsed = segment_command(segment)
+    if parsed is None:
+        return None
+
+    command, arguments = parsed
+    if has_shell_expansion(command):
+        return Finding(
+            code="dynamic_command_execution",
+            action="deny",
+            reason="Refusing a dynamically constructed command name because static hook policy cannot verify it.",
+        )
+
+    if command in {"command", "env", "exec", "nice", "nohup", "timeout", "xargs"} \
+            and any(has_shell_expansion(argument) for argument in arguments):
+        return Finding(
+            code="dynamic_command_execution",
+            action="deny",
+            reason="Refusing a wrapper that dynamically constructs the command it executes.",
+        )
+
+    return None
+
+
+def inline_option_matches(argument: str, option: str) -> bool:
+    if argument == option:
+        return True
+
+    if option.startswith("--"):
+        return argument.startswith(f"{option}=")
+
+    return argument.startswith(option) and len(argument) > len(option)
+
+
+def find_inline_interpreter_execution(segment: list[str]) -> Finding | None:
+    parsed = segment_command(segment)
+    if parsed is None:
+        return None
+
+    command, arguments = parsed
+    if command in SHELL_EXECUTORS and any(
+        argument == "-c"
+        or (argument.startswith("-") and not argument.startswith("--") and "c" in argument[1:])
+        for argument in arguments
+    ):
+        return Finding(
+            code="inline_interpreter_execution",
+            action="deny",
+            reason="Refusing inline shell code because its runtime behavior cannot be verified statically.",
+        )
+
+    options = INLINE_INTERPRETER_OPTIONS.get(command, set())
+    if any(inline_option_matches(argument, option) for argument in arguments for option in options):
+        return Finding(
+            code="inline_interpreter_execution",
+            action="deny",
+            reason="Refusing inline interpreter code because it can construct hidden paths or commands at runtime.",
+        )
+
+    return None
+
+
+def find_link_creation(segment: list[str]) -> Finding | None:
+    parsed = segment_command(segment)
+    if parsed is None or parsed[0] != "ln":
+        return None
+
+    return Finding(
+        code="link_creation",
+        action="deny",
+        reason="Refusing symbolic or hard-link creation because aliases can bypass path-based safety checks.",
+    )
+
+
+def find_dynamic_sensitive_path(segment: list[str]) -> Finding | None:
+    for target in command_write_targets(segment):
+        if has_shell_expansion(target):
+            return Finding(
+                code="dynamic_write_target",
+                action="deny",
+                reason="Refusing a dynamically constructed write target because the hook cannot verify its final path.",
+            )
+
+    parsed = segment_command(segment)
+    if parsed is None:
+        return None
+
+    command, arguments = parsed
+    if command in DYNAMIC_PATH_COMMANDS and any(has_shell_expansion(argument) for argument in arguments):
+        return Finding(
+            code="dynamic_sensitive_path",
+            action="deny",
+            reason="Refusing a dynamically constructed path for a command that can read, copy, link, or expose files.",
+        )
+
+    return None
+
+
+def find_encoded_execution(command: str) -> Finding | None:
+    executor_names = "|".join(sorted(SHELL_EXECUTORS | SECRET_AWARE_INTERPRETERS))
+    pipes_to_executor = re.search(
+        rf"\|\s*(?:(?:command|env|exec|nice|nohup)\s+)*(?:{executor_names})\b",
+        command,
+        re.IGNORECASE,
+    ) is not None
+    if not pipes_to_executor:
+        return None
+
+    uses_decoder = re.search(
+        r"\b(?:base32|base64)\b[^|;&]*(?:-d\b|--decode\b)"
+        r"|\bxxd\b[^|;&]*-r\b"
+        r"|\bopenssl\b[^|;&]*(?:-d\b|--decode\b)"
+        r"|\buudecode\b",
+        command,
+        re.IGNORECASE,
+    ) is not None
+    uses_escaped_printf = re.search(
+        r"\bprintf\b[^|;&]*(?:\\x[0-9a-f]{2}|\\[0-7]{3})",
+        command,
+        re.IGNORECASE,
+    ) is not None
+    if not uses_decoder and not uses_escaped_printf:
+        return None
+
+    return Finding(
+        code="encoded_execution",
+        action="deny",
+        reason="Refusing decoded or escaped data piped into a shell or interpreter.",
+    )
+
+
+def find_piped_interpreter_execution(command: str) -> Finding | None:
+    executor_names = "|".join(sorted(SHELL_EXECUTORS | SECRET_AWARE_INTERPRETERS))
+    if re.search(
+        rf"\|\s*(?:(?:command|env|exec|nice|nohup)\s+)*(?:{executor_names})\b",
+        command,
+        re.IGNORECASE,
+    ) is None:
+        return None
+
+    return Finding(
+        code="piped_interpreter_execution",
+        action="deny",
+        reason="Refusing data piped into a shell or interpreter because its runtime behavior is opaque to hooks.",
+    )
+
+
+def script_execution_targets(segment: list[str]) -> list[str]:
+    parsed = segment_command(segment)
+    if parsed is None:
+        return []
+
+    command, arguments = parsed
+    if command in {".", "source"}:
+        return arguments[:1]
+
+    if command in SHELL_EXECUTORS | SECRET_AWARE_INTERPRETERS:
+        parsing_options = True
+        for argument in arguments:
+            if parsing_options and argument == "--":
+                parsing_options = False
+                continue
+            if parsing_options and argument.startswith("-"):
+                continue
+
+            return [argument]
+
+        return []
+
+    position = segment_command_position(segment)
+    if position is None:
+        return []
+
+    command_token = normalize_path_token(segment[position])
+    if "/" in command_token:
+        return [command_token]
+
+    return []
+
+
+def find_write_then_execute(command: str) -> Finding | None:
+    written_paths: set[str] = set()
+
+    for segment in command_segments(tokenize(command)):
+        for target in command_write_targets(segment):
+            if not has_shell_expansion(target):
+                written_paths.add(normalize_relative_path_token(target))
+
+        execution_paths = {
+            normalize_relative_path_token(target)
+            for target in script_execution_targets(segment)
+            if not has_shell_expansion(target)
+        }
+        if written_paths.intersection(execution_paths):
+            return Finding(
+                code="write_then_execute",
+                action="deny",
+                reason="Refusing to execute a file written earlier in the same command.",
+            )
 
     return None
 
@@ -960,14 +1315,28 @@ def scan_command(command: str) -> list[Finding]:
         if command_contains_secret_substitution(statement):
             findings.append(secret_file_read_finding())
 
+        for statement_checker in (
+            find_encoded_execution,
+            find_piped_interpreter_execution,
+            find_write_then_execute,
+        ):
+            statement_finding = statement_checker(statement)
+            if statement_finding is not None:
+                findings.append(statement_finding)
+
         tokens = tokenize(statement)
 
         for segment in command_segments(tokens):
             for checker in (
+                find_dynamic_command_execution,
                 find_recursive_rm,
                 find_git_risk,
                 find_secret_read,
                 find_file_write_risk,
+                find_file_deletion_or_dispatch,
+                find_link_creation,
+                find_inline_interpreter_execution,
+                find_dynamic_sensitive_path,
                 find_docker_risk,
                 find_make_risk,
                 find_direct_local_test_runner,

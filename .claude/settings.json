@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR}/scripts/ai-hooks/guard_prompt.py\" --agent claude",
+            "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"${CLAUDE_PROJECT_DIR}/scripts/ai-hooks/guard_prompt.py\" --agent claude || exit 2",
             "timeout": 5
           }
         ]
@@ -17,17 +17,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR}/scripts/ai-hooks/guard_command.py\" --agent claude",
+            "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"${CLAUDE_PROJECT_DIR}/scripts/ai-hooks/guard_command.py\" --agent claude || exit 2",
             "timeout": 10
           }
         ]
       },
       {
-        "matcher": "Edit|Write|Read|Grep|Glob",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR}/scripts/ai-hooks/guard_file_write.py\" --agent claude",
+            "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"${CLAUDE_PROJECT_DIR}/scripts/ai-hooks/guard_file_write.py\" --agent claude || exit 2",
             "timeout": 10
           }
         ]
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR}/scripts/ai-hooks/guard_command.py\" --agent claude --event PermissionRequest",
+            "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"${CLAUDE_PROJECT_DIR}/scripts/ai-hooks/guard_command.py\" --agent claude --event PermissionRequest || exit 2",
             "timeout": 10
           }
         ]
