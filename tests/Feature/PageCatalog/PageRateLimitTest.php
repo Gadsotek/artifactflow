@@ -149,9 +149,9 @@ final class PageRateLimitTest extends TestCase
         ]);
 
         $paths = [
-            '/artifact-previews/01K00000000000000000000000/versions/01K00000000000000000000010?expires=1&signature=x',
-            '/artifact-previews/01K00000000000000000000001/versions/01K00000000000000000000011?expires=1&signature=x',
-            '/artifact-previews/01K00000000000000000000002/versions/01K00000000000000000000012?expires=1&signature=x',
+            'http://localhost/artifact-previews/01K00000000000000000000000/versions/01K00000000000000000000010?expires=1&signature=x',
+            'http://localhost/artifact-previews/01K00000000000000000000001/versions/01K00000000000000000000011?expires=1&signature=x',
+            'http://localhost/artifact-previews/01K00000000000000000000002/versions/01K00000000000000000000012?expires=1&signature=x',
         ];
 
         $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.40'])

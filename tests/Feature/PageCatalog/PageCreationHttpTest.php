@@ -1221,6 +1221,8 @@ final class PageCreationHttpTest extends TestCase
             ->assertSee('src="/artifact.js"', false)
             ->assertSee('src="/logo.png"', false)
             ->assertSee('src="/nested.html"', false)
+            ->assertSee('data-artifactflow-blocked-browsing-context', false)
+            ->assertDontSee('<iframe src="/nested.html"', false)
             ->assertSee('data-artifactflow-preview-guard', false)
             ->assertDontSee('data-artifactflow-preview-wrapper', false);
 
@@ -1232,6 +1234,7 @@ final class PageCreationHttpTest extends TestCase
         $this->assertSame('data:', $this->cspDirective($csp, 'font-src'));
         $this->assertSame("'none'", $this->cspDirective($csp, 'connect-src'));
         $this->assertSame("'none'", $this->cspDirective($csp, 'frame-src'));
+        $this->assertSame("'none'", $this->cspDirective($csp, 'fenced-frame-src'));
         $this->assertSame("'none'", $this->cspDirective($csp, 'child-src'));
         $this->assertSame("'none'", $this->cspDirective($csp, 'worker-src'));
         // The opaque-origin guarantee: scripts may run, but the sandbox must never

@@ -25,7 +25,7 @@ assume the code is hostile and design so that even hostile code cannot:
 - persist state or escape its execution context.
 
 We do **not** try to stop the artifact from misbehaving *within its own sealed box*
-(see §7); that's neither possible nor necessary once the box is sealed.
+(see §8); that's neither possible nor necessary once the box is sealed.
 
 ---
 
@@ -37,7 +37,7 @@ There are exactly **three** load-bearing controls. Everything else is convenienc
 |---|---|---|
 | **Separate artifact origin** (distinct host from the app) | Browser same-origin policy | ✅ Yes: the foundation |
 | **iframe `sandbox="allow-scripts"`** (NO `allow-same-origin`) → opaque origin | Browser | ✅ Yes, but only while *embedded* |
-| **CSP via HTTP response header** (incl. `sandbox` directive, `default-src 'none'`, `connect-src 'none'`, `frame-src/child-src 'none'`, `form-action 'none'`, `frame-ancestors`; `webrtc 'block'` where supported) | Browser | ✅ Yes: the **only** thing that survives top-level/full-screen, except browser support for `webrtc` is not universal |
+| **CSP via HTTP response header** (incl. `sandbox` directive, `default-src 'none'`, `connect-src 'none'`, `frame-src`, `fenced-frame-src`, and `child-src 'none'`, `form-action 'none'`, `frame-ancestors`; `webrtc 'block'` where supported) | Browser | ✅ Yes: the **only** thing that survives top-level/full-screen, except browser support for `webrtc` is not universal |
 | Injected JS guard (`ArtifactPreviewDocumentGuard`) monkeypatching `fetch`/`console`/storage/`open`/etc. | In-page JS | ❌ **No: cosmetic / defense-in-depth only** |
 | The `csp=` attribute on `<iframe>` | (not reliably supported) | ❌ **No: do not rely on it** |
 
@@ -48,6 +48,15 @@ re-defining patched properties, using the setter you didn't patch). Its legitima
 access in an opaque origin) into quiet no-ops so naive artifacts degrade gracefully instead of
 blanking, and it suppresses console noise. **It is never a security control. Never weaken the
 sandbox or CSP because the guard "handles" something.**
+
+**Nested browsing contexts are unsupported.** Chromium can create an inline `srcdoc` or initial
+`about:blank` child realm even under `frame-src 'none'`; that fresh realm also bypasses every API
+patch installed in its parent. The response hardener therefore tokenizes and neutralizes static `iframe`, `frame`,
+`fencedframe`, and `portal` tags before parsing. The early guard additionally blocks dynamic
+element creation and the common HTML parsing/setter APIs, then removes any child context that still
+appears. This is regression-tested with fifteen recursive `srcdoc` levels and a real UDP STUN
+listener. These measures close the demonstrated path but remain layered compatibility hardening,
+not a reason to trust in-page JavaScript or weaken the three load-bearing controls above.
 
 Implemented in: `app/Http/Support/ArtifactSandboxResponder.php` (shared header CSP + `securityHeaders()`),
 `app/Http/Controllers/ArtifactPreviewController.php` and `ArtifactDraftPreviewController.php` (delegate saved and draft responses to the shared responder),
@@ -145,7 +154,9 @@ It is safe **only** because:
   echoes the posted HTML back hardened,
 - the response carries the artifact sandbox CSP (`default-src 'none'; sandbox allow-scripts;
   connect-src 'none'; …`) plus `frame-ancestors <app-origin>`, so the reflected document has an
-  **opaque origin** with no network, storage, or same-origin access, and
+  **opaque origin** with ordinary subresource/connection APIs blocked, no storage, and no
+  same-origin access; nested browsing contexts are removed to close the demonstrated fresh-realm
+  WebRTC path, and
 - the iframe keeps `sandbox="allow-scripts"` **without `allow-same-origin`** as defense in depth,
   and the endpoint refuses top-level (`Sec-Fetch-Dest` ≠ `iframe`) navigation.
 
@@ -194,7 +205,35 @@ bearer lifetime.
 
 ---
 
-## 7. Explicitly NOT defended (and that's fine)
+## 7. Known attack surface and tested abuse cases
+
+This table is the maintained red-team inventory for artifact rendering. “Blocked” means the named
+browser/server boundary rejects the demonstrated vector; it does not mean hostile in-page JavaScript
+has somehow become trustworthy. Tests named here are regression evidence, not a substitute for
+reviewing the browser standards and deployment configuration when a boundary changes.
+
+| Vector exercised | Why the demonstrated attack fails | Residual / follow-up |
+|---|---|---|
+| Draft capability character flips, insertions, deletions, padding, extra segments, case changes, control bytes, oversized input, malformed base64/JSON | A bounded token grammar requires one base64url payload and one 64-nibble lowercase signature. HMAC verification happens before decoding or claim parsing; every single payload character and signature nibble mutation is rejected. | Fast grammar rejection and slower well-shaped HMAC rejection are distinguishable because token shape is attacker-controlled public input, not a secret. Keep rejection responses uniform and never log tokens. |
+| HMAC mismatch position and signature-prefix guessing | Every well-shaped presented signature has the same length and is compared with PHP's `hash_equals`; the signature covers a domain-separated context plus the encoded payload. Deterministic tests mutate every signature nibble and reject every result. | Unit-test wall-clock ratios are too noisy to prove constant-time behavior and are deliberately not a release gate. Reassess with a dedicated statistical timing harness if the comparison primitive or threat boundary changes. |
+| Correctly signed but reordered, missing, extra, wrongly typed, expired, future-dated, wrong-purpose, wrong-origin, malformed nonce/workspace/content claims | The verifier accepts exactly the version-1 ordered claim schema and exact scalar types/ranges. The configured artifact origin, purpose, maximum 60-second expiry, ULID shape, nonce, byte length, and lowercase SHA-256 are mandatory. | Producing these cases outside the test requires the signing key. The corpus still pins canonical verification against a future buggy or compromised issuer. |
+| Capability replay with whitespace, newline, Unicode-normalization, encoding, or same-length content changes | Exact `strlen` and SHA-256 bind the posted byte sequence; visually equivalent content is intentionally different content. | Replaying the **same exact draft** on the configured artifact origin during the TTL is allowed. A workspace revocation after issuance does not revoke that already-issued, non-persisting capability; exposure is bounded to those already-authorized bytes and at most 60 seconds. |
+| Capability moved to the app host, another artifact origin, or a proxy route that merges origins | The signed origin claim must equal configuration, and artifact runtime middleware requires the request's exact scheme/host/port to equal the configured artifact origin before routing. | A reverse proxy must preserve the real external scheme and host through the trusted-proxy configuration. Deployment doctor and origin-separation tests fail unsafe configurations. |
+| Top-level navigation, new tabs, downloads, fullscreen, and pointer lock | Explicit non-iframe destinations are refused; draft requests fail closed without `Sec-Fetch-Dest: iframe`. The iframe has no popup/download/navigation/pointer-lock sandbox tokens, and the header CSP `sandbox` remains the top-level fallback. Product fullscreen only CSS-maximizes the existing iframe. | Saved previews deliberately tolerate an absent fetch-destination header for legacy embedding. Real Safari/macOS/iOS behavior remains a manual release check; see `docs/OPERATIONS.md`. Self-navigation of the frame remains the accepted §2 residual. |
+| Static and dynamically created `iframe`, `frame`, `fencedframe`, or `portal`, including fifteen recursive `srcdoc` levels | Server hardening tokenizes actual tags into inert templates while preserving script/textarea bytes; CSP denies `frame-src`, `child-src`, and `fenced-frame-src`; the early guard blocks creation, insertion, parsing, markup-setter, streaming `document.write`, and XSLT materialization sinks, then observes residual contexts. The E2E leaf attempts a real UDP STUN transmission and receives no packet. | Chromium's ability to construct initial `about:blank`/`srcdoc` realms is why the layers exist. The in-page guard is still not load-bearing; never remove CSP, sandbox, or origin isolation because this regression passes. |
+| `<object>`, `<embed>`, SVG `foreignObject`, workers, and HTML parsing/setter variants | `object-src 'none'`, `worker-src 'none'`, `default-src 'none'`, and nested-context directives block new executable/resource contexts. The runtime guard covers `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `setHTMLUnsafe`, `DOMParser`, `Range`, shadow roots, and document write/parse APIs used in the corpus. | Inline SVG/`foreignObject` may render inside the same sealed document; it gains no app-origin authority. Browser-specific parser additions require new regression cases when adopted. |
+| Fetch/XHR/beacon/WebSocket/EventSource/WebTransport/WebRTC and fresh-realm network escape attempts | Header CSP denies ordinary connections and workers; the `webrtc 'block'` directive is sent where supported. Removing nested realms closes the demonstrated Chromium path around parent-realm API patches, and the E2E UDP listener verifies no STUN packet leaves the artifact. | `webrtc` support is not universal. Navigation requests cannot be comprehensively blocked by shipped CSP, so origin isolation ensures the artifact has no session or cross-tenant data to exfiltrate; user-entered artifact data remains a social-engineering risk. |
+| Parent/meta CSP conflicts, CSP header merging, and iframe-within-iframe inheritance | Artifact policy is an authoritative HTTP response header on the artifact response. Parent/meta policies cannot relax it, and application/artifact middleware overwrites security-critical headers rather than trusting an upstream weak value. | Reverse proxies must not replace the application-generated artifact CSP. Header presence and values should be checked during deployment and real-browser smoke tests. |
+| Signed-URL expiry, grant/revoke/archive/workspace-move races, and revision replay | Saved preview signatures bind page, immutable version, expiry, artifact origin, and `preview_access_revision`; access-changing transactions increment the revision and the controller checks current state. Invalid/missing/stale targets share a 404. | An already-rendered document is not remotely erased when access changes. Renewal requires live access, and the short TTL plus revision closes future loads rather than pretending to revoke bytes already delivered to a browser. |
+| Cookies, storage, and origin confusion | E2E proves artifact requests carry no application cookies. `sandbox` without `allow-same-origin` gives the document an opaque origin, and app/artifact hosts must remain distinct. Storage APIs are unavailable/no-op under the sealed context. | Browser extensions, compromised endpoints, and the viewer's device are outside this web-origin model. Do not place secrets inside artifact HTML merely because rendering is isolated. |
+
+The deterministic capability corpus is
+`tests/Feature/PageCatalog/ArtifactDraftPreviewCapabilitiesFuzzTest.php` and is exposed as
+`make fuzz-capabilities`; the same file runs once inside the ordinary CI Pest suite. Browser attack cases live primarily in
+`tests/e2e/editor.spec.ts`, `tests/e2e/saved-artifact-preview.spec.ts`,
+`tests/e2e/artifact-cookie-isolation.spec.ts`, and `tests/e2e/mermaid-security.spec.ts`.
+
+## 8. Explicitly NOT defended (and that's fine)
 
 - **The artifact navigating/reloading *itself*.** Can't be prevented while running arbitrary JS,
   and doesn't need to be: under an opaque origin with `connect-src 'none'`, self-navigation has
@@ -217,7 +256,7 @@ bearer lifetime.
 
 ---
 
-## 8. Application authorization and taxonomy metadata
+## 9. Application authorization and taxonomy metadata
 
 System Admin is an installation/account role, **not** a content superuser. It does not implicitly
 enumerate or read personal workspaces, shared workspaces, pages, categories, tags, or signed preview
@@ -254,7 +293,7 @@ Revoking a page grant removes that discovery path on the next authorized request
 revoke their own grant unless they independently have page-access management authority; merely being
 the grant subject, or a System Admin, does not confer that authority.
 
-## 9. MCP and prompt injection
+## 10. MCP and prompt injection
 
 MCP adds a different risk from browser execution: page content can contain text that looks like
 instructions to an AI client. The server response frames read content as untrusted data, but that
@@ -266,7 +305,7 @@ framing is advisory. The actual enforcement rules are:
 - Token scopes are the hard ceiling. Tokens can be read-only or read-write, and can be bound to
   one or more workspaces for reads and writes. `list_workspaces` returns only workspaces reachable
   inside that token ceiling, so scoped tokens do not learn that other workspaces exist.
-- `list_taxonomy` requires `mcp:search` and returns only the category/tag vocabulary described in §8,
+- `list_taxonomy` requires `mcp:search` and returns only the category/tag vocabulary described in §9,
   intersected with the token's workspace ceiling. Its strings are explicit untrusted-data envelopes,
   just like other MCP-provided content.
 - The `workspace_uid` search parameter is only a narrowing filter inside the token ceiling. It
@@ -283,7 +322,7 @@ in the client/operator workflow; the server prevents read content from becoming 
 
 ---
 
-## 10. Contributor rules (the don'ts that prevent regressions)
+## 11. Contributor rules (the don'ts that prevent regressions)
 
 1. **Never** add `allow-same-origin` to the artifact iframe (embedded or draft).
 2. **Never** weaken the CSP because the JS guard "covers" something. The guard is not a control.
@@ -316,7 +355,7 @@ don't merge, the security-critical directives) so an upstream weak directive can
 
 ---
 
-## 11. One-line mental model
+## 12. One-line mental model
 
 > Untrusted code runs **on a throwaway origin, in a browser-sandboxed box, behind a header CSP
 > that travels with it.** The browser enforces the box; the origin makes escaping the box

@@ -1,11 +1,18 @@
 import { expect, test, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { createSocket } from 'node:dgram';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 type ManifestEntry = {
   file: string;
+};
+
+type AuthenticatedDraftPreviewFixture = {
+  cspNonce: string;
+  csrfToken: string;
+  workspaceUid: string;
 };
 
 const manifest = JSON.parse(
@@ -27,6 +34,14 @@ const draftPreviewCapabilityEndpoint = `${baseUrl}/pages/draft-preview-capabilit
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 const appCommandTarget = process.env.E2E_APP_COMMAND_TARGET ?? 'run-e2e-app-cmd';
 
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
+
 function runAppCommand(appCommand: string, failureMessage: string): void {
   if (!['run-e2e-app-cmd', 'run-app-cmd'].includes(appCommandTarget)) {
     throw new Error('Unsupported e2e app command target.');
@@ -42,11 +57,9 @@ function runAppCommand(appCommand: string, failureMessage: string): void {
   }
 }
 
-async function prepareAuthenticatedDraftPreviewFixture(page: Page): Promise<{
-  cspNonce: string;
-  csrfToken: string;
-  workspaceUid: string;
-}> {
+async function prepareAuthenticatedDraftPreviewFixture(
+  page: Page,
+): Promise<AuthenticatedDraftPreviewFixture> {
   const runSuffix = randomUUID().replaceAll('-', '').slice(0, 12);
   const email = `draft-preview-e2e-${runSuffix}@example.test`;
   const password = `af${randomUUID().replaceAll('-', '')}`;
@@ -79,6 +92,35 @@ async function prepareAuthenticatedDraftPreviewFixture(page: Page): Promise<{
   expect(workspaceUid).not.toBe('');
 
   return { cspNonce, csrfToken, workspaceUid };
+}
+
+function authenticatedDraftPreviewDocument(
+  fixture: AuthenticatedDraftPreviewFixture,
+  artifactHtml: string,
+): string {
+  return `
+    <!doctype html>
+    <html>
+      <body>
+        <form data-content-editor data-editor-language="html" data-html-draft-preview-form data-html-draft-preview-capability-endpoint="${draftPreviewCapabilityEndpoint}" data-html-draft-preview-endpoint="${draftPreviewEndpoint}">
+          <input name="_token" type="hidden" value="${fixture.csrfToken}">
+          <select name="workspace_uid"><option value="${fixture.workspaceUid}" selected>Workspace</option></select>
+          <select name="type"><option value="html_artifact" selected>HTML artifact</option></select>
+          <select name="mode"><option value="html_paste" selected>Paste HTML</option></select>
+          <div data-source-editor-mount></div>
+          <textarea data-editor-textarea>${escapeHtmlAttribute(artifactHtml)}</textarea>
+          <span data-editor-status></span>
+          <span data-editor-count></span>
+          <section data-html-draft-preview>
+            <button data-html-draft-preview-button type="button">Preview HTML before saving</button>
+            <span data-html-draft-preview-status aria-live="polite"></span>
+            <iframe data-html-draft-preview-frame name="${draftPreviewFrameName}" sandbox="allow-scripts" allow="" referrerpolicy="no-referrer"></iframe>
+          </section>
+        </form>
+        <script nonce="${fixture.cspNonce}" type="module" src="${appAsset}"></script>
+      </body>
+    </html>
+  `;
 }
 
 async function loadAppOriginCspNonce(page: Page): Promise<string> {
@@ -388,7 +430,8 @@ test('Markdown rich editor inserts editable fenced code blocks', async ({ page }
 
   await code.click();
   await page.keyboard.press('ControlOrMeta+A');
-  await page.keyboard.type('<?php echo "ok";');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.insertText('<?php echo "ok";');
 
   await expect(page.locator('[data-editor-textarea]')).toHaveValue('```\n<?php echo "ok";\n```');
 });
@@ -501,9 +544,10 @@ test('Markdown rich editor inserts visual Mermaid blocks with live editable sour
 
   await source.click();
   await page.keyboard.press('ControlOrMeta+A');
-  await page.keyboard.type('graph TD');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.insertText('graph TD');
   await page.keyboard.press('Enter');
-  await page.keyboard.type('  User --> ArtifactFlow');
+  await page.keyboard.insertText('  User --> ArtifactFlow');
 
   await expect(page.locator('[data-editor-textarea]')).toHaveValue(
     '```mermaid\ngraph TD\n  User --> ArtifactFlow\n```',
@@ -525,9 +569,10 @@ test('Enter on an empty trailing code line escapes the code block into a paragra
   const code = editor.locator('[data-editor-code-block] [data-editor-code-content]');
   await code.click();
   await page.keyboard.press('ControlOrMeta+A');
-  await page.keyboard.type('line1');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.insertText('line1');
   await page.keyboard.press('Enter');
-  await page.keyboard.type('line2');
+  await page.keyboard.insertText('line2');
 
   // A single mid-block Enter inserts a hard line break and keeps the caret in the code.
   await expect(textarea).toHaveValue('```\nline1\nline2\n```');
@@ -535,7 +580,7 @@ test('Enter on an empty trailing code line escapes the code block into a paragra
   // One more Enter moves onto an empty trailing line; the next Enter escapes.
   await page.keyboard.press('Enter');
   await page.keyboard.press('Enter');
-  await page.keyboard.type('after paragraph');
+  await page.keyboard.insertText('after paragraph');
 
   await expect(textarea).toHaveValue('```\nline1\nline2\n```\n\nafter paragraph');
   await expect(editor.locator('[data-editor-code-block] + p')).toHaveText('after paragraph');
@@ -558,10 +603,11 @@ test('Enter never escapes a Mermaid source block', async ({ page }) => {
   const source = editor.locator('[data-editor-mermaid-source]');
   await source.click();
   await page.keyboard.press('ControlOrMeta+A');
-  await page.keyboard.type('graph TD');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.insertText('graph TD');
   await page.keyboard.press('Enter');
   await page.keyboard.press('Enter');
-  await page.keyboard.type('A --> B');
+  await page.keyboard.insertText('A --> B');
 
   // Two Enters stay trapped inside the diagram source: the typed text lands in
   // the Mermaid source, and the escape never runs, so the caret-boundary
@@ -714,9 +760,10 @@ test('Markdown source round-trips inline emphasis into the rich editor without e
   await expect(textarea).toHaveValue('Text with **bold** and _em_ words.');
 });
 
-// Replace the source-editor content and load it into the rich view. Uses
-// insertText (not type) so CodeMirror receives the newlines as one input
-// instead of Enter keystrokes that could trigger editor keymaps.
+// Replace the source-editor content and load it into the rich view. Dispatching
+// one text/plain paste preserves leading ASCII spaces in every engine; WebKit
+// and Firefox turn the first leading space into U+00A0 when Playwright sends a
+// multi-line insertText() call to a contenteditable CodeMirror surface.
 async function loadSourceIntoRichView(page: Page, source: string) {
   const sourceEditor = page.locator('[data-source-editor-mount] .cm-content');
   const richEditor = page.getByRole('textbox', { name: 'Page content' });
@@ -725,7 +772,20 @@ async function loadSourceIntoRichView(page: Page, source: string) {
   await expect(sourceEditor).toBeVisible();
   await sourceEditor.click();
   await page.keyboard.press('ControlOrMeta+A');
-  await page.keyboard.insertText(source);
+  await sourceEditor.evaluate((element, markdown) => {
+    const transfer = new DataTransfer();
+    transfer.setData('text/plain', markdown);
+    const paste = new ClipboardEvent('paste', {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: transfer,
+    });
+
+    // Firefox ignores ClipboardEventInit.clipboardData for constructed events.
+    Object.defineProperty(paste, 'clipboardData', { value: transfer });
+    element.dispatchEvent(paste);
+  }, source);
+  await expect(page.locator('[data-editor-textarea]')).toHaveValue(source);
   await page.getByRole('button', { name: 'Rich editor' }).click();
   await expect(richEditor).toBeVisible();
 
@@ -1524,8 +1584,7 @@ test('HTML draft preview executes only inside an opaque no-network sandbox', asy
 
   let outboundRequests = 0;
   const leakedConsoleMessages: string[] = [];
-  const { cspNonce, csrfToken, workspaceUid } =
-    await prepareAuthenticatedDraftPreviewFixture(page);
+  const fixture = await prepareAuthenticatedDraftPreviewFixture(page);
 
   page.on('console', (message) => {
     if (message.text().includes('artifactflow-console-leak')) {
@@ -1537,87 +1596,68 @@ test('HTML draft preview executes only inside an opaque no-network sandbox', asy
     outboundRequests += 1;
     await route.abort();
   });
-  await page.setContent(`
-    <!doctype html>
-    <html>
-      <body>
-        <form data-content-editor data-editor-language="html" data-html-draft-preview-form data-html-draft-preview-capability-endpoint="${draftPreviewCapabilityEndpoint}" data-html-draft-preview-endpoint="${draftPreviewEndpoint}">
-          <input name="_token" type="hidden" value="${csrfToken}">
-          <select name="workspace_uid"><option value="${workspaceUid}" selected>Workspace</option></select>
-          <select name="type"><option value="html_artifact" selected>HTML artifact</option></select>
-          <select name="mode"><option value="html_paste" selected>Paste HTML</option></select>
-          <div data-source-editor-mount></div>
-          <textarea data-editor-textarea>
-            <!doctype html>
-            <p id="result">starting</p>
-            <script>
-              console.log('artifactflow-console-leak');
+  await page.setContent(
+    authenticatedDraftPreviewDocument(
+      fixture,
+      `<!doctype html>
+      <p id="result">starting</p>
+      <script>
+        console.log('artifactflow-console-leak');
 
-              let parentState = 'parent-accessible';
-              try {
-                window.parent.document.body.dataset.artifactflowPreviewOwned = 'yes';
-              } catch {
-                parentState = 'parent-blocked';
-              }
+        let parentState = 'parent-accessible';
+        try {
+          window.parent.document.body.dataset.artifactflowPreviewOwned = 'yes';
+        } catch {
+          parentState = 'parent-blocked';
+        }
 
-              let cookieState = 'cookies-accessible';
-              try {
-                document.cookie = 'artifactflow_preview_cookie=yes';
-                cookieState = document.cookie === '' ? 'cookies-blocked' : 'cookies-accessible';
-              } catch {
-                cookieState = 'cookies-blocked';
-              }
+        let cookieState = 'cookies-accessible';
+        try {
+          document.cookie = 'artifactflow_preview_cookie=yes';
+          cookieState = document.cookie === '' ? 'cookies-blocked' : 'cookies-accessible';
+        } catch {
+          cookieState = 'cookies-blocked';
+        }
 
-              let storageState = 'storage-accessible';
-              try {
-                localStorage.setItem('artifactflow_preview_storage', 'yes');
-                storageState = localStorage.getItem('artifactflow_preview_storage') === null
-                  ? 'storage-blocked'
-                  : 'storage-accessible';
-              } catch {
-                storageState = 'storage-blocked';
-              }
+        let storageState = 'storage-accessible';
+        try {
+          localStorage.setItem('artifactflow_preview_storage', 'yes');
+          storageState = localStorage.getItem('artifactflow_preview_storage') === null
+            ? 'storage-blocked'
+            : 'storage-accessible';
+        } catch {
+          storageState = 'storage-blocked';
+        }
 
-              let rtcState = 'rtc-accessible';
-              try {
-                new RTCPeerConnection();
-              } catch {
-                rtcState = 'rtc-blocked';
-              }
+        let rtcState = 'rtc-accessible';
+        try {
+          new RTCPeerConnection();
+        } catch {
+          rtcState = 'rtc-blocked';
+        }
 
-              fetch('${baseUrl}/draft-preview-network-check')
-                .then(() => {
-                  document.getElementById('result').textContent = [
-                    parentState,
-                    'network-accessible',
-                    cookieState,
-                    storageState,
-                    rtcState,
-                  ].join(' ');
-                })
-                .catch(() => {
-                  document.getElementById('result').textContent = [
-                    parentState,
-                    'network-blocked',
-                    cookieState,
-                    storageState,
-                    rtcState,
-                  ].join(' ');
-                });
-            </script>
-          </textarea>
-          <span data-editor-status></span>
-          <span data-editor-count></span>
-          <section data-html-draft-preview>
-            <button data-html-draft-preview-button type="button">Preview HTML before saving</button>
-            <span data-html-draft-preview-status aria-live="polite"></span>
-            <iframe data-html-draft-preview-frame name="${draftPreviewFrameName}" sandbox="allow-scripts" allow="" referrerpolicy="no-referrer"></iframe>
-          </section>
-        </form>
-        <script nonce="${cspNonce}" type="module" src="${appAsset}"></script>
-      </body>
-    </html>
-  `);
+        fetch('${baseUrl}/draft-preview-network-check')
+          .then(() => {
+            document.getElementById('result').textContent = [
+              parentState,
+              'network-accessible',
+              cookieState,
+              storageState,
+              rtcState,
+            ].join(' ');
+          })
+          .catch(() => {
+            document.getElementById('result').textContent = [
+              parentState,
+              'network-blocked',
+              cookieState,
+              storageState,
+              rtcState,
+            ].join(' ');
+          });
+      </script>`,
+    ),
+  );
 
   const frame = page.locator('[data-html-draft-preview-frame]');
   await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
@@ -1641,14 +1681,215 @@ test('HTML draft preview executes only inside an opaque no-network sandbox', asy
   expect(leakedConsoleMessages).toEqual([]);
 });
 
+test('HTML draft preview blocks recursively nested browsing contexts before WebRTC can escape', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+
+  let udpPacketCount = 0;
+  const udpProbe = createSocket('udp4');
+  udpProbe.on('message', () => {
+    udpPacketCount += 1;
+  });
+  await new Promise<void>((resolve, reject) => {
+    udpProbe.once('error', reject);
+    udpProbe.bind(0, '127.0.0.1', () => {
+      udpProbe.off('error', reject);
+      resolve();
+    });
+  });
+
+  try {
+    const address = udpProbe.address();
+    expect(typeof address).toBe('object');
+
+    if (typeof address === 'string') {
+      throw new Error('Expected an IPv4 UDP probe address.');
+    }
+
+    const rtcLeaf = `<!doctype html><script>
+      const peer = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:127.0.0.1:${address.port}' }],
+      });
+      peer.createDataChannel('artifactflow-probe');
+      peer.createOffer().then((offer) => peer.setLocalDescription(offer));
+    </script>`;
+    const nestingDepth = 15;
+    let recursivelyNestedRtc = rtcLeaf;
+
+    for (let depth = 0; depth < nestingDepth; depth += 1) {
+      recursivelyNestedRtc = `<!doctype html><iframe data-depth="${depth + 1}" srcdoc="${escapeHtmlAttribute(recursivelyNestedRtc)}"></iframe>`;
+    }
+
+    const staticNestedFrame = recursivelyNestedRtc;
+    const dynamicNestedFrameBase64 = Buffer.from(recursivelyNestedRtc, 'utf8').toString('base64');
+    const fixture = await prepareAuthenticatedDraftPreviewFixture(page);
+
+    await page.setContent(
+      authenticatedDraftPreviewDocument(
+        fixture,
+        `<!doctype html>
+              <p id="nested-result">starting</p>
+              ${staticNestedFrame}
+              <script>
+                const nestedMarkup = atob('${dynamicNestedFrameBase64}');
+                const dynamicOuter = document.createElement('iframe');
+                dynamicOuter.id = 'dynamic-create-element';
+                dynamicOuter.srcdoc = nestedMarkup;
+                document.body.append(dynamicOuter);
+
+                const namespacedOuter = document.createElementNS(
+                  'http://www.w3.org/1999/xhtml',
+                  'iframe',
+                );
+                namespacedOuter.id = 'dynamic-create-element-ns';
+                namespacedOuter.srcdoc = nestedMarkup;
+                document.body.append(namespacedOuter);
+
+                const prefixedNamespacedOuter = document.createElementNS(
+                  'http://www.w3.org/1999/xhtml',
+                  'x:iframe',
+                );
+                const prefixedNamespaceBlocked =
+                  !(prefixedNamespacedOuter instanceof HTMLIFrameElement);
+                prefixedNamespacedOuter.setAttribute('data-bypass-context', 'namespace-prefix');
+                prefixedNamespacedOuter.setAttribute('srcdoc', nestedMarkup);
+                document.body.append(prefixedNamespacedOuter);
+
+                const innerHtmlHost = document.createElement('div');
+                innerHtmlHost.innerHTML = nestedMarkup;
+                document.body.append(innerHtmlHost);
+
+                const coercionHost = document.createElement('div');
+                coercionHost.innerHTML = {
+                  toString() {
+                    return nestedMarkup;
+                  },
+                };
+                const objectCoercionBlocked =
+                  coercionHost.querySelector('iframe, frame, fencedframe, portal') === null;
+                document.body.append(coercionHost);
+                document.body.insertAdjacentHTML('beforeend', nestedMarkup);
+
+                const outerHtmlHost = document.createElement('div');
+                document.body.append(outerHtmlHost);
+                outerHtmlHost.outerHTML = nestedMarkup;
+
+                const range = document.createRange();
+                range.selectNodeContents(document.body);
+                document.body.append(range.createContextualFragment(nestedMarkup));
+
+                const parsed = new DOMParser().parseFromString(nestedMarkup, 'text/html');
+                const parsedContext = parsed.body.firstElementChild;
+                if (parsedContext !== null) {
+                  document.body.append(document.importNode(parsedContext, true));
+                }
+
+                const xhtmlParsed = new DOMParser().parseFromString(
+                  '<html xmlns="http://www.w3.org/1999/xhtml"><body><iframe srcdoc=""></iframe></body></html>',
+                  'application/xhtml+xml',
+                );
+                const xhtmlFrame = xhtmlParsed.getElementsByTagName('iframe')[0];
+                let surroundContentsBlocked = false;
+                if (xhtmlFrame !== undefined) {
+                  const importedFrame = document.importNode(xhtmlFrame, true);
+                  importedFrame.setAttribute('srcdoc', nestedMarkup);
+                  const surroundHolder = document.createElement('div');
+                  surroundHolder.append('surround-range');
+                  document.body.append(surroundHolder);
+                  const surroundRange = document.createRange();
+                  surroundRange.selectNodeContents(surroundHolder);
+                  surroundRange.surroundContents(importedFrame);
+                  // Check synchronously: a MutationObserver cleanup on the next
+                  // microtask is too late to prevent a newly connected srcdoc realm.
+                  surroundContentsBlocked = !importedFrame.isConnected;
+                }
+
+                const scratch = document.implementation.createHTMLDocument('scratch');
+                scratch.write(nestedMarkup);
+                let detachedNestedContextCount = scratch.querySelectorAll(
+                  'iframe, frame, fencedframe, portal',
+                ).length;
+                const writtenContext = scratch.body?.firstElementChild ?? null;
+                if (writtenContext !== null) {
+                  document.body.append(document.importNode(writtenContext, true));
+                }
+
+                const splitWriteScratch = document.implementation.createHTMLDocument('split-write');
+                const splitAt = nestedMarkup.indexOf('>', nestedMarkup.indexOf('<iframe'));
+                splitWriteScratch.write(nestedMarkup.slice(0, splitAt));
+                splitWriteScratch.write(nestedMarkup.slice(splitAt));
+                detachedNestedContextCount += splitWriteScratch.querySelectorAll(
+                  'iframe, frame, fencedframe, portal',
+                ).length;
+
+                let xsltState = 'xslt-unavailable';
+                if (typeof XSLTProcessor === 'function') {
+                  try {
+                    const stylesheet = new DOMParser().parseFromString(
+                      '<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"><xsl:template match="/"><xsl:element name="iframe"><xsl:attribute name="srcdoc"><xsl:value-of select="/payload"/></xsl:attribute></xsl:element></xsl:template></xsl:stylesheet>',
+                      'application/xml',
+                    );
+                    const input = document.implementation.createDocument('', 'payload');
+                    input.documentElement.textContent = nestedMarkup;
+                    const processor = new XSLTProcessor();
+                    processor.importStylesheet(stylesheet);
+                    document.body.append(processor.transformToFragment(input, document));
+                    xsltState = 'xslt-enabled';
+                  } catch {
+                    xsltState = 'xslt-blocked';
+                  }
+                }
+
+                const shadowHost = document.createElement('div');
+                document.body.append(shadowHost);
+                const shadowRoot = shadowHost.attachShadow({ mode: 'open' });
+                shadowRoot.innerHTML = nestedMarkup;
+
+                const unsafeHtmlHost = document.createElement('div');
+                document.body.append(unsafeHtmlHost);
+                if (typeof unsafeHtmlHost.setHTMLUnsafe === 'function') {
+                  unsafeHtmlHost.setHTMLUnsafe(nestedMarkup);
+                }
+
+                setTimeout(() => {
+                  const nestedContextCount =
+                    detachedNestedContextCount +
+                    document.querySelectorAll('iframe, frame, fencedframe, portal').length +
+                    shadowRoot.querySelectorAll('iframe, frame, fencedframe, portal').length;
+                  document.getElementById('nested-result').textContent =
+                    nestedContextCount === 0 &&
+                    prefixedNamespaceBlocked &&
+                    objectCoercionBlocked &&
+                    surroundContentsBlocked &&
+                    xsltState !== 'xslt-enabled'
+                      ? 'nested-contexts-blocked'
+                      : 'nested-contexts-present';
+                }, 250);
+              </script>`,
+      ),
+    );
+
+    await page.getByRole('button', { name: 'Preview HTML before saving' }).click();
+    const preview = page.frameLocator('[data-html-draft-preview-frame]');
+    await expect(preview.locator('#nested-result')).toHaveText('nested-contexts-blocked', {
+      timeout: 20_000,
+    });
+    await expect(preview.locator('iframe, frame, fencedframe, portal')).toHaveCount(0);
+    await page.waitForTimeout(1_500);
+    expect(udpPacketCount).toBe(0);
+  } finally {
+    await new Promise<void>((resolve) => udpProbe.close(() => resolve()));
+  }
+});
+
 test('HTML draft preview refuses external script sources while inline scripts run', async ({
   page,
 }) => {
   test.setTimeout(120_000);
 
   let externalScriptRequests = 0;
-  const { cspNonce, csrfToken, workspaceUid } =
-    await prepareAuthenticatedDraftPreviewFixture(page);
+  const fixture = await prepareAuthenticatedDraftPreviewFixture(page);
 
   await page.route('**/draft-preview-external-script.js', async (route) => {
     externalScriptRequests += 1;
@@ -1657,36 +1898,17 @@ test('HTML draft preview refuses external script sources while inline scripts ru
       body: "document.getElementById('result').textContent = 'external-ran';",
     });
   });
-  await page.setContent(`
-    <!doctype html>
-    <html>
-      <body>
-        <form data-content-editor data-editor-language="html" data-html-draft-preview-form data-html-draft-preview-capability-endpoint="${draftPreviewCapabilityEndpoint}" data-html-draft-preview-endpoint="${draftPreviewEndpoint}">
-          <input name="_token" type="hidden" value="${csrfToken}">
-          <select name="workspace_uid"><option value="${workspaceUid}" selected>Workspace</option></select>
-          <select name="type"><option value="html_artifact" selected>HTML artifact</option></select>
-          <select name="mode"><option value="html_paste" selected>Paste HTML</option></select>
-          <div data-source-editor-mount></div>
-          <textarea data-editor-textarea>
-            <!doctype html>
+  await page.setContent(
+    authenticatedDraftPreviewDocument(
+      fixture,
+      `<!doctype html>
             <p id="result">starting</p>
             <script>
               document.getElementById('result').textContent = 'inline-ran';
             </script>
-            <script src="${baseUrl}/draft-preview-external-script.js" nonce="${cspNonce}"></script>
-          </textarea>
-          <span data-editor-status></span>
-          <span data-editor-count></span>
-          <section data-html-draft-preview>
-            <button data-html-draft-preview-button type="button">Preview HTML before saving</button>
-            <span data-html-draft-preview-status aria-live="polite"></span>
-            <iframe data-html-draft-preview-frame name="${draftPreviewFrameName}" sandbox="allow-scripts" allow="" referrerpolicy="no-referrer"></iframe>
-          </section>
-        </form>
-        <script nonce="${cspNonce}" type="module" src="${appAsset}"></script>
-      </body>
-    </html>
-  `);
+            <script src="${baseUrl}/draft-preview-external-script.js" nonce="${fixture.cspNonce}"></script>`,
+    ),
+  );
 
   const capabilityResponsePromise = page.waitForResponse(
     (response) => response.url() === draftPreviewCapabilityEndpoint,
@@ -1715,41 +1937,21 @@ test('HTML draft preview renders inline styles like the saved artifact', async (
   // silently dropped the artifact's inline styles. Rendering from the artifact
   // host origin gives the draft the same permissive sandbox CSP as a saved
   // artifact, so inline <style> and style="" attributes apply.
-  const { cspNonce, csrfToken, workspaceUid } =
-    await prepareAuthenticatedDraftPreviewFixture(page);
+  const fixture = await prepareAuthenticatedDraftPreviewFixture(page);
 
-  await page.setContent(`
-    <!doctype html>
-    <html>
-      <body>
-        <form data-content-editor data-editor-language="html" data-html-draft-preview-form data-html-draft-preview-capability-endpoint="${draftPreviewCapabilityEndpoint}" data-html-draft-preview-endpoint="${draftPreviewEndpoint}">
-          <input name="_token" type="hidden" value="${csrfToken}">
-          <select name="workspace_uid"><option value="${workspaceUid}" selected>Workspace</option></select>
-          <select name="type"><option value="html_artifact" selected>HTML artifact</option></select>
-          <select name="mode"><option value="html_paste" selected>Paste HTML</option></select>
-          <div data-source-editor-mount></div>
-          <textarea data-editor-textarea>
-            <!doctype html>
+  await page.setContent(
+    authenticatedDraftPreviewDocument(
+      fixture,
+      `<!doctype html>
             <html>
               <head><style>#styled { background-color: rgb(9, 8, 7); }</style></head>
               <body>
                 <p id="styled">styled by inline stylesheet</p>
                 <p id="attr" style="color: rgb(1, 2, 3);">styled by attribute</p>
               </body>
-            </html>
-          </textarea>
-          <span data-editor-status></span>
-          <span data-editor-count></span>
-          <section data-html-draft-preview>
-            <button data-html-draft-preview-button type="button">Preview HTML before saving</button>
-            <span data-html-draft-preview-status aria-live="polite"></span>
-            <iframe data-html-draft-preview-frame name="${draftPreviewFrameName}" sandbox="allow-scripts" allow="" referrerpolicy="no-referrer"></iframe>
-          </section>
-        </form>
-        <script nonce="${cspNonce}" type="module" src="${appAsset}"></script>
-      </body>
-    </html>
-  `);
+            </html>`,
+    ),
+  );
 
   await page.getByRole('button', { name: 'Preview HTML before saving' }).click();
 

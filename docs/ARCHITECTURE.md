@@ -191,11 +191,19 @@ object-src 'none';
 base-uri 'none';
 form-action 'none';
 frame-src 'none';
+fenced-frame-src 'none';
 child-src 'none';
 worker-src 'none';
 webrtc 'block';
 frame-ancestors <configured app origin>
 ```
+
+Nested browsing contexts are not part of the artifact feature: actual static `iframe`, `frame`,
+`fencedframe`, and `portal` tokens are converted to inert templates before the hostile document is parsed without rewriting matching bytes inside scripts or text controls, while the
+early guard blocks their dynamic creation and common markup-parsing sinks. This layers over CSP
+because browsers do not consistently apply `frame-src 'none'` to inline `srcdoc`/initial
+`about:blank` realms. The guard remains defense in depth rather than an authorization or isolation
+boundary.
 
 Do not add `allow-same-origin`, top navigation, forms, external scripts, outbound connections, public unauthenticated artifact access, or app-session middleware to the artifact surface without a written architecture decision and security tests.
 

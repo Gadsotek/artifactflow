@@ -18,7 +18,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const string DRAFT_URL = '/artifact-previews/draft';
+    private const string DRAFT_PATH = '/artifact-previews/draft';
 
     public function test_unsigned_html_is_rejected_even_when_the_client_spoofs_an_iframe_request(): void
     {
@@ -27,7 +27,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         $this->assertInstanceOf(MockInterface::class, $log);
 
         $this->withHeaders(['Sec-Fetch-Dest' => 'iframe'])
-            ->post(self::DRAFT_URL, [
+            ->post($this->draftUrl(), [
                 'content' => UploadedFile::fake()->createWithContent(
                     'draft.html',
                     '<script>document.title = "public reflector"</script>',
@@ -46,7 +46,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         $capability = $this->issueCapability($content);
 
         $response = $this->withHeaders(['Sec-Fetch-Dest' => 'iframe'])
-            ->post(self::DRAFT_URL, $this->draftPayload($capability, $content));
+            ->post($this->draftUrl(), $this->draftPayload($capability, $content));
 
         $response->assertOk();
 
@@ -60,6 +60,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         $this->assertStringContainsString("object-src 'none'", $csp);
         $this->assertStringContainsString("base-uri 'none'", $csp);
         $this->assertStringContainsString("form-action 'none'", $csp);
+        $this->assertStringContainsString("fenced-frame-src 'none'", $csp);
 
         $this->assertSame('no-store, private', $response->headers->get('Cache-Control'));
         $this->assertSame('nosniff', $response->headers->get('X-Content-Type-Options'));
@@ -75,7 +76,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         $capability = $this->issueCapability('<p>authorized content</p>');
 
         $this->withHeaders(['Sec-Fetch-Dest' => 'iframe'])
-            ->post(self::DRAFT_URL, $this->draftPayload($capability, '<p>attacker replacement</p>'))
+            ->post($this->draftUrl(), $this->draftPayload($capability, '<p>attacker replacement</p>'))
             ->assertNotFound();
     }
 
@@ -86,7 +87,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         config(['app.artifact_url' => 'https://other-artifacts.example.test']);
 
         $this->withHeaders(['Sec-Fetch-Dest' => 'iframe'])
-            ->post(self::DRAFT_URL, $this->draftPayload($capability, $content))
+            ->post($this->draftUrl(), $this->draftPayload($capability, $content))
             ->assertNotFound();
     }
 
@@ -98,7 +99,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         $tampered = substr($capability, 0, -1) . ($lastByte === 'a' ? 'b' : 'a');
 
         $this->withHeaders(['Sec-Fetch-Dest' => 'iframe'])
-            ->post(self::DRAFT_URL, $this->draftPayload($tampered, $content))
+            ->post($this->draftUrl(), $this->draftPayload($tampered, $content))
             ->assertNotFound();
     }
 
@@ -112,7 +113,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
             Carbon::setTestNow(Carbon::now()->addSeconds(61));
 
             $this->withHeaders(['Sec-Fetch-Dest' => 'iframe'])
-                ->post(self::DRAFT_URL, $this->draftPayload($capability, $content))
+                ->post($this->draftUrl(), $this->draftPayload($capability, $content))
                 ->assertNotFound();
         } finally {
             Carbon::setTestNow();
@@ -124,7 +125,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         config(['app.runtime_role' => 'app']);
 
         $this->withHeaders(['Sec-Fetch-Dest' => 'iframe'])
-            ->post(self::DRAFT_URL, $this->draftPayload('not-a-capability', '<p>draft</p>'))
+            ->post($this->draftUrl(), $this->draftPayload('not-a-capability', '<p>draft</p>'))
             ->assertNotFound();
     }
 
@@ -134,7 +135,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         $capability = $this->issueCapability($content);
 
         $response = $this->withHeaders(['Sec-Fetch-Dest' => 'document'])
-            ->post(self::DRAFT_URL, $this->draftPayload($capability, $content));
+            ->post($this->draftUrl(), $this->draftPayload($capability, $content));
 
         $response->assertStatus(403);
         $this->assertStringContainsString(
@@ -154,7 +155,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         ]);
 
         $response = $this->withHeaders(['Sec-Fetch-Dest' => 'document'])
-            ->post(self::DRAFT_URL, $this->draftPayload($capability, $content));
+            ->post($this->draftUrl(), $this->draftPayload($capability, $content));
 
         $response->assertStatus(403);
         $body = (string) $response->getContent();
@@ -174,7 +175,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         ]);
 
         $response = $this->withHeaders(['Sec-Fetch-Dest' => 'document'])
-            ->post(self::DRAFT_URL, $this->draftPayload($capability, $content));
+            ->post($this->draftUrl(), $this->draftPayload($capability, $content));
 
         $response->assertStatus(403);
         $body = (string) $response->getContent();
@@ -187,7 +188,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         $content = '<p>draft</p>';
         $capability = $this->issueCapability($content);
 
-        $this->post(self::DRAFT_URL, $this->draftPayload($capability, $content))
+        $this->post($this->draftUrl(), $this->draftPayload($capability, $content))
             ->assertStatus(403);
     }
 
@@ -197,7 +198,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         $capability = $this->issueCapability($content);
 
         $this->withHeaders(['Sec-Fetch-Dest' => 'iframe'])
-            ->post(self::DRAFT_URL, $this->draftPayload($capability, $content))
+            ->post($this->draftUrl(), $this->draftPayload($capability, $content))
             ->assertStatus(422);
     }
 
@@ -207,7 +208,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         $capability = $this->issueCapability($content);
 
         $response = $this->withHeaders(['Sec-Fetch-Dest' => 'iframe'])
-            ->post(self::DRAFT_URL, $this->draftPayload($capability, $content));
+            ->post($this->draftUrl(), $this->draftPayload($capability, $content));
 
         $response->assertOk();
         $this->assertStringContainsString($content, (string) $response->getContent());
@@ -224,7 +225,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         ]);
 
         $this->withHeaders(['Sec-Fetch-Dest' => 'iframe'])
-            ->post(self::DRAFT_URL, $this->draftPayload($capability, $content))
+            ->post($this->draftUrl(), $this->draftPayload($capability, $content))
             ->assertStatus(422);
     }
 
@@ -251,6 +252,14 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
         config(['app.runtime_role' => 'artifact-host']);
 
         return $capability;
+    }
+
+    private function draftUrl(): string
+    {
+        $artifactUrl = config('app.artifact_url');
+        $this->assertIsString($artifactUrl);
+
+        return rtrim($artifactUrl, '/') . self::DRAFT_PATH;
     }
 
     /**

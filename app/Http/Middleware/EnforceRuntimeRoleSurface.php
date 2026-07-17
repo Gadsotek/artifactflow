@@ -4,13 +4,20 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Application\PageCatalog\ArtifactPreviewUrl;
 use App\Infrastructure\Security\OriginNormalizer;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 final class EnforceRuntimeRoleSurface
 {
+    public function __construct(
+        private readonly ArtifactPreviewUrl $previewUrl,
+    ) {
+    }
+
     /**
      * @param Closure(Request): Response $next
      */
@@ -44,12 +51,18 @@ final class EnforceRuntimeRoleSurface
         // equals the artifact host in the shipped local setup, and it starts no
         // session and returns only "OK".
         //
-        // The mirror direction (artifact runtime answering the app hostname) needs
-        // no check here: the artifact runtime serves only /artifact-previews/*, the
-        // saved-preview controller already refuses any request whose origin is not
-        // the artifact origin, and the draft receiver verifies an artifact-origin-
-        // bound capability before rendering under an opaque sandbox.
         if (!$isArtifactHost && !$request->is('up') && $this->requestTargetsArtifactHost($request)) {
+            abort(404);
+        }
+
+        // The artifact runtime must also fail closed when a reverse proxy routes
+        // an artifact path under any origin other than the configured artifact
+        // origin. A draft capability binds where its bytes are intended to run,
+        // but it cannot make serving those bytes under the app hostname safe.
+        // Enforce the origin here for every artifact route; saved previews repeat
+        // the check in their controller as defense in depth.
+        if ($isArtifactHost && !$this->previewUrl->requestMatchesArtifactOrigin($request)) {
+            $this->logWrongArtifactOrigin($request);
             abort(404);
         }
 
@@ -68,5 +81,18 @@ final class EnforceRuntimeRoleSurface
         }
 
         return OriginNormalizer::tryHost($request->getHost()) === $artifactHost;
+    }
+
+    private function logWrongArtifactOrigin(Request $request): void
+    {
+        $pageUid = $request->route('pageUid');
+        $versionUid = $request->route('versionUid');
+
+        Log::warning('artifact_preview.rejected', [
+            ...(is_string($pageUid) ? ['page_uid' => $pageUid] : []),
+            'reason' => 'wrong_origin',
+            'request_origin' => $request->getSchemeAndHttpHost(),
+            ...(is_string($versionUid) ? ['version_uid' => $versionUid] : []),
+        ]);
     }
 }

@@ -9,9 +9,9 @@ use RuntimeException;
 final class ArtifactPreviewDocumentGuard
 {
     /**
-     * Canonical guard body, shared with the pre-save draft preview
-     * (resources/js/html-draft-preview.js imports the same file with ?raw).
-     * Edit the guard logic there, never inline here.
+     * Canonical guard body injected by the shared sandbox responder into both
+     * saved artifacts and pre-save draft previews. Edit the guard logic there,
+     * never inline here.
      */
     private const string GUARD_SOURCE = 'js/artifact-preview-guard.js';
 
@@ -20,20 +20,41 @@ final class ArtifactPreviewDocumentGuard
      */
     private const array RESOURCE_HINT_RELS = ['dns-prefetch', 'preconnect', 'prefetch', 'prerender'];
 
+    /**
+     * @var list<string>
+     */
+    private const array NESTED_BROWSING_CONTEXT_TAGS = ['iframe', 'frame', 'fencedframe', 'portal'];
+
+    /**
+     * Elements whose contents the HTML tokenizer does not interpret as ordinary
+     * start tags. Scanning their bytes as markup corrupts scripts and user text.
+     *
+     * @var list<string>
+     */
+    private const array RAW_TEXT_TAGS = [
+        'script',
+        'style',
+        'xmp',
+        'iframe',
+        'noembed',
+        'noframes',
+        'textarea',
+        'title',
+    ];
+
     private static ?string $guardBody = null;
 
     /**
      * Best-effort, defense-in-depth hardening layered on top of the real boundary
      * (opaque-origin sandbox iframe + strict CSP with default-src/connect-src
-     * 'none'). The regex meta-refresh / resource-hint stripping below trims
-     * self-navigation and prefetch-exfil noise but is bypassable in principle and
-     * must never be treated as the boundary — do not relax the sandbox or the CSP
-     * on the strength of it.
+     * 'none'). The response-time token-aware neutralization and in-page API patches below
+     * close known browser gaps around nested browsing contexts and trim
+     * self-navigation/prefetch-exfil noise, but must never justify relaxing the
+     * sandbox, origin split, or CSP.
      */
     public function harden(string $html, bool $recoveryEnabled = false): string
     {
-        $html = $this->stripRefreshMetaTags($html);
-        $html = $this->stripResourceHintLinks($html);
+        $html = $this->rewriteDangerousMarkup($html);
         $guard = $this->guardScript($recoveryEnabled);
         $withDoctypeGuard = $this->injectAfterPattern($html, '/^\s*<!doctype\s+html\b[^>]*>/i', $guard);
 
@@ -58,26 +79,246 @@ final class ArtifactPreviewDocumentGuard
         return "<script data-artifactflow-preview-guard{$recoveryAttribute}>\n" . self::$guardBody . "\n</script>";
     }
 
-    private function stripRefreshMetaTags(string $html): string
+    private function rewriteDangerousMarkup(string $html): string
     {
-        $stripped = preg_replace_callback(
-            '~<meta\b(?:"[^"]*"|\'[^\']*\'|[^\'">])*+>~i',
-            fn (array $matches): string => $this->isRefreshMetaTag($matches[0]) ? '' : $matches[0],
-            $html,
-        );
+        $length = strlen($html);
+        $offset = 0;
+        $result = '';
+        $rawTextTag = null;
+        $neutralizedContainers = [];
 
-        return is_string($stripped) ? $stripped : $html;
+        while ($offset < $length) {
+            if ($rawTextTag !== null) {
+                $closingOffset = $this->findRawTextClosingTag($html, $rawTextTag, $offset);
+
+                if ($closingOffset === null) {
+                    return $result . substr($html, $offset);
+                }
+
+                $result .= substr($html, $offset, $closingOffset - $offset);
+                $closingTag = $this->tagAt($html, $closingOffset);
+
+                if ($closingTag === null) {
+                    $result .= '<';
+                    $offset = $closingOffset + 1;
+                    continue;
+                }
+
+                $tagText = substr($html, $closingOffset, $closingTag['end'] - $closingOffset + 1);
+                $result .= in_array($rawTextTag, self::NESTED_BROWSING_CONTEXT_TAGS, true)
+                    ? '</template>'
+                    : $tagText;
+                $offset = $closingTag['end'] + 1;
+                $rawTextTag = null;
+                continue;
+            }
+
+            $tagOffset = strpos($html, '<', $offset);
+
+            if ($tagOffset === false) {
+                return $result . substr($html, $offset);
+            }
+
+            $result .= substr($html, $offset, $tagOffset - $offset);
+
+            if (substr_compare($html, '<!--', $tagOffset, 4) === 0) {
+                $commentEnd = strpos($html, '-->', $tagOffset + 4);
+
+                if ($commentEnd === false) {
+                    return $result . substr($html, $tagOffset);
+                }
+
+                $commentLength = $commentEnd + 3 - $tagOffset;
+                $result .= substr($html, $tagOffset, $commentLength);
+                $offset = $commentEnd + 3;
+                continue;
+            }
+
+            $nextCharacter = $html[$tagOffset + 1] ?? '';
+
+            if ($nextCharacter === '!' || $nextCharacter === '?') {
+                $declarationEnd = $this->tagEnd($html, $tagOffset);
+
+                if ($declarationEnd === null) {
+                    return $result . substr($html, $tagOffset);
+                }
+
+                $result .= substr($html, $tagOffset, $declarationEnd - $tagOffset + 1);
+                $offset = $declarationEnd + 1;
+                continue;
+            }
+
+            $tag = $this->tagAt($html, $tagOffset);
+
+            if ($tag === null) {
+                $result .= '<';
+                $offset = $tagOffset + 1;
+                continue;
+            }
+
+            $tagText = substr($html, $tagOffset, $tag['end'] - $tagOffset + 1);
+            $offset = $tag['end'] + 1;
+
+            if ($tag['closing']) {
+                $openContainer = end($neutralizedContainers);
+
+                if ($openContainer === $tag['name']) {
+                    array_pop($neutralizedContainers);
+                    $result .= '</template>';
+                } else {
+                    $result .= $tagText;
+                }
+
+                continue;
+            }
+
+            if (
+                ($tag['name'] === 'meta' && $this->isRefreshMetaTag($tagText))
+                || ($tag['name'] === 'link' && $this->isResourceHintLink($tagText))
+            ) {
+                continue;
+            }
+
+            if (in_array($tag['name'], self::NESTED_BROWSING_CONTEXT_TAGS, true)) {
+                // Keep attributes and fallback bytes inspectable, but make the
+                // element inert before the browser sees it. A template neither
+                // creates a child realm nor fetches src/srcdoc resources.
+                $result .= $this->neutralizedOpeningTag($html, $tagOffset, $tag);
+
+                if ($tag['name'] === 'frame') {
+                    $result .= '</template>';
+                } elseif ($tag['name'] === 'iframe') {
+                    $rawTextTag = $tag['name'];
+                } else {
+                    $neutralizedContainers[] = $tag['name'];
+                }
+
+                continue;
+            }
+
+            $result .= $tagText;
+
+            if ($tag['name'] === 'plaintext') {
+                return $result . substr($html, $offset);
+            }
+
+            if (in_array($tag['name'], self::RAW_TEXT_TAGS, true)) {
+                $rawTextTag = $tag['name'];
+            }
+        }
+
+        return $result;
     }
 
-    private function stripResourceHintLinks(string $html): string
+    /**
+     * @return array{end: int, name: string, name_end: int, name_start: int, closing: bool}|null
+     */
+    private function tagAt(string $html, int $tagOffset): ?array
     {
-        $stripped = preg_replace_callback(
-            '~<link\b(?:"[^"]*"|\'[^\']*\'|[^\'">])*+>~i',
-            fn (array $matches): string => $this->isResourceHintLink($matches[0]) ? '' : $matches[0],
-            $html,
-        );
+        $length = strlen($html);
+        $cursor = $tagOffset + 1;
+        $closing = ($html[$cursor] ?? '') === '/';
 
-        return is_string($stripped) ? $stripped : $html;
+        if ($closing) {
+            ++$cursor;
+        }
+
+        $nameStart = $cursor;
+
+        while ($cursor < $length) {
+            $character = $html[$cursor];
+
+            if ($this->isAsciiWhitespace($character) || $character === '/' || $character === '>') {
+                break;
+            }
+
+            ++$cursor;
+        }
+
+        if ($cursor === $nameStart || preg_match('/^[A-Za-z]/', $html[$nameStart]) !== 1) {
+            return null;
+        }
+
+        $end = $this->tagEnd($html, $tagOffset);
+
+        if ($end === null) {
+            return null;
+        }
+
+        return [
+            'end' => $end,
+            'name' => strtolower(substr($html, $nameStart, $cursor - $nameStart)),
+            'name_end' => $cursor,
+            'name_start' => $nameStart,
+            'closing' => $closing,
+        ];
+    }
+
+    private function tagEnd(string $html, int $tagOffset): ?int
+    {
+        $length = strlen($html);
+        $quote = null;
+
+        for ($cursor = $tagOffset + 1; $cursor < $length; ++$cursor) {
+            $character = $html[$cursor];
+
+            if ($quote !== null) {
+                if ($character === $quote) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ($character === '"' || $character === "'") {
+                $quote = $character;
+                continue;
+            }
+
+            if ($character === '>') {
+                return $cursor;
+            }
+        }
+
+        return null;
+    }
+
+    private function findRawTextClosingTag(string $html, string $tagName, int $offset): ?int
+    {
+        $needle = '</' . $tagName;
+        $candidate = stripos($html, $needle, $offset);
+
+        while ($candidate !== false) {
+            $boundary = $html[$candidate + strlen($needle)] ?? '';
+
+            if ($boundary === '' || $boundary === '>' || $boundary === '/' || $this->isAsciiWhitespace($boundary)) {
+                return $candidate;
+            }
+
+            $candidate = stripos($html, $needle, $candidate + 2);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array{end: int, name: string, name_end: int, name_start: int, closing: bool} $tag
+     */
+    private function neutralizedOpeningTag(string $html, int $tagOffset, array $tag): string
+    {
+        $beforeName = substr($html, $tagOffset, $tag['name_start'] - $tagOffset);
+        $afterName = substr($html, $tag['name_end'], $tag['end'] - $tag['name_end'] + 1);
+
+        return $beforeName . 'template data-artifactflow-blocked-browsing-context' . $afterName;
+    }
+
+    private function isAsciiWhitespace(string $character): bool
+    {
+        return $character === "\t"
+            || $character === "\n"
+            || $character === "\f"
+            || $character === "\r"
+            || $character === ' ';
     }
 
     private function isRefreshMetaTag(string $tag): bool

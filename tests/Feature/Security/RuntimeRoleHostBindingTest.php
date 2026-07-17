@@ -6,6 +6,7 @@ namespace Tests\Feature\Security;
 
 use App\Application\PageCatalog\ArtifactDraftPreviewCapabilities;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 /**
@@ -106,9 +107,37 @@ final class RuntimeRoleHostBindingTest extends TestCase
 
         $pageUid = str_repeat('A', 26);
         $versionUid = str_repeat('B', 26);
+        Log::shouldReceive('warning')
+            ->once()
+            ->with('artifact_preview.rejected', [
+                'page_uid' => $pageUid,
+                'reason' => 'wrong_origin',
+                'request_origin' => self::APP_ORIGIN,
+                'version_uid' => $versionUid,
+            ]);
 
         $this
             ->get(sprintf('%s/artifact-previews/%s/versions/%s?expires=1&signature=x', self::APP_ORIGIN, $pageUid, $versionUid))
+            ->assertNotFound();
+    }
+
+    public function test_artifact_runtime_refuses_a_valid_draft_preview_on_the_application_hostname(): void
+    {
+        $this->configureOrigins('artifact-host');
+
+        $content = '<p>valid but routed to the wrong host</p>';
+        $capability = app(ArtifactDraftPreviewCapabilities::class)->issue(
+            str_repeat('A', 26),
+            strlen($content),
+            hash('sha256', $content),
+        );
+
+        $this
+            ->withServerVariables(['HTTP_SEC_FETCH_DEST' => 'iframe'])
+            ->post(self::APP_ORIGIN . '/artifact-previews/draft', [
+                'capability' => $capability->token,
+                'content' => UploadedFile::fake()->createWithContent('draft.html', $content),
+            ])
             ->assertNotFound();
     }
 }
