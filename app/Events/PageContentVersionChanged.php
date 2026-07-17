@@ -6,9 +6,10 @@ namespace App\Events;
 
 use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 
-final readonly class PageContentVersionChanged implements ShouldBroadcastNow, ShouldDispatchAfterCommit
+final readonly class PageContentVersionChanged implements ShouldBroadcastNow, ShouldDispatchAfterCommit, ShouldRescue
 {
     public function __construct(
         private string $pageUid,

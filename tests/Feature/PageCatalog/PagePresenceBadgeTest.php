@@ -16,11 +16,16 @@ use App\Events\PageEditingPresenceChanged;
 use App\Models\InstallationSettings;
 use App\Models\User;
 use App\Models\WorkspaceMembership;
+use Illuminate\Broadcasting\BroadcastManager;
+use Illuminate\Contracts\Broadcasting\Broadcaster;
+use Illuminate\Contracts\Broadcasting\Factory as BroadcastFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
+use RuntimeException;
 use Tests\TestCase;
 
 final class PagePresenceBadgeTest extends TestCase
@@ -275,6 +280,47 @@ final class PagePresenceBadgeTest extends TestCase
                     'version_number' => $version->version_number,
                 ],
         );
+    }
+
+    public function test_content_update_stays_successful_when_the_after_commit_broadcast_fails(): void
+    {
+        Storage::fake('artifacts');
+
+        $this->configureLocalReverb();
+        $owner = $this->createUser('Owner User', 'version-notice-failure-owner@example.test');
+        $this->createInstallationSettings(realtimeEnabled: true, updatedByUserUid: $owner->uid);
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Failed Version Notice Team');
+        $page = app(CreatePage::class)->handle($owner, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Failed Version Notice Page',
+            description: null,
+            content: '# Initial',
+        ));
+
+        /** @var Broadcaster&Mockery\MockInterface $failingBroadcaster */
+        $failingBroadcaster = Mockery::mock(Broadcaster::class);
+        /** @var Mockery\Expectation $broadcastExpectation */
+        $broadcastExpectation = $failingBroadcaster->shouldReceive('broadcast');
+        $broadcastExpectation->once();
+        $broadcastExpectation->andThrow(new RuntimeException('Simulated Reverb outage.'));
+
+        $broadcastManager = app(BroadcastFactory::class);
+        $this->assertInstanceOf(BroadcastManager::class, $broadcastManager);
+        $broadcastManager->purge('reverb');
+        $broadcastManager->extend('reverb', fn (): Broadcaster => $failingBroadcaster);
+
+        $version = app(UpdatePageContent::class)->handle($owner, new UpdatePageContentCommand(
+            pageUid: $page->uid,
+            content: '# Realtime delivery failed but save committed',
+            baseVersionUid: $page->current_version_uid,
+        ));
+
+        $this->assertDatabaseHas('page_versions', [
+            'uid' => $version->uid,
+            'page_uid' => $page->uid,
+        ]);
+        $this->assertSame($version->uid, $page->refresh()->current_version_uid);
     }
 
     public function test_presence_client_asset_uses_the_presence_channel_without_mouse_tracking_or_private_fields(): void
