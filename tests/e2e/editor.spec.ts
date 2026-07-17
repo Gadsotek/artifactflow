@@ -1722,6 +1722,10 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
     }
 
     const staticNestedFrame = recursivelyNestedRtc;
+    const rawTextBreakoutFrame =
+      '<iframe></template>' +
+      `<iframe data-breakout-context="raw-text-template-close" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>` +
+      '</iframe>';
     const dynamicNestedFrameBase64 = Buffer.from(recursivelyNestedRtc, 'utf8').toString('base64');
     const fixture = await prepareAuthenticatedDraftPreviewFixture(page);
 
@@ -1731,6 +1735,7 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
         `<!doctype html>
               <p id="nested-result">starting</p>
               ${staticNestedFrame}
+              ${rawTextBreakoutFrame}
               <script>
                 const nestedMarkup = atob('${dynamicNestedFrameBase64}');
                 const dynamicOuter = document.createElement('iframe');

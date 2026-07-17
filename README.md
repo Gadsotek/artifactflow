@@ -14,6 +14,9 @@
 
 ---
 
+> [!WARNING]
+> **Alpha — self‑hosted, evolving, not independently audited.** ArtifactFlow is a 0.x internal‑team tool, not a hardened multi‑tenant SaaS. Its security rests on a **two‑origin split that is mandatory, not optional**: a real deployment needs **two separate HTTPS origins** (the app and the artifact host), and the production boot gate **refuses to start** if that boundary — or any other part of its security contract — is incomplete. Expect breaking changes between alpha revisions; pin a revision for anything you depend on. Read the [threat model](THREAT-MODEL.md) (including its documented residuals) and the [operations guide](docs/OPERATIONS.md) before inviting users.
+
 AI tools now generate dashboards, diagrams, runbooks, and one‑file HTML apps by the dozen. But those artifacts are **untrusted code**: you can't just open them on a page that carries your session cookie. ArtifactFlow is the place to keep them: an internal knowledge base where AI‑generated Markdown and single‑file HTML stay searchable, versioned, and *runnable*, without ever letting untrusted HTML execute on your authenticated origin.
 
 ![ArtifactFlow dashboard](site/assets/app-dashboard.jpg)

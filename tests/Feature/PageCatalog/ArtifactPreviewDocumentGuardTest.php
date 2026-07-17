@@ -116,6 +116,85 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
     }
 
+    public function test_iframe_raw_text_cannot_close_its_neutralizing_template_wrapper(): void
+    {
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><iframe></template>'
+            . '<iframe id="breakout" srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>'
+            . '</iframe><p id="safe-content">Safe artifact content</p>',
+        );
+
+        $this->assertStringNotContainsString(
+            '<template data-artifactflow-blocked-browsing-context></template><iframe id="breakout"',
+            $hardened,
+        );
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context>&lt;/template>'
+            . '&lt;iframe id="breakout" '
+            . 'srcdoc="&amp;lt;script&amp;gt;new RTCPeerConnection()&amp;lt;/script&amp;gt;">'
+            . '</template>',
+            $hardened,
+        );
+        $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+    }
+
+    public function test_unterminated_iframe_raw_text_cannot_close_its_neutralizing_template_wrapper(): void
+    {
+        // Same </template> breakout, but with NO closing </iframe>: the interior
+        // runs to end-of-input and is emitted by the raw-text early-return path,
+        // which must escape it exactly like the terminated path.
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><iframe></template>'
+            . '<iframe id="breakout" srcdoc="&lt;script&gt;window.escaped=1&lt;/script&gt;">',
+        );
+
+        $this->assertStringNotContainsString('<iframe id="breakout"', strtolower($hardened));
+        $this->assertStringNotContainsString(
+            '<template data-artifactflow-blocked-browsing-context></template><iframe',
+            $hardened,
+        );
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context>&lt;/template>'
+            . '&lt;iframe id="breakout" '
+            . 'srcdoc="&amp;lt;script&amp;gt;window.escaped=1&amp;lt;/script&amp;gt;">',
+            $hardened,
+        );
+    }
+
+    public function test_nested_context_inside_svg_title_foreign_content_is_neutralized(): void
+    {
+        // SVG <title> is an HTML integration point: the browser parses its content
+        // as HTML, so a nested <iframe srcdoc> there becomes a live browsing context
+        // even though HTML <title> is RCDATA. The guard must not treat title as raw
+        // text inside SVG/MathML, or the iframe slips through unneutralized.
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><svg><title>'
+            . '<iframe id="svg-title-breakout" srcdoc="&lt;script&gt;window.top.ran=1&lt;/script&gt;"></iframe>'
+            . '</title></svg><p id="safe-content">Safe artifact content</p>',
+        );
+
+        $this->assertStringNotContainsString('<iframe id="svg-title-breakout"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<svg><title><template data-artifactflow-blocked-browsing-context id="svg-title-breakout"',
+            $hardened,
+        );
+        $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+    }
+
+    public function test_raw_text_title_outside_foreign_content_is_still_preserved_verbatim(): void
+    {
+        // Regression guard for the fix above: a plain HTML <title> is RCDATA, so its
+        // literal "<iframe>" text is not markup and must stay byte-exact (not be
+        // rewritten to a template) -- the foreign-content rule must only apply inside
+        // <svg>/<math>.
+        $title = '<title>Docs: the &lt;iframe&gt; element and <iframe> literal</title>';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><html><head>' . $title . '</head><body></body></html>',
+        );
+
+        $this->assertStringContainsString($title, $hardened);
+    }
+
     public function test_nested_context_neutralization_preserves_script_text_textarea_text_and_safe_bytes(): void
     {
         $script = 'if(i<frame.count&&j<portal.count){window.result="<iframe data-literal>";}';
