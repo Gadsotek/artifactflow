@@ -5,7 +5,15 @@ import argparse
 import json
 import sys
 
-from policy import event_name, extract_file_path, load_event, scan_file_write, strongest_finding
+from policy import (
+    Finding,
+    event_name,
+    extract_file_paths,
+    load_event,
+    normalize_tool_name,
+    scan_file_write,
+    strongest_finding,
+)
 
 
 def emit_claude_decision(event: str, reason: str) -> int:
@@ -31,7 +39,28 @@ def main() -> int:
     args = parser.parse_args()
 
     event = load_event()
-    finding = strongest_finding(scan_file_write(extract_file_path(event)))
+    raw_tool_name = event.get("tool_name")
+    tool_name = normalize_tool_name(raw_tool_name) if isinstance(raw_tool_name, str) else ""
+    if tool_name == "functions_exec":
+        finding = Finding(
+            code="composite_tool_execution",
+            action="deny",
+            reason=(
+                "Refusing the functions.exec composite tool because nested operations are not "
+                "reliably visible to project hooks. Use native hook-visible tools instead."
+            ),
+        )
+    else:
+        paths = extract_file_paths(event)
+        findings = [finding for path in paths for finding in scan_file_write(path)]
+        if tool_name == "apply_patch" and not paths:
+            findings.append(Finding(
+                code="unknown_patch_target",
+                action="deny",
+                reason="Refusing an apply_patch operation whose file target cannot be determined.",
+            ))
+        finding = strongest_finding(findings)
+
     if finding is None:
         return 0
 

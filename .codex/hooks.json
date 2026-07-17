@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/ai-hooks/guard_prompt.py\" --agent codex",
+            "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"$(git rev-parse --show-toplevel)/scripts/ai-hooks/guard_prompt.py\" --agent codex || exit 2",
             "timeout": 5,
             "statusMessage": "Scanning prompt for secrets"
           }
@@ -18,20 +18,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/ai-hooks/guard_command.py\" --agent codex",
+            "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"$(git rev-parse --show-toplevel)/scripts/ai-hooks/guard_command.py\" --agent codex || exit 2",
             "timeout": 10,
             "statusMessage": "Checking command safety"
           }
         ]
       },
       {
-        "matcher": "^(Edit|Write|Read|Grep|Glob|apply_patch)$",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/ai-hooks/guard_file_write.py\" --agent codex",
+            "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"$(git rev-parse --show-toplevel)/scripts/ai-hooks/guard_file_write.py\" --agent codex || exit 2",
             "timeout": 10,
-            "statusMessage": "Checking file write safety"
+            "statusMessage": "Checking tool and file safety"
           }
         ]
       }
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/ai-hooks/guard_command.py\" --agent codex --event PermissionRequest",
+            "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"$(git rev-parse --show-toplevel)/scripts/ai-hooks/guard_command.py\" --agent codex --event PermissionRequest || exit 2",
             "timeout": 10,
             "statusMessage": "Checking approval request"
           }

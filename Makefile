@@ -240,6 +240,7 @@ audit-js:
 audit: audit-php audit-js
 
 ai-hooks-test:
+	@command -v python3 >/dev/null 2>&1 || { echo 'ArtifactFlow AI safety hook runner requires python3; refusing to run the gate.' >&2; exit 2; }
 	python3 scripts/ai-hooks/run_harness.py
 
 verify-reverb-origin:
