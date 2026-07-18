@@ -9,7 +9,7 @@ This alpha validates the secure vault, sandboxed artifact preview, organization,
 Set tester expectations explicitly:
 
 - Workspace invitations require the invitee to sign in with the invited email address.
-- Version restore exists, but version diffing is not built yet.
+- Version restore and source diffs against the current version both exist.
 - Account recovery supports self-service reset links and console break-glass paths; operators still need secure mail delivery and 2FA recovery custody.
 
 ## Before Inviting Users
@@ -39,7 +39,6 @@ Set tester expectations explicitly:
 
 ## Fine To Defer Past Alpha
 
-- Version diff UI.
 - Orphan artifact-storage garbage collection.
 - Additional search projection/index work once real data volume exists.
 - Rector and broader automated refactoring gates.

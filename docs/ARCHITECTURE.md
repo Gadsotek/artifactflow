@@ -1,7 +1,7 @@
 # ArtifactFlow Architecture
 
 Status: MVP alpha architecture
-Last updated: 2026-07-08
+Last updated: 2026-07-17
 Primary audience: operators, engineering teams, security reviewers, maintainers, and OSS contributors
 
 > Looking for the diagrams? See the [architecture one-pager](architecture/README.md) (`overview.svg` + `workflows.svg`). **This** document is the full written architecture; that one is just the diagram index.
