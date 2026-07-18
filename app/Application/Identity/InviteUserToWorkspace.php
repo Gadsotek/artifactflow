@@ -136,6 +136,11 @@ final readonly class InviteUserToWorkspace
 
         $previousRole = $invitation->role;
 
+        // Reissue the link secret on a role change too: this path re-sends the
+        // invitation email, and the plaintext token only exists at mint time, so a
+        // fresh secret is what the new email carries. The superseded link stops
+        // resolving, which is the safer outcome anyway.
+        $invitation->issueFreshToken();
         $invitation->forceFill([
             'role' => $role,
             'invited_by_user_uid' => $actorUid,
@@ -206,6 +211,10 @@ final readonly class InviteUserToWorkspace
         $actorUid = ActorId::fromUser($actor);
         $workspaceUid = $workspace->uid;
         $previousRole = $invitation->role;
+        // Rotate the link secret: the previous one belonged to a revoked or expired
+        // invitation and may have leaked, so reactivating must invalidate it. Only the
+        // new secret's hash is stored; the re-queued email below carries the plaintext.
+        $invitation->issueFreshToken();
         $invitation->forceFill([
             'role' => $role,
             'invited_by_user_uid' => $actorUid,
@@ -213,10 +222,6 @@ final readonly class InviteUserToWorkspace
             'accepted_at' => null,
             'revoked_at' => null,
             'expires_at' => $this->newExpiration(),
-            // Rotate the link secret: the previous one belonged to a revoked or expired
-            // invitation and may have leaked, so reactivating must invalidate it. The
-            // re-queued email below carries the new token.
-            'token' => WorkspaceInvitation::freshToken(),
         ])->save();
 
         $event = $this->events->record(
@@ -286,10 +291,19 @@ final readonly class InviteUserToWorkspace
             throw new LogicException('Cannot email a workspace invitation without an application URL.');
         }
 
+        $plainToken = $invitation->plainToken;
+
+        if (!is_string($plainToken) || $plainToken === '') {
+            // The plaintext exists only right after the token is minted. Every path
+            // that emails an invitation mints or reissues it first; a null here means
+            // a caller tried to email a reloaded invitation whose secret is only hashed.
+            throw new LogicException('Cannot email a workspace invitation without a freshly issued link token.');
+        }
+
         // Link to the public token landing so an invited person who has no account
         // yet can finish registration and join. The landing routes existing
         // accounts to sign-in and matching logged-in users to the accept page.
-        return rtrim($appUrl, '/') . route('workspace-invitations.join', ['invitation' => $invitation->token], false);
+        return rtrim($appUrl, '/') . route('workspace-invitations.join', ['invitation' => $plainToken], false);
     }
 
     private function newExpiration(): \Illuminate\Support\Carbon

@@ -358,6 +358,6 @@ final class WorkspaceInvitationMailTest extends TestCase
         $appUrl = config('app.url');
         $this->assertIsString($appUrl);
 
-        return rtrim($appUrl, '/') . route('workspace-invitations.join', ['invitation' => $invitation->token], false);
+        return rtrim($appUrl, '/') . route('workspace-invitations.join', ['invitation' => $invitation->plainToken], false);
     }
 }

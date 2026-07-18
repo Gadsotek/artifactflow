@@ -78,6 +78,44 @@ final class DeploymentDoctorTest extends TestCase
         $this->assertStringContainsString('outside the public web root', $check->detail);
     }
 
+    public function test_production_fails_when_the_cache_store_cannot_persist_rate_limits(): void
+    {
+        foreach (['array', 'null'] as $store) {
+            $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
+                'cache.default' => $store,
+            ]))))->run();
+
+            $check = $this->check($report->checks, 'cache_store');
+
+            $this->assertFalse($report->passed());
+            $this->assertSame(DoctorCheckStatus::Fail, $check->status);
+            $this->assertStringContainsString('does not persist writes', $check->detail);
+        }
+    }
+
+    public function test_local_skips_the_cache_store_check(): void
+    {
+        $report = (new DeploymentDoctor($this->config('local', ['cache.default' => 'array'])))->run();
+
+        $this->assertSame(DoctorCheckStatus::Skipped, $this->check($report->checks, 'cache_store')->status);
+    }
+
+    public function test_production_fails_when_the_limiter_store_alias_is_backed_by_the_array_driver(): void
+    {
+        // cache.limiter selects the store, and its driver is what matters: a custom
+        // alias backed by array defeats throttling even though its name looks bespoke.
+        $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
+            'cache.stores.throttle.driver' => 'array',
+            'cache.limiter' => 'throttle',
+        ]))))->run();
+
+        $check = $this->check($report->checks, 'cache_store');
+
+        $this->assertFalse($report->passed());
+        $this->assertSame(DoctorCheckStatus::Fail, $check->status);
+        $this->assertStringContainsString('does not persist writes', $check->detail);
+    }
+
     public function test_production_warns_but_still_passes_when_trusting_the_immediate_peer(): void
     {
         $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
@@ -391,6 +429,7 @@ final class DeploymentDoctorTest extends TestCase
             'secure_sessions',     // ensureSecureSessions
             'trusted_proxies',     // ensureTrustedProxies
             'artifact_storage',    // artifacts disk private
+            'cache_store',         // ensurePersistentCacheStore
             'bootstrap_passwords', // no persistent bootstrap passwords
             'debug_disabled',      // ensureDebugDisabled
             'dummy_password_hash', // ensureDummyPasswordHashCost
@@ -429,6 +468,7 @@ final class DeploymentDoctorTest extends TestCase
                 'ensureDedicatedSigningKey',
                 'ensureDummyPasswordHashCost',
                 'ensureMailTransportIsDeliverable',
+                'ensurePersistentCacheStore',
                 'ensureReverbConfiguration',
                 'ensureReverbMaxConnectionsBounded',
                 'ensureRuntimeRole',
@@ -536,6 +576,9 @@ final class DeploymentDoctorTest extends TestCase
             'app.bootstrap_admin_password' => '',
             'app.create_user_password' => '',
             'app.reset_user_password' => '',
+            'cache.default' => 'database',
+            'cache.stores.array.driver' => 'array',
+            'cache.stores.database.driver' => 'database',
             'mail.default' => 'smtp',
             'mail.mailers' => [
                 'smtp' => ['transport' => 'smtp'],

@@ -74,7 +74,7 @@ final class WorkspaceInvitationJoinController
         }
 
         if ($request->user() instanceof User) {
-            return redirect()->route('workspace-invitations.join', ['invitation' => $invitation->token]);
+            return redirect()->route('workspace-invitations.join', ['invitation' => $invitation->plainToken]);
         }
 
         $invitedEmail = $invitation->invited_email;
@@ -83,14 +83,14 @@ final class WorkspaceInvitationJoinController
         // exists (or appears mid-flow), the person signs in instead.
         if (User::query()->where('email', $invitedEmail)->exists()) {
             return redirect()
-                ->route('workspace-invitations.join', ['invitation' => $invitation->token])
+                ->route('workspace-invitations.join', ['invitation' => $invitation->plainToken])
                 ->withErrors(['name' => 'An account already exists for this invitation. Please sign in to join.']);
         }
 
         try {
             $registration = $this->registerInvitationUser->handle(new RegisterWorkspaceInvitationUserCommand(
                 invitationUid: $invitation->uid,
-                presentedToken: $invitation->token,
+                presentedToken: (string) $invitation->plainToken,
                 name: $request->name(),
                 password: $request->password(),
             ));

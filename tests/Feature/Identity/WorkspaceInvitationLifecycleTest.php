@@ -220,7 +220,7 @@ final class WorkspaceInvitationLifecycleTest extends TestCase
         $invitee = $this->createUser('Member User', 'member@example.test');
         $workspace = app(CreateSharedWorkspace::class)->handle($admin, 'Platform Team');
         $invitation = $this->invite($admin, $workspace->uid, $invitee->email, WorkspaceRole::Reader);
-        $originalToken = $invitation->token;
+        $originalToken = $invitation->plainToken;
 
         app(RevokeWorkspaceInvitation::class)->handle($admin, new RevokeWorkspaceInvitationCommand(
             workspaceUid: $workspace->uid,
@@ -238,12 +238,17 @@ final class WorkspaceInvitationLifecycleTest extends TestCase
 
         // The revoked link may have leaked. Reactivation must invalidate it: the token is
         // rotated, so the old secret resolves to nothing while the reissued one is live.
-        $this->assertNotSame($originalToken, $reactivated->token);
+        $this->assertNotSame($originalToken, $reactivated->plainToken);
         $this->assertFalse(
-            WorkspaceInvitation::query()->where('token', $originalToken)->exists(),
+            WorkspaceInvitation::query()->where('token_hash', hash('sha256', (string) $originalToken))->exists(),
             'The revoked invitation link token must no longer resolve after reactivation.',
         );
-        $this->assertTrue(WorkspaceInvitation::query()->where('token', $reactivated->token)->whereNull('revoked_at')->exists());
+        $this->assertTrue(
+            WorkspaceInvitation::query()
+                ->where('token_hash', hash('sha256', (string) $reactivated->plainToken))
+                ->whereNull('revoked_at')
+                ->exists(),
+        );
     }
 
     public function test_reinviting_an_expired_invitation_reactivates_it_with_traceability(): void

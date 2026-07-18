@@ -45,6 +45,7 @@ final readonly class DeploymentDoctor
             $this->secureSessionCheck($production),
             $this->trustedProxiesCheck($production),
             $this->artifactStoragePrivateCheck($production),
+            $this->cacheStoreCheck($production),
             $this->noPersistentAdminPasswordCheck($production),
             $this->debugDisabledCheck($production),
             $this->dummyPasswordHashCheck($production),
@@ -54,6 +55,45 @@ final readonly class DeploymentDoctor
         ];
 
         return new DoctorReport($production, $checks);
+    }
+
+    private function cacheStoreCheck(bool $production): DoctorCheck
+    {
+        $limiterStore = $this->string('cache.limiter');
+        $defaultStore = $this->string('cache.default');
+        $store = $limiterStore !== '' ? $limiterStore : $defaultStore;
+        $label = $store === '' ? '(unset)' : $store;
+
+        if (!$production) {
+            return $this->skipped(
+                'cache_store',
+                'Cache store',
+                sprintf("Rate limiter cache store is '%s'; production requires a persistent store so rate limiting is enforced.", $label),
+            );
+        }
+
+        if (!SecurityInvariants::cacheStorePersistsRateLimiting($limiterStore, $defaultStore, $this->cacheStores())) {
+            return $this->fail(
+                'cache_store',
+                'Cache store',
+                sprintf(
+                    "Rate limiter cache store '%s' does not persist writes; point CACHE_STORE (or cache.limiter) at a defined store whose driver is database/redis/file so login, 2FA, and MCP rate limits are enforced.",
+                    $label,
+                ),
+            );
+        }
+
+        return $this->pass('cache_store', 'Cache store', sprintf("Rate limiter cache store is '%s'.", $label));
+    }
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    private function cacheStores(): array
+    {
+        $stores = $this->config->get('cache.stores');
+
+        return is_array($stores) ? $stores : [];
     }
 
     private function mailTransportCheck(bool $production): DoctorCheck

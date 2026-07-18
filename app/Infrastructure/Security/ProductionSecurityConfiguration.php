@@ -58,6 +58,7 @@ final readonly class ProductionSecurityConfiguration
         $this->ensureArtifactFrameAncestors($applicationOrigin);
         $this->ensureReverbConfiguration($applicationOrigin);
         $this->ensureMailTransportIsDeliverable();
+        $this->ensurePersistentCacheStore();
 
         if ($this->string('filesystems.disks.artifacts.visibility') !== 'private') {
             throw new RuntimeException('Artifact storage must be private.');
@@ -348,6 +349,29 @@ final readonly class ProductionSecurityConfiguration
         if (SecurityInvariants::databasePasswordIsPublishedFixture($password)) {
             throw new RuntimeException('Database password must not be a published development default in production.');
         }
+    }
+
+    private function ensurePersistentCacheStore(): void
+    {
+        if (!SecurityInvariants::cacheStorePersistsRateLimiting(
+            $this->string('cache.limiter'),
+            $this->string('cache.default'),
+            $this->cacheStores(),
+        )) {
+            throw new RuntimeException(
+                'Cache store must persist writes in production so rate limiting is enforced. The rate limiter store (cache.limiter or cache.default) must resolve to a defined cache.stores entry whose driver is not array or null.',
+            );
+        }
+    }
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    private function cacheStores(): array
+    {
+        $stores = $this->config->get('cache.stores');
+
+        return is_array($stores) ? $stores : [];
     }
 
     private function ensureMailTransportIsDeliverable(): void

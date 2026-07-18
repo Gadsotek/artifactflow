@@ -107,7 +107,7 @@ final class DomainModelMassAssignmentGuardTest extends TestCase
         ]);
     }
 
-    public function test_workspace_invitation_role_cannot_be_mass_assigned(): void
+    public function test_workspace_invitation_role_and_token_hash_cannot_be_mass_assigned(): void
     {
         $this->expectException(MassAssignmentException::class);
 
@@ -115,6 +115,7 @@ final class DomainModelMassAssignmentGuardTest extends TestCase
             'workspace_uid' => 'workspace-uid',
             'invited_email' => 'new-member@example.test',
             'role' => WorkspaceRole::Admin,
+            'token_hash' => hash('sha256', 'forged-token'),
             'invited_by_user_uid' => 'actor-user-uid',
             'expires_at' => now()->addDay(),
         ]);

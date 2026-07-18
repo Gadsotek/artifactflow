@@ -7,6 +7,7 @@ namespace Tests\Feature\Security;
 use App\Models\McpAccessToken;
 use App\Models\TrustedDevice;
 use App\Models\User;
+use App\Models\WorkspaceInvitation;
 use Tests\TestCase;
 
 /**
@@ -35,6 +36,16 @@ final class SensitiveModelAttributesAreHiddenTest extends TestCase
         $device->forceFill(['token_hash' => hash('sha256', 'device-token')]);
 
         $this->assertArrayNotHasKey('token_hash', $device->toArray());
+    }
+
+    public function test_workspace_invitation_token_hash_is_hidden_from_serialization(): void
+    {
+        $invitation = new WorkspaceInvitation();
+        $invitation->forceFill(['token_hash' => hash('sha256', 'invitation-token')]);
+
+        $this->assertArrayNotHasKey('token_hash', $invitation->toArray());
+        // The plaintext link secret is a transient property, never an attribute.
+        $this->assertArrayNotHasKey('plainToken', $invitation->toArray());
     }
 
     public function test_user_credentials_and_two_factor_material_are_hidden_from_serialization(): void

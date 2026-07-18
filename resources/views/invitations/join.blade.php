@@ -17,7 +17,7 @@
                         to join {{ $workspaceName }} as {{ $roleLabel }}.
                     </p>
 
-                    <form class="space-y-4" method="POST" action="{{ route('workspace-invitations.join.register', ['invitation' => $invitation->token]) }}">
+                    <form class="space-y-4" method="POST" action="{{ route('workspace-invitations.join.register', ['invitation' => $invitation->plainToken]) }}">
                         @csrf
 
                         <div>
