@@ -354,6 +354,64 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->assertUnsafeConfiguration('Artifact storage root must be outside the public web root.');
     }
 
+    public function test_non_persistent_cache_store_is_rejected(): void
+    {
+        // 'array' resolves to the array driver; 'null' and '' resolve to no defined store.
+        foreach (['array', 'null', ''] as $store) {
+            $this->configureSafeProductionValues();
+            config(['cache.default' => $store]);
+
+            $this->assertUnsafeConfiguration(
+                'Cache store must persist writes in production so rate limiting is enforced. The rate limiter store (cache.limiter or cache.default) must resolve to a defined cache.stores entry whose driver is not array or null.',
+            );
+        }
+    }
+
+    public function test_cache_store_backed_by_the_array_driver_is_rejected_behind_a_custom_alias(): void
+    {
+        $this->configureSafeProductionValues();
+        // A persistent-sounding store name whose driver is actually array: the name-only
+        // check would have blessed this, but the throttle counters still evaporate.
+        config([
+            'cache.stores.sneaky' => ['driver' => 'array'],
+            'cache.default' => 'sneaky',
+        ]);
+
+        $this->assertUnsafeConfiguration(
+            'Cache store must persist writes in production so rate limiting is enforced. The rate limiter store (cache.limiter or cache.default) must resolve to a defined cache.stores entry whose driver is not array or null.',
+        );
+    }
+
+    public function test_dedicated_limiter_store_is_validated_over_a_persistent_default(): void
+    {
+        $this->configureSafeProductionValues();
+        // The rate limiters use cache.limiter when set, so a transient limiter store
+        // defeats throttling even though the default store persists.
+        config([
+            'cache.stores.throttle' => ['driver' => 'array'],
+            'cache.default' => 'database',
+            'cache.limiter' => 'throttle',
+        ]);
+
+        $this->assertUnsafeConfiguration(
+            'Cache store must persist writes in production so rate limiting is enforced. The rate limiter store (cache.limiter or cache.default) must resolve to a defined cache.stores entry whose driver is not array or null.',
+        );
+    }
+
+    public function test_persistent_limiter_store_passes_even_when_the_default_store_is_transient(): void
+    {
+        $this->configureSafeProductionValues();
+        // Mirror image: a persistent dedicated limiter store is enough, whatever the default.
+        config([
+            'cache.default' => 'array',
+            'cache.limiter' => 'database',
+        ]);
+
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+
+        $this->addToAssertionCount(1);
+    }
+
     public function test_reverb_secret_is_required_when_reverb_broadcasting_is_enabled(): void
     {
         foreach (['', 'replace-with-reverb-secret', 'short-secret'] as $secret) {
@@ -572,6 +630,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
             'app.bootstrap_admin_password' => null,
             'app.create_user_password' => null,
             'app.reset_user_password' => null,
+            'cache.default' => 'database',
             'mail.default' => 'smtp',
             'broadcasting.default' => 'null',
             'broadcasting.connections.reverb.app_id' => 'artifactflow-smoke-test',

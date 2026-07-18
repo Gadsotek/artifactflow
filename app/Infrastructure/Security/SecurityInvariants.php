@@ -145,6 +145,42 @@ final class SecurityInvariants
     }
 
     /**
+     * Whether the cache store the rate limiters actually use persists writes across
+     * requests. Every limiter (login, 2FA challenge, password reset, MCP, artifact
+     * previews, admin step-up) silently no-ops when its store cannot hold a counter,
+     * a brute-force hole that leaves no error behind. Laravel resolves that store as
+     * `cache.limiter ?? cache.default` and reads its driver from `cache.stores`, so
+     * validate the resolved DRIVER, not the store name: the `array` driver lives only
+     * for the current request and the `null` driver discards writes, and a custom
+     * store alias can be backed by either. A store name that is undefined or carries
+     * no driver is rejected too -- it cannot resolve a working backend.
+     *
+     * @param array<array-key, mixed> $cacheStores
+     */
+    public static function cacheStorePersistsRateLimiting(
+        string $limiterStore,
+        string $defaultStore,
+        array $cacheStores,
+    ): bool {
+        $store = trim($limiterStore) !== '' ? trim($limiterStore) : trim($defaultStore);
+
+        if ($store === '') {
+            return false;
+        }
+
+        $definition = $cacheStores[$store] ?? null;
+
+        if (!is_array($definition)) {
+            return false;
+        }
+
+        $driver = $definition['driver'] ?? null;
+        $normalizedDriver = is_string($driver) ? strtolower(trim($driver)) : '';
+
+        return $normalizedDriver !== '' && $normalizedDriver !== 'array' && $normalizedDriver !== 'null';
+    }
+
+    /**
      * Whether the artifact preview signing key collides with the application
      * key or any retired application key. A shared signing key would let anyone
      * who learns APP_KEY forge preview URLs, so it must be dedicated. Secrets
