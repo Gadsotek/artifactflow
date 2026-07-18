@@ -32,7 +32,7 @@ final readonly class RegisterWorkspaceInvitationUser
             if (
                 !$invitation instanceof WorkspaceInvitation
                 || !$invitation->isPending()
-                || !hash_equals($invitation->token, $command->presentedToken)
+                || !hash_equals($invitation->token_hash, hash('sha256', $command->presentedToken))
             ) {
                 throw new InvitationNoLongerPending();
             }

@@ -27,12 +27,12 @@ final class WorkspaceInvitationJoinTest extends TestCase
         $invitation = $this->invite($admin, $workspace->uid, 'newbie@example.test', WorkspaceRole::Editor);
 
         // The token landing offers registration when the invited email has no account.
-        $this->get("/join/{$invitation->token}")
+        $this->get("/join/{$invitation->plainToken}")
             ->assertOk()
             ->assertSee('Finish setting up your account')
             ->assertSee('newbie@example.test');
 
-        $this->post("/join/{$invitation->token}/register", [
+        $this->post("/join/{$invitation->plainToken}/register", [
             'name' => 'New Bie',
             'password' => 'a-strong-password-123',
             'password_confirmation' => 'a-strong-password-123',
@@ -52,6 +52,27 @@ final class WorkspaceInvitationJoinTest extends TestCase
         $this->assertNotNull($invitation->refresh()->accepted_at);
     }
 
+    public function test_the_emailed_link_secret_is_stored_only_as_a_hash(): void
+    {
+        $admin = $this->createUser('Admin User', 'admin@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($admin, 'Platform Team');
+        $invitation = $this->invite($admin, $workspace->uid, 'newbie@example.test', WorkspaceRole::Editor);
+
+        $stored = DB::table('workspace_invitations')->where('uid', $invitation->uid)->first();
+
+        // Only the SHA-256 of the link secret is persisted; the plaintext column is gone.
+        $this->assertNotNull($stored);
+        $this->assertFalse(property_exists($stored, 'token'), 'The plaintext token column must not exist.');
+        $this->assertSame(hash('sha256', (string) $invitation->plainToken), $stored->token_hash);
+        $this->assertNotSame($invitation->plainToken, $stored->token_hash);
+
+        // The raw secret still resolves the join landing; an unrelated secret does not.
+        $this->get("/join/{$invitation->plainToken}")->assertOk();
+        $this->get('/join/' . WorkspaceInvitation::freshToken())
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors('invitation');
+    }
+
     public function test_landing_sends_an_existing_account_to_sign_in_and_refuses_re_registration(): void
     {
         $admin = $this->createUser('Admin User', 'admin@example.test');
@@ -59,15 +80,15 @@ final class WorkspaceInvitationJoinTest extends TestCase
         $workspace = app(CreateSharedWorkspace::class)->handle($admin, 'Platform Team');
         $invitation = $this->invite($admin, $workspace->uid, 'existing@example.test', WorkspaceRole::Reader);
 
-        $this->get("/join/{$invitation->token}")
+        $this->get("/join/{$invitation->plainToken}")
             ->assertOk()
             ->assertSee('Sign in to join');
 
-        $this->post("/join/{$invitation->token}/register", [
+        $this->post("/join/{$invitation->plainToken}/register", [
             'name' => 'Existing User',
             'password' => 'a-strong-password-123',
             'password_confirmation' => 'a-strong-password-123',
-        ])->assertRedirect(route('workspace-invitations.join', ['invitation' => $invitation->token]));
+        ])->assertRedirect(route('workspace-invitations.join', ['invitation' => $invitation->plainToken]));
 
         $this->assertGuest();
         $this->assertSame(0, WorkspaceMembership::query()
@@ -87,11 +108,11 @@ final class WorkspaceInvitationJoinTest extends TestCase
         $invitation = $this->invite($admin, $workspace->uid, 'newbie@example.test', WorkspaceRole::Reader);
         $invitation->forceFill(['revoked_at' => now()])->save();
 
-        $this->get("/join/{$invitation->token}")
+        $this->get("/join/{$invitation->plainToken}")
             ->assertRedirect(route('login'))
             ->assertSessionHasErrors('invitation');
 
-        $this->post("/join/{$invitation->token}/register", [
+        $this->post("/join/{$invitation->plainToken}/register", [
             'name' => 'New Bie',
             'password' => 'a-strong-password-123',
             'password_confirmation' => 'a-strong-password-123',
@@ -120,8 +141,8 @@ final class WorkspaceInvitationJoinTest extends TestCase
         $workspace = app(CreateSharedWorkspace::class)->handle($admin, 'Platform Team');
         $invitation = $this->invite($admin, $workspace->uid, 'newbie@example.test', WorkspaceRole::Reader);
 
-        $this->from("/join/{$invitation->token}")
-            ->post("/join/{$invitation->token}/register", [
+        $this->from("/join/{$invitation->plainToken}")
+            ->post("/join/{$invitation->plainToken}/register", [
                 'name' => 'New Bie',
                 'password' => 'too-short',
                 'password_confirmation' => 'too-short',
@@ -163,7 +184,7 @@ final class WorkspaceInvitationJoinTest extends TestCase
             DB::table('workspace_invitations')->where('uid', $invitation->uid)->update(['revoked_at' => now()]);
         });
 
-        $this->post("/join/{$invitation->token}/register", [
+        $this->post("/join/{$invitation->plainToken}/register", [
             'name' => 'Racer',
             'password' => 'a-strong-password-123',
             'password_confirmation' => 'a-strong-password-123',
@@ -184,7 +205,10 @@ final class WorkspaceInvitationJoinTest extends TestCase
         $admin = $this->createUser('Admin User', 'admin@example.test');
         $workspace = app(CreateSharedWorkspace::class)->handle($admin, 'Platform Team');
         $invitation = $this->invite($admin, $workspace->uid, 'racer@example.test', WorkspaceRole::Editor);
-        $presentedToken = $invitation->token;
+        $presentedToken = $invitation->plainToken;
+        // The join route binds by the hashed column, so the resolving read carries the
+        // token's hash, not its plaintext.
+        $presentedTokenHash = hash('sha256', (string) $presentedToken);
 
         // Simulate a concurrent revoke-and-reinvite that rotates the invitation token to a
         // fresh value after this request route-bound the presented token but before
@@ -192,7 +216,7 @@ final class WorkspaceInvitationJoinTest extends TestCase
         // presented token. The row stays pending, so only the token binding catches the stale
         // link -- registration must not complete against an invitation it no longer names.
         $rotated = false;
-        DB::listen(function (QueryExecuted $query) use (&$rotated, $presentedToken, $invitation): void {
+        DB::listen(function (QueryExecuted $query) use (&$rotated, $presentedTokenHash, $invitation): void {
             if ($rotated) {
                 return;
             }
@@ -202,14 +226,14 @@ final class WorkspaceInvitationJoinTest extends TestCase
                 return;
             }
 
-            if (!in_array($presentedToken, $query->bindings, true)) {
+            if (!in_array($presentedTokenHash, $query->bindings, true)) {
                 return;
             }
 
             $rotated = true;
             DB::table('workspace_invitations')
                 ->where('uid', $invitation->uid)
-                ->update(['token' => WorkspaceInvitation::freshToken()]);
+                ->update(['token_hash' => hash('sha256', WorkspaceInvitation::freshToken())]);
         });
 
         $this->post("/join/{$presentedToken}/register", [
@@ -236,7 +260,14 @@ final class WorkspaceInvitationJoinTest extends TestCase
         // Reset the acting-as guard so the join flow is exercised as a guest.
         $this->app['auth']->forgetGuards();
 
-        return WorkspaceInvitation::query()->where('invited_email', strtolower($email))->sole();
+        $invitation = WorkspaceInvitation::query()->where('invited_email', strtolower($email))->sole();
+        // The emailed token is hashed at rest, so a reloaded row cannot expose it. Mint a
+        // known link secret here, persisting only its hash exactly as production does, so
+        // the join assertions can drive the real /join/{token} URL.
+        $invitation->issueFreshToken();
+        $invitation->save();
+
+        return $invitation;
     }
 
     private function createUser(string $name, string $email): User
