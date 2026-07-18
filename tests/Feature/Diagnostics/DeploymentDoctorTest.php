@@ -65,6 +65,19 @@ final class DeploymentDoctorTest extends TestCase
         $this->assertTrue($report->passed(), $this->describeFailures($report->checks));
     }
 
+    public function test_production_fails_when_artifact_storage_is_inside_the_public_web_root(): void
+    {
+        $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
+            'filesystems.disks.artifacts.root' => public_path('artifacts'),
+        ]))))->run();
+
+        $check = $this->check($report->checks, 'artifact_storage');
+
+        $this->assertFalse($report->passed());
+        $this->assertSame(DoctorCheckStatus::Fail, $check->status);
+        $this->assertStringContainsString('outside the public web root', $check->detail);
+    }
+
     public function test_production_warns_but_still_passes_when_trusting_the_immediate_peer(): void
     {
         $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
@@ -543,6 +556,7 @@ final class DeploymentDoctorTest extends TestCase
             'session.domain' => '',
             'trustedproxy.raw' => '172.16.0.0/12',
             'filesystems.disks.artifacts.visibility' => 'private',
+            'filesystems.disks.artifacts.root' => storage_path('app/private_artifacts'),
             'app.debug' => true,
             'app.bootstrap_admin_command' => 'php artisan artifactflow:bootstrap-admin',
             'auth.dummy_password_hash' => '',

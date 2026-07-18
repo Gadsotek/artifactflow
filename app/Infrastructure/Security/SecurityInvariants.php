@@ -126,6 +126,25 @@ final class SecurityInvariants
     }
 
     /**
+     * Artifact bytes must never be reachable beneath Laravel's public web root.
+     * Resolve the nearest existing ancestor so symlinked directories are judged
+     * by their physical target while a configured leaf that has not been created
+     * yet is still checked lexically. Invalid or unresolvable paths fail closed.
+     */
+    public static function artifactStorageRootIsOutsidePublicPath(string $artifactRoot, string $publicPath): bool
+    {
+        $resolvedArtifactRoot = self::resolvedFilesystemPath($artifactRoot);
+        $resolvedPublicPath = self::resolvedFilesystemPath($publicPath);
+
+        if ($resolvedArtifactRoot === null || $resolvedPublicPath === null) {
+            return false;
+        }
+
+        return $resolvedArtifactRoot !== $resolvedPublicPath
+            && !str_starts_with($resolvedArtifactRoot, $resolvedPublicPath . DIRECTORY_SEPARATOR);
+    }
+
+    /**
      * Whether the artifact preview signing key collides with the application
      * key or any retired application key. A shared signing key would let anyone
      * who learns APP_KEY forge preview URLs, so it must be dedicated. Secrets
@@ -255,6 +274,45 @@ final class SecurityInvariants
     private static function strippedSessionDomain(string $sessionDomain): string
     {
         return ltrim(trim($sessionDomain), '.');
+    }
+
+    private static function resolvedFilesystemPath(string $path): ?string
+    {
+        $candidate = rtrim(trim($path), DIRECTORY_SEPARATOR);
+
+        if ($candidate === '' || str_contains($candidate, "\0")) {
+            return null;
+        }
+
+        $unresolvedSegments = [];
+        $resolved = realpath($candidate);
+
+        while ($resolved === false) {
+            $parent = dirname($candidate);
+
+            if ($parent === $candidate) {
+                return null;
+            }
+
+            array_unshift($unresolvedSegments, basename($candidate));
+            $candidate = $parent;
+            $resolved = realpath($candidate);
+        }
+
+        foreach ($unresolvedSegments as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+
+            if ($segment === '..') {
+                $resolved = dirname($resolved);
+                continue;
+            }
+
+            $resolved = rtrim($resolved, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $segment;
+        }
+
+        return rtrim($resolved, DIRECTORY_SEPARATOR);
     }
 
     private static function normalizedProxies(string $raw): string

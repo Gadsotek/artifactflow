@@ -61,6 +61,49 @@ final class SecurityInvariantsTest extends TestCase
         $this->assertFalse(SecurityInvariants::postgresRootCertIsConfigured('   '));
     }
 
+    public function test_artifact_storage_root_must_resolve_outside_the_public_web_root(): void
+    {
+        $publicRoot = '/srv/artifactflow/public';
+
+        $this->assertFalse(SecurityInvariants::artifactStorageRootIsOutsidePublicPath(
+            '/srv/artifactflow/public/artifacts',
+            $publicRoot,
+        ));
+        $this->assertFalse(SecurityInvariants::artifactStorageRootIsOutsidePublicPath($publicRoot, $publicRoot));
+        $this->assertTrue(SecurityInvariants::artifactStorageRootIsOutsidePublicPath(
+            '/srv/artifactflow/storage/app/private_artifacts',
+            $publicRoot,
+        ));
+        $this->assertTrue(SecurityInvariants::artifactStorageRootIsOutsidePublicPath(
+            '/srv/artifactflow/public-artifacts',
+            $publicRoot,
+        ));
+    }
+
+    public function test_artifact_storage_root_follows_existing_symlink_ancestors(): void
+    {
+        $fixtureRoot = sys_get_temp_dir() . '/artifactflow-path-' . bin2hex(random_bytes(8));
+        $publicRoot = $fixtureRoot . '/public';
+        $artifactLink = $fixtureRoot . '/artifact-link';
+
+        $this->assertTrue(mkdir($publicRoot, 0o700, true));
+
+        try {
+            $this->assertTrue(symlink($publicRoot, $artifactLink));
+            $this->assertFalse(SecurityInvariants::artifactStorageRootIsOutsidePublicPath(
+                $artifactLink . '/not-created-yet',
+                $publicRoot,
+            ));
+        } finally {
+            if (is_link($artifactLink)) {
+                unlink($artifactLink);
+            }
+
+            rmdir($publicRoot);
+            rmdir($fixtureRoot);
+        }
+    }
+
     public function test_signing_key_reuse_detects_current_and_retired_application_keys(): void
     {
         $signing = str_repeat('s', 32);

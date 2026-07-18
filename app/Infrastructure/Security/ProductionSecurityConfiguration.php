@@ -63,6 +63,13 @@ final readonly class ProductionSecurityConfiguration
             throw new RuntimeException('Artifact storage must be private.');
         }
 
+        if (!SecurityInvariants::artifactStorageRootIsOutsidePublicPath(
+            $this->string('filesystems.disks.artifacts.root'),
+            public_path(),
+        )) {
+            throw new RuntimeException('Artifact storage root must be outside the public web root.');
+        }
+
         if ($this->string('app.bootstrap_admin_command') === '') {
             throw new RuntimeException('System Admin bootstrap path is required.');
         }
