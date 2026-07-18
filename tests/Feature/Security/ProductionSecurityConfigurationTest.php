@@ -346,6 +346,14 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->assertUnsafeConfiguration('Artifact storage must be private.');
     }
 
+    public function test_artifact_storage_inside_the_public_web_root_is_rejected(): void
+    {
+        $this->configureSafeProductionValues();
+        config(['filesystems.disks.artifacts.root' => public_path('artifacts')]);
+
+        $this->assertUnsafeConfiguration('Artifact storage root must be outside the public web root.');
+    }
+
     public function test_reverb_secret_is_required_when_reverb_broadcasting_is_enabled(): void
     {
         foreach (['', 'replace-with-reverb-secret', 'short-secret'] as $secret) {

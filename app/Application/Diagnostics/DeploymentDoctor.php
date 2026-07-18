@@ -624,15 +624,27 @@ final readonly class DeploymentDoctor
     private function artifactStoragePrivateCheck(bool $production): DoctorCheck
     {
         $private = $this->string('filesystems.disks.artifacts.visibility') === 'private';
+        $outsidePublicPath = SecurityInvariants::artifactStorageRootIsOutsidePublicPath(
+            $this->string('filesystems.disks.artifacts.root'),
+            public_path(),
+        );
+
+        if (!$outsidePublicPath) {
+            return $this->fail(
+                'artifact_storage',
+                'Artifact storage',
+                'Set ARTIFACT_STORAGE_ROOT outside the public web root so artifact bytes cannot be served from the application origin.',
+            );
+        }
 
         if (!$production) {
             return $private
-                ? $this->pass('artifact_storage', 'Artifact storage', 'Artifact disk visibility is private.')
+                ? $this->pass('artifact_storage', 'Artifact storage', 'Artifact disk visibility is private. Its root is outside the public web root.')
                 : $this->warn('artifact_storage', 'Artifact storage', 'Artifact disk visibility is not private.');
         }
 
         return $private
-            ? $this->pass('artifact_storage', 'Artifact storage', 'Artifact disk visibility is private.')
+            ? $this->pass('artifact_storage', 'Artifact storage', 'Artifact disk visibility is private. Its root is outside the public web root.')
             : $this->fail('artifact_storage', 'Artifact storage', 'Artifact storage must be private in production.');
     }
 
