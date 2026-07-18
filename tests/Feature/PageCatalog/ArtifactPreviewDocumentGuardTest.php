@@ -116,6 +116,69 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
     }
 
+    public function test_incorrectly_closed_html_comment_cannot_hide_a_nested_browsing_context(): void
+    {
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><!-- --!>'
+            . '<iframe id="comment-end-bang-breakout" srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>'
+            . '<p id="safe-content">Safe artifact content</p>',
+        );
+
+        $this->assertStringContainsString('<!-- --!>', $hardened);
+        $this->assertStringNotContainsString('<iframe id="comment-end-bang-breakout"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="comment-end-bang-breakout"',
+            $hardened,
+        );
+        $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+    }
+
+    public function test_abruptly_closed_empty_html_comments_cannot_hide_nested_browsing_contexts(): void
+    {
+        foreach (['<!-->', '<!--->'] as $comment) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $comment
+                . '<iframe id="abrupt-comment-breakout" srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>'
+                . '<p id="safe-content">Safe artifact content</p>',
+            );
+
+            $this->assertStringContainsString($comment, $hardened);
+            $this->assertStringNotContainsString('<iframe id="abrupt-comment-breakout"', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="abrupt-comment-breakout"',
+                $hardened,
+            );
+            $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+        }
+    }
+
+    public function test_declaration_parser_differentials_cannot_hide_nested_browsing_contexts(): void
+    {
+        $declarationPrefixes = [
+            'bogus-comment-breakout' => '<!x=">',
+            'processing-instruction-breakout' => '<?xml x=">',
+            'abrupt-doctype-breakout' => '<!DOCTYPE html PUBLIC ">',
+            'html-cdata-breakout' => '<![CDATA[">',
+        ];
+
+        foreach ($declarationPrefixes as $iframeId => $declarationPrefix) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $declarationPrefix
+                . '<iframe id="' . $iframeId . '" '
+                . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;">">'
+                . '</iframe><p id="safe-content">Safe artifact content</p>',
+            );
+
+            $this->assertStringContainsString($declarationPrefix, $hardened);
+            $this->assertStringNotContainsString('<iframe id="' . $iframeId . '"', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="' . $iframeId . '"',
+                $hardened,
+            );
+            $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+        }
+    }
+
     public function test_iframe_raw_text_cannot_close_its_neutralizing_template_wrapper(): void
     {
         $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(

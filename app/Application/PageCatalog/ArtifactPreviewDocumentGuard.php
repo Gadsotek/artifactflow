@@ -143,22 +143,22 @@ final class ArtifactPreviewDocumentGuard
             $result .= substr($html, $offset, $tagOffset - $offset);
 
             if (substr_compare($html, '<!--', $tagOffset, 4) === 0) {
-                $commentEnd = strpos($html, '-->', $tagOffset + 4);
+                $commentEnd = $this->htmlCommentEnd($html, $tagOffset);
 
-                if ($commentEnd === false) {
+                if ($commentEnd === null) {
                     return $result . substr($html, $tagOffset);
                 }
 
-                $commentLength = $commentEnd + 3 - $tagOffset;
+                $commentLength = $commentEnd + 1 - $tagOffset;
                 $result .= substr($html, $tagOffset, $commentLength);
-                $offset = $commentEnd + 3;
+                $offset = $commentEnd + 1;
                 continue;
             }
 
             $nextCharacter = $html[$tagOffset + 1] ?? '';
 
             if ($nextCharacter === '!' || $nextCharacter === '?') {
-                $declarationEnd = $this->tagEnd($html, $tagOffset);
+                $declarationEnd = $this->declarationEnd($html, $tagOffset);
 
                 if ($declarationEnd === null) {
                     return $result . substr($html, $tagOffset);
@@ -245,6 +245,145 @@ final class ArtifactPreviewDocumentGuard
         }
 
         return $result;
+    }
+
+    /**
+     * Locate the closing `>` of an HTML comment using the browser tokenizer's
+     * comment states. Searching only for `-->` creates a parser differential:
+     * browsers also emit the comment at `--!>` and abruptly close an empty
+     * comment at `<!-->` or `<!--->`, after which following markup is live.
+     *
+     * The comment bytes stay verbatim; this scanner only determines where the
+     * browser returns to the data state so nested-context rewriting resumes at
+     * the correct offset.
+     */
+    private function htmlCommentEnd(string $html, int $commentOffset): ?int
+    {
+        $length = strlen($html);
+        $cursor = $commentOffset + 4;
+        $state = 'start';
+
+        while ($cursor < $length) {
+            $character = $html[$cursor];
+
+            switch ($state) {
+                case 'start':
+                    if ($character === '-') {
+                        $state = 'start_dash';
+                    } elseif ($character === '>') {
+                        return $cursor;
+                    } else {
+                        $state = 'comment';
+                        continue 2;
+                    }
+                    break;
+
+                case 'start_dash':
+                    if ($character === '-') {
+                        $state = 'end';
+                    } elseif ($character === '>') {
+                        return $cursor;
+                    } else {
+                        $state = 'comment';
+                        continue 2;
+                    }
+                    break;
+
+                case 'comment':
+                    if ($character === '<') {
+                        $state = 'less_than';
+                    } elseif ($character === '-') {
+                        $state = 'end_dash';
+                    }
+                    break;
+
+                case 'less_than':
+                    if ($character === '!') {
+                        $state = 'less_than_bang';
+                    } elseif ($character !== '<') {
+                        $state = 'comment';
+                        continue 2;
+                    }
+                    break;
+
+                case 'less_than_bang':
+                    if ($character === '-') {
+                        $state = 'less_than_bang_dash';
+                    } else {
+                        $state = 'comment';
+                        continue 2;
+                    }
+                    break;
+
+                case 'less_than_bang_dash':
+                    if ($character === '-') {
+                        $state = 'less_than_bang_dash_dash';
+                    } else {
+                        $state = 'end_dash';
+                        continue 2;
+                    }
+                    break;
+
+                case 'less_than_bang_dash_dash':
+                    $state = 'end';
+                    continue 2;
+
+                case 'end_dash':
+                    if ($character === '-') {
+                        $state = 'end';
+                    } else {
+                        $state = 'comment';
+                        continue 2;
+                    }
+                    break;
+
+                case 'end':
+                    if ($character === '>') {
+                        return $cursor;
+                    }
+
+                    if ($character === '!') {
+                        $state = 'end_bang';
+                    } elseif ($character !== '-') {
+                        $state = 'comment';
+                        continue 2;
+                    }
+                    break;
+
+                case 'end_bang':
+                    if ($character === '-') {
+                        $state = 'end_dash';
+                    } elseif ($character === '>') {
+                        return $cursor;
+                    } else {
+                        $state = 'comment';
+                        continue 2;
+                    }
+                    break;
+            }
+
+            ++$cursor;
+        }
+
+        return null;
+    }
+
+    /**
+     * Non-comment markup declarations, processing instructions, and malformed
+     * DOCTYPE identifiers return the browser tokenizer to the data state at the
+     * first `>`. Quotes do not protect that delimiter in those states. Reusing
+     * the quote-aware start-tag scanner here would swallow following live markup
+     * that the browser parses after an earlier `>`.
+     *
+     * In foreign-content CDATA this conservative boundary can resume scanning
+     * before `]]>` and neutralize inert text, but it cannot miss a live nested
+     * browsing context. Real start/end tags continue to use tagEnd().
+     */
+    private function declarationEnd(string $html, int $tagOffset): ?int
+    {
+        $end = strpos($html, '>', $tagOffset + 2);
+
+        return $end === false ? null : $end;
     }
 
     /**

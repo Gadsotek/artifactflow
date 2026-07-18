@@ -1726,6 +1726,20 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
       '<iframe></template>' +
       `<iframe data-breakout-context="raw-text-template-close" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>` +
       '</iframe>';
+    const alternateCommentEndBreakoutFrames =
+      '<!-- --!>' +
+      `<iframe data-breakout-context="comment-end-bang" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>` +
+      '<!-->' +
+      `<iframe data-breakout-context="abrupt-empty-comment" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>`;
+    const declarationBreakoutFrames =
+      '<!x=">' +
+      `<iframe data-breakout-context="bogus-comment" srcdoc="${escapeHtmlAttribute(rtcLeaf)}">"></iframe>` +
+      '<?xml x=">' +
+      `<iframe data-breakout-context="processing-instruction" srcdoc="${escapeHtmlAttribute(rtcLeaf)}">"></iframe>` +
+      '<!DOCTYPE html PUBLIC ">' +
+      `<iframe data-breakout-context="abrupt-doctype" srcdoc="${escapeHtmlAttribute(rtcLeaf)}">"></iframe>` +
+      '<![CDATA[">' +
+      `<iframe data-breakout-context="html-cdata" srcdoc="${escapeHtmlAttribute(rtcLeaf)}">"></iframe>`;
     const dynamicNestedFrameBase64 = Buffer.from(recursivelyNestedRtc, 'utf8').toString('base64');
     const fixture = await prepareAuthenticatedDraftPreviewFixture(page);
 
@@ -1736,6 +1750,8 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
               <p id="nested-result">starting</p>
               ${staticNestedFrame}
               ${rawTextBreakoutFrame}
+              ${alternateCommentEndBreakoutFrames}
+              ${declarationBreakoutFrames}
               <script>
                 const nestedMarkup = atob('${dynamicNestedFrameBase64}');
                 const dynamicOuter = document.createElement('iframe');
