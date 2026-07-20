@@ -81,16 +81,18 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('"tabWidth": 2', $prettierrc);
     }
 
-    public function test_ci_runs_both_coverage_gates_and_required_docs_list_them(): void
+    public function test_ci_avoids_a_redundant_plain_suite_and_required_docs_list_both_coverage_targets(): void
     {
         $workflow = $this->readProjectFile('.github/workflows/ci.yml');
         $agents = $this->readProjectFile('AGENTS.md');
         $readme = $this->readProjectFile('README.md');
 
-        $this->assertStringContainsString('name: Type coverage', $workflow);
-        $this->assertStringContainsString('run: make type-coverage', $workflow);
-        $this->assertStringContainsString('name: Line coverage', $workflow);
-        $this->assertStringContainsString('run: make coverage', $workflow);
+        $this->assertStringContainsString('name: PHP test and coverage gates', $workflow);
+        $this->assertStringContainsString('make type-coverage', $workflow);
+        $this->assertStringContainsString('make coverage', $workflow);
+        $this->assertStringNotContainsString('name: Test suite', $workflow);
+        $this->assertStringNotContainsString('name: Type coverage', $workflow);
+        $this->assertStringNotContainsString('name: Line coverage', $workflow);
 
         $this->assertStringContainsString('make type-coverage', $agents);
         $this->assertStringContainsString('make coverage', $agents);
@@ -211,6 +213,10 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString(
             'export MAIL_MAILER=smtp',
             $this->afterNeedle($makefile, 'verify-reverb-origin:'),
+        );
+        $this->assertStringContainsString(
+            'CACHE_STORE: database',
+            $this->afterNeedle($compose, 'reverb:'),
         );
         $this->assertStringContainsString('$(MAKE) verify-reverb-origin', $makefile);
         $this->assertStringContainsString('healthcheck:', $this->afterNeedle($compose, 'reverb:'));

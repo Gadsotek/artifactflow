@@ -6,11 +6,14 @@ namespace App\Http\Controllers;
 
 use App\Application\Identity\ConfirmTwoFactorEnrollment;
 use App\Application\Identity\DisableTwoFactor;
+use App\Application\Identity\PasswordConfirmationFreshness;
 use App\Application\Identity\RegenerateTwoFactorRecoveryCodes;
 use App\Application\Identity\StartTwoFactorEnrollment;
 use App\Application\Identity\TrustedDeviceManager;
+use App\Application\Identity\TwoFactorEnrollmentFreshness;
 use App\Application\Identity\TwoFactorQrCode;
 use App\Application\Identity\VerifyTwoFactorCode;
+use App\Http\Middleware\RequireRecentPasswordConfirmation;
 use App\Http\Requests\Identity\ConfirmTwoFactorEnrollmentRequest;
 use App\Http\Requests\Identity\ConfirmTwoFactorSecurityActionRequest;
 use App\Models\TrustedDevice;
@@ -28,18 +31,54 @@ final readonly class TwoFactorSettingsController
 
     public function __construct(
         private VerifyTwoFactorCode $verifyTwoFactorCode,
+        private PasswordConfirmationFreshness $passwordConfirmationFreshness,
+        private TwoFactorEnrollmentFreshness $enrollmentFreshness,
     ) {
     }
 
-    public function index(Request $request, TwoFactorQrCode $qrCode): View
+    public function index(Request $request, TwoFactorQrCode $qrCode): View|RedirectResponse
     {
         $user = $this->authenticatedUser($request);
         $recoveryCodes = $request->session()->pull('two_factor_recovery_codes', []);
         $pendingSecret = $this->pendingSecret($user);
+        $passwordConfirmedAt = $request->session()->get(RequireRecentPasswordConfirmation::SESSION_KEY);
+        $enrollmentPasswordIsFresh = $this->passwordConfirmationFreshness
+            ->isFreshForTwoFactorEnrollment($passwordConfirmedAt);
+
+        if ($pendingSecret !== null && !$enrollmentPasswordIsFresh) {
+            return redirect()
+                ->route('settings.password.confirm')
+                ->with('status', 'The enrollment window expired. Confirm your password, then start again for a new QR code.');
+        }
+
+        $enrollmentMustRestart = $pendingSecret !== null && !$this->enrollmentFreshness->isCurrent(
+            $user->two_factor_secret_created_at,
+            $passwordConfirmedAt,
+        );
+        if ($enrollmentMustRestart) {
+            $pendingSecret = null;
+        }
+        $enrollmentPasswordExpiresAt = $user->hasEnabledTwoFactor()
+            ? null
+            : $this->passwordConfirmationFreshness->expiresAtForTwoFactorEnrollment(
+                $request->session()->get(RequireRecentPasswordConfirmation::SESSION_KEY),
+            );
+        $enrollmentPasswordSecondsRemaining = $enrollmentPasswordExpiresAt === null
+            ? null
+            : max(0, $enrollmentPasswordExpiresAt - now()->getTimestamp());
 
         return view('settings.two-factor.index', [
             'user' => $user,
             'pendingSecret' => $pendingSecret,
+            'enrollmentMustRestart' => $enrollmentMustRestart,
+            'enrollmentPasswordExpiresAt' => $enrollmentPasswordExpiresAt,
+            'enrollmentPasswordRemaining' => $enrollmentPasswordSecondsRemaining === null
+                ? null
+                : sprintf(
+                    '%d:%02d',
+                    intdiv($enrollmentPasswordSecondsRemaining, 60),
+                    $enrollmentPasswordSecondsRemaining % 60,
+                ),
             'qrCodeDataUri' => $pendingSecret === null ? null : $qrCode->dataUri($user->email, $pendingSecret),
             'recoveryCodes' => is_array($recoveryCodes) ? array_values(array_filter(
                 $recoveryCodes,
@@ -65,7 +104,11 @@ final readonly class TwoFactorSettingsController
         ConfirmTwoFactorEnrollmentRequest $request,
         ConfirmTwoFactorEnrollment $confirmEnrollment,
     ): RedirectResponse {
-        $codes = $confirmEnrollment->handle($this->authenticatedUser($request), $request->code());
+        $codes = $confirmEnrollment->handle(
+            $this->authenticatedUser($request),
+            $request->code(),
+            $request->session()->get(RequireRecentPasswordConfirmation::SESSION_KEY),
+        );
 
         return redirect()
             ->route('settings.two-factor.index')

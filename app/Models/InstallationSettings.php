@@ -31,6 +31,14 @@ final class InstallationSettings extends Model
     protected $primaryKey = 'uid';
 
     /**
+     * Installation-wide limits and security flags are changed only through
+     * explicit administration use cases.
+     *
+     * @var list<string>
+     */
+    protected $guarded = ['*'];
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

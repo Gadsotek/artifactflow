@@ -22,6 +22,7 @@ use Illuminate\Notifications\Notifiable;
  * @property bool $is_service_account
  * @property ThemePreference $theme_preference
  * @property string|null $two_factor_secret
+ * @property \Illuminate\Support\Carbon|null $two_factor_secret_created_at
  * @property \Illuminate\Support\Carbon|null $two_factor_confirmed_at
  * @property list<string>|null $two_factor_recovery_codes
  * @property int|null $two_factor_last_used_timestep
@@ -61,6 +62,7 @@ final class User extends Authenticatable
         'password',
         'remember_token',
         'two_factor_secret',
+        'two_factor_secret_created_at',
         'two_factor_recovery_codes',
     ];
 
@@ -76,6 +78,7 @@ final class User extends Authenticatable
             'password' => 'hashed',
             'theme_preference' => ThemePreference::class,
             'two_factor_secret' => 'encrypted',
+            'two_factor_secret_created_at' => 'datetime',
             'two_factor_confirmed_at' => 'datetime',
             'two_factor_recovery_codes' => 'array',
             'two_factor_last_used_timestep' => 'integer',

@@ -1,4 +1,5 @@
-const previewReady = 'artifactflow:preview-ready';
+const previewReadyRequest = 'artifactflow:preview-ready-request';
+const previewReadyResponse = 'artifactflow:preview-ready';
 const readySignalGracePeriodMs = 100;
 // A saved artifact runs untrusted script and can self-navigate its own frame in a
 // loop. Each child load that arrives without the ready signal mints one fresh
@@ -19,7 +20,8 @@ function initialiseArtifactPreviewRefresh(wrapper) {
     return;
   }
 
-  let readySignalPending = false;
+  let readyRequestId = 0;
+  let acknowledgedReadyRequestId = 0;
   let refreshInFlight = false;
   let awaitingRecoveryLoad = false;
   let recoveryTimer = 0;
@@ -27,15 +29,20 @@ function initialiseArtifactPreviewRefresh(wrapper) {
   let deferredRecoveryTimer = 0;
 
   window.addEventListener('message', (event) => {
+    const payload = event.data;
+
     if (
       event.origin !== 'null' ||
       event.source !== frame.contentWindow ||
-      event.data !== previewReady
+      typeof payload !== 'object' ||
+      payload === null ||
+      payload.type !== previewReadyResponse ||
+      payload.requestId !== readyRequestId
     ) {
       return;
     }
 
-    readySignalPending = true;
+    acknowledgedReadyRequestId = payload.requestId;
   });
 
   const recoverExpiredPreview = async () => {
@@ -103,9 +110,17 @@ function initialiseArtifactPreviewRefresh(wrapper) {
 
   frame.addEventListener('load', () => {
     window.clearTimeout(recoveryTimer);
+    readyRequestId += 1;
+    acknowledgedReadyRequestId = 0;
+    const currentReadyRequestId = readyRequestId;
+
+    frame.contentWindow?.postMessage(
+      { type: previewReadyRequest, requestId: currentReadyRequestId },
+      '*',
+    );
+
     recoveryTimer = window.setTimeout(() => {
-      if (readySignalPending) {
-        readySignalPending = false;
+      if (acknowledgedReadyRequestId === currentReadyRequestId) {
         awaitingRecoveryLoad = false;
 
         return;

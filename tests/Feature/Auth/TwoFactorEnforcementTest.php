@@ -6,6 +6,7 @@ namespace Tests\Feature\Auth;
 
 use App\Application\Administration\InstallationLimitSettings;
 use App\Application\Identity\CreatePersonalWorkspaceForUser;
+use App\Http\Middleware\RequireRecentPasswordConfirmation;
 use App\Http\Middleware\RequireRecentSystemAdminPasswordConfirmation;
 use App\Models\InstallationSettings;
 use App\Models\User;
@@ -70,6 +71,53 @@ final class TwoFactorEnforcementTest extends TestCase
         $this->actingAs($admin)
             ->post('/logout')
             ->assertRedirect('/');
+    }
+
+    public function test_fresh_password_login_allows_required_admin_enrollment_for_three_minutes(): void
+    {
+        $this->assertSame(180, config('auth.two_factor_enrollment_password_timeout'));
+        $admin = $this->createUser('Fresh System Admin', 'fresh-admin@example.test', isSystemAdmin: true);
+
+        $this->post('/login', [
+            'email' => 'fresh-admin@example.test',
+            'password' => 'correct horse battery staple',
+        ])
+            ->assertRedirect('/dashboard')
+            ->assertSessionHas(RequireRecentPasswordConfirmation::SESSION_KEY);
+
+        $this->get('/dashboard')->assertRedirect('/settings/two-factor');
+        $confirmedAt = session(RequireRecentPasswordConfirmation::SESSION_KEY);
+        $this->assertIsInt($confirmedAt);
+        $this->get('/settings/two-factor')
+            ->assertOk()
+            ->assertSee('Finish setup within 3 minutes')
+            ->assertSee('data-two-factor-enrollment-timer', escape: false)
+            ->assertSee('data-two-factor-enrollment-expired-url="' . route('settings.two-factor.index') . '"', escape: false)
+            ->assertSee('data-two-factor-enrollment-deadline="' . ($confirmedAt + 180) . '"', escape: false);
+
+        $this->post('/settings/two-factor/enroll')
+            ->assertRedirect('/settings/two-factor');
+        $this->assertIsString($admin->refresh()->two_factor_secret);
+        $expiredSecret = (string) $admin->two_factor_secret;
+
+        $this->travel(181)->seconds();
+
+        $this->actingAs($admin->refresh())
+            ->get('/settings/two-factor')
+            ->assertRedirect('/settings/confirm-password');
+        $this->post('/settings/two-factor/confirm', ['code' => '000000'])
+            ->assertRedirect('/settings/confirm-password');
+        $this->assertFalse($admin->refresh()->hasEnabledTwoFactor());
+
+        $this->post('/settings/confirm-password', [
+            'password' => 'correct horse battery staple',
+        ])->assertRedirect('/settings/two-factor');
+
+        $this->get('/settings/two-factor')
+            ->assertOk()
+            ->assertDontSee($expiredSecret)
+            ->assertSee('Start enrollment')
+            ->assertSee('The previous QR code and authenticator key expired');
     }
 
     public function test_org_wide_and_per_user_enforcement_redirect_only_required_users(): void

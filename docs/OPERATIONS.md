@@ -97,7 +97,7 @@ docker compose exec -T -e ARTIFACTFLOW_ADMIN_PASSWORD app \
 unset ARTIFACTFLOW_ADMIN_PASSWORD
 ```
 
-Fresh installs require System Admins to enroll TOTP 2FA by default. A System Admin can require 2FA for all users from the installation settings screen. If an operator loses the only admin's second factor, use the console-only break-glass path:
+Fresh installs require System Admins to enroll TOTP 2FA by default. The password they just used to sign in counts as confirmation for `TWO_FACTOR_ENROLLMENT_PASSWORD_TIMEOUT_SECONDS` (default 180 seconds); the security screen shows the live deadline, and both starting and confirming enrollment must occur inside it. At expiry the browser returns to password confirmation, the pending QR/secret becomes unusable, and restarting enrollment after confirmation generates a fresh one. A System Admin can require 2FA for all users from the installation settings screen. If an operator loses the only admin's second factor, use the console-only break-glass path:
 
 ```sh
 docker compose exec -T app php artisan artifactflow:disable-2fa \
@@ -168,6 +168,8 @@ Files younger than `--min-age-hours` (default 24) are always skipped so the reap
 
 MCP is served only by the app runtime at `POST /mcp`. The artifact-host runtime must return not found for the same path. MCP clients authenticate with bearer tokens issued either from a human user's account settings or from the service-account CLI path. Every tool call still uses the normal workspace/page policies, scanners, optimistic concurrency checks, and audit/domain-event trail.
 
+The app checks its bundled migration-file manifest before MCP authentication. If a deployed release contains an unrecorded migration, MCP returns HTTP 503 with a retryable JSON-RPC `installation_not_ready` error and `Retry-After: 30`; it does not look up or consume the bearer token. Run the approved migration workflow (`make migrate` for this Compose stack), then retry—the same token works once the schema is current. The same check catches a new migration appearing in a long-running, live-mounted process. It cannot detect source or an image that was pulled elsewhere but never started: an old running process knows only the migration manifest in its own deployed release, so deployment automation must still replace every replica and run migrations in the intended order.
+
 Human users create their own MCP tokens from Security -> MCP tokens. Creation requires the account to have TOTP two-factor authentication enabled, then requires the current password and a fresh authenticator code in the create request. The plaintext token is shown once. Token list and revoke are scoped to the signed-in user's own account; revocation does not require the strong create step-up so rotation stays cheap. Workspace scope is an explicit choice: select one or more workspaces to bind the token to that smaller read/write ceiling, or check "All workspaces" to grant every workspace the account can reach now and any it joins in future. An empty selection with "All workspaces" unchecked is rejected, never silently minted as an all-workspaces token.
 
 Per-user token reach follows the user's live workspace memberships and the token's optional workspace scope. A workspace-scoped token cannot discover workspaces or taxonomy, search, read, create, update, or revert anything outside that scope, even if the principal has broader browser access. System Admin is installation/account authority only and never grants workspace or page content access. MCP further de-elevates workspace Admin to Editor, caps Admin page grants to Editor, and removes page-admin capabilities such as manage access, archive, hard delete, change access mode, and transfer ownership.
@@ -213,6 +215,13 @@ Set `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` to tune the pre-authenticated source-IP
 Workspace invitations, password reset links, and other outbound mail default to Laravel's local `log` transport, so a fresh **local** install boots without a third-party mail account (mail is written to the log, not delivered). For real delivery, choose a transport explicitly: set `MAIL_MAILER=resend` with `RESEND_KEY` from your Resend account, or `MAIL_MAILER=smtp` with your SMTP settings, and use a verified sender in `MAIL_FROM_ADDRESS`.
 
 In **production** the `log` and `array` transports are not permitted: they silently discard invitation and password-reset emails, so the boot gate rejects them and the container will not start until `MAIL_MAILER` names a deliverable transport. A deliverable mail transport is therefore a first-boot requirement in production, not an optional add-on, and outbound mail depends on the `worker` role (`queue:work`) actually running — see [Production Runtime](#production-runtime).
+
+Invitation and password-reset links contain bearer secrets in their URL paths. The bundled Caddy
+configuration does not enable access logging, but an external TLS edge, load balancer, APM, or WAF
+may log request paths by default. Configure every such layer to redact `/join/*` and reset-link paths,
+exclude their query strings, and keep browser/session replay data out of telemetry. Hashing invitation
+tokens in PostgreSQL protects a database leak; it cannot protect a plaintext link copied into an
+upstream access log.
 
 Invitation creation is rate-limited with `WORKSPACE_INVITATIONS_PER_MINUTE`; invitation acceptance has its own `WORKSPACE_INVITATION_ACCEPTS_PER_MINUTE` budget because it accepts a UID-bearing link. Invitation revoke/delete remains on the authenticated route budget plus workspace-admin authorization.
 
@@ -291,6 +300,13 @@ HTTP Strict Transport Security is sent on every response with a two-year `max-ag
 
 `TRUSTED_PROXIES` must name the real TLS edge so the app derives the client IP from `X-Forwarded-For` rather than the proxy's own address. Set it to the edge's address(es) or CIDR; the boot gate rejects an empty value, `*`, and address-space-wide ranges (`0.0.0.0/0`, the default Docker `172.16.0.0/12`). The special value `REMOTE_ADDR` trusts whatever connects directly — the immediate peer — as the proxy, which is safe **only** when the app port is reachable exclusively through the edge. If the app is directly reachable by untrusted clients under `REMOTE_ADDR`, any of them can forge `X-Forwarded-For` and defeat the IP-keyed rate limiters and audit trail; `php artisan artifactflow:doctor` emits a warning whenever production trusts `REMOTE_ADDR` so that network-isolation assumption is a deliberate choice.
 
+`CACHE_STORE` (or a dedicated `cache.limiter`) must use a counter backend shared by every app
+replica. The production boot gate accepts database, Redis, Memcached, or DynamoDB drivers and rejects
+`array`, `null`, `file`, undefined, and unknown drivers. The default `database` store is shared and
+requires the migrated cache tables. A node-local file cache is not acceptable even when it persists
+across requests: round-robin traffic would receive an independent login, 2FA, reset, preview, and MCP
+budget on every replica.
+
 Realtime broadcasting is optional and disabled by default. To run it, deploy the Reverb runtime, set `BROADCAST_CONNECTION=reverb`, configure `REVERB_APP_ID`, `REVERB_APP_KEY`, a dedicated `REVERB_APP_SECRET` of at least 32 bytes, set `REVERB_PUBLIC_URL` to the app origin, keep `REVERB_APP_RATE_LIMITING_ENABLED=true`, and set a bounded `REVERB_APP_MAX_CONNECTIONS`. In local Compose, the Reverb service is behind the `realtime` profile and binds to `127.0.0.1:${REVERB_PORT:-8080}`.
 
 Before public release, run `make verify-reverb-origin` once in an environment with Docker and Node available. The target builds the local app image if needed, starts the Reverb runtime with production-shaped configuration, waits for the websocket port to accept connections, and performs two real websocket handshakes: the configured app origin must receive `101 Switching Protocols` plus `pusher:connection_established`, and a foreign origin must upgrade before receiving Pusher error `4009`.
@@ -351,6 +367,13 @@ Rate limits:
 | `TWO_FACTOR_CHALLENGE_RATE_LIMIT_PER_MINUTE` | 5 | 2FA challenge attempts per session |
 | `TWO_FACTOR_CHALLENGE_ACCOUNT_RATE_LIMIT_PER_HOUR` | 30 | 2FA challenge attempts per account |
 | `TWO_FACTOR_CHALLENGE_IP_RATE_LIMIT_PER_MINUTE` | 20 | 2FA challenge attempts per IP |
+
+Authentication freshness:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `TWO_FACTOR_ENROLLMENT_PASSWORD_TIMEOUT_SECONDS` | 180 | Time to start and finish initial 2FA enrollment using the just-validated login password |
+| `AUTH_PASSWORD_TIMEOUT` | 900 | Freshness window after an explicit account password confirmation for other 2FA settings actions |
 
 Content and storage limits:
 
@@ -417,8 +440,9 @@ Nightly audit repeats dependency audits, production image build, and Trivy so ne
 
 ### Manual Safari and iOS security pass
 
-Automated e2e currently runs on Chromium only (cross-engine Firefox and WebKit coverage is
-planned but deferred), so an occasional run in released Safari matters more, not less. Before a
+Automated E2E currently runs on Chromium only; Firefox and WebKit remain deferred because the broader
+suite has known engine-specific instability, so an occasional run in released Safari matters more,
+not less. Before a
 security-sensitive release, and after changing artifact CSP,
 iframe sandbox flags, preview routing, fullscreen behavior, or browser-facing guard code—exercise
 current macOS Safari plus a physical iPhone or iPad Safari. Use a test/staging deployment with real
@@ -433,8 +457,9 @@ Use non-sensitive test content and record the Safari/iOS versions and results:
 2. Mutate one byte, newline style, Unicode normalization, and trailing whitespace after capability
    issuance. Each changed draft must receive the same not-found response; the exact original may
    replay only during its short TTL.
-3. Attempt static and dynamic `iframe`/`frame`/`fencedframe`/`portal`, `<object>`, `<embed>`, SVG
-   `foreignObject`, worker, popup, download, form, and external-network paths. No nested browsing
+3. Attempt static and dynamic `iframe`/`frame`/`fencedframe`/`portal`, legacy
+   `document.execCommand('insertHTML')`, `<object>`, `<embed>`, SVG `foreignObject`, worker, popup,
+   download, form, and external-network paths. No nested browsing
    context, popup/download, form submission, worker, or outbound connection should succeed.
 4. Attempt `requestFullscreen()` and `requestPointerLock()` from artifact code. They must be denied
    or unavailable; on iOS, absence of pointer-lock support is expected. Then use ArtifactFlow's
@@ -444,8 +469,10 @@ Use non-sensitive test content and record the Safari/iOS versions and results:
    Modern Safari should receive the refusal notice rather than rendered artifact code. Also verify
    that a parent-page `<meta>` CSP cannot relax the artifact response's header policy.
 6. Revoke access, archive the page, and move it between workspaces while a preview is open. Reloading
-   the old URL must fail and renewal must require live access; already-rendered bytes remaining on
-   screen are the documented non-revocable browser-delivery residual.
+   the old URL must fail and renewal must require live access. Archive is a lifecycle state rather
+   than access revocation, so a viewer who still has live page access may receive a new revision-bound
+   URL; a revoked viewer may not. Already-rendered bytes remaining on screen are the documented
+   non-revocable browser-delivery residual.
 
 Any divergence is a release blocker until it is reproduced, added to the automated corpus where
 possible, and reflected in `THREAT-MODEL.md`.

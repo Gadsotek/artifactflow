@@ -16,20 +16,19 @@ The alpha keeps the current model:
 
 No nested-workspace schema or effective-membership behavior should be introduced before the first open-source alpha.
 
-## Post-alpha: make the existing page hierarchy visible
+## Alpha: visible page hierarchy
 
-The page model already supports a parent page, but the Library does not make that relationship obvious. A post-alpha navigation pass should expose the existing structure without changing page authorization.
+The page model and current Library expose parent/child relationships without changing page authorization.
 
-Planned experience:
+Current experience:
 
-- show an authorization-filtered content tree for the selected workspace;
-- add parent context or breadcrumbs to page rows and page detail;
-- make child-page counts and expansion state visible;
-- preserve flat search results while showing enough hierarchy context to distinguish similarly named pages;
-- never render an inaccessible ancestor or child title, UID, count, or placeholder;
-- keep moves and parent selection restricted to the same workspace.
+- the Library and Overview show an authorization-filtered content tree for the selected workspace;
+- page rows show visible parent context, and page detail exposes visible parent and child structure;
+- MCP search/read responses include visibility-filtered parent, ancestor-path, depth, and direct-child-count metadata;
+- inaccessible ancestor and child titles, UIDs, counts, and placeholders remain undisclosed;
+- parent selection and workspace moves preserve the same-workspace hierarchy boundary.
 
-This is presentation and navigation work over the existing `parent_page_uid` model. It must not become a second permission system.
+This remains presentation and navigation over the existing `parent_page_uid` model, not a second permission system. Further post-alpha hierarchy work may improve expansion and navigation ergonomics, but must preserve the same authorization rules.
 
 ## Post-alpha: expiring external share links
 

@@ -28,6 +28,14 @@ final class McpAccessToken extends Model
     protected $primaryKey = 'uid';
 
     /**
+     * Token credentials, authority, and workspace scope are issued only by
+     * the dedicated token service.
+     *
+     * @var list<string>
+     */
+    protected $guarded = ['*'];
+
+    /**
      * The SHA-256 token hash is the credential's verification material. It is
      * never needed by any view or API payload, so keep it out of array/JSON
      * serialization to avoid leaking it through an accidental model dump.

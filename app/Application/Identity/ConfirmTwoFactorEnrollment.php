@@ -17,6 +17,7 @@ final readonly class ConfirmTwoFactorEnrollment
 {
     public function __construct(
         private Google2FA $google2fa,
+        private TwoFactorEnrollmentFreshness $enrollmentFreshness,
         private TwoFactorRecoveryCodeGenerator $recoveryCodes,
         private DomainEventRecorder $events,
         private AuditLogger $audit,
@@ -28,14 +29,20 @@ final readonly class ConfirmTwoFactorEnrollment
      *
      * @throws ValidationException
      */
-    public function handle(User $actor, string $code): array
+    public function handle(User $actor, string $code, mixed $passwordConfirmedAt): array
     {
         try {
-            return DB::transaction(function () use ($actor, $code): array {
+            return DB::transaction(function () use ($actor, $code, $passwordConfirmedAt): array {
                 $user = User::query()
                     ->where('uid', $actor->uid)
                     ->lockForUpdate()
                     ->sole();
+
+                if (!$this->enrollmentFreshness->isCurrent($user->two_factor_secret_created_at, $passwordConfirmedAt)) {
+                    throw ValidationException::withMessages([
+                        'code' => 'The enrollment window expired. Confirm your password and start enrollment again.',
+                    ]);
+                }
 
                 $secret = $user->two_factor_secret;
                 if (!is_string($secret) || $secret === '') {
@@ -60,6 +67,7 @@ final readonly class ConfirmTwoFactorEnrollment
                 $plainRecoveryCodes = $this->recoveryCodes->generatePlainCodes();
                 $user->forceFill([
                     'two_factor_confirmed_at' => now(),
+                    'two_factor_secret_created_at' => null,
                     'two_factor_recovery_codes' => $this->recoveryCodes->hashCodes($plainRecoveryCodes),
                     'two_factor_last_used_timestep' => $timestamp,
                 ])->save();

@@ -26,6 +26,14 @@ final class TrustedDevice extends Model
     protected $primaryKey = 'uid';
 
     /**
+     * Device ownership and verification material are issued only by the
+     * trusted-device service.
+     *
+     * @var list<string>
+     */
+    protected $guarded = ['*'];
+
+    /**
      * @var list<string>
      */
     protected $hidden = [

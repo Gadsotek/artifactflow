@@ -33,10 +33,10 @@ first; its "contributor don'ts" are not optional.
 
 ## Required quality gates
 
-**`make quality-full` is the authoritative merge-ready check** — it runs every gate CI enforces
-(style, static analysis, semgrep, tests, type/line coverage, audits, asset + production builds,
-image scan, e2e). Run it before opening a PR. The full gate list lives in
-[`AGENTS.md`](AGENTS.md) ("Required Gates").
+**`make quality-full` is the authoritative aggregate for the Make-backed gates** — style, static
+analysis, semgrep scanning, tests, type/line coverage, audits, asset + production builds, image
+scan, and e2e. CI additionally requires the Rector dry run and Semgrep rule-fixture test listed in
+[`AGENTS.md`](AGENTS.md) ("Required Gates"); run those separate commands too before opening a PR.
 
 While iterating, the individual gates you'll reach for most:
 

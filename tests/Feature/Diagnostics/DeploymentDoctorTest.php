@@ -78,9 +78,9 @@ final class DeploymentDoctorTest extends TestCase
         $this->assertStringContainsString('outside the public web root', $check->detail);
     }
 
-    public function test_production_fails_when_the_cache_store_cannot_persist_rate_limits(): void
+    public function test_production_fails_when_the_cache_store_cannot_share_rate_limits(): void
     {
-        foreach (['array', 'null'] as $store) {
+        foreach (['array', 'null', 'file'] as $store) {
             $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
                 'cache.default' => $store,
             ]))))->run();
@@ -89,7 +89,7 @@ final class DeploymentDoctorTest extends TestCase
 
             $this->assertFalse($report->passed());
             $this->assertSame(DoctorCheckStatus::Fail, $check->status);
-            $this->assertStringContainsString('does not persist writes', $check->detail);
+            $this->assertStringContainsString('does not provide shared counters', $check->detail);
         }
     }
 
@@ -113,7 +113,7 @@ final class DeploymentDoctorTest extends TestCase
 
         $this->assertFalse($report->passed());
         $this->assertSame(DoctorCheckStatus::Fail, $check->status);
-        $this->assertStringContainsString('does not persist writes', $check->detail);
+        $this->assertStringContainsString('does not provide shared counters', $check->detail);
     }
 
     public function test_production_warns_but_still_passes_when_trusting_the_immediate_peer(): void
@@ -429,7 +429,7 @@ final class DeploymentDoctorTest extends TestCase
             'secure_sessions',     // ensureSecureSessions
             'trusted_proxies',     // ensureTrustedProxies
             'artifact_storage',    // artifacts disk private
-            'cache_store',         // ensurePersistentCacheStore
+            'cache_store',         // ensureSharedRateLimiterCacheStore
             'bootstrap_passwords', // no persistent bootstrap passwords
             'debug_disabled',      // ensureDebugDisabled
             'dummy_password_hash', // ensureDummyPasswordHashCost
@@ -468,12 +468,12 @@ final class DeploymentDoctorTest extends TestCase
                 'ensureDedicatedSigningKey',
                 'ensureDummyPasswordHashCost',
                 'ensureMailTransportIsDeliverable',
-                'ensurePersistentCacheStore',
                 'ensureReverbConfiguration',
                 'ensureReverbMaxConnectionsBounded',
                 'ensureRuntimeRole',
                 'ensureSecureSessions',
                 'ensureSessionDomainDoesNotCoverArtifactHost',
+                'ensureSharedRateLimiterCacheStore',
                 'ensureTrustedProxies',
             ],
             $ensureMethods,

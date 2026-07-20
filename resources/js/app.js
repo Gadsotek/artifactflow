@@ -36,6 +36,14 @@ if (document.querySelector('[data-copy-page-link]')) {
   void import('./copy-page-link');
 }
 
+if (document.querySelector('[data-two-factor-challenge]')) {
+  void import('./two-factor-challenge');
+}
+
+if (document.querySelector('[data-two-factor-enrollment-timer]')) {
+  void import('./two-factor-enrollment-timer');
+}
+
 if (document.querySelector('[data-realtime-enabled="true"][data-realtime-config]')) {
   void import('./realtime').then(() => {
     if (document.querySelector('[data-page-presence]')) {

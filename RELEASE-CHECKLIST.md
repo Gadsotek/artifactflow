@@ -17,6 +17,8 @@ Set tester expectations explicitly:
 - Confirm the authenticated app origin and artifact origin both resolve over HTTPS in the target environment.
 - Confirm the two origins are distinct and match `APP_URL`, `ARTIFACT_URL`, `ARTIFACT_FRAME_ANCESTORS`, and `REVERB_ALLOWED_ORIGINS`.
 - Set `TRUSTED_PROXIES` to the actual TLS-terminating edge or reverse-proxy addresses. Do not trust forwarded headers from arbitrary clients.
+- Use a database, Redis, Memcached, or DynamoDB rate-limiter cache shared by every app replica; never use the node-local `file` driver in production.
+- Redact `/join/*`, password-reset paths, signed preview query strings, cookies, and authorization headers from edge, load-balancer, WAF, and APM logs.
 - Set `DB_SSLMODE=verify-full` for PostgreSQL and set `DB_SSLROOTCERT` to the mounted database CA or trusted CA bundle.
 - Set `SESSION_SECURE_COOKIE=true` in production.
 - Set `SESSION_ENCRYPT=true` in production.
@@ -35,10 +37,9 @@ Set tester expectations explicitly:
 
 - Push only `main` and release tags, or publish from a fresh clone. Never use `git push --mirror` or a GitHub repository import against a working repository: AI-agent tooling stores checkpoint refs (for example `refs/codex/turn-diffs/...`) whose trees can contain snapshots of private working files that were never committed to `main`.
 - Verify no agent checkpoint refs remain: `git for-each-ref refs/codex refs/claude` must print nothing. Delete leftovers with `git update-ref -d <ref>`, then prune with `git reflog expire --expire=now --all && git gc --prune=now`.
+- Update `CHANGELOG.md` with a dated, versioned section for the release, then tag the release commit (`vMAJOR.MINOR.PATCH`) so the changelog and tags stay in lockstep.
 - Run `make publish-guard`.
 
 ## Fine To Defer Past Alpha
 
-- Orphan artifact-storage garbage collection.
 - Additional search projection/index work once real data volume exists.
-- Rector and broader automated refactoring gates.

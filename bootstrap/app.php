@@ -8,6 +8,7 @@ use App\Http\Middleware\EnforceRuntimeRoleSurface;
 use App\Http\Middleware\EnforceTwoFactorEnrollment;
 use App\Http\Middleware\RefreshScopedServicesForHttpRequest;
 use App\Http\Middleware\RejectArtifactHostRuntime;
+use App\Http\Middleware\RequireCompletedInstallation;
 use App\Http\Middleware\ThrottleMcpRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -67,6 +68,10 @@ return Application::configure(basePath: dirname(__DIR__))
                 | Request::HEADER_X_FORWARDED_PORT
                 | Request::HEADER_X_FORWARDED_PROTO,
         );
+        // Role/host enforcement must remain first so the artifact origin never
+        // exposes app setup state. Installation readiness then runs before
+        // Laravel's database-backed StartSession middleware.
+        $middleware->prependToGroup('web', RequireCompletedInstallation::class);
         $middleware->prependToGroup('web', EnforceRuntimeRoleSurface::class);
         $middleware->appendToGroup('web', AddSecurityHeaders::class);
         $middleware->prependToPriorityList(
@@ -83,6 +88,7 @@ return Application::configure(basePath: dirname(__DIR__))
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontFlash(['code', 'recovery_code']);
         $exceptions->respond(static function (Response $response, Throwable $exception, Request $request): Response {
             return app(AddSecurityHeaders::class)->apply($request, $response);
         });

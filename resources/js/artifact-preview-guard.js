@@ -7,9 +7,26 @@
     ? window.parent
     : null;
   const noop = () => {};
-  const reportPreviewReady = () => {
+  const previewReadyRequest = 'artifactflow:preview-ready-request';
+  const previewReadyResponse = 'artifactflow:preview-ready';
+  const respondToPreviewReadyRequest = (event) => {
+    const payload = event.data;
+
+    if (
+      event.source !== recoveryTarget ||
+      typeof payload !== 'object' ||
+      payload === null ||
+      payload.type !== previewReadyRequest ||
+      !Number.isSafeInteger(payload.requestId)
+    ) {
+      return;
+    }
+
     try {
-      recoveryTarget?.postMessage('artifactflow:preview-ready', '*');
+      recoveryTarget?.postMessage(
+        { type: previewReadyResponse, requestId: payload.requestId },
+        '*',
+      );
     } catch {
       // The parent browsing context may already be gone.
     }
@@ -280,6 +297,28 @@
     defineValue(processor.prototype, 'transformToDocument', blockedConstructor);
     defineValue(window, 'XSLTProcessor', blockedConstructor);
   };
+  const blockLegacyMarkupInsertion = () => {
+    const nativeExecCommand = Document.prototype.execCommand;
+
+    if (typeof nativeExecCommand !== 'function') {
+      return;
+    }
+
+    defineValue(Document.prototype, 'execCommand', function execCommand(command, ...args) {
+      const normalizedCommand = `${command}`.trim().toLowerCase();
+
+      // insertHTML enters the HTML parser without passing through innerHTML,
+      // insertAdjacentHTML, Range, or the other synchronous sinks above. A
+      // MutationObserver can remove the resulting iframe only on the next
+      // microtask, which is too late to make creation timing-independent across
+      // engines. Other legacy editing commands remain available to artifacts.
+      if (normalizedCommand === 'inserthtml') {
+        return false;
+      }
+
+      return Reflect.apply(nativeExecCommand, this, [command, ...args]);
+    });
+  };
   const blockNestedBrowsingContextCreation = () => {
     defineValue(Document.prototype, 'createElement', function createElement(name, options) {
       const normalizedName = `${name}`;
@@ -329,6 +368,7 @@
     defineValue(Document.prototype, 'writeln', noop);
     hardenMarkupMethod(Document, 'parseHTMLUnsafe');
     hardenNodeInsertionSinks();
+    blockLegacyMarkupInsertion();
     blockXSLTMaterialization();
   };
   const blockNavigationEvent = (event) => {
@@ -469,12 +509,13 @@
   // the artifact origin). This matches how every other escape vector is stubbed. Note
   // `window.location` itself is non-configurable, so `location.href = ...` cannot be
   // intercepted here; assign()/replace() are the interceptable cross-origin nav methods,
-  // and unload is cancelled. A script still cannot reach app storage or the network.
+  // and unload is cancelled. A script still cannot reach app storage or ordinary
+  // connection APIs; location-based navigation remains the documented residual.
   defineValue(window.location, 'assign', noop);
   defineValue(window.location, 'replace', noop);
 
   if (recoveryTarget !== null) {
-    window.addEventListener('load', reportPreviewReady, { capture: true, once: true });
+    window.addEventListener('message', respondToPreviewReadyRequest, true);
   }
   window.addEventListener(
     'beforeunload',

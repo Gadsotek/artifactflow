@@ -123,6 +123,29 @@ function authenticatedDraftPreviewDocument(
   `;
 }
 
+async function openAuthenticatedDraftPreview(page: Page): Promise<void> {
+  await expect(page.locator('[data-html-draft-preview-form]')).toHaveAttribute(
+    'data-html-draft-preview-ready',
+    'true',
+  );
+
+  const capabilityResponsePromise = page.waitForResponse(
+    (response) => response.url() === draftPreviewCapabilityEndpoint,
+  );
+  const draftResponsePromise = page.waitForResponse(
+    (response) => response.url() === draftPreviewEndpoint,
+  );
+
+  await page.getByRole('button', { name: 'Preview HTML before saving' }).click();
+
+  const [capabilityResponse, draftResponse] = await Promise.all([
+    capabilityResponsePromise,
+    draftResponsePromise,
+  ]);
+  expect(capabilityResponse.status()).toBe(200);
+  expect(draftResponse.status()).toBe(200);
+}
+
 async function loadAppOriginCspNonce(page: Page): Promise<string> {
   const response = await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
   const csp = response?.headers()['content-security-policy'] ?? '';
@@ -1315,6 +1338,9 @@ test('workspace tabs and dashboard dialogs progressively disclose administration
     </html>
   `);
 
+  await expect(
+    page.getByRole('button', { name: 'Create workspace' }),
+  ).toHaveAttribute('data-editor-dialog-trigger-ready', '');
   await page.getByRole('button', { name: 'Create workspace' }).click();
   await expect(page.getByText('Create shared workspace')).toBeVisible();
   await page.getByRole('button', { name: 'Close workspace form' }).click();
@@ -1663,7 +1689,7 @@ test('HTML draft preview executes only inside an opaque no-network sandbox', asy
   await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
   await expect(frame).toHaveAttribute('allow', '');
   await expect(frame).not.toHaveAttribute('sandbox', /allow-same-origin/u);
-  await page.getByRole('button', { name: 'Preview HTML before saving' }).click();
+  await openAuthenticatedDraftPreview(page);
 
   // The draft renders from the artifact host origin (form POST into the iframe),
   // never inline via srcdoc/blob/data on the app origin.
@@ -1873,6 +1899,19 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
                   unsafeHtmlHost.setHTMLUnsafe(nestedMarkup);
                 }
 
+                const execCommandHost = document.createElement('div');
+                execCommandHost.contentEditable = 'true';
+                execCommandHost.textContent = 'selection';
+                document.body.append(execCommandHost);
+                const execCommandSelection = getSelection();
+                const execCommandRange = document.createRange();
+                execCommandRange.selectNodeContents(execCommandHost);
+                execCommandSelection.removeAllRanges();
+                execCommandSelection.addRange(execCommandRange);
+                document.execCommand('insertHTML', false, nestedMarkup);
+                const execCommandNestedContextBlocked =
+                  execCommandHost.querySelector('iframe, frame, fencedframe, portal') === null;
+
                 setTimeout(() => {
                   const nestedContextCount =
                     detachedNestedContextCount +
@@ -1883,6 +1922,7 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
                     prefixedNamespaceBlocked &&
                     objectCoercionBlocked &&
                     surroundContentsBlocked &&
+                    execCommandNestedContextBlocked &&
                     xsltState !== 'xslt-enabled'
                       ? 'nested-contexts-blocked'
                       : 'nested-contexts-present';
@@ -1891,7 +1931,7 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
       ),
     );
 
-    await page.getByRole('button', { name: 'Preview HTML before saving' }).click();
+    await openAuthenticatedDraftPreview(page);
     const preview = page.frameLocator('[data-html-draft-preview-frame]');
     await expect(preview.locator('#nested-result')).toHaveText('nested-contexts-blocked', {
       timeout: 20_000,
@@ -1931,15 +1971,7 @@ test('HTML draft preview refuses external script sources while inline scripts ru
     ),
   );
 
-  const capabilityResponsePromise = page.waitForResponse(
-    (response) => response.url() === draftPreviewCapabilityEndpoint,
-  );
-  const draftResponsePromise = page.waitForResponse(
-    (response) => response.url() === draftPreviewEndpoint,
-  );
-  await page.getByRole('button', { name: 'Preview HTML before saving' }).click();
-  await expect((await capabilityResponsePromise).status()).toBe(200);
-  await expect((await draftResponsePromise).status()).toBe(200);
+  await openAuthenticatedDraftPreview(page);
 
   await expect(page.frameLocator('[data-html-draft-preview-frame]').locator('#result')).toHaveText(
     'inline-ran',
@@ -1974,7 +2006,7 @@ test('HTML draft preview renders inline styles like the saved artifact', async (
     ),
   );
 
-  await page.getByRole('button', { name: 'Preview HTML before saving' }).click();
+  await openAuthenticatedDraftPreview(page);
 
   const styledByStylesheet = page
     .frameLocator('[data-html-draft-preview-frame]')

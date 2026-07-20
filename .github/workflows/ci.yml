@@ -158,6 +158,9 @@ jobs:
       - name: ECS
         run: make ecs
 
+      - name: Rector (dry-run)
+        run: make run-app-cmd APP_CMD='composer rector'
+
       - name: Larastan max
         run: make stan
 
@@ -167,7 +170,9 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Semgrep
-        run: make semgrep
+        run: |
+          semgrep --test --config .semgrep/artifactflow.yml .semgrep/artifactflow.php --metrics=off
+          make semgrep
 
       - name: Composer audit
         run: make audit-php
@@ -177,14 +182,10 @@ jobs:
           node scripts/verify-dompurify.mjs
           npm audit --audit-level=moderate
 
-      - name: Test suite
-        run: make test
-
-      - name: Type coverage
-        run: make type-coverage
-
-      - name: Line coverage
-        run: make coverage
+      - name: PHP test and coverage gates
+        run: |
+          make type-coverage
+          make coverage
 
       - name: Build frontend assets
         run: npm run build
@@ -269,16 +270,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          missing=0
-          for sha in $(git rev-list --no-merges "$BASE_SHA".."$HEAD_SHA"); do
-            if ! git log -1 --format=%B "$sha" | grep -qiE '^Signed-off-by: .+ <.+@.+>$'; then
-              echo "Commit $sha is missing a Signed-off-by trailer; use 'git commit -s' (see CONTRIBUTING.md)." >&2
-              missing=1
-            fi
-          done
-          exit "$missing"
+        run: sh scripts/validate-dco.sh "$BASE_SHA" "$HEAD_SHA"
 
   ci-required:
     runs-on: ubuntu-latest

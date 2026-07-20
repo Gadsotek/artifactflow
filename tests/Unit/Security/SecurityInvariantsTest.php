@@ -104,7 +104,7 @@ final class SecurityInvariantsTest extends TestCase
         }
     }
 
-    public function test_rate_limiter_cache_store_must_resolve_to_a_persistent_driver(): void
+    public function test_rate_limiter_cache_store_must_resolve_to_a_shared_driver(): void
     {
         $stores = [
             'array' => ['driver' => 'array'],
@@ -117,24 +117,24 @@ final class SecurityInvariantsTest extends TestCase
         ];
 
         // With no dedicated limiter store, the default store's driver decides.
-        $this->assertTrue(SecurityInvariants::cacheStorePersistsRateLimiting('', 'database', $stores));
-        $this->assertTrue(SecurityInvariants::cacheStorePersistsRateLimiting('', 'redis', $stores));
-        $this->assertTrue(SecurityInvariants::cacheStorePersistsRateLimiting('', 'file', $stores));
+        $this->assertTrue(SecurityInvariants::cacheStoreSharesRateLimiting('', 'database', $stores));
+        $this->assertTrue(SecurityInvariants::cacheStoreSharesRateLimiting('', 'redis', $stores));
+        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'file', $stores));
 
         // A dedicated limiter store overrides the default in both directions.
-        $this->assertTrue(SecurityInvariants::cacheStorePersistsRateLimiting('database', 'array', $stores));
-        $this->assertFalse(SecurityInvariants::cacheStorePersistsRateLimiting('array', 'database', $stores));
+        $this->assertTrue(SecurityInvariants::cacheStoreSharesRateLimiting('database', 'array', $stores));
+        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('array', 'database', $stores));
 
         // The array/null drivers never persist -- not even behind a custom alias.
-        $this->assertFalse(SecurityInvariants::cacheStorePersistsRateLimiting('', 'array', $stores));
-        $this->assertFalse(SecurityInvariants::cacheStorePersistsRateLimiting('', 'nullable', $stores));
-        $this->assertFalse(SecurityInvariants::cacheStorePersistsRateLimiting('', 'aliased_array', $stores));
+        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'array', $stores));
+        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'nullable', $stores));
+        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'aliased_array', $stores));
 
         // An undefined store, a driverless store, and an empty selection cannot resolve a backend.
-        $this->assertFalse(SecurityInvariants::cacheStorePersistsRateLimiting('', 'undefined', $stores));
-        $this->assertFalse(SecurityInvariants::cacheStorePersistsRateLimiting('', 'driverless', $stores));
-        $this->assertFalse(SecurityInvariants::cacheStorePersistsRateLimiting('', '', $stores));
-        $this->assertFalse(SecurityInvariants::cacheStorePersistsRateLimiting('', 'database', []));
+        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'undefined', $stores));
+        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'driverless', $stores));
+        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', '', $stores));
+        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'database', []));
     }
 
     public function test_signing_key_reuse_detects_current_and_retired_application_keys(): void

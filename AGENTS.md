@@ -37,6 +37,7 @@ Before feature work, read this file and `README.md`.
 - Never run Laravel/Pest/PHPUnit tests directly from the running app container or host with commands such as `php artisan test`, `./vendor/bin/pest`, `./vendor/bin/phpunit`, `docker compose exec app php artisan test`, or `make run-app-cmd APP_CMD='php artisan test ...'`. These commands can inherit the local app database and destroy local data.
 - Always run PHP tests through the repository wrapper: `make test` for the full suite, or `make test TEST_FILTER=Name` for focused tests. The wrapper creates an isolated temporary database, injects the testing environment, and drops only that temporary database.
 - Always run browser tests through `make e2e`. The wrapper creates an isolated temporary database, starts dedicated `e2e-app` and `e2e-artifact-host` services on separate ports, runs migrations, routes Playwright setup commands to that isolated app, and drops the temporary database afterwards. Do not run Playwright against the normal local dev app unless you intentionally want to mutate the dev database and have explicit approval.
+- Automated browser coverage is Chromium-only. Do not add Firefox or WebKit projects until their known suite instability is deliberately resolved; keep the documented manual Safari/iOS security pass for browser-engine coverage in the meantime.
 - If you ever realize a test, migration, seed, reset, or database command may have touched the local development database unexpectedly, stop immediately, tell the user exactly what happened, and do not run further database-writing commands without explicit approval.
 
 ## Code Style
@@ -72,6 +73,9 @@ Security is the first design constraint, not a final review step.
 - Registered human coworker names, emails, and UIDs are intentionally installation-wide discoverable metadata, not authorization secrets. Keep service accounts out of human pickers and enforce page/workspace authority independently whenever an identifier is submitted.
 - Validate input at the boundary and enforce authorization in application behavior, not only in UI state.
 - Keep dependency, image, and secret-risk gates green.
+- Preserve the pre-session installation-readiness boundary on every app-origin browser and MCP route. A missing or pending migration must fail closed before database sessions or MCP bearer-token lookup; browser requests receive the secured setup page, MCP receives a retryable JSON-RPC 503, `/up` remains session-free, and the artifact origin must not disclose setup state. Cache readiness only for the exact migration-file manifest so a newly deployed migration invalidates success immediately; `make migrate` restores an existing installation, while `make install` is the guided first-time path.
+- Preserve the first-admin 2FA enrollment contract: the just-validated login password grants only the configured short enrollment window, both starting and confirming must occur inside it, expiry invalidates the pending secret/QR, and recovery-code login stays behind an explicit alternate-mode control.
+- Nested artifact browsing contexts remain prohibited across static markup and dynamic DOM APIs, including legacy `document.execCommand('insertHTML')`. Keep server hardening, the early browser guard, advisory scanning, and PHP/browser attack fixtures aligned when this boundary changes.
 
 ## Required Gates
 
@@ -83,6 +87,8 @@ make publish-guard
 make ai-hooks-test
 make ecs
 make stan
+make run-app-cmd APP_CMD='composer rector'
+semgrep --test --config .semgrep/artifactflow.yml .semgrep/artifactflow.php --metrics=off
 make semgrep
 make test
 make type-coverage
@@ -94,7 +100,8 @@ make build-prod
 make scan-image
 ```
 
-`make quality-full` is the authoritative aggregate: it runs every gate above except `make compose-config` (plus `make verify-reverb-origin`). Run `make compose-config` as well when Docker or environment files change.
+`make quality-full` is the authoritative aggregate for the Make-backed gates above: it runs all of them except `make compose-config` (plus `make verify-reverb-origin`). The Rector dry run and Semgrep rule-fixture test currently run as separate required commands and as explicit CI steps. Run `make compose-config` as well when Docker or environment files change.
+`.semgrep/artifactflow.php` is the positive/negative fixture corpus for the custom rules in `.semgrep/artifactflow.yml`. Whenever a custom rule changes, update its fixtures and run the exact `semgrep --test` command above; do not weaken or remove fixture expectations merely to make the gate pass. The corpus intentionally contains synthetic secret-like and unsafe examples for detection tests—never treat them as production credentials or copy them into runtime code, logs, or general documentation.
 `make publish-guard` verifies that publishable docs are visible to Git while private handoff, task, and audit materials stay ignored.
 `make type-coverage` enforces 100% type coverage through Pest. `make coverage` enforces the committed `COVERAGE_MIN` line coverage floor through PCOV in the dev/test image.
 

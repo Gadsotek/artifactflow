@@ -119,16 +119,15 @@ CMD ["sh", "/var/www/html/docker/start-local.sh"]
 
 FROM dunglas/frankenphp:1-php8.5-alpine@sha256:070d9a37e02bf65c3cb14793218a8375f06839b0af6a5ccc6ab94379bbbf0517 AS production
 
-# The base image is pinned by digest for a reproducible build graph, which also
-# freezes its OS packages at whatever the digest shipped. Rather than a blanket
-# `apk upgrade` (which reintroduces unpinned drift and is rejected by the release
-# reproducibility gate), patch the specific packages Trivy flags -- targeted and
-# version-pinned -- so the image carries no known-vulnerable package while the
-# rest of the graph stays frozen to the digest. A CVE baked into the base by a
-# non-apk artifact (e.g. the bundled FrankenPHP Go binary) can only be cleared by
-# bumping the digest: this pin was bumped from d0833e14 to patch the Go stdlib
-# CVE-2026-39822 (os.Root symlink traversal), unfixable via apk. Current apk pin:
-# c-ares CVE-2026-33630, fixed in 1.34.8-r0.
+# The base image is pinned by digest, which freezes the OS packages it shipped.
+# Rather than a blanket `apk upgrade`, patch only packages Trivy flags. The
+# minimum-version constraint below intentionally permits a later patched Alpine
+# revision, so this layer is not byte-for-byte reproducible from the base digest
+# alone; the release image digest, SBOM, and provenance identify the exact output.
+# A CVE baked into a non-apk artifact (for example the bundled FrankenPHP Go
+# binary) can only be cleared by bumping the base digest. That digest was bumped
+# from d0833e14 to patch Go CVE-2026-39822 (os.Root symlink traversal). Current
+# minimum: c-ares CVE-2026-33630 is fixed in 1.34.8-r0.
 RUN apk add --no-cache "c-ares>=1.34.8-r0"
 
 RUN install-php-extensions \

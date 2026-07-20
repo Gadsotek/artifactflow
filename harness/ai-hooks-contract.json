@@ -1,0 +1,28 @@
+{
+  "contract_version": 1,
+  "canonical_project": "artifactflow",
+  "project_substitutions": {
+    "slug": "artifactflow",
+    "focused_test": "PageCreationHttpTest"
+  },
+  "shared_files": {
+    "scripts/ai-hooks/guard_command.py": "77077c0cdb4534967c4777a864767c00997ea42e9b80af015bbba3c3f0e6173c",
+    "scripts/ai-hooks/guard_file_write.py": "dce7940626b83d14f359fc13a6b0e123a80fd45900396bca7a9173e551945774",
+    "scripts/ai-hooks/guard_prompt.py": "02c63866cd932311f213bb690e4994e9258b637055e1c23fea6b054c98cfcb91",
+    "scripts/ai-hooks/policy.py": "dbeecc3e8034d61734adc303aea0d9dfd0537e44660b4de56634106aad9b9e76"
+  },
+  "normalized_files": {
+    "scripts/ai-hooks/README.md": {
+      "sha256": "22b32555f1e1a25b954bea16280335555657d8f0d0c67c53b9c0f4865abfe205",
+      "substitutions": [
+        "slug"
+      ]
+    },
+    "scripts/ai-hooks/run_harness.py": {
+      "sha256": "63de02365ee9b13b9c61d7eebb32845f37d25344efc440f7498cb4e2cb292b2c",
+      "substitutions": [
+        "focused_test"
+      ]
+    }
+  }
+}

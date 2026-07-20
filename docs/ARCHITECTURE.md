@@ -225,7 +225,7 @@ Search inputs are untrusted. The search layer uses bounded parsing and PostgreSQ
 
 Tags are a single installation-wide vocabulary keyed by slug. Categories remain workspace-scoped because a workspace acts as the top-level project boundary; cross-workspace category filters therefore display `Category — Workspace`, while a single-workspace filter uses the category name alone. Members may discover all categories in their reachable workspaces, while page-only grants reveal only the category and global tags attached to pages the actor may actually view; private-only tag labels and unrelated foreign-workspace categories remain hidden. A workspace move preserves global tag relations and translates the page category by slug, reusing the target category or creating it transactionally when it does not exist.
 
-**Search-vector maintenance (design note).** The `pages.search_vector` `tsvector` is maintained by the application (`PageSearchVectorUpdater`), not by a database trigger or generated column, and it stores a *denormalized* copy of some related labels — the page's owner name, workspace name, and category name — alongside the page's own fields. Every code path that changes an indexed input refreshes the vector explicitly (create, content append, metadata update, workspace move, status change, and — for the denormalized labels — workspace-settings update and member removal). This is safe today because the current model has **no** rename path for the denormalized entities: users and categories are effectively create-only. The consequence to keep in mind: **if a future feature lets a user or category be renamed, that path must also refresh every affected page's `search_vector`**, or search results will silently reflect the stale label until the page is next re-indexed. A database trigger or a `GENERATED` column would remove this obligation entirely and is the natural upgrade if the denormalized set grows or gains rename paths. Uses the `simple` text-search configuration (no stemming/stopwords) for predictable, language-agnostic matching.
+**Search-vector maintenance (design note).** The `pages.search_vector` `tsvector` is maintained by the application (`PageSearchVectorUpdater`), not by a database trigger or generated column, and it stores a *denormalized* copy of some related labels — the page's owner name, workspace name, and category name — alongside the page's own fields. Every code path that changes an indexed input refreshes the vector explicitly (create, content append, metadata update, workspace move, status change, and — for the denormalized labels — workspace-settings update and member removal). Workspace rename is an existing denormalized-label path and refreshes every affected page after the rename transaction commits. Users and categories currently have no rename path and are effectively create-only. The consequence to keep in mind: **if a future feature lets a user or category be renamed, that path must also refresh every affected page's `search_vector`**, or search results will silently reflect the stale label until the page is next re-indexed. A database trigger or a `GENERATED` column would remove this obligation entirely and is the natural upgrade if the denormalized set grows or gains more rename paths. Uses the `simple` text-search configuration (no stemming/stopwords) for predictable, language-agnostic matching.
 
 ## Events And Audit
 
@@ -278,6 +278,7 @@ Production boot rejects unsafe deployments, including:
 - missing System Admin bootstrap path;
 - artifact frame ancestors that do not match the configured app origin;
 - a non-deliverable mail transport (`log`/`array`), which would silently drop invitation and password-reset mail;
+- a node-local, transient, undefined, or unknown rate-limiter cache driver; production counters must use a shared database, Redis, Memcached, or DynamoDB store;
 - an empty, wildcard, or address-space-wide `TRUSTED_PROXIES` value;
 - Reverb production mode without client-event rate limiting or a bounded connection limit.
 
@@ -291,6 +292,8 @@ make publish-guard
 make ai-hooks-test
 make ecs
 make stan
+make run-app-cmd APP_CMD='composer rector'
+semgrep --test --config .semgrep/artifactflow.yml .semgrep/artifactflow.php --metrics=off
 make semgrep
 make test
 make type-coverage
@@ -303,7 +306,7 @@ make scan-image
 git diff --check
 ```
 
-`make quality-full` is the authoritative aggregate for the `make` targets above: it runs all of them except `make compose-config` and also runs `make verify-reverb-origin`. The separate `git diff --check` pre-commit check is not part of that aggregate. Run `make compose-config` when Docker or environment files change, run `git diff --check` before committing, and keep `make ai-hooks-test` green whenever the AI guardrail files change.
+`make quality-full` is the authoritative aggregate for the `make` targets above: it runs all of them except `make compose-config` and also runs `make verify-reverb-origin`. The Rector dry run, Semgrep rule-fixture test, and `git diff --check` are separate required checks. Run `make compose-config` when Docker or environment files change, run the separate checks before committing, and keep `make ai-hooks-test` green whenever the AI guardrail files change.
 
 ## Later Surfaces
 

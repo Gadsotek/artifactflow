@@ -30,11 +30,12 @@ final class TwoFactorAuthenticationTest extends TestCase
 
     private const string SECRET = 'JBSWY3DPEHPK3PXP';
 
-    public function test_account_password_confirmation_uses_its_own_timeout(): void
+    public function test_two_factor_enrollment_password_confirmation_uses_its_own_timeout(): void
     {
         config([
             'auth.password_timeout' => 60,
             'auth.admin_password_timeout' => 900,
+            'auth.two_factor_enrollment_password_timeout' => 60,
         ]);
 
         $user = $this->createUser('Account Step Up User', 'account-step-up@example.test');
@@ -65,6 +66,27 @@ final class TwoFactorAuthenticationTest extends TestCase
             ->assertOk()
             ->assertSee('Remember this device for 7 days')
             ->assertDontSee('Remember this device for 30 days');
+    }
+
+    public function test_two_factor_challenge_hides_recovery_code_behind_an_explicit_mode_switch(): void
+    {
+        $user = $this->createUser('Recovery Mode User', 'recovery-mode@example.test');
+        $this->enableTwoFactor($user);
+
+        $this->post('/login', [
+            'email' => 'recovery-mode@example.test',
+            'password' => 'correct horse battery staple',
+        ])->assertRedirect('/login/two-factor-challenge');
+
+        $this->get('/login/two-factor-challenge')
+            ->assertOk()
+            ->assertSee('data-two-factor-challenge', escape: false)
+            ->assertSee('data-two-factor-recovery-panel hidden', escape: false)
+            ->assertSee('data-two-factor-recovery-input', escape: false)
+            ->assertSee('class="af-auth-mode-toggle"', escape: false)
+            ->assertSee('Use a recovery code', escape: false)
+            ->assertSee('<noscript>', escape: false)
+            ->assertSee('aria-expanded="false"', escape: false);
     }
 
     public function test_two_factor_password_step_never_creates_an_authenticated_half_session(): void
@@ -154,7 +176,9 @@ final class TwoFactorAuthenticationTest extends TestCase
 
         $this->post('/login/two-factor-challenge', [
             'recovery_code' => 'ABCD2-EFGH3',
-        ])->assertSessionHasErrors('code');
+        ])
+            ->assertSessionHasErrors('code')
+            ->assertSessionMissing('_old_input.recovery_code');
 
         $this->assertGuest();
     }
@@ -180,6 +204,7 @@ final class TwoFactorAuthenticationTest extends TestCase
         $user->refresh();
         $this->assertFalse($user->hasEnabledTwoFactor());
         $this->assertIsString($user->two_factor_secret);
+        $this->assertNotNull($user->two_factor_secret_created_at);
         $this->assertNotSame(
             $user->two_factor_secret,
             DB::table('users')->where('uid', $user->uid)->value('two_factor_secret'),
@@ -218,7 +243,7 @@ final class TwoFactorAuthenticationTest extends TestCase
         ));
     }
 
-    public function test_confirming_enrollment_requires_recent_password_confirmation(): void
+    public function test_expired_enrollment_requires_password_confirmation_and_a_fresh_secret(): void
     {
         $user = $this->createUser('Confirm Step Up User', 'confirm-step-up@example.test');
 
@@ -230,8 +255,9 @@ final class TwoFactorAuthenticationTest extends TestCase
         $user->refresh();
         $secret = (string) $user->two_factor_secret;
 
-        $this->withSession([RequireRecentPasswordConfirmation::SESSION_KEY => now()->subHour()->getTimestamp()])
-            ->post('/settings/two-factor/confirm', [
+        $this->travel(181)->seconds();
+
+        $this->post('/settings/two-factor/confirm', [
                 'code' => $this->currentOtp($secret),
             ])->assertRedirect('/settings/confirm-password');
         $this->assertFalse($user->refresh()->hasEnabledTwoFactor());
@@ -241,8 +267,23 @@ final class TwoFactorAuthenticationTest extends TestCase
         ])->assertRedirect('/settings/two-factor')
             ->assertSessionHas('status', 'Password confirmed.');
 
+        $this->get('/settings/two-factor')
+            ->assertOk()
+            ->assertDontSee($secret)
+            ->assertSee('Start enrollment');
+
         $this->post('/settings/two-factor/confirm', [
             'code' => $this->currentOtp($secret),
+        ])->assertSessionHasErrors('code');
+
+        $this->post('/settings/two-factor/enroll')
+            ->assertRedirect('/settings/two-factor');
+
+        $refreshedSecret = (string) $user->refresh()->two_factor_secret;
+        $this->assertNotSame($secret, $refreshedSecret);
+
+        $this->post('/settings/two-factor/confirm', [
+            'code' => $this->currentOtp($refreshedSecret),
         ])->assertRedirect('/settings/two-factor')
             ->assertSessionHas('status', 'Two-factor authentication enabled.');
 
