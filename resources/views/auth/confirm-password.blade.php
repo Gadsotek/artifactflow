@@ -9,6 +9,12 @@
         </header>
 
         <main class="mx-auto max-w-xl px-6 py-8">
+            @if (session('status'))
+                <div class="af-callout mb-5">
+                    {{ session('status') }}
+                </div>
+            @endif
+
             <form class="space-y-5 border-y border-zinc-200 py-6 dark:border-zinc-800" method="POST" action="{{ route('settings.password.confirm.store') }}">
                 @csrf
 

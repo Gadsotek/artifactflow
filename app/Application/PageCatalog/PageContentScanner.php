@@ -135,6 +135,13 @@ final class PageContentScanner
             ContentScanRule::pattern(ContentFindingSeverity::Warning, 'web_socket', 'WebSocket usage was found.', '/\bWebSocket\s*\(/i'),
             ContentScanRule::pattern(ContentFindingSeverity::Warning, 'eval', 'Dynamic code execution using eval() was found.', '/\beval\s*\(/i'),
             ContentScanRule::pattern(ContentFindingSeverity::Warning, 'new_function', 'Dynamic code execution using new Function() was found.', '/\bnew\s+Function\s*\(/i'),
+            ContentScanRule::pattern(
+                ContentFindingSeverity::Warning,
+                'exec_command_insert_html',
+                'Legacy HTML insertion through document.execCommand() was found.',
+                '/\bdocument\s*\.\s*execCommand\s*\(\s*["\']insertHTML["\']/i',
+                PageType::HtmlArtifact,
+            ),
         ];
     }
 

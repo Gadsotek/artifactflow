@@ -27,10 +27,28 @@ final class AddSecurityHeaders
             $this->startCspNonce();
         }
 
-        return $this->apply($request, $next($request));
+        $response = $next($request);
+
+        return $request->is('up')
+            ? $this->applyWithoutDatabaseConfiguration($request, $response)
+            : $this->apply($request, $response);
     }
 
     public function apply(Request $request, Response $response): Response
+    {
+        return $this->applyResponse($request, $response, includeDatabaseConfiguration: true);
+    }
+
+    /**
+     * Apply the app policy without resolving settings stored in the database.
+     * This is required for responses intentionally served before migrations.
+     */
+    public function applyWithoutDatabaseConfiguration(Request $request, Response $response): Response
+    {
+        return $this->applyResponse($request, $response, includeDatabaseConfiguration: false);
+    }
+
+    private function applyResponse(Request $request, Response $response, bool $includeDatabaseConfiguration): Response
     {
         if ($this->isArtifactHostRuntime()) {
             if (!$request->is('artifact-previews/*') || !$response->headers->has('Content-Security-Policy')) {
@@ -52,7 +70,10 @@ final class AddSecurityHeaders
 
         $this->ensureCspNonce();
         $response->headers->set('X-Frame-Options', 'DENY');
-        $response->headers->set('Content-Security-Policy', $this->contentSecurityPolicy());
+        $response->headers->set(
+            'Content-Security-Policy',
+            $this->contentSecurityPolicy($includeDatabaseConfiguration),
+        );
         $response->headers->set('Strict-Transport-Security', $this->strictTransportSecurity());
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
         $response->headers->set('Referrer-Policy', 'no-referrer');
@@ -68,7 +89,7 @@ final class AddSecurityHeaders
         return $response;
     }
 
-    private function contentSecurityPolicy(): string
+    private function contentSecurityPolicy(bool $includeDatabaseConfiguration): string
     {
         return implode('; ', [
             "default-src 'self'",
@@ -76,7 +97,7 @@ final class AddSecurityHeaders
             'style-src ' . implode(' ', $this->styleSources()),
             "img-src 'self' data: blob:",
             "font-src 'self' data:",
-            'connect-src ' . implode(' ', $this->connectSources()),
+            'connect-src ' . implode(' ', $this->connectSources($includeDatabaseConfiguration)),
             "object-src 'none'",
             "base-uri 'none'",
             'form-action ' . $this->formActionSources(),
@@ -156,12 +177,12 @@ final class AddSecurityHeaders
     /**
      * @return list<string>
      */
-    private function connectSources(): array
+    private function connectSources(bool $includeDatabaseConfiguration): array
     {
         return array_values(array_unique(array_filter([
             "'self'",
             ...$this->localViteConnectSources(),
-            $this->realtime->websocketOrigin(),
+            $includeDatabaseConfiguration ? $this->realtime->websocketOrigin() : null,
         ])));
     }
 

@@ -145,19 +145,19 @@ final class SecurityInvariants
     }
 
     /**
-     * Whether the cache store the rate limiters actually use persists writes across
-     * requests. Every limiter (login, 2FA challenge, password reset, MCP, artifact
-     * previews, admin step-up) silently no-ops when its store cannot hold a counter,
-     * a brute-force hole that leaves no error behind. Laravel resolves that store as
-     * `cache.limiter ?? cache.default` and reads its driver from `cache.stores`, so
-     * validate the resolved DRIVER, not the store name: the `array` driver lives only
-     * for the current request and the `null` driver discards writes, and a custom
-     * store alias can be backed by either. A store name that is undefined or carries
-     * no driver is rejected too -- it cannot resolve a working backend.
+     * Whether the cache store the rate limiters actually use shares counters across
+     * requests AND production app replicas. Every limiter (login, 2FA challenge,
+     * password reset, MCP, artifact previews, admin step-up) is weakened when its
+     * counter disappears between requests or is isolated per replica. Laravel
+     * resolves that store as `cache.limiter ?? cache.default` and reads its driver
+     * from `cache.stores`, so validate the resolved DRIVER, not the store name.
+     * Database, Redis, Memcached, and DynamoDB are shared backends; array/null do not
+     * persist and file is node-local. Unknown/custom drivers fail closed because the
+     * boot gate cannot prove that they coordinate replicas.
      *
      * @param array<array-key, mixed> $cacheStores
      */
-    public static function cacheStorePersistsRateLimiting(
+    public static function cacheStoreSharesRateLimiting(
         string $limiterStore,
         string $defaultStore,
         array $cacheStores,
@@ -177,7 +177,7 @@ final class SecurityInvariants
         $driver = $definition['driver'] ?? null;
         $normalizedDriver = is_string($driver) ? strtolower(trim($driver)) : '';
 
-        return $normalizedDriver !== '' && $normalizedDriver !== 'array' && $normalizedDriver !== 'null';
+        return in_array($normalizedDriver, ['database', 'redis', 'memcached', 'dynamodb'], true);
     }
 
     /**

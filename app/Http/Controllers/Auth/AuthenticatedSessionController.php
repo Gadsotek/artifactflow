@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Auth;
 use App\Application\Identity\RecordSuccessfulLogin;
 use App\Application\Identity\TrustedDeviceManager;
 use App\Application\Identity\TwoFactorPendingChallenge;
+use App\Http\Middleware\RequireRecentPasswordConfirmation;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Support\SafeIntendedRedirect;
 use Illuminate\Http\RedirectResponse;
@@ -44,6 +45,12 @@ final class AuthenticatedSessionController
         Auth::login($user, $request->remember());
         $recordSuccessfulLogin->handle($user);
         $request->session()->regenerate();
+        if (!$user->hasEnabledTwoFactor()) {
+            $request->session()->put(
+                RequireRecentPasswordConfirmation::SESSION_KEY,
+                now()->getTimestamp(),
+            );
+        }
         $this->safeIntendedRedirect->forgetUnsafeIntendedUrl($request);
 
         return redirect()->intended(route('dashboard', absolute: false));

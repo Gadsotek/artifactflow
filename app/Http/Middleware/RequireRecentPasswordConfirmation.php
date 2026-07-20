@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Application\Identity\PasswordConfirmationFreshness;
 use App\Models\User;
 use Closure;
 use Illuminate\Http\RedirectResponse;
@@ -14,38 +15,40 @@ final class RequireRecentPasswordConfirmation
 {
     public const string SESSION_KEY = 'auth.password_confirmed_at';
 
+    public function __construct(
+        private readonly PasswordConfirmationFreshness $freshness,
+    ) {
+    }
+
     /**
      * @param Closure(Request): Response $next
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (!$request->user() instanceof User) {
+        $user = $request->user();
+        if (!$user instanceof User) {
             abort(403);
         }
 
-        if ($this->confirmationIsFresh($request)) {
+        if ($this->confirmationIsFresh($request, $user)) {
             return $next($request);
         }
 
         return $this->redirectToConfirmation($request);
     }
 
-    private function confirmationIsFresh(Request $request): bool
+    private function confirmationIsFresh(Request $request, User $user): bool
     {
         $confirmedAt = $request->session()->get(self::SESSION_KEY);
 
-        if (!is_int($confirmedAt) && !(is_string($confirmedAt) && ctype_digit($confirmedAt))) {
-            return false;
+        if (
+            !$user->hasEnabledTwoFactor()
+            && $request->routeIs('settings.two-factor.enroll', 'settings.two-factor.confirm')
+        ) {
+            return $this->freshness->isFreshForTwoFactorEnrollment($confirmedAt);
         }
 
-        $confirmedTimestamp = (int) $confirmedAt;
-        $currentTimestamp = now()->getTimestamp();
-
-        if ($confirmedTimestamp > $currentTimestamp) {
-            return false;
-        }
-
-        return ($currentTimestamp - $confirmedTimestamp) <= $this->timeoutSeconds();
+        return $this->freshness->isFresh($confirmedAt);
     }
 
     private function redirectToConfirmation(Request $request): RedirectResponse
@@ -72,13 +75,5 @@ final class RequireRecentPasswordConfirmation
         }
 
         return $path;
-    }
-
-    private function timeoutSeconds(): int
-    {
-        $value = config('auth.password_timeout', 900);
-        $timeout = is_int($value) || is_string($value) ? (int) $value : 900;
-
-        return max(60, $timeout);
     }
 }

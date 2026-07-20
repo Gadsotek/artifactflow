@@ -206,6 +206,7 @@ function initialiseHtmlDraftPreview(form) {
   });
 
   updateVisibility();
+  form.setAttribute('data-html-draft-preview-ready', 'true');
 }
 
 for (const form of document.querySelectorAll('[data-html-draft-preview-form]')) {

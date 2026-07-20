@@ -55,7 +55,7 @@ The artifact's JavaScript really *runs*, but in an opaque origin with no cookies
 - MCP tokens can be read-only or read-write, scoped to selected workspaces, hard-capped to Editor authority (admin power stripped at code level), and receive content as explicit *untrusted-data envelopes*, never a shortcut around permissions.
 
 **🛡️ Account & operational security**
-- TOTP two‑factor auth with single‑use recovery codes and revocable trusted devices; required for admins by default, enforceable for all users.
+- TOTP two‑factor auth with single‑use recovery codes and revocable trusted devices; required for admins by default, enforceable for all users. A fresh password login opens a visible three-minute first-enrollment window; expiry returns to password confirmation and invalidates the pending QR/secret so restarting produces a fresh one. Recovery-code sign-in is an explicit alternate mode.
 - Optimistic concurrency (409 on stale writes) so concurrent edits never silently clobber.
 - Step‑up password confirmation on sensitive actions, plus a fresh TOTP for MCP token creation; server‑side authorization everywhere; durable domain events + audit trail that never log secrets or raw content.
 - Self‑hosted from day one: a production image with separate runtime roles, per‑install storage/limit controls, backup & restore tooling, and production boot that **fails closed** on misconfiguration.
@@ -75,6 +75,8 @@ make up            # boots the stack; scaffolds .env and a local signing key
 # or: make up-local — same, plus edge proxy, Adminer, and Mailpit
 ```
 
+Until Step 2 completes, application pages intentionally return a safe `503 Setup required` response instead of starting a database session against an uninitialized schema. MCP also fails before token lookup with a retryable JSON-RPC 503. The session-free `/up` healthcheck remains available while installation runs.
+
 **Step 2 — run the guided installer** from inside the container:
 
 ```sh
@@ -83,6 +85,8 @@ php artisan artifactflow:install
 ```
 
 The wizard asks which environment you're setting up; choose **local** for this stack. It generates any missing application and artifact signing keys, runs migrations, prompts for your first System Admin, and can add starter demo content (a Mermaid Markdown page plus an interactive HTML artifact). Then sign in at `http://localhost:18080/login`.
+
+For an existing installation whose keys and administrator are already provisioned, `make migrate` is the complete schema-upgrade step. A manually provisioned fresh database also needs a System Admin; use the password-safe `artifactflow:bootstrap-admin` procedure in the [operations guide](docs/OPERATIONS.md#first-user-setup). The setup response clears on the first request after every migration file is recorded.
 
 For an unattended local setup, pass `--env`, `--name`, `--email`, and `--seed-demo` instead of answering prompts, and supply the first admin password through a mounted secret **file** — point `ARTIFACTFLOW_ADMIN_PASSWORD_FILE` at it (a single trailing newline is stripped). Unlike an inline `VAR=… command` assignment, a file leaks the secret to neither shell history nor the process argv:
 
@@ -102,7 +106,7 @@ make run-app-cmd APP_CMD='php artisan artifactflow:doctor'
 
 ArtifactFlow supports production self-hosting. The supported production unit is the image built by `make build-prod` (and, after tagged releases, the corresponding published image), run with `APP_ENV=production`. The same image runs the separate `app`, `artifact-host`, `worker`, and `scheduler` roles: `APP_RUNTIME_ROLE` selects the role, and the `worker`/`scheduler` roles additionally override the container command to their start script (see the [operations guide](docs/OPERATIONS.md)).
 
-The repository deliberately does **not** present its local Compose file as a one-click production stack. A real deployment must provide environment-specific orchestration, two HTTPS hostnames, PostgreSQL with verified TLS, persistent private storage, a secret manager, and a correctly scoped reverse proxy. That wiring differs across Docker Compose, Swarm, Kubernetes, and hosting platforms; the production boot gate refuses to start when its security contract is incomplete.
+The repository deliberately does **not** present its local Compose file as a one-click production stack. A real deployment must provide environment-specific orchestration, two HTTPS hostnames, PostgreSQL with verified TLS, persistent private storage, a secret manager, a rate-limit cache shared by every app replica, and a correctly scoped reverse proxy. That wiring differs across Docker Compose, Swarm, Kubernetes, and hosting platforms; the production boot gate refuses to start when its security contract is incomplete.
 
 Production configuration — including `APP_KEY`, a dedicated `ARTIFACT_URL_SIGNING_KEY`, and a deliverable `MAIL_MAILER` — is supplied as environment variables from your secret manager, not by editing a `.env` inside the immutable image, and must be in place **before first boot**. Once the required variables are set, run the installer as a one-off container (the app container will not stay up until the gate passes). On the immutable image the installer does not generate keys or write `.env`; its production job is to run migrations and create the first System Admin, then hand off to the doctor:
 
@@ -130,7 +134,7 @@ Read the full [**threat model**](THREAT-MODEL.md) and [operations guide](docs/OP
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md): layers, application modules, the runtime‑role split.
-- [Roadmap](ROADMAP.md): the alpha scope boundary and deferred hierarchy work.
+- [Roadmap](ROADMAP.md): the alpha scope boundary and post-alpha product directions.
 - [Operations](docs/OPERATIONS.md): deploy, backup/restore, MCP tokens, 2FA break‑glass.
 - [Threat model](THREAT-MODEL.md) · [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Changelog](CHANGELOG.md)
 
@@ -148,11 +152,13 @@ make stan       # PHPStan (max)     make build-prod   # production image
 make test       # Pest suite        make scan-image   # Trivy
 make type-coverage   # 100%         make audit        # composer + npm
 make coverage        # PCOV line coverage (94% floor)
+make run-app-cmd APP_CMD='composer rector'            # conservative dry run
+semgrep --test --config .semgrep/artifactflow.yml .semgrep/artifactflow.php --metrics=off
 ```
 
 Note the distinction: **type** coverage is enforced at **100%**; **line** coverage is gated at a **94% floor** (`COVERAGE_MIN`), via CI's `make coverage`, not `phpunit.xml`.
 
-`make quality-full` is the authoritative aggregate gate (it also runs `make publish-guard`, `make ai-hooks-test`, `make semgrep`, and the asset/production/image gates); run `make compose-config` too when Docker or env files change. One gate it includes, `make verify-reverb-origin`, drives a running stack to prove the WebSocket origin check rejects foreign origins; CI does not reproduce that live probe, so run it locally (or via `make quality-full`) before a release.
+`make quality-full` is the authoritative aggregate for the Make-backed gates (including `make publish-guard`, `make ai-hooks-test`, `make semgrep`, and the asset/production/image gates). Run the Rector and Semgrep-fixture commands above separately; CI also enforces them. `.semgrep/artifactflow.php` is the custom-rule positive/negative fixture corpus, not application code; update it whenever `.semgrep/artifactflow.yml` changes. Run `make compose-config` too when Docker or env files change. One gate included by `make quality-full`, `make verify-reverb-origin`, drives a running stack to prove the WebSocket origin check rejects foreign origins; CI does not reproduce that live probe, so run it locally before a release.
 
 See [AGENTS.md](AGENTS.md) for the full working agreements. AI‑assistant guardrails live in `CLAUDE.md`, `.claude/`, `.codex/`, and `scripts/ai-hooks/`. Yes, this project is built AI‑assisted: AI helped throughout, held to the same quality bar as the rest of the project. The rigor behind it (the audits, the gates, the threat model) is the point.
 

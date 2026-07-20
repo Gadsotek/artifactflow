@@ -354,7 +354,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->assertUnsafeConfiguration('Artifact storage root must be outside the public web root.');
     }
 
-    public function test_non_persistent_cache_store_is_rejected(): void
+    public function test_non_shared_cache_store_is_rejected(): void
     {
         // 'array' resolves to the array driver; 'null' and '' resolve to no defined store.
         foreach (['array', 'null', ''] as $store) {
@@ -362,9 +362,19 @@ final class ProductionSecurityConfigurationTest extends TestCase
             config(['cache.default' => $store]);
 
             $this->assertUnsafeConfiguration(
-                'Cache store must persist writes in production so rate limiting is enforced. The rate limiter store (cache.limiter or cache.default) must resolve to a defined cache.stores entry whose driver is not array or null.',
+                'Cache store must share rate-limit counters across production app replicas. The rate limiter store (cache.limiter or cache.default) must resolve to a defined database, Redis, Memcached, or DynamoDB cache driver.',
             );
         }
+    }
+
+    public function test_node_local_file_cache_is_rejected_for_rate_limiting(): void
+    {
+        $this->configureSafeProductionValues();
+        config(['cache.default' => 'file']);
+
+        $this->assertUnsafeConfiguration(
+            'Cache store must share rate-limit counters across production app replicas. The rate limiter store (cache.limiter or cache.default) must resolve to a defined database, Redis, Memcached, or DynamoDB cache driver.',
+        );
     }
 
     public function test_cache_store_backed_by_the_array_driver_is_rejected_behind_a_custom_alias(): void
@@ -378,7 +388,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
         ]);
 
         $this->assertUnsafeConfiguration(
-            'Cache store must persist writes in production so rate limiting is enforced. The rate limiter store (cache.limiter or cache.default) must resolve to a defined cache.stores entry whose driver is not array or null.',
+            'Cache store must share rate-limit counters across production app replicas. The rate limiter store (cache.limiter or cache.default) must resolve to a defined database, Redis, Memcached, or DynamoDB cache driver.',
         );
     }
 
@@ -394,7 +404,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
         ]);
 
         $this->assertUnsafeConfiguration(
-            'Cache store must persist writes in production so rate limiting is enforced. The rate limiter store (cache.limiter or cache.default) must resolve to a defined cache.stores entry whose driver is not array or null.',
+            'Cache store must share rate-limit counters across production app replicas. The rate limiter store (cache.limiter or cache.default) must resolve to a defined database, Redis, Memcached, or DynamoDB cache driver.',
         );
     }
 

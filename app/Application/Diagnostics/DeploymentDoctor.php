@@ -68,16 +68,16 @@ final readonly class DeploymentDoctor
             return $this->skipped(
                 'cache_store',
                 'Cache store',
-                sprintf("Rate limiter cache store is '%s'; production requires a persistent store so rate limiting is enforced.", $label),
+                sprintf("Rate limiter cache store is '%s'; production requires a shared store so every app replica enforces the same counters.", $label),
             );
         }
 
-        if (!SecurityInvariants::cacheStorePersistsRateLimiting($limiterStore, $defaultStore, $this->cacheStores())) {
+        if (!SecurityInvariants::cacheStoreSharesRateLimiting($limiterStore, $defaultStore, $this->cacheStores())) {
             return $this->fail(
                 'cache_store',
                 'Cache store',
                 sprintf(
-                    "Rate limiter cache store '%s' does not persist writes; point CACHE_STORE (or cache.limiter) at a defined store whose driver is database/redis/file so login, 2FA, and MCP rate limits are enforced.",
+                    "Rate limiter cache store '%s' does not provide shared counters; point CACHE_STORE (or cache.limiter) at a defined database, Redis, Memcached, or DynamoDB store so login, 2FA, and MCP limits hold across replicas.",
                     $label,
                 ),
             );

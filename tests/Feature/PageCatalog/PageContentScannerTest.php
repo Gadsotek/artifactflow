@@ -67,6 +67,10 @@ final class PageContentScannerTest extends TestCase
         yield 'web socket' => ['new WebSocket("wss://example.test")', 'web_socket'];
         yield 'eval' => ['eval("alert(1)")', 'eval'];
         yield 'new function' => ['new Function("return 1")', 'new_function'];
+        yield 'legacy HTML insertion command' => [
+            'document.execCommand("insertHTML", false, nestedMarkup)',
+            'exec_command_insert_html',
+        ];
         yield 'entity encoded javascript URL' => ['<a href="java&#x73;cript:alert(1)">open</a>', 'javascript_url'];
         yield 'control separated javascript URL' => ['<a href="java&#x09;script:alert(1)">open</a>', 'javascript_url'];
         yield 'entity encoded document cookie' => ['document&#46;cookie', 'document_cookie'];

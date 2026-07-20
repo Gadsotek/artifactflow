@@ -58,7 +58,7 @@ final readonly class ProductionSecurityConfiguration
         $this->ensureArtifactFrameAncestors($applicationOrigin);
         $this->ensureReverbConfiguration($applicationOrigin);
         $this->ensureMailTransportIsDeliverable();
-        $this->ensurePersistentCacheStore();
+        $this->ensureSharedRateLimiterCacheStore();
 
         if ($this->string('filesystems.disks.artifacts.visibility') !== 'private') {
             throw new RuntimeException('Artifact storage must be private.');
@@ -351,15 +351,15 @@ final readonly class ProductionSecurityConfiguration
         }
     }
 
-    private function ensurePersistentCacheStore(): void
+    private function ensureSharedRateLimiterCacheStore(): void
     {
-        if (!SecurityInvariants::cacheStorePersistsRateLimiting(
+        if (!SecurityInvariants::cacheStoreSharesRateLimiting(
             $this->string('cache.limiter'),
             $this->string('cache.default'),
             $this->cacheStores(),
         )) {
             throw new RuntimeException(
-                'Cache store must persist writes in production so rate limiting is enforced. The rate limiter store (cache.limiter or cache.default) must resolve to a defined cache.stores entry whose driver is not array or null.',
+                'Cache store must share rate-limit counters across production app replicas. The rate limiter store (cache.limiter or cache.default) must resolve to a defined database, Redis, Memcached, or DynamoDB cache driver.',
             );
         }
     }

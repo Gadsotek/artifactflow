@@ -14,8 +14,22 @@ use Illuminate\Database\Eloquent\Builder;
 final class PageSearch
 {
     private const int RESULT_LIMIT = 100;
-    private const string TEXT_SEARCH_CONFIG = PageSearchVectorUpdater::TEXT_SEARCH_CONFIG;
     private const int MAX_QUERY_CHARACTERS = 200;
+    private const string SEARCH_RANK_SQL = <<<'SQL'
+        (
+            CASE WHEN lower(pages.title) = lower(?) THEN 1000.0 ELSE 0.0 END
+            + CASE WHEN strpos(lower(pages.title), lower(?)) > 0 THEN 750.0 ELSE 0.0 END
+            + CASE WHEN EXISTS (
+                SELECT 1
+                FROM page_tag
+                INNER JOIN tags ON tags.uid = page_tag.tag_uid
+                WHERE page_tag.page_uid = pages.uid
+                  AND (lower(tags.name) = lower(?) OR lower(tags.slug) = lower(?))
+            ) THEN 500.0 ELSE 0.0 END
+            + (ts_rank_cd(pages.search_vector, websearch_to_tsquery('simple', ?), 32) * 100.0)
+        ) AS search_rank
+        SQL;
+    private const string SEARCH_MATCH_SQL = "pages.search_vector @@ websearch_to_tsquery('simple', ?)";
 
     public function __construct(
         private readonly PageAccess $access,
@@ -119,33 +133,10 @@ final class PageSearch
             return;
         }
 
-        $searchVector = 'pages.search_vector';
-        $searchQuery = sprintf("websearch_to_tsquery('%s', ?)", self::TEXT_SEARCH_CONFIG);
-        $rank = sprintf(
-            <<<'SQL'
-                CASE WHEN lower(pages.title) = lower(?) THEN 1000.0 ELSE 0.0 END
-                + CASE WHEN strpos(lower(pages.title), lower(?)) > 0 THEN 750.0 ELSE 0.0 END
-                + CASE WHEN EXISTS (
-                    SELECT 1
-                    FROM page_tag
-                    INNER JOIN tags ON tags.uid = page_tag.tag_uid
-                    WHERE page_tag.page_uid = pages.uid
-                      AND (lower(tags.name) = lower(?) OR lower(tags.slug) = lower(?))
-                ) THEN 500.0 ELSE 0.0 END
-                + (ts_rank_cd(%s, %s, 32) * 100.0)
-                SQL,
-            $searchVector,
-            $searchQuery,
-        );
-        /** @var literal-string $selectRank */
-        $selectRank = sprintf('(%s) AS search_rank', $rank);
-        /** @var literal-string $match */
-        $match = sprintf('%s @@ %s', $searchVector, $searchQuery);
-
         $query
             ->select('pages.*')
-            ->selectRaw($selectRank, [$search, $search, $search, $search, $search])
-            ->whereRaw($match, [$search]);
+            ->selectRaw(self::SEARCH_RANK_SQL, [$search, $search, $search, $search, $search])
+            ->whereRaw(self::SEARCH_MATCH_SQL, [$search]);
     }
 
     /**

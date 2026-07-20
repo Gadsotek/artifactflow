@@ -22,9 +22,26 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         $this->assertStringContainsString($canonical, $hardened);
         $this->assertStringContainsString("defineValue(window, 'RTCPeerConnection', blockedConstructor)", $hardened);
         $this->assertStringContainsString("defineValue(window, 'WebTransport', blockedConstructor)", $hardened);
+        $this->assertStringContainsString("normalizedCommand === 'inserthtml'", $hardened);
+        $this->assertStringContainsString("defineValue(Document.prototype, 'execCommand'", $hardened);
         // Programmatic self-navigation is neutralized where the browser allows it.
         $this->assertStringContainsString("defineValue(window.location, 'assign', noop)", $hardened);
         $this->assertStringContainsString("defineValue(window.location, 'replace', noop)", $hardened);
+    }
+
+    public function test_security_documentation_preserves_the_self_navigation_network_residual(): void
+    {
+        $canonical = file_get_contents(resource_path('js/artifact-preview-guard.js'));
+        $threatModel = file_get_contents(base_path('THREAT-MODEL.md'));
+        $operations = file_get_contents(base_path('docs/OPERATIONS.md'));
+
+        $this->assertIsString($canonical);
+        $this->assertIsString($threatModel);
+        $this->assertIsString($operations);
+        $this->assertStringNotContainsString('cannot reach app storage or the network', $canonical);
+        $this->assertStringNotContainsString("can't reach an exfil endpoint", $threatModel);
+        $this->assertStringContainsString('self-navigation can still send artifact-controlled or user-entered data', $threatModel);
+        $this->assertStringContainsString('redact `/join/*`', $operations);
     }
 
     public function test_guard_is_injected_after_the_doctype_and_before_artifact_markup(): void
@@ -53,9 +70,10 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
             $saved,
         );
         $this->assertStringContainsString(
-            "window.addEventListener('load', reportPreviewReady, { capture: true, once: true })",
+            "window.addEventListener('message', respondToPreviewReadyRequest, true)",
             $saved,
         );
+        $this->assertStringContainsString("const previewReadyRequest = 'artifactflow:preview-ready-request'", $saved);
         $this->assertStringContainsString('<script data-artifactflow-preview-guard>', $draft);
         $this->assertStringNotContainsString(
             '<script data-artifactflow-preview-guard data-artifactflow-preview-recovery>',

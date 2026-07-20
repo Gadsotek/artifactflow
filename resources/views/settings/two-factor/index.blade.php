@@ -40,6 +40,38 @@
                 </section>
             @endif
 
+            @if (!$user->hasEnabledTwoFactor())
+                <section
+                    class="border-l-4 border-blue-600 bg-blue-50 px-4 py-4 text-blue-950 dark:bg-blue-950 dark:text-blue-100"
+                    data-two-factor-enrollment-timer
+                    data-two-factor-enrollment-expired-url="{{ route('settings.two-factor.index') }}"
+                    @if ($enrollmentPasswordExpiresAt !== null)
+                        data-two-factor-enrollment-deadline="{{ $enrollmentPasswordExpiresAt }}"
+                    @endif
+                >
+                    <h2 class="font-semibold">Finish setup within 3 minutes</h2>
+                    @if ($enrollmentPasswordExpiresAt !== null)
+                        <p class="mt-1 text-sm">
+                            Your recent password login counts as confirmation for this short enrollment window.
+                            Time remaining:
+                            <strong data-two-factor-enrollment-remaining>{{ $enrollmentPasswordRemaining }}</strong>.
+                        </p>
+                        <p class="mt-1 text-sm" data-two-factor-enrollment-expiry-message>
+                            At zero, you will be sent to password confirmation and this QR code will expire.
+                        </p>
+                    @else
+                        <p class="mt-1 text-sm">
+                            Starting enrollment will ask you to confirm your password. You will then have 3 minutes to finish setup.
+                        </p>
+                    @endif
+                    @if ($enrollmentMustRestart)
+                        <p class="mt-2 text-sm font-medium">
+                            The previous QR code and authenticator key expired and will no longer be accepted. Start enrollment to generate new ones.
+                        </p>
+                    @endif
+                </section>
+            @endif
+
             <section class="border-y border-zinc-200 py-5 dark:border-zinc-800">
                 @if ($user->hasEnabledTwoFactor())
                     <div>

@@ -33,6 +33,7 @@ return [
     ],
     'password_timeout' => (int) env('AUTH_PASSWORD_TIMEOUT', 900),
     'admin_password_timeout' => (int) env('AUTH_ADMIN_PASSWORD_TIMEOUT', 900),
+    'two_factor_enrollment_password_timeout' => (int) env('TWO_FACTOR_ENROLLMENT_PASSWORD_TIMEOUT_SECONDS', 180),
     'two_factor_challenge_timeout' => (int) env('TWO_FACTOR_CHALLENGE_TIMEOUT_SECONDS', 300),
     'two_factor_drift_window' => (int) env('TWO_FACTOR_DRIFT_WINDOW', 1),
     'two_factor_trusted_device_days' => (int) env('TWO_FACTOR_TRUSTED_DEVICE_DAYS', 30),

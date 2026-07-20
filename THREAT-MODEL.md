@@ -3,8 +3,8 @@
 This document captures the security model for the one thing ArtifactFlow does that almost
 nothing else dares to: **execute arbitrary, attacker-controlled HTML + JavaScript** (the
 AI-generated artifacts) so a human can preview them, without that code stealing a session,
-reaching another tenant's data, exfiltrating over the network, hijacking the parent app, or
-persisting anything.
+reaching another tenant's data, using ordinary browser connection APIs to exfiltrate, hijacking
+the parent app, or persisting anything. Self-navigation remains an explicit, narrower residual.
 
 It is deliberately opinionated about **what is a real boundary and what is theater**, because
 the most common way this class of feature gets broken is a well-meaning contributor relaxing a
@@ -19,7 +19,7 @@ data URIs, anything. For the product to work, that code has to *run* in a browse
 assume the code is hostile and design so that even hostile code cannot:
 
 - read or steal the viewer's session / cookies / `localStorage`,
-- reach the network, including WebRTC, to exfiltrate anything,
+- use subresource, connection, worker, or WebRTC APIs to exfiltrate anything,
 - read or affect other tenants' data,
 - navigate, frame, or clickjack the **main application** the user is logged into,
 - persist state or escape its execution context.
@@ -63,7 +63,7 @@ three load-bearing controls above.
 Implemented in: `app/Http/Support/ArtifactSandboxResponder.php` (shared header CSP + `securityHeaders()`),
 `app/Http/Controllers/ArtifactPreviewController.php` and `ArtifactDraftPreviewController.php` (delegate saved and draft responses to the shared responder),
 `app/Application/PageCatalog/ArtifactPreviewDocumentGuard.php` (the guard),
-`resources/views/pages/show.blade.php` (embedding iframe).
+`resources/views/pages/show.blade.php` and `resources/views/pages/versions/show.blade.php` (embedding iframes: current and historical version).
 
 **Keeping artifacts embedded.** The iframe `sandbox` protects only while the artifact is *embedded*. So the artifact host serves artifact HTML only to iframe embeds (`Sec-Fetch-Dest: iframe`, a browser-set header page script cannot forge) and refuses top-level document loads. This stops an artifact from being opened as its own page, where the sandbox attribute would no longer apply and downloads, self-initiated fullscreen/pointer-lock, and same-origin storage on the shared artifact host would return. On the **saved** artifact path an absent `Sec-Fetch-Dest` (legacy client, or a proxy that strips it) fails open so embedding keeps working — the only residual is a non-modern browser, which lacks the sandbox protections regardless, and the header CSP `sandbox` directive still forces an opaque origin. The **draft** receiver (§5) is stricter: it requires a valid content-bound capability and fails *closed* unless `Sec-Fetch-Dest: iframe` is explicitly present. The preview controllers enforce this through `ArtifactSandboxResponder`.
 
@@ -184,9 +184,10 @@ HMAC-SHA256 over `origin | pageUid | versionUid | expiresAt | accessRevision`, s
 Properties to keep in mind (these are intentional, but contributors must not be surprised):
 
 - The URL is a **bearer token**, *not* bound to a user. Anyone holding it can view within the TTL.
-- The signature binds the page's `preview_access_revision`, which is **incremented on every
-  grant, revocation, and access-mode change** (`PageAccessRevision`), so outstanding URLs are
-  invalidated the moment access changes — the TTL only bounds the window in which *nothing
+- The signature binds the page's `preview_access_revision`, which is incremented by
+  `PageAccessRevision` for grants, revocations, access-mode or ownership changes, archive,
+  workspace moves, and membership/role changes that affect reach. Outstanding URLs are invalidated
+  when one of those boundaries changes — the TTL only bounds the window in which *nothing
   changed*. Keep the TTL short anyway; it is the backstop.
 - Invalid signatures return the same **404** as missing records
   (`ArtifactPreviewController`), so leaked page/version UIDs cannot be probed for existence.
@@ -198,8 +199,9 @@ Properties to keep in mind (these are intentional, but contributors must not be 
 Expiry authorizes an HTTP load; it does not require the already-loaded document or the main
 application window to refresh every minute. The app therefore has **no TTL reload timer**. A
 prototype may deliberately reload its own iframe after the bearer URL has expired. Saved artifact
-documents emit a fixed ready signal from their opaque origin after a successful load; when a later
-child load completes without that signal, the authenticated parent may mint a fresh URL and replace
+documents answer a per-load ready-signal handshake from their opaque origin (the parent posts a
+nonce after each load; the document echoes that nonce back); when a later child load completes
+without a matching acknowledgement, the authenticated parent may mint a fresh URL and replace
 only that iframe's `src`. The recovery endpoint re-checks live page access, returns 404 to an
 unauthorized caller, validates that the replacement URL targets the same artifact-origin path, and
 never reloads the application document. This preserves unsaved editor state while retaining a short
@@ -223,7 +225,7 @@ reviewing the browser standards and deployment configuration when a boundary cha
 | Capability moved to the app host, another artifact origin, or a proxy route that merges origins | The signed origin claim must equal configuration, and artifact runtime middleware requires the request's exact scheme/host/port to equal the configured artifact origin before routing. | A reverse proxy must preserve the real external scheme and host through the trusted-proxy configuration. Deployment doctor and origin-separation tests fail unsafe configurations. |
 | Top-level navigation, new tabs, downloads, fullscreen, and pointer lock | Explicit non-iframe destinations are refused; draft requests fail closed without `Sec-Fetch-Dest: iframe`. The iframe has no popup/download/navigation/pointer-lock sandbox tokens, and the header CSP `sandbox` remains the top-level fallback. Product fullscreen only CSS-maximizes the existing iframe. | Saved previews deliberately tolerate an absent fetch-destination header for legacy embedding. Real Safari/macOS/iOS behavior remains a manual release check; see `docs/OPERATIONS.md`. Self-navigation of the frame remains the accepted §2 residual. |
 | Static and dynamically created `iframe`, `frame`, `fencedframe`, or `portal`, including fifteen recursive `srcdoc` levels | Server hardening tokenizes actual tags into inert templates, escapes iframe raw text before moving it into a parsed template context, and preserves script/textarea bytes; CSP denies `frame-src`, `child-src`, and `fenced-frame-src`; the early guard blocks creation, insertion, parsing, markup-setter, streaming `document.write`, and XSLT materialization sinks, then observes residual contexts. The maintained E2E corpus attempts real UDP STUN transmission through recursive and raw-text-breakout constructions and receives no packet. | Chromium's ability to construct initial `about:blank`/`srcdoc` realms is why the layers exist. The in-page guard is still not load-bearing; never remove CSP, sandbox, or origin isolation because this regression passes. |
-| `<object>`, `<embed>`, SVG `foreignObject`, workers, and HTML parsing/setter variants | `object-src 'none'`, `worker-src 'none'`, `default-src 'none'`, and nested-context directives block new executable/resource contexts. The runtime guard covers `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `setHTMLUnsafe`, `DOMParser`, `Range`, shadow roots, and document write/parse APIs used in the corpus. | Inline SVG/`foreignObject` may render inside the same sealed document; it gains no app-origin authority. Browser-specific parser additions require new regression cases when adopted. |
+| `<object>`, `<embed>`, SVG `foreignObject`, workers, and HTML parsing/setter variants | `object-src 'none'`, `worker-src 'none'`, `default-src 'none'`, and nested-context directives block new executable/resource contexts. The runtime guard covers `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `setHTMLUnsafe`, `DOMParser`, `Range`, shadow roots, document write/parse APIs, and legacy `execCommand('insertHTML')`; the latter is disabled synchronously so an iframe cannot exist until the observer's next microtask. | Inline SVG/`foreignObject` may render inside the same sealed document; it gains no app-origin authority. Browser-specific parser additions require new regression cases when adopted. |
 | Fetch/XHR/beacon/WebSocket/EventSource/WebTransport/WebRTC and fresh-realm network escape attempts | Header CSP denies ordinary connections and workers; the `webrtc 'block'` directive is sent where supported. Removing nested realms closes the maintained Chromium attack corpus around parent-realm API patches, and the E2E UDP listener verifies that those constructions emit no STUN packet. | `webrtc` support is not universal. Navigation requests cannot be comprehensively blocked by shipped CSP, so origin isolation ensures the artifact has no session or cross-tenant data to exfiltrate; user-entered artifact data remains a social-engineering risk. |
 | Parent/meta CSP conflicts, CSP header merging, and iframe-within-iframe inheritance | Artifact policy is an authoritative HTTP response header on the artifact response. Parent/meta policies cannot relax it, and application/artifact middleware overwrites security-critical headers rather than trusting an upstream weak value. | Reverse proxies must not replace the application-generated artifact CSP. Header presence and values should be checked during deployment and real-browser smoke tests. |
 | Signed-URL expiry, grant/revoke/archive/workspace-move races, and revision replay | Saved preview signatures bind page, immutable version, expiry, artifact origin, and `preview_access_revision`; access-changing transactions increment the revision and the controller checks current state. Invalid/missing/stale targets share a 404. | An already-rendered document is not remotely erased when access changes. Renewal requires live access, and the short TTL plus revision closes future loads rather than pretending to revoke bytes already delivered to a browser. |
@@ -237,10 +239,12 @@ The deterministic capability corpus is
 
 ## 8. Explicitly NOT defended (and that's fine)
 
-- **The artifact navigating/reloading *itself*.** Can't be prevented while running arbitrary JS,
-  and doesn't need to be: under an opaque origin with `connect-src 'none'`, self-navigation has
-  nothing to steal and can't reach an exfil endpoint.
-- **Artifacts being inert**: no network, no persistence, no workers, no popups, no console. This
+- **The artifact navigating/reloading *itself*.** Can't be comprehensively prevented while running
+  arbitrary JS. The opaque origin means it has no session, app storage, or other-tenant data, but
+  self-navigation can still send artifact-controlled or user-entered data to a navigation endpoint;
+  this is the accepted §2 social-engineering residual.
+- **Artifacts being inert**: no ordinary connection/subresource APIs, no persistence, no workers,
+  no popups, no console. This
   is a **product boundary, not a bug**: artifacts are self-contained, offline, isolated. Features
   that need network/storage are out of scope by design.
 - **A revoked member's already-open presence socket, for the window until it drops.** Realtime

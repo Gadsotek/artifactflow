@@ -69,6 +69,7 @@ final readonly class DisableTwoFactorForOperator
 
             $lockedUser->forceFill([
                 'two_factor_secret' => null,
+                'two_factor_secret_created_at' => null,
                 'two_factor_confirmed_at' => null,
                 'two_factor_recovery_codes' => null,
                 'two_factor_last_used_timestep' => null,

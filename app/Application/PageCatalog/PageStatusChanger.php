@@ -21,6 +21,7 @@ final readonly class PageStatusChanger
         private AuditLogger $audit,
         private PageSearchVectorUpdater $searchVectors,
         private PageAccess $access,
+        private PageAccessRevision $accessRevision,
     ) {
     }
 
@@ -74,6 +75,11 @@ final readonly class PageStatusChanger
             $previousStatus = $lockedPage->status;
 
             $lockedPage->forceFill(['status' => $newStatus])->save();
+
+            if ($newStatus === PageStatus::Archived) {
+                $this->accessRevision->bump($lockedPage);
+            }
+
             $this->searchVectors->refreshPage($lockedPage->uid);
             $event = $this->events->record(
                 eventType: $eventType,

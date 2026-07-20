@@ -339,6 +339,10 @@ services:
       # cannot shadow the default; reverb is started exclusively by that gate (realtime
       # profile), so this never affects local dev.
       DB_PASSWORD: ${REVERB_SMOKE_DB_PASSWORD:-reverb-origin-smoke-secret}
+      # Reverb boots the production gate during the origin probe. Keep its
+      # limiter counters on the shared database instead of the anchor's
+      # node-local development file cache.
+      CACHE_STORE: database
       BROADCAST_CONNECTION: reverb
       REVERB_SERVER_HOST: 0.0.0.0
       REVERB_SERVER_PORT: 8080
@@ -360,7 +364,7 @@ services:
     # Must match the node digest of the Dockerfile frontend-build stage (Dependabot
     # only tracks the Dockerfile pin) so local dev and production assets build on
     # the same Node.
-    image: node:26-alpine@sha256:725aeba2364a9b16beae49e180d83bd597dbd0b15c47f1f28875c290bfd255b9
+    image: node:26-alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66
     working_dir: /var/www/html
     command: >
       sh -lc '

@@ -35,6 +35,14 @@ final class PageVersion extends Model
     protected $primaryKey = 'uid';
 
     /**
+     * Immutable version content and scan metadata are persisted only by page
+     * versioning use cases.
+     *
+     * @var list<string>
+     */
+    protected $guarded = ['*'];
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

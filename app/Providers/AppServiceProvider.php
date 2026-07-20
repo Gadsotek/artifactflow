@@ -9,6 +9,7 @@ use App\Application\Events\LogStoredDomainEventDispatch;
 use App\Application\Events\StoredDomainEvent;
 use App\Application\Identity\TwoFactorPendingChallenge;
 use App\Application\Installation\EnvFileWriter;
+use App\Application\Installation\InstallationReadiness;
 use App\Application\Mcp\McpAccessTokenAuthenticator;
 use App\Application\Mcp\McpEffectiveAuthority;
 use App\Application\Mcp\McpRequestContext;
@@ -44,6 +45,7 @@ final class AppServiceProvider extends ServiceProvider
         $this->app->scoped(McpRequestContext::class);
         $this->app->scoped(McpEffectiveAuthority::class);
         $this->app->scoped(PageAccess::class);
+        $this->app->singleton(InstallationReadiness::class);
 
         // The install wizard is the only consumer; it writes APP_ENV and any
         // production boot-gate values into the deployment .env at the project root.
