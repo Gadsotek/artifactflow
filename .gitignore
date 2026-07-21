@@ -126,6 +126,7 @@ pnpm-debug.log*
 *.sqlite3
 /database/dumps/
 /backups/
+/scripts/backups/
 !/database/sql/**/*.sql
 !/docker/db/init/**/*.sql
 

@@ -1,6 +1,6 @@
 # ArtifactFlow Roadmap
 
-ArtifactFlow's first open-source alpha is feature-frozen. Before that release, work should stay focused on security, correctness, release readiness, documentation, and small usability fixes to existing behavior. New authorization or content-boundary models belong after the alpha has real team feedback.
+ArtifactFlow's first open-source alpha has shipped, and the current alpha line remains feature-frozen while it gathers real team feedback. Work should stay focused on security, correctness, release readiness, documentation, and small usability fixes to existing behavior. New authorization or content-boundary models belong in deliberate post-alpha work informed by that feedback.
 
 This roadmap records direction, not a release promise. Every item still requires tests-first implementation and the security gates in `AGENTS.md`.
 
@@ -14,7 +14,7 @@ The alpha keeps the current model:
 - registered human accounts are installation-wide discoverable coworkers whose identifiers do not confer authority; Reader page grants may target any registered human, while Editor/Admin grants require page-workspace membership;
 - categories, storage accounting, search filters, memberships, invitations, and MCP scopes remain workspace-specific.
 
-No nested-workspace schema or effective-membership behavior should be introduced before the first open-source alpha.
+No nested-workspace schema or effective-membership behavior should be introduced into the current alpha line; that work remains deferred to the beta candidate below.
 
 ## Alpha: visible page hierarchy
 

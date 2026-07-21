@@ -6,13 +6,42 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.0.3 — 2026-07-21
+
+Security and correctness release. It completes the official Laravel MCP migration, closes the remaining authentication and concurrent-mutation races found by adversarial review, repairs rich-Markdown serialization, and hardens installation, backup, restore, and release operations.
+
+### Security
+
+- Replaced the hand-written MCP JSON-RPC transport with the official `laravel/mcp` package while preserving app-origin routing, installation readiness, scoped bearer tokens, the Editor authority ceiling, throttling, untrusted-data envelopes, and audit attribution. (#16)
+- Serialized password reset and invitation workflows, invalidated stale 2FA login challenges after password changes, and made invitation delivery transactional without exposing invitation bearer data. (#16)
+- Revalidated the locked user and authentication revision during MCP token issuance, closing the race where a token could otherwise be issued from stale password/TOTP verification state. Existing MCP tokens deliberately survive an ordinary password reset; operators can revoke them separately after a suspected compromise. (#17)
+- Closed additional artifact-preview HTML tokenizer differentials while preserving the two-origin, opaque sandbox boundary. (#16)
+- Tightened the fail-closed production gate and read-only doctor checks for database TLS root certificates, deliverable mail configuration, runtime role state, bootstrap credentials, and migration readiness. (#17)
+- Added one-shot password-file inputs for administrative console commands so credentials need not appear in process arguments or shell history. (#17)
+
+### Fixed
+
+- Fixed rich-Markdown list and inline-format serialization that could absorb subsequent list items and code blocks into bold text. (#16)
+- Made page metadata updates revision-aware under row lock, including workspace moves, so stale forms return `409` instead of overwriting newer ownership or metadata. (#17)
+- Enforced hard-delete title confirmation under the page lock and mapped concurrent user-email uniqueness conflicts to the documented domain error. (#17)
+- Made MCP token revocation report only the process that performed the actual state transition during concurrent revocations. (#17)
+- Removed a fail-open installation-readiness memoization path in long-running workers. (#17)
+
 ### Changed
 
-- Replaced ArtifactFlow's hand-written MCP JSON-RPC transport with the official `laravel/mcp` package. Existing scoped tokens, Editor authority ceiling, app-origin/runtime gates, throttling, untrusted-data envelopes, application handlers, and audit attribution remain in place; the package now owns protocol negotiation, standard MCP sessions, lifecycle handling, tool discovery, and schema serialization.
+- Extended MCP client connection setup to discover and explicitly select among Claude Desktop, Claude Code, Codex homes, and Codex profiles without storing bearer tokens in repository configuration. (#16)
+- Backup manifests now include a format version and SHA-256 hashes for both payloads. Restore verifies integrity before changing service state, requires application roles to be quiescent, and offers an explicit legacy-manifest upgrade path. (#17)
+- Workspace names and MCP token names reject non-storable control characters at the validation boundary. (#17)
+
+### Internal / Tooling
+
+- Tag-driven releases now depend on the complete CI workflow before publishing images or GitHub Releases. (#17)
+- Expanded deterministic concurrency, deployment-gate, backup/restore, editor, sandbox-parser, and operational regression coverage. (#16, #17)
+- Stabilized the saved-preview recovery E2E test by synchronizing on parent-observed iframe loads and the renewal response instead of racing the artifact's self-navigating document.
 
 ### Dependencies
 
-- Added `laravel/mcp` 0.9.x.
+- Added `laravel/mcp` 0.9.x and updated the locked Guzzle/PSR-7 and `shell-quote` versions to resolve published advisories. (#16)
 
 ## v0.0.2 — 2026-07-19
 
