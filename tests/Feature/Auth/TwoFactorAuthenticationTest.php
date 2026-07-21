@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Auth;
 
 use App\Application\Identity\CreatePersonalWorkspaceForUser;
+use App\Application\Identity\ResetUserPassword;
 use App\Application\Identity\TrustedDeviceManager;
+use App\Application\Identity\TwoFactorPendingChallenge;
 use App\Application\Mcp\McpAccessTokenIssuer;
 use App\Http\Middleware\RequireRecentPasswordConfirmation;
 use App\Models\AuditEntry;
@@ -601,6 +603,53 @@ final class TwoFactorAuthenticationTest extends TestCase
         $this->post('/login/two-factor-challenge', [
             'code' => $this->currentOtp(self::SECRET),
         ])->assertSessionHasErrors('code');
+    }
+
+    public function test_password_reset_invalidates_a_pending_totp_challenge_authenticated_with_the_old_password(): void
+    {
+        $user = $this->createUser('Reset Challenge User', 'reset-challenge@example.test');
+        $this->enableTwoFactor($user);
+
+        $this->post('/login', [
+            'email' => $user->email,
+            'password' => 'correct horse battery staple',
+        ])->assertRedirect('/login/two-factor-challenge');
+
+        app(ResetUserPassword::class)->handle($user, 'new secure password');
+
+        $this->post('/login/two-factor-challenge', [
+            'code' => $this->currentOtp(self::SECRET),
+            'remember_device' => '1',
+        ])->assertSessionHasErrors('code');
+
+        $this->assertGuest();
+        $this->assertFalse(session()->has(TwoFactorPendingChallenge::SESSION_KEY));
+        $this->assertNull($user->refresh()->two_factor_last_used_timestep);
+        $this->assertSame(0, TrustedDevice::query()->where('user_uid', $user->uid)->count());
+    }
+
+    public function test_password_reset_invalidates_a_pending_recovery_code_challenge_without_consuming_the_code(): void
+    {
+        $user = $this->createUser('Reset Recovery User', 'reset-recovery@example.test');
+        $this->enableTwoFactor($user, recoveryCodes: ['ABCD2-EFGH3']);
+
+        $this->post('/login', [
+            'email' => $user->email,
+            'password' => 'correct horse battery staple',
+        ])->assertRedirect('/login/two-factor-challenge');
+
+        app(ResetUserPassword::class)->handle($user, 'new secure password');
+
+        $this->post('/login/two-factor-challenge', [
+            'recovery_code' => 'ABCD2-EFGH3',
+        ])->assertSessionHasErrors('code');
+
+        $this->assertGuest();
+        $this->assertFalse(session()->has(TwoFactorPendingChallenge::SESSION_KEY));
+        $recoveryCodes = $user->refresh()->two_factor_recovery_codes;
+        $this->assertIsArray($recoveryCodes);
+        $this->assertCount(1, $recoveryCodes);
+        $this->assertTrue(Hash::check('ABCD2-EFGH3', $recoveryCodes[0]));
     }
 
     private function createUser(string $name, string $email): User

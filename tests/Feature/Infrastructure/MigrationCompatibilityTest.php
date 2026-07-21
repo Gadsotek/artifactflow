@@ -19,4 +19,9 @@ final class MigrationCompatibilityTest extends TestCase
         $this->assertTrue(Schema::hasColumn('password_reset_tokens', 'token'));
         $this->assertTrue(Schema::hasColumn('password_reset_tokens', 'created_at'));
     }
+
+    public function test_users_have_an_auth_revision_for_invalidating_in_flight_authentication(): void
+    {
+        $this->assertTrue(Schema::hasColumn('users', 'auth_revision'));
+    }
 }

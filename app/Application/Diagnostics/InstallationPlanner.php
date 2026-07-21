@@ -6,13 +6,13 @@ namespace App\Application\Diagnostics;
 
 /**
  * Decides the ordered first-run steps for artifactflow:install. The plan is aware
- * of the operator-chosen target environment (local / test / production). Every
- * environment generates the app-internal secrets it is missing (a freshly minted
- * strong key passes the boot gate), then diverges: `local` adds developer
+ * of the operator-chosen target environment (local / test / production). Local and
+ * test environments generate app-internal secrets they are missing, then diverge:
+ * `local` adds developer
  * conveniences (demo content, dev-tooling hints); `test` is local semantics on a
  * non-dev box, so it skips demo data and ends on the doctor punch list; and
- * `production` skips demo data, prompts for the boot-gate values, and ends on the
- * doctor. Only `production` writes APP_ENV=production and activates the boot gate.
+ * `production` skips all filesystem-writing generators and ends on the doctor;
+ * immutable deployments supply their environment and secrets before this plan runs.
  */
 final readonly class InstallationPlanner
 {
@@ -21,15 +21,15 @@ final readonly class InstallationPlanner
         $local = $env !== 'production';
         $steps = [];
 
-        if ($needsAppKey) {
+        if ($local && $needsAppKey) {
             $steps[] = new InstallationStep('app_key', 'Generate the application key');
         }
 
-        if ($needsSigningKey) {
+        if ($local && $needsSigningKey) {
             $steps[] = new InstallationStep('signing_key', 'Generate the dedicated artifact signing key');
         }
 
-        if ($wantsReverb) {
+        if ($local && $wantsReverb) {
             $steps[] = new InstallationStep('reverb_keys', 'Generate the Reverb realtime keys');
         }
 

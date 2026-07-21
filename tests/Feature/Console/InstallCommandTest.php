@@ -248,14 +248,47 @@ final class InstallCommandTest extends TestCase
             ->expectsOutputToContain('Install complete. Sign in at')
             ->assertExitCode(0);
 
-        $this->assertStringContainsString('APP_ENV=production', (string) file_get_contents($this->envPath));
+        $this->assertStringContainsString('APP_ENV=local', (string) file_get_contents($this->envPath));
+        $this->assertStringNotContainsString('APP_ENV=production', (string) file_get_contents($this->envPath));
 
         $admin = User::query()->where('email', 'production-admin@example.test')->sole();
         $this->assertTrue($admin->is_system_admin);
         $this->assertSame(0, Page::query()->count());
     }
 
-    public function test_production_install_persists_the_gate_and_prompts_for_missing_boot_gate_values(): void
+    public function test_production_install_never_writes_an_env_file_inside_the_immutable_image(): void
+    {
+        $this->app->instance(
+            EnvFileWriter::class,
+            new EnvFileWriter('/proc/artifactflow-production-install-must-not-write-env'),
+        );
+        config([
+            'app.env' => 'production',
+            'app.url' => 'https://app.example.test',
+            'app.artifact_url' => 'https://artifacts.example.test',
+            'app.key' => $this->strongSecret('a'),
+            'app.artifact_url_signing_key' => $this->strongSecret('b'),
+            'database.connections.pgsql.password' => 'already-set',
+            'database.connections.pgsql.sslmode' => 'verify-full',
+            'mail.default' => 'smtp',
+            'trustedproxy.raw' => '10.0.0.1',
+        ]);
+
+        $this->runConsoleCommand('artifactflow:install', [
+            '--env' => 'production',
+            '--name' => 'Immutable Production Admin',
+            '--email' => 'immutable-production-admin@example.test',
+            '--password' => 'correct horse battery staple',
+        ])
+            ->expectsOutputToContain('Installing ArtifactFlow (production mode).')
+            ->expectsOutputToContain('Install complete. Sign in at')
+            ->assertExitCode(0);
+
+        $admin = User::query()->where('email', 'immutable-production-admin@example.test')->sole();
+        $this->assertTrue($admin->is_system_admin);
+    }
+
+    public function test_production_install_does_not_prompt_for_or_persist_missing_boot_gate_values(): void
     {
         config([
             'app.env' => 'production',
@@ -278,25 +311,24 @@ final class InstallCommandTest extends TestCase
             '--password' => 'correct horse battery staple',
         ])
             ->expectsOutputToContain('Installing ArtifactFlow (production mode).')
-            ->expectsOutputToContain('- Configuring production boot-gate values')
-            ->expectsQuestion('Path to the database TLS root certificate (DB_SSLROOTCERT)', '/etc/ssl/certs/pg-root.crt')
-            ->expectsQuestion('Mail transport (MAIL_MAILER, e.g. smtp/ses/postmark)', 'smtp')
-            ->expectsQuestion('Trusted proxy addresses/CIDRs for the TLS edge (TRUSTED_PROXIES)', '10.0.0.0/24')
+            ->doesntExpectOutputToContain('- Configuring production boot-gate values')
+            ->expectsOutputToContain('Set DB_SSLMODE=verify-full and DB_SSLROOTCERT')
+            ->expectsOutputToContain("Mailer 'log' will not deliver in production")
+            ->expectsOutputToContain('Set TRUSTED_PROXIES to the real edge')
             ->expectsOutputToContain('Install complete. Sign in at')
             ->assertExitCode(0);
 
         $env = (string) file_get_contents($this->envPath);
-        $this->assertStringContainsString('APP_ENV=production', $env);
-        $this->assertStringContainsString('DB_SSLMODE=verify-full', $env);
-        $this->assertStringContainsString('DB_SSLROOTCERT=/etc/ssl/certs/pg-root.crt', $env);
-        $this->assertStringContainsString('MAIL_MAILER=smtp', $env);
-        $this->assertStringContainsString('TRUSTED_PROXIES=10.0.0.0/24', $env);
+        $this->assertSame("APP_ENV=local\nAPP_URL=https://app.test\n", $env);
+        $this->assertSame('disable', config('database.connections.pgsql.sslmode'));
+        $this->assertSame('log', config('mail.default'));
+        $this->assertSame('', config('trustedproxy.raw'));
 
         $admin = User::query()->where('email', 'prod-admin@example.test')->sole();
         $this->assertTrue($admin->is_system_admin);
     }
 
-    public function test_production_install_does_not_arm_the_environment_when_provisioning_fails(): void
+    public function test_production_install_refuses_to_generate_missing_secrets_inside_the_image(): void
     {
         Process::fake([
             '*' => Process::result(output: '', errorOutput: 'generation failed', exitCode: 1),
@@ -305,8 +337,8 @@ final class InstallCommandTest extends TestCase
             'app.env' => 'production',
             'app.url' => 'https://app.example.test',
             'app.key' => $this->strongSecret('a'),
-            // Missing so the wizard tries (and, faked, fails) to generate it before it
-            // reaches migrations or the admin -- i.e. provisioning does not complete.
+            // Missing production secrets must be supplied by the orchestrator; the
+            // immutable image must not run a generator that writes into its filesystem.
             'app.artifact_url_signing_key' => '',
             'database.connections.pgsql.password' => 'already-set',
             'database.connections.pgsql.sslmode' => 'verify-full',
@@ -320,7 +352,9 @@ final class InstallCommandTest extends TestCase
             '--email' => 'prod-admin@example.test',
             '--password' => 'correct horse battery staple',
         ])
-            ->expectsOutputToContain('Could not generate the artifact signing key.')
+            ->expectsOutputToContain(
+                'Production secrets must be supplied through external environment configuration before running the installer.',
+            )
             ->assertExitCode(1);
 
         // A failed install must not declare the deployment production: the fixture .env
@@ -528,7 +562,7 @@ final class InstallCommandTest extends TestCase
         $this->assertNull(config('app.bootstrap_admin_password'));
     }
 
-    public function test_production_install_applies_collected_boot_gate_values_so_the_final_doctor_grades_them_fresh(): void
+    public function test_production_install_doctor_reports_unsafe_pre_supplied_values_without_mutating_them(): void
     {
         config([
             'app.env' => 'production',
@@ -536,10 +570,8 @@ final class InstallCommandTest extends TestCase
             'app.artifact_url' => 'https://artifacts.example.test',
             'app.key' => $this->strongSecret('a'),
             'app.artifact_url_signing_key' => $this->strongSecret('b'),
-            // The DB password is present (so the live connection the migration reuses is
-            // untouched), but TLS, mail, and proxies are unsafe/missing. The wizard
-            // collects them; the final doctor must grade the just-collected values, not
-            // the stale scaffolded ones.
+            // TLS, mail, and proxies remain deployment-owned environment values. The
+            // installer reports them through the doctor but never rewrites live config.
             'database.connections.pgsql.password' => 'already-set',
             'database.connections.pgsql.sslmode' => 'disable',
             'database.connections.pgsql.sslrootcert' => null,
@@ -553,22 +585,16 @@ final class InstallCommandTest extends TestCase
             '--email' => 'fresh-doctor-admin@example.test',
             '--password' => 'correct horse battery staple',
         ])
-            ->expectsOutputToContain('- Configuring production boot-gate values')
-            ->expectsQuestion('Path to the database TLS root certificate (DB_SSLROOTCERT)', '/etc/ssl/certs/pg-root.crt')
-            ->expectsQuestion('Mail transport (MAIL_MAILER, e.g. smtp/ses/postmark)', 'smtp')
-            ->expectsQuestion('Trusted proxy addresses/CIDRs for the TLS edge (TRUSTED_PROXIES)', '10.0.0.0/24')
-            // The freshly collected values reach the doctor: none of the stale-value
-            // failure messages appear in its report.
-            ->doesntExpectOutputToContain('will not deliver in production')
-            ->doesntExpectOutputToContain('Set DB_SSLMODE=verify-full and DB_SSLROOTCERT')
-            ->doesntExpectOutputToContain('Set TRUSTED_PROXIES to the real edge')
+            ->doesntExpectOutputToContain('- Configuring production boot-gate values')
+            ->expectsOutputToContain('will not deliver in production')
+            ->expectsOutputToContain('Set DB_SSLMODE=verify-full and DB_SSLROOTCERT')
+            ->expectsOutputToContain('Set TRUSTED_PROXIES to the real edge')
             ->assertExitCode(0);
 
-        // The live config the final doctor read carries the operator's answers.
-        $this->assertSame('verify-full', config('database.connections.pgsql.sslmode'));
-        $this->assertSame('/etc/ssl/certs/pg-root.crt', config('database.connections.pgsql.sslrootcert'));
-        $this->assertSame('smtp', config('mail.default'));
-        $this->assertSame('10.0.0.0/24', config('trustedproxy.raw'));
+        $this->assertSame('disable', config('database.connections.pgsql.sslmode'));
+        $this->assertNull(config('database.connections.pgsql.sslrootcert'));
+        $this->assertSame('log', config('mail.default'));
+        $this->assertSame('', config('trustedproxy.raw'));
     }
 
     private function strongSecret(string $byte): string

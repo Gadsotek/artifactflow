@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Diagnostics;
 
+use App\Application\Administration\InstallationLimitCeilings;
 use App\Infrastructure\Security\OriginNormalizer;
 use App\Infrastructure\Security\ProductionSecurityConfiguration;
 use App\Infrastructure\Security\SecretStrength;
@@ -42,6 +43,7 @@ final readonly class DeploymentDoctor
             $this->databaseTlsCheck($production),
             $this->databasePasswordCheck($production),
             $this->mailTransportCheck($production),
+            $this->invitationQueueCheck($production),
             $this->secureSessionCheck($production),
             $this->trustedProxiesCheck($production),
             $this->artifactStoragePrivateCheck($production),
@@ -131,6 +133,41 @@ final readonly class DeploymentDoctor
         $mailers = $this->config->get('mail.mailers');
 
         return is_array($mailers) ? $mailers : [];
+    }
+
+    private function invitationQueueCheck(bool $production): DoctorCheck
+    {
+        $queue = $this->string('queue.default');
+        $driver = $this->string(sprintf('queue.connections.%s.driver', $queue));
+        $connection = $this->string(sprintf('queue.connections.%s.connection', $queue));
+        $afterCommit = $this->config->get(sprintf('queue.connections.%s.after_commit', $queue)) !== false;
+
+        if (!$production) {
+            return $this->skipped(
+                'invitation_queue',
+                'Invitation delivery queue',
+                sprintf("Queue '%s' uses driver '%s'; production requires the primary database transaction.", $queue, $driver),
+            );
+        }
+
+        if (!SecurityInvariants::invitationQueueIsTransactional(
+            driver: $driver,
+            queueDatabaseConnection: $connection,
+            primaryDatabaseConnection: $this->string('database.default'),
+            dispatchesAfterCommit: $afterCommit,
+        )) {
+            return $this->fail(
+                'invitation_queue',
+                'Invitation delivery queue',
+                'Use a database queue on the primary application database with after_commit=false so invitation state and its encrypted delivery job commit atomically.',
+            );
+        }
+
+        return $this->pass(
+            'invitation_queue',
+            'Invitation delivery queue',
+            'Invitation state and its encrypted delivery job share the primary database transaction.',
+        );
     }
 
     private function debugDisabledCheck(bool $production): DoctorCheck
@@ -497,9 +534,26 @@ final readonly class DeploymentDoctor
     {
         $read = $this->positiveInt('pages.artifact_max_bytes');
         $write = $this->positiveInt('pages.max_html_bytes');
+        $markdownWrite = $this->positiveInt('pages.max_markdown_bytes');
 
-        if ($read === null || $write === null) {
-            return $this->fail('artifact_limits', 'Artifact size limits', 'Artifact and HTML byte limits must be positive integers.');
+        if ($read === null || $write === null || $markdownWrite === null) {
+            return $this->fail('artifact_limits', 'Artifact size limits', 'Artifact, HTML, and Markdown byte limits must be positive integers.');
+        }
+
+        if ($write > InstallationLimitCeilings::CONTENT_BYTES) {
+            return $this->fail(
+                'artifact_limits',
+                'Artifact size limits',
+                'HTML write limit must not exceed the production HTTP request envelope.',
+            );
+        }
+
+        if ($markdownWrite > InstallationLimitCeilings::CONTENT_BYTES) {
+            return $this->fail(
+                'artifact_limits',
+                'Artifact size limits',
+                'Markdown write limit must not exceed the HTTP request envelope.',
+            );
         }
 
         if ($read < $write) {

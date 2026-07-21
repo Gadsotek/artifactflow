@@ -48,7 +48,8 @@ final readonly class TwoFactorChallengeController
         RecordSuccessfulLogin $recordSuccessfulLogin,
     ): RedirectResponse {
         $user = $this->pendingChallenge->user($request);
-        if (!$user instanceof User) {
+        $authRevision = $this->pendingChallenge->authRevision($request);
+        if (!$user instanceof User || $authRevision === null) {
             $this->pendingChallenge->recordFailure($request);
             $this->throwGenericFailure();
         }
@@ -58,9 +59,17 @@ final readonly class TwoFactorChallengeController
 
         if ($request->code() !== '') {
             $usedTotp = true;
-            $verified = $this->verifyTwoFactorCode->verifyTotpAndAdvance($user, $request->code());
+            $verified = $this->verifyTwoFactorCode->verifyTotpAndAdvance(
+                $user,
+                $request->code(),
+                $authRevision,
+            );
         } elseif ($request->recoveryCode() !== '') {
-            $verified = $this->verifyTwoFactorCode->consumeRecoveryCode($user, $request->recoveryCode());
+            $verified = $this->verifyTwoFactorCode->consumeRecoveryCode(
+                $user,
+                $request->recoveryCode(),
+                $authRevision,
+            );
         }
 
         if (!$verified) {

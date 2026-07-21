@@ -12,12 +12,18 @@ use App\Application\Identity\RevokeWorkspaceInvitation;
 use App\Application\Identity\RevokeWorkspaceInvitationCommand;
 use App\Domain\Identity\WorkspaceRole;
 use App\Mail\WorkspaceInvitationMail;
+use App\Models\AuditEntry;
+use App\Models\DomainEvent;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
+use Illuminate\Contracts\Queue\ShouldBeEncrypted;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use RuntimeException;
 use Tests\TestCase;
 
 final class WorkspaceInvitationMailTest extends TestCase
@@ -46,6 +52,73 @@ final class WorkspaceInvitationMailTest extends TestCase
                 && $mail->acceptUrl === $this->appAcceptUrl($invitation)
                 && $mail->roleLabel === 'Editor';
         });
+    }
+
+    public function test_invitation_queue_payload_is_encrypted_so_the_bearer_token_is_not_persisted(): void
+    {
+        config(['queue.default' => 'database']);
+
+        $admin = $this->createUser('Admin User', 'admin@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($admin, 'Platform Team');
+        $invitation = app(InviteUserToWorkspace::class)->handle(
+            actor: $admin,
+            command: new InviteUserToWorkspaceCommand(
+                workspaceUid: $workspace->uid,
+                email: 'secret-link@example.test',
+                role: WorkspaceRole::Admin,
+            ),
+        );
+        $plainToken = $invitation->plainToken;
+
+        if (!is_string($plainToken) || $plainToken === '') {
+            $this->fail('A newly minted invitation must expose its plaintext token only to the caller.');
+        }
+
+        $job = DB::table('jobs')->select('payload')->first();
+
+        if (!is_object($job) || !property_exists($job, 'payload') || !is_string($job->payload)) {
+            $this->fail('The database queue must contain the invitation delivery job.');
+        }
+
+        $this->assertStringNotContainsString($plainToken, $job->payload);
+        $this->assertStringNotContainsString($this->appAcceptUrl($invitation), $job->payload);
+
+        $interfaces = class_implements(WorkspaceInvitationMail::class);
+        $this->assertIsArray($interfaces);
+        $this->assertContains(ShouldQueue::class, $interfaces);
+        $this->assertContains(ShouldBeEncrypted::class, $interfaces);
+    }
+
+    public function test_queue_insertion_failure_rolls_back_the_invitation_for_a_safe_retry(): void
+    {
+        $admin = $this->createUser('Admin User', 'admin@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($admin, 'Platform Team');
+
+        Mail::shouldReceive('to')
+            ->once()
+            ->with('retry@example.test')
+            ->andReturnSelf();
+        Mail::shouldReceive('queue')
+            ->once()
+            ->andThrow(new RuntimeException('Database queue is unavailable.'));
+
+        try {
+            app(InviteUserToWorkspace::class)->handle(
+                actor: $admin,
+                command: new InviteUserToWorkspaceCommand(
+                    workspaceUid: $workspace->uid,
+                    email: 'retry@example.test',
+                    role: WorkspaceRole::Reader,
+                ),
+            );
+            $this->fail('Expected queue insertion to fail.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Database queue is unavailable.', $exception->getMessage());
+        }
+
+        $this->assertSame(0, WorkspaceInvitation::query()->where('invited_email', 'retry@example.test')->count());
+        $this->assertSame(0, DomainEvent::query()->where('event_type', 'workspace.invitation.created')->count());
+        $this->assertSame(0, AuditEntry::query()->where('action', 'workspace.invitation.created')->count());
     }
 
     public function test_the_accept_link_targets_the_app_origin_and_resolves_the_invitation(): void

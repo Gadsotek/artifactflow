@@ -53,13 +53,14 @@ final class InstallationPlannerTest extends TestCase
         );
     }
 
-    public function test_production_plan_generates_missing_secrets_skips_demo_and_ends_on_doctor(): void
+    public function test_production_plan_never_generates_secrets_and_ends_on_doctor(): void
     {
         $plan = (new InstallationPlanner())->plan(env: 'production', needsAppKey: true, needsSigningKey: true);
 
         $this->assertFalse($plan->local);
-        $this->assertSame(['app_key', 'signing_key', 'migrate', 'admin', 'doctor', 'login_url'], $plan->stepIds());
-        $this->assertTrue($plan->hasStep('app_key'));
+        $this->assertSame(['migrate', 'admin', 'doctor', 'login_url'], $plan->stepIds());
+        $this->assertFalse($plan->hasStep('app_key'));
+        $this->assertFalse($plan->hasStep('signing_key'));
         $this->assertFalse($plan->hasStep('demo'));
         $this->assertFalse($plan->hasStep('dev_tools'));
     }

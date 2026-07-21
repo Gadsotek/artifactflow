@@ -20,6 +20,14 @@ final readonly class InstallationLimitValues
         public bool $twoFactorRequiredForAllUsers = false,
         public bool $realtimeEnabled = false,
     ) {
+        if ($this->maxMarkdownBytes > InstallationLimitCeilings::CONTENT_BYTES) {
+            throw new DomainRuleViolation('Markdown write limit must not exceed the HTTP request envelope.');
+        }
+
+        if ($this->maxHtmlBytes > InstallationLimitCeilings::CONTENT_BYTES) {
+            throw new DomainRuleViolation('HTML write limit must not exceed the production HTTP request envelope.');
+        }
+
         if ($this->artifactMaxBytes < $this->maxHtmlBytes) {
             throw new DomainRuleViolation(
                 'Artifact read limit must be greater than or equal to the HTML write limit.',

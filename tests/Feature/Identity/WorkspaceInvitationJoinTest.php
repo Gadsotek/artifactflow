@@ -8,6 +8,7 @@ use App\Application\Identity\CreatePersonalWorkspaceForUser;
 use App\Application\Identity\CreateSharedWorkspace;
 use App\Domain\Identity\WorkspaceRole;
 use App\Models\User;
+use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
 use App\Models\WorkspaceMembership;
 use Illuminate\Database\Events\QueryExecuted;
@@ -50,6 +51,40 @@ final class WorkspaceInvitationJoinTest extends TestCase
             ->whereNotNull('accepted_at')
             ->count());
         $this->assertNotNull($invitation->refresh()->accepted_at);
+    }
+
+    public function test_registration_locks_the_workspace_before_the_invitation(): void
+    {
+        $admin = $this->createUser('Admin User', 'admin@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($admin, 'Platform Team');
+        $invitation = $this->invite($admin, $workspace->uid, 'newbie@example.test', WorkspaceRole::Editor);
+        $locks = [];
+
+        DB::listen(function (QueryExecuted $query) use (&$locks, $workspace, $invitation): void {
+            $sql = strtolower($query->sql);
+
+            if (!str_contains($sql, 'for update')) {
+                return;
+            }
+
+            if (str_contains($sql, '"workspaces"') && in_array($workspace->uid, $query->bindings, true)) {
+                $locks[] = Workspace::class;
+            }
+
+            if (str_contains($sql, '"workspace_invitations"') && in_array($invitation->uid, $query->bindings, true)) {
+                $locks[] = WorkspaceInvitation::class;
+            }
+        });
+
+        $this->post("/join/{$invitation->plainToken}/register", [
+            'name' => 'New Bie',
+            'password' => 'a-strong-password-123',
+            'password_confirmation' => 'a-strong-password-123',
+        ])->assertRedirect(route('dashboard', absolute: false));
+
+        $this->assertNotEmpty($locks);
+        $this->assertSame(Workspace::class, $locks[0]);
+        $this->assertSame(WorkspaceInvitation::class, $locks[1]);
     }
 
     public function test_the_emailed_link_secret_is_stored_only_as_a_hash(): void

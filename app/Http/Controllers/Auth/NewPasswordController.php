@@ -4,15 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Auth;
 
-use App\Application\Identity\ResetUserPassword;
+use App\Application\Identity\ResetPasswordWithToken;
 use App\Http\Requests\Auth\NewPasswordRequest;
-use App\Models\User;
-use Illuminate\Contracts\Auth\CanResetPassword as CanResetPasswordContract;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Password;
 use Illuminate\View\View;
-use LogicException;
 
 final class NewPasswordController
 {
@@ -26,17 +23,13 @@ final class NewPasswordController
         ]);
     }
 
-    public function store(NewPasswordRequest $request, ResetUserPassword $resetUserPassword): RedirectResponse
+    public function store(NewPasswordRequest $request, ResetPasswordWithToken $resetPassword): RedirectResponse
     {
-        $status = Password::broker()->reset(
-            $request->credentials(),
-            function (CanResetPasswordContract $user, string $password) use ($resetUserPassword): void {
-                if (!$user instanceof User) {
-                    throw new LogicException('Password reset broker returned an unsupported user model.');
-                }
-
-                $resetUserPassword->handle($user, $password);
-            },
+        $credentials = $request->credentials();
+        $status = $resetPassword->handle(
+            email: $credentials['email'],
+            token: $credentials['token'],
+            newPassword: $credentials['password'],
         );
 
         if ($status === Password::PASSWORD_RESET) {

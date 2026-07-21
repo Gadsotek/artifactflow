@@ -29,15 +29,21 @@ final readonly class ResetUserPassword
         $this->ensurePasswordIsLongEnough($newPassword);
 
         DB::transaction(function () use ($actorUserUid, $newPassword, $user): void {
-            $user->forceFill([
+            $lockedUser = User::query()
+                ->whereKey($user->uid)
+                ->lockForUpdate()
+                ->sole();
+
+            $lockedUser->forceFill([
                 'password' => Hash::make($newPassword),
                 'remember_token' => Str::random(60),
+                'auth_revision' => $lockedUser->auth_revision + 1,
             ])->save();
 
-            $invalidatedSessions = $this->invalidateDatabaseSessions($user);
-            $trustedDevicesRevoked = DB::table('trusted_devices')->where('user_uid', $user->uid)->delete();
+            $invalidatedSessions = $this->invalidateDatabaseSessions($lockedUser);
+            $trustedDevicesRevoked = DB::table('trusted_devices')->where('user_uid', $lockedUser->uid)->delete();
             $mcpTokensRevoked = $this->mcpTokens->revokeActiveForPrincipal(
-                principal: $user,
+                principal: $lockedUser,
                 actorUserUid: $actorUserUid,
                 channel: $actorUserUid === null ? 'self_service_password_reset' : 'operator_password_reset',
                 reason: 'password_reset',
@@ -46,9 +52,9 @@ final readonly class ResetUserPassword
             $event = $this->events->record(
                 eventType: DomainEventType::UserPasswordReset,
                 aggregateType: 'user',
-                aggregateUid: $user->uid,
+                aggregateUid: $lockedUser->uid,
                 payload: [
-                    'user_uid' => $user->uid,
+                    'user_uid' => $lockedUser->uid,
                 ],
             );
 
@@ -56,7 +62,7 @@ final readonly class ResetUserPassword
                 event: $event,
                 actorUserUid: $actorUserUid,
                 auditableType: 'user',
-                auditableUid: $user->uid,
+                auditableUid: $lockedUser->uid,
                 action: DomainEventType::UserPasswordReset,
                 summary: 'User password reset.',
                 metadata: [

@@ -166,13 +166,23 @@ Files younger than `--min-age-hours` (default 24) are always skipped so the reap
 
 ## MCP Access
 
-MCP is served only by the app runtime at `POST /mcp`. The artifact-host runtime must return not found for the same path. MCP clients authenticate with bearer tokens issued either from a human user's account settings or from the service-account CLI path. Every tool call still uses the normal workspace/page policies, scanners, optimistic concurrency checks, and audit/domain-event trail.
+MCP is served by the official Laravel MCP transport only on the app runtime at `POST /mcp`. The artifact-host runtime must return not found for the same path. MCP clients authenticate with bearer tokens issued either from a human user's account settings or from the service-account CLI path. Every tool call still uses the normal workspace/page policies, scanners, optimistic concurrency checks, and audit/domain-event trail.
 
 The app checks its bundled migration-file manifest before MCP authentication. If a deployed release contains an unrecorded migration, MCP returns HTTP 503 with a retryable JSON-RPC `installation_not_ready` error and `Retry-After: 30`; it does not look up or consume the bearer token. Run the approved migration workflow (`make migrate` for this Compose stack), then retry—the same token works once the schema is current. The same check catches a new migration appearing in a long-running, live-mounted process. It cannot detect source or an image that was pulled elsewhere but never started: an old running process knows only the migration manifest in its own deployed release, so deployment automation must still replace every replica and run migrations in the intended order.
 
 Human users create their own MCP tokens from Security -> MCP tokens. Creation requires the account to have TOTP two-factor authentication enabled, then requires the current password and a fresh authenticator code in the create request. The plaintext token is shown once. Token list and revoke are scoped to the signed-in user's own account; revocation does not require the strong create step-up so rotation stays cheap. Workspace scope is an explicit choice: select one or more workspaces to bind the token to that smaller read/write ceiling, or check "All workspaces" to grant every workspace the account can reach now and any it joins in future. An empty selection with "All workspaces" unchecked is rejected, never silently minted as an all-workspaces token.
 
 Per-user token reach follows the user's live workspace memberships and the token's optional workspace scope. A workspace-scoped token cannot discover workspaces or taxonomy, search, read, create, update, or revert anything outside that scope, even if the principal has broader browser access. System Admin is installation/account authority only and never grants workspace or page content access. MCP further de-elevates workspace Admin to Editor, caps Admin page grants to Editor, and removes page-admin capabilities such as manage access, archive, hard delete, change access mode, and transfer ownership.
+
+To configure local clients with a token, run:
+
+```sh
+./scripts/connect-mcp.sh
+```
+
+The connector discovers the standard Claude Desktop config, the active Claude Code user config (including `CLAUDE_CONFIG_DIR`), conventional sibling Claude Code config directories, the active/default Codex user config (including `CODEX_HOME`), conventional sibling Codex homes, and existing Codex profile overlays. It prints every discovered or creatable target and requires an explicit choice of target numbers or `all`; no config is silently selected. Existing files are backed up and merged, and each result is restricted to mode `0600`. For automation, set `MCP_URL`, `MCP_TOKEN`, and `MCP_TARGETS` (`all` or the comma-separated target numbers printed by the script).
+
+The connector intentionally does not offer project `.mcp.json` or `.codex/config.toml` files. Its generated bridge contains the bearer token, so writing it into repository-level configuration would create a commit and collaborator-disclosure risk. Use the selectable user-level configs instead.
 
 For headless agents, create a service-account token from the app container:
 
@@ -208,13 +218,15 @@ Available scopes:
 
 Content scanning remains advisory except for explicit secret and credential patterns, which block writes. Inline script in an HTML artifact is expected; it is recorded as a warning finding and audit trail, not held for human acknowledgement. Descriptions are scanned for obvious secrets and prompt-injection role markers before save. MCP taxonomy names and slugs are user-authored data and are therefore returned inside the same explicit untrusted-data envelope as other user-authored text.
 
-Set `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` to tune the pre-authenticated source-IP ceiling, `MCP_RATE_LIMIT_PER_MINUTE` to tune the authenticated token ceiling, and `MCP_WRITE_RATE_LIMIT_PER_MINUTE` to tune per-token create/update/revert write throughput. Invalid or unauthenticated bearer attempts are bucketed by source IP before token lookup so random bearer rotation cannot create fresh unauthenticated buckets. Authenticated calls are also limited after token authentication. If many legitimate MCP clients share one NAT or proxy egress IP, size the pre-auth limit for the aggregate caller pool or route trusted clients through distinct egress identities. MCP callers may pass `Mcp-Agent-Session` to add a non-secret agent-session identifier to MCP-created version and restore audit metadata. Never place signed preview URLs, application session cookies, or raw authorization headers in MCP client prompts or logs.
+Set `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` to tune the pre-authenticated source-IP ceiling, `MCP_RATE_LIMIT_PER_MINUTE` to tune the authenticated token ceiling, and `MCP_WRITE_RATE_LIMIT_PER_MINUTE` to tune per-token create/update/revert write throughput. Invalid or unauthenticated bearer attempts are bucketed by source IP before token lookup so random bearer rotation cannot create fresh unauthenticated buckets. Authenticated calls are also limited after token authentication. If many legitimate MCP clients share one NAT or proxy egress IP, size the pre-auth limit for the aggregate caller pool or route trusted clients through distinct egress identities. The official Laravel MCP transport negotiates the protocol during initialization and issues `MCP-Session-Id`; compliant clients return that non-secret identifier automatically, and ArtifactFlow records it in MCP-created version and restore audit metadata. Never place signed preview URLs, application session cookies, or raw authorization headers in MCP client prompts or logs.
 
 ## Mail Delivery
 
 Workspace invitations, password reset links, and other outbound mail default to Laravel's local `log` transport, so a fresh **local** install boots without a third-party mail account (mail is written to the log, not delivered). For real delivery, choose a transport explicitly: set `MAIL_MAILER=resend` with `RESEND_KEY` from your Resend account, or `MAIL_MAILER=smtp` with your SMTP settings, and use a verified sender in `MAIL_FROM_ADDRESS`.
 
 In **production** the `log` and `array` transports are not permitted: they silently discard invitation and password-reset emails, so the boot gate rejects them and the container will not start until `MAIL_MAILER` names a deliverable transport. A deliverable mail transport is therefore a first-boot requirement in production, not an optional add-on, and outbound mail depends on the `worker` role (`queue:work`) actually running — see [Production Runtime](#production-runtime).
+
+Production must also keep `QUEUE_CONNECTION=database`, leave `DB_QUEUE_CONNECTION` unset (or set it to the primary `DB_CONNECTION`), and keep the database queue's `after_commit` option disabled. Invitation state, audit/event rows, and the encrypted delivery job are inserted in one PostgreSQL transaction; the production boot gate and read-only doctor reject queue settings that would split that commit or deliver mail before it completes.
 
 Invitation and password-reset links contain bearer secrets in their URL paths. The bundled Caddy
 configuration does not enable access logging, but an external TLS edge, load balancer, APM, or WAF

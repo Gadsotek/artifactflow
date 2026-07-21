@@ -186,6 +186,28 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_invitation_queue_must_share_the_primary_database_transaction_in_production(): void
+    {
+        $message = 'Invitation delivery queue must use the primary database connection with after-commit dispatch disabled in production.';
+
+        foreach ([
+            ['queue.default' => 'sync'],
+            ['queue.connections.database.connection' => 'queue_database'],
+            ['queue.connections.database.after_commit' => true],
+        ] as $unsafeConfiguration) {
+            $this->configureSafeProductionValues();
+            config($unsafeConfiguration);
+
+            $this->assertUnsafeConfiguration($message);
+        }
+
+        $this->configureSafeProductionValues();
+        config(['queue.connections.database.connection' => 'pgsql']);
+
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+        $this->addToAssertionCount(1);
+    }
+
     public function test_repo_published_database_password_is_rejected_in_production(): void
     {
         foreach (['app_local_password', 'postgres', 'postgres_test_password'] as $published) {
@@ -623,6 +645,17 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->assertUnsafeConfiguration('Artifact read limit must be greater than or equal to the HTML write limit.');
     }
 
+    public function test_html_write_limit_must_fit_the_production_http_request_envelope(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'pages.max_html_bytes' => 5 * 1024 * 1024 + 1,
+            'pages.artifact_max_bytes' => 10 * 1024 * 1024,
+        ]);
+
+        $this->assertUnsafeConfiguration('HTML write limit must not exceed the production HTTP request envelope.');
+    }
+
     private function configureSafeProductionValues(): void
     {
         config([
@@ -642,6 +675,10 @@ final class ProductionSecurityConfigurationTest extends TestCase
             'app.reset_user_password' => null,
             'cache.default' => 'database',
             'mail.default' => 'smtp',
+            'queue.default' => 'database',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.connection' => null,
+            'queue.connections.database.after_commit' => false,
             'broadcasting.default' => 'null',
             'broadcasting.connections.reverb.app_id' => 'artifactflow-smoke-test',
             'broadcasting.connections.reverb.key' => 'artifactflow-smoke-test-key',

@@ -54,6 +54,7 @@ final class SensitiveModelAttributesAreHiddenTest extends TestCase
         $user->forceFill([
             'password' => 'irrelevant-hash',
             'remember_token' => 'remember-token-value',
+            'auth_revision' => 12,
         ]);
         $user->setRawAttributes([
             ...$user->getAttributes(),
@@ -63,7 +64,9 @@ final class SensitiveModelAttributesAreHiddenTest extends TestCase
 
         $serialized = $user->toArray();
 
-        foreach (['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'] as $attribute) {
+        foreach (
+            ['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes', 'auth_revision'] as $attribute
+        ) {
             $this->assertArrayNotHasKey($attribute, $serialized);
         }
     }
