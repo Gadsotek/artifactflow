@@ -96,8 +96,22 @@ final readonly class ReindexSearchText
             $versionsExamined = 0;
             $versionsChanged = 0;
             $versionsSkipped = 0;
+            $lockedPage = Page::query()
+                ->whereKey($page->uid)
+                ->lockForUpdate()
+                ->first();
 
-            foreach ($this->versionsFor($page, $allVersions) as $version) {
+            if (!$lockedPage instanceof Page) {
+                return new ReindexSearchTextResult(
+                    pagesProcessed: 1,
+                    versionsExamined: 0,
+                    versionsChanged: 0,
+                    versionsSkipped: 0,
+                    dryRun: $dryRun,
+                );
+            }
+
+            foreach ($this->versionsFor($lockedPage, $allVersions) as $version) {
                 $versionsExamined++;
                 $content = $this->contentReader->read($version->content_storage_path);
 
@@ -107,7 +121,7 @@ final readonly class ReindexSearchText
                     continue;
                 }
 
-                $derivedText = $this->derivedText($page, $version, $content, $hasSourceText);
+                $derivedText = $this->derivedText($lockedPage, $version, $content, $hasSourceText);
 
                 if (!$this->versionNeedsUpdate($version, $derivedText)) {
                     continue;
@@ -121,7 +135,7 @@ final readonly class ReindexSearchText
             }
 
             if (!$dryRun) {
-                $this->searchVectors->refreshPage($page->uid);
+                $this->searchVectors->refreshPage($lockedPage->uid);
             }
 
             return new ReindexSearchTextResult(

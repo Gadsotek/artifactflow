@@ -11,7 +11,6 @@ use App\Application\Installation\EnvFileWriter;
 use App\Application\PageCatalog\SeedDemoContent;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
 use Throwable;
 
@@ -40,12 +39,16 @@ final class InstallCommand extends Command
         $wantsReverb = (bool) $this->option('reverb');
         $targetAppEnv = $local ? 'local' : 'production';
 
+        if (!$local && ($needsAppKey || $needsSigningKey || $wantsReverb)) {
+            $this->error(
+                'Production secrets must be supplied through external environment configuration before running the installer.',
+            );
+
+            return 1;
+        }
+
         $plan = $planner->plan($env, $needsAppKey, $needsSigningKey, $wantsReverb);
         $this->info(sprintf('Installing ArtifactFlow (%s mode).', $env));
-
-        if (!$local) {
-            $this->collectProductionBootGateValues($envWriter);
-        }
 
         if ($plan->hasStep('app_key')) {
             $this->line('- Generating application key');
@@ -82,12 +85,12 @@ final class InstallCommand extends Command
         );
         $this->info(sprintf('- System admin ready: %s', $admin->email));
 
-        // Arm the target environment only now that provisioning has succeeded (keys,
-        // migrations, and the system admin are all in place). Writing it earlier meant an
-        // install that failed or was interrupted mid-way left APP_ENV=production on a
-        // half-configured deployment, so the next boot -- including a re-run of this
-        // installer -- tripped the production boot gate and could not recover.
-        $envWriter->upsert(['APP_ENV' => $targetAppEnv]);
+        // Local/test source installs own their project .env. Production images are
+        // immutable and receive APP_ENV plus every secret from their orchestrator, so
+        // production installation must never attempt to write inside the image.
+        if ($local) {
+            $envWriter->upsert(['APP_ENV' => $targetAppEnv]);
+        }
 
         if ($plan->hasStep('demo') && ($this->option('seed-demo') || $this->confirm('Seed starter demo content?', true))) {
             try {
@@ -150,75 +153,6 @@ final class InstallCommand extends Command
         }
 
         return in_array($env, ['local', 'test', 'production'], true) ? $env : null;
-    }
-
-    /**
-     * Prompt for and persist the boot-gate values a production deploy requires,
-     * touching only the ones that are still missing or unsafe so a re-run never
-     * clobbers values the operator already provided through a secret manager.
-     *
-     * Each collected value is also applied to the live configuration, not only
-     * written to the deployment .env. The final doctor runs later in this same
-     * process and reads live config; without applying them it graded the stale
-     * scaffolded values and reported failures for TLS, mail, and proxies the
-     * operator had just supplied -- a misleading punch list for a config the next
-     * boot (reading the freshly written .env) would actually accept.
-     */
-    private function collectProductionBootGateValues(EnvFileWriter $envWriter): void
-    {
-        $this->line('- Configuring production boot-gate values (only the missing ones are prompted)');
-        $connection = is_string(config('database.default')) ? (string) config('database.default') : 'pgsql';
-        $values = [];
-
-        // The DB password is also needed by the migration in this same run, so apply it
-        // to the live connection as well as persisting it for the next boot.
-        if ($this->configString(sprintf('database.connections.%s.password', $connection)) === '') {
-            $password = $this->secret('Database password');
-            $password = is_string($password) ? $password : '';
-
-            if ($password !== '') {
-                $values['DB_PASSWORD'] = $password;
-                config([sprintf('database.connections.%s.password', $connection) => $password]);
-                DB::purge($connection);
-            }
-        }
-
-        if (strtolower($this->configString(sprintf('database.connections.%s.sslmode', $connection))) !== 'verify-full') {
-            $values['DB_SSLMODE'] = 'verify-full';
-            config([sprintf('database.connections.%s.sslmode', $connection) => 'verify-full']);
-
-            if ($this->configString(sprintf('database.connections.%s.sslrootcert', $connection)) === '') {
-                $rootCert = $this->ask('Path to the database TLS root certificate (DB_SSLROOTCERT)');
-
-                if (is_string($rootCert) && trim($rootCert) !== '') {
-                    $values['DB_SSLROOTCERT'] = trim($rootCert);
-                    config([sprintf('database.connections.%s.sslrootcert', $connection) => trim($rootCert)]);
-                }
-            }
-        }
-
-        $mailer = strtolower($this->configString('mail.default'));
-
-        if ($mailer === '' || $mailer === 'log') {
-            $enteredMailer = $this->ask('Mail transport (MAIL_MAILER, e.g. smtp/ses/postmark)', 'smtp');
-            $values['MAIL_MAILER'] = is_string($enteredMailer) && trim($enteredMailer) !== '' ? trim($enteredMailer) : 'smtp';
-            config(['mail.default' => $values['MAIL_MAILER']]);
-        }
-
-        $trustedProxies = $this->configString('trustedproxy.raw');
-
-        if ($trustedProxies === '' || in_array($trustedProxies, ['*', '**'], true)) {
-            $enteredProxies = $this->ask('Trusted proxy addresses/CIDRs for the TLS edge (TRUSTED_PROXIES)');
-
-            if (is_string($enteredProxies) && trim($enteredProxies) !== '') {
-                $values['TRUSTED_PROXIES'] = trim($enteredProxies);
-                config(['trustedproxy.raw' => trim($enteredProxies)]);
-            }
-        }
-
-        if ($values !== []) {
-            $envWriter->upsert($values);
-        }
     }
 
     private function runGeneratorScript(string $relativePath): bool

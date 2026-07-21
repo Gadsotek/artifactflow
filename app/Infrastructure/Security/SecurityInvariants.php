@@ -231,6 +231,27 @@ final class SecurityInvariants
     }
 
     /**
+     * Invitation mail is enqueued inside the invitation transaction. Its queue
+     * record must therefore use the same database connection and become visible
+     * at the same commit. Sync delivery can escape before a later commit failure;
+     * a secondary database or after-commit dispatch can lose delivery after the
+     * invitation has already committed.
+     */
+    public static function invitationQueueIsTransactional(
+        string $driver,
+        string $queueDatabaseConnection,
+        string $primaryDatabaseConnection,
+        bool $dispatchesAfterCommit,
+    ): bool {
+        return strtolower(trim($driver)) === 'database'
+            && (
+                trim($queueDatabaseConnection) === ''
+                || trim($queueDatabaseConnection) === trim($primaryDatabaseConnection)
+            )
+            && !$dispatchesAfterCommit;
+    }
+
+    /**
      * Whether the production database password is a real, non-placeholder value.
      * A shipped or empty password is a hard failure: verify-full TLS protects the
      * link, not a guessable credential reachable on the database port.

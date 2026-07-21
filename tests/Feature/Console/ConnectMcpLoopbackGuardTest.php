@@ -161,13 +161,148 @@ JSON;
         $this->assertStringContainsString('http://localhost:18080/mcp', $config);
     }
 
+    public function test_claude_code_server_is_added_at_user_scope_without_replacing_project_servers(): void
+    {
+        $existingConfig = <<<'JSON'
+{
+  "projects": {
+    "/workspace/example": {
+      "mcpServers": {
+        "project-only": {"command": "project-server"}
+      }
+    }
+  }
+}
+JSON;
+
+        [$process, $home] = $this->runConnect(
+            'http://localhost:18080',
+            existingClaudeCodeConfig: $existingConfig,
+        );
+
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+
+        $config = file_get_contents($home . '/.claude.json');
+
+        $this->assertIsString($config);
+        $this->assertSame(2, substr_count($config, '"mcpServers"'));
+        $this->assertStringContainsString('"project-only": {"command": "project-server"}', $config);
+        $this->assertStringContainsString('"artifactflow"', $config);
+        $this->assertStringContainsString('http://localhost:18080/mcp', $config);
+    }
+
+    public function test_discovered_alternate_client_instances_can_be_selected_individually(): void
+    {
+        [$process, $home, $codexHome] = $this->runConnect(
+            'http://localhost:18080',
+            additionalConfigs: [
+                '.claude-work/.claude.json' => "{}\n",
+                '.codex-work/config.toml' => "model = \"gpt-5\"\n",
+            ],
+            targets: '3,5',
+        );
+
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        $this->assertStringContainsString($home . '/.claude-work/.claude.json', $process->getOutput());
+        $this->assertStringContainsString($home . '/.codex-work/config.toml', $process->getOutput());
+        $this->assertFileDoesNotExist($home . '/.config/Claude/claude_desktop_config.json');
+        $this->assertFileDoesNotExist($home . '/.claude.json');
+        $this->assertFileDoesNotExist($codexHome . '/config.toml');
+
+        $claudeConfig = file_get_contents($home . '/.claude-work/.claude.json');
+        $codexConfig = file_get_contents($home . '/.codex-work/config.toml');
+
+        $this->assertIsString($claudeConfig);
+        $this->assertIsString($codexConfig);
+        $this->assertStringContainsString('"artifactflow"', $claudeConfig);
+        $this->assertStringContainsString('[mcp_servers.artifactflow]', $codexConfig);
+    }
+
+    public function test_non_interactive_use_requires_an_explicit_target_selection(): void
+    {
+        [$process, $home, $codexHome] = $this->runConnect(
+            'http://localhost:18080',
+            targets: null,
+        );
+
+        $this->assertNotSame(0, $process->getExitCode());
+        $this->assertStringContainsString('MCP_TARGETS', $process->getErrorOutput());
+        $this->assertSame([], $this->configFilesUnder($home, $codexHome));
+    }
+
+    public function test_active_custom_claude_config_directory_is_a_selectable_instance(): void
+    {
+        $home = $this->makeTempHome();
+        $customDirectory = $home . '/accounts/claude-work';
+        $codexHome = $home . '/.codex';
+
+        [$process] = $this->runConnect(
+            'http://localhost:18080',
+            targets: '2',
+            environmentOverrides: [
+                'HOME' => $home,
+                'CODEX_HOME' => $codexHome,
+                'CLAUDE_CONFIG_DIR' => $customDirectory,
+            ],
+        );
+
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        $this->assertStringContainsString('active CLAUDE_CONFIG_DIR', $process->getOutput());
+        $this->assertFileExists($customDirectory . '/.claude.json');
+        $this->assertFileDoesNotExist($home . '/.claude.json');
+        $this->assertFileDoesNotExist($codexHome . '/config.toml');
+    }
+
+    public function test_existing_codex_profile_can_be_selected_without_updating_its_base_config(): void
+    {
+        [$process, , $codexHome] = $this->runConnect(
+            'http://localhost:18080',
+            additionalConfigs: [
+                '.codex/review.config.toml' => "model = \"gpt-5\"\n",
+            ],
+            targets: '4',
+        );
+
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        $this->assertStringContainsString('Codex profile (review)', $process->getOutput());
+        $this->assertFileDoesNotExist($codexHome . '/config.toml');
+
+        $profileConfig = file_get_contents($codexHome . '/review.config.toml');
+
+        $this->assertIsString($profileConfig);
+        $this->assertStringContainsString('model = "gpt-5"', $profileConfig);
+        $this->assertStringContainsString('[mcp_servers.artifactflow]', $profileConfig);
+    }
+
+    public function test_unreachable_endpoint_is_reported_as_a_connection_failure_not_an_impossible_http_code(): void
+    {
+        $curl = new Process(['sh', '-c', 'command -v curl']);
+        $curl->run();
+
+        if (!$curl->isSuccessful()) {
+            $this->markTestSkipped('curl is optional and is not installed in this test environment.');
+        }
+
+        [$process] = $this->runConnect('http://127.0.0.1:1');
+
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        $this->assertStringContainsString('could not reach', $process->getErrorOutput());
+        $this->assertStringNotContainsString('HTTP 000000', $process->getErrorOutput());
+    }
+
     /**
+     * @param  array<string, string>  $additionalConfigs
+     * @param  array<string, string>  $environmentOverrides
      * @return array{Process, string, string}
      */
     private function runConnect(
         string $url,
         ?string $existingCodexConfig = null,
         ?string $existingClaudeConfig = null,
+        ?string $existingClaudeCodeConfig = null,
+        array $additionalConfigs = [],
+        ?string $targets = 'all',
+        array $environmentOverrides = [],
     ): array {
         $home = $this->makeTempHome();
         $codexHome = $home . '/.codex';
@@ -183,15 +318,33 @@ JSON;
             file_put_contents($claudeConfigDirectory . '/claude_desktop_config.json', $existingClaudeConfig);
         }
 
+        if ($existingClaudeCodeConfig !== null) {
+            file_put_contents($home . '/.claude.json', $existingClaudeCodeConfig);
+        }
+
+        foreach ($additionalConfigs as $relativePath => $contents) {
+            $path = $home . '/' . $relativePath;
+            mkdir(dirname($path), 0700, true);
+            file_put_contents($path, $contents);
+        }
+
+        $environment = [
+            'MCP_URL' => $url,
+            'MCP_TOKEN' => 'af_mcp_test_token_value',
+            'HOME' => $home,
+            'CODEX_HOME' => $codexHome,
+        ];
+
+        if ($targets !== null) {
+            $environment['MCP_TARGETS'] = $targets;
+        }
+
+        $environment = array_replace($environment, $environmentOverrides);
+
         $process = new Process(
             ['bash', base_path('scripts/connect-mcp.sh')],
             base_path(),
-            [
-                'MCP_URL' => $url,
-                'MCP_TOKEN' => 'af_mcp_test_token_value',
-                'HOME' => $home,
-                'CODEX_HOME' => $codexHome,
-            ],
+            $environment,
             null,
             30,
         );
@@ -208,6 +361,7 @@ JSON;
         $candidates = [
             $home . '/Library/Application Support/Claude/claude_desktop_config.json',
             $home . '/.config/Claude/claude_desktop_config.json',
+            $home . '/.claude.json',
             $codexHome . '/config.toml',
         ];
 

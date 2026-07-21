@@ -9,7 +9,6 @@ use App\Application\PageCatalog\UpdatePageContentCommand;
 use App\Domain\PageCatalog\PageVersionSource;
 use App\Models\Page;
 use App\Models\User;
-use Illuminate\Http\JsonResponse;
 
 /**
  * MCP update tool: append a page version through the same UpdatePageContent
@@ -20,20 +19,19 @@ final readonly class McpUpdateTool
     public function __construct(
         private McpPageResolver $pages,
         private UpdatePageContent $updatePageContent,
-        private McpJsonRpc $jsonRpc,
         private McpToolErrorMapper $errors,
     ) {
     }
 
-    public function handle(mixed $id, User $actor, McpToolArguments $arguments): JsonResponse
+    public function handle(User $actor, McpToolArguments $arguments): McpToolResult
     {
         $page = $this->pages->editablePage($actor, $arguments->requiredString('page_uid'));
 
         if (!$page instanceof Page) {
-            return $this->jsonRpc->notFound($id);
+            return McpToolResult::notFound();
         }
 
-        return $this->errors->guard($id, function () use ($id, $actor, $arguments, $page): JsonResponse {
+        return $this->errors->guard(function () use ($actor, $arguments, $page): McpToolResult {
             $version = $this->updatePageContent->handle($actor, new UpdatePageContentCommand(
                 pageUid: $page->uid,
                 content: $arguments->requiredString('content'),
@@ -41,7 +39,7 @@ final readonly class McpUpdateTool
                 baseVersionUid: $arguments->nullableString('base_version_uid'),
             ));
 
-            return $this->jsonRpc->toolSuccess($id, [
+            return McpToolResult::success([
                 'page_uid' => $page->uid,
                 'version_uid' => $version->uid,
                 'current_version_uid' => $version->uid,

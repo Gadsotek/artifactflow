@@ -11,6 +11,7 @@ use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\Identity\WorkspaceRole;
 use App\Models\User;
+use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
 use App\Models\WorkspaceMembership;
 use DateTimeInterface;
@@ -34,8 +35,31 @@ final readonly class AcceptWorkspaceInvitation
     {
         $membership = DB::transaction(function () use ($user, $invitation): WorkspaceMembership {
             $userUid = ActorId::fromUser($user);
+            $candidateInvitation = WorkspaceInvitation::query()
+                ->select(['uid', 'workspace_uid'])
+                ->whereKey($invitation->uid)
+                ->first();
+
+            if (!$candidateInvitation instanceof WorkspaceInvitation) {
+                throw new DomainRuleViolation('Workspace invitation does not exist.');
+            }
+
+            // Canonical invitation lock order: workspace -> invitation ->
+            // membership. The first read supplies the immutable workspace UID;
+            // every security-sensitive field is reloaded only after both rows are
+            // locked, so revoke/resend cannot race this acceptance.
+            $lockedWorkspace = Workspace::query()
+                ->whereKey($candidateInvitation->workspace_uid)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$lockedWorkspace instanceof Workspace) {
+                throw new DomainRuleViolation('Workspace does not exist.');
+            }
+
             $lockedInvitation = WorkspaceInvitation::query()
                 ->whereKey($invitation->uid)
+                ->where('workspace_uid', $lockedWorkspace->uid)
                 ->lockForUpdate()
                 ->first();
 

@@ -8,7 +8,6 @@ use App\Application\PageCatalog\PageFilterTaxonomy;
 use App\Models\Category;
 use App\Models\Tag;
 use App\Models\User;
-use Illuminate\Http\JsonResponse;
 
 /**
  * Lists categories in reachable workspaces plus taxonomy attached to pages the
@@ -19,15 +18,14 @@ final readonly class McpListTaxonomyTool
 {
     public function __construct(
         private PageFilterTaxonomy $taxonomy,
-        private McpJsonRpc $jsonRpc,
     ) {
     }
 
-    public function handle(mixed $id, User $actor, McpToolArguments $arguments): JsonResponse
+    public function handle(User $actor, McpToolArguments $arguments): McpToolResult
     {
         $taxonomy = $this->taxonomy->forUser($actor, $arguments->nullableString('workspace_uid'));
 
-        return $this->jsonRpc->toolSuccess($id, [
+        return McpToolResult::success([
             'categories' => array_map(static fn (Category $category): array => [
                 'uid' => $category->uid,
                 'name' => McpDataEnvelope::text($category->name),

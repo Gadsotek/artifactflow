@@ -15,6 +15,7 @@ use App\Notifications\ResetPasswordNotification;
 use Illuminate\Auth\Notifications\ResetPassword as BaseResetPasswordNotification;
 use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\SendQueuedNotifications;
 use Illuminate\Support\Facades\DB;
@@ -167,6 +168,63 @@ final class PasswordResetFlowTest extends TestCase
 
         $this->assertTrue(Hash::check('new secure password', $user->refresh()->password));
         $this->assertSame(1, DomainEvent::query()->where('event_type', 'user.password_reset')->count());
+    }
+
+    public function test_password_reset_locks_the_token_until_the_password_change_and_consumption_commit(): void
+    {
+        $user = $this->createUser('Locked Reset User', 'locked-reset@example.test', 'old secure password');
+        $token = Password::broker()->createToken($user);
+        $events = [];
+
+        DB::listen(function (QueryExecuted $query) use (&$events, $user): void {
+            $sql = strtolower($query->sql);
+
+            if (str_contains($sql, '"password_reset_tokens"') && str_contains($sql, 'for update')) {
+                $events[] = [
+                    'operation' => 'token_locked',
+                    'transaction_level' => DB::connection()->transactionLevel(),
+                ];
+
+                return;
+            }
+
+            if (
+                str_starts_with($sql, 'update "users"')
+                && in_array($user->uid, $query->bindings, true)
+            ) {
+                $events[] = [
+                    'operation' => 'password_changed',
+                    'transaction_level' => DB::connection()->transactionLevel(),
+                ];
+
+                return;
+            }
+
+            if (
+                str_starts_with($sql, 'delete from "password_reset_tokens"')
+                && in_array($user->email, $query->bindings, true)
+            ) {
+                $events[] = [
+                    'operation' => 'token_consumed',
+                    'transaction_level' => DB::connection()->transactionLevel(),
+                ];
+            }
+        });
+
+        $this->post('/reset-password', [
+            'token' => $token,
+            'email' => $user->email,
+            'password' => 'new secure password',
+            'password_confirmation' => 'new secure password',
+        ])->assertRedirect('/login');
+
+        $this->assertSame(
+            ['token_locked', 'password_changed', 'token_consumed'],
+            array_column($events, 'operation'),
+        );
+        foreach ($events as $event) {
+            $this->assertGreaterThan(0, $event['transaction_level']);
+        }
     }
 
     public function test_expired_password_reset_token_is_rejected(): void

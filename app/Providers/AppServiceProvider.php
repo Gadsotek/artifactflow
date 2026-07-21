@@ -94,7 +94,6 @@ final class AppServiceProvider extends ServiceProvider
             }
 
             $request->attributes->set('mcp_access_token', $token);
-            app(McpRequestContext::class)->activate($token, $request->headers->get('Mcp-Agent-Session'));
 
             return $token->principal;
         });

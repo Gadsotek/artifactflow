@@ -34,8 +34,6 @@ final class McpAccessTokenAuthenticator
             return null;
         }
 
-        $token->forceFill(['last_used_at' => now()])->save();
-
         return $token;
     }
 

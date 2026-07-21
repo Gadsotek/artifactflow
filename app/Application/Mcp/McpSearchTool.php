@@ -12,7 +12,6 @@ use App\Models\McpAccessToken;
 use App\Models\Page;
 use App\Models\Tag;
 use App\Models\User;
-use Illuminate\Http\JsonResponse;
 
 /**
  * MCP search tool: full-text page search through the same PageSearch the
@@ -24,16 +23,15 @@ final readonly class McpSearchTool
     public function __construct(
         private PageSearch $pageSearch,
         private McpPageHierarchy $hierarchy,
-        private McpJsonRpc $jsonRpc,
     ) {
     }
 
-    public function handle(mixed $id, User $actor, McpAccessToken $token, McpToolArguments $arguments): JsonResponse
+    public function handle(User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult
     {
         $includeSnippet = $arguments->bool('include_snippet', false);
 
         if ($includeSnippet && !$token->hasScope(McpAccessTokenIssuer::SCOPE_READ)) {
-            return $this->jsonRpc->toolError($id, [
+            return McpToolResult::error([
                 'type' => 'insufficient_scope',
                 'message' => 'The mcp:read scope is required for snippets.',
             ]);
@@ -61,7 +59,7 @@ final readonly class McpSearchTool
             array_map(static fn (PageSearchResult $result): Page => $result->page, $results),
         );
 
-        return $this->jsonRpc->toolSuccess($id, [
+        return McpToolResult::success([
             'results' => array_map(function (PageSearchResult $result) use (
                 $hierarchyByPageUid,
                 $includeSnippet,

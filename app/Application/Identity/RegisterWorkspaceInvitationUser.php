@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\Identity;
 
 use App\Domain\DomainRuleViolation;
+use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -24,8 +25,31 @@ final readonly class RegisterWorkspaceInvitationUser
     public function handle(RegisterWorkspaceInvitationUserCommand $command): WorkspaceInvitationRegistrationResult
     {
         return DB::transaction(function () use ($command): WorkspaceInvitationRegistrationResult {
+            $candidateInvitation = WorkspaceInvitation::query()
+                ->select(['uid', 'workspace_uid'])
+                ->whereKey($command->invitationUid)
+                ->first();
+
+            if (!$candidateInvitation instanceof WorkspaceInvitation) {
+                throw new InvitationNoLongerPending();
+            }
+
+            // Match every other invitation mutation's workspace -> invitation ->
+            // membership lock order. This non-locking lookup only discovers the
+            // immutable workspace UID; the token and pending state are checked
+            // again from the subsequently locked invitation row.
+            $workspace = Workspace::query()
+                ->whereKey($candidateInvitation->workspace_uid)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$workspace instanceof Workspace) {
+                throw new InvitationNoLongerPending();
+            }
+
             $invitation = WorkspaceInvitation::query()
                 ->whereKey($command->invitationUid)
+                ->where('workspace_uid', $workspace->uid)
                 ->lockForUpdate()
                 ->first();
 

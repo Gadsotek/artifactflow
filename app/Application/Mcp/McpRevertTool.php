@@ -8,7 +8,6 @@ use App\Application\PageCatalog\RevertToPreviousVersion;
 use App\Application\PageCatalog\RevertToPreviousVersionCommand;
 use App\Models\Page;
 use App\Models\User;
-use Illuminate\Http\JsonResponse;
 
 /**
  * MCP revert tool: restore the previous page version through the same
@@ -21,26 +20,25 @@ final readonly class McpRevertTool
     public function __construct(
         private McpPageResolver $pages,
         private RevertToPreviousVersion $revertToPreviousVersion,
-        private McpJsonRpc $jsonRpc,
         private McpToolErrorMapper $errors,
     ) {
     }
 
-    public function handle(mixed $id, User $actor, McpToolArguments $arguments): JsonResponse
+    public function handle(User $actor, McpToolArguments $arguments): McpToolResult
     {
         $page = $this->pages->editablePage($actor, $arguments->requiredString('page_uid'));
 
         if (!$page instanceof Page) {
-            return $this->jsonRpc->notFound($id);
+            return McpToolResult::notFound();
         }
 
-        return $this->errors->guard($id, function () use ($id, $actor, $arguments, $page): JsonResponse {
+        return $this->errors->guard(function () use ($actor, $arguments, $page): McpToolResult {
             $result = $this->revertToPreviousVersion->handle($actor, new RevertToPreviousVersionCommand(
                 pageUid: $page->uid,
                 baseVersionUid: $arguments->requiredString('base_version_uid'),
             ));
 
-            return $this->jsonRpc->toolSuccess($id, [
+            return McpToolResult::success([
                 'page_uid' => $page->uid,
                 'version_uid' => $result->restoredVersion->uid,
                 'current_version_uid' => $result->restoredVersion->uid,

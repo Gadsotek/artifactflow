@@ -6,7 +6,6 @@ namespace App\Application\Mcp;
 
 use App\Models\McpAccessToken;
 use App\Models\User;
-use Illuminate\Http\JsonResponse;
 
 /**
  * MCP list_workspaces tool: the workspaces the actor belongs to, narrowed to
@@ -16,13 +15,12 @@ final readonly class McpListWorkspacesTool
 {
     public function __construct(
         private McpWorkspaceListing $workspaceListing,
-        private McpJsonRpc $jsonRpc,
     ) {
     }
 
-    public function handle(mixed $id, User $actor, McpAccessToken $token): JsonResponse
+    public function handle(User $actor, McpAccessToken $token): McpToolResult
     {
-        return $this->jsonRpc->toolSuccess($id, [
+        return McpToolResult::success([
             'workspaces' => $this->workspaceListing->forActor($actor, $token),
         ]);
     }

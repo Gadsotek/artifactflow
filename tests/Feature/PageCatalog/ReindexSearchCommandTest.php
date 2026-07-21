@@ -15,6 +15,7 @@ use App\Models\PageVersion;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\PendingCommand;
@@ -153,6 +154,62 @@ final class ReindexSearchCommandTest extends TestCase
         $firstVersion->refresh();
         $this->assertNull($firstVersion->extracted_text);
         $this->assertStringContainsString('firstneedle', (string) $firstVersion->source_text);
+    }
+
+    public function test_reindex_reloads_and_locks_the_page_before_classifying_current_and_historical_versions(): void
+    {
+        Storage::fake('artifacts');
+
+        $owner = $this->createUser('Concurrent Reindex Owner', 'concurrent-reindex@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Concurrent Reindex Workspace');
+        $page = app(CreatePage::class)->handle($owner, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Concurrent Reindex Page',
+            description: null,
+            content: '# Version One' . PHP_EOL . PHP_EOL . 'firstconcurrentneedle',
+        ));
+        $firstVersionUid = $page->current_version_uid;
+        $this->assertNotNull($firstVersionUid);
+        $appendedVersionUid = null;
+        $appendTriggered = false;
+        $retrievedEvent = 'eloquent.retrieved: ' . Page::class;
+
+        Event::listen($retrievedEvent, function (Page $loadedPage) use (
+            &$appendTriggered,
+            &$appendedVersionUid,
+            $owner,
+            $page,
+        ): void {
+            if ($appendTriggered || $loadedPage->uid !== $page->uid) {
+                return;
+            }
+
+            // The chunk has hydrated V1 as current. Commit V2 before that stale model
+            // reaches processPage(), matching a live append during a long reindex.
+            $appendTriggered = true;
+            $appended = app(UpdatePageContent::class)->handle($owner, new UpdatePageContentCommand(
+                pageUid: $loadedPage->uid,
+                content: '# Version Two' . PHP_EOL . PHP_EOL . 'secondconcurrentneedle',
+                baseVersionUid: $loadedPage->current_version_uid,
+            ));
+            $appendedVersionUid = $appended->uid;
+        });
+
+        try {
+            $this->runConsoleCommand("artifactflow:reindex-search --all-versions --page={$page->uid}")
+                ->assertExitCode(0);
+        } finally {
+            Event::forget($retrievedEvent);
+        }
+
+        $this->assertTrue($appendTriggered);
+        $this->assertIsString($appendedVersionUid);
+        $firstVersion = PageVersion::query()->whereKey($firstVersionUid)->sole();
+        $currentVersion = PageVersion::query()->whereKey($appendedVersionUid)->sole();
+
+        $this->assertNull($firstVersion->extracted_text);
+        $this->assertStringContainsString('secondconcurrentneedle', (string) $currentVersion->extracted_text);
     }
 
     public function test_page_flag_scopes_reindex_to_a_single_page(): void

@@ -19,18 +19,22 @@ final readonly class VerifyTwoFactorCode
     ) {
     }
 
-    public function verifyTotpAndAdvance(User $user, string $code): bool
+    public function verifyTotpAndAdvance(User $user, string $code, ?int $expectedAuthRevision = null): bool
     {
         if (preg_match('/^\s*\d{6}\s*$/', $code) !== 1) {
             return false;
         }
 
         try {
-            return DB::transaction(function () use ($code, $user): bool {
+            return DB::transaction(function () use ($code, $expectedAuthRevision, $user): bool {
                 $lockedUser = User::query()
                     ->where('uid', $user->uid)
                     ->lockForUpdate()
                     ->sole();
+
+                if (!$this->authRevisionMatches($lockedUser, $expectedAuthRevision)) {
+                    return false;
+                }
 
                 $secret = $lockedUser->two_factor_secret;
                 if (!is_string($secret) || $secret === '') {
@@ -63,15 +67,19 @@ final readonly class VerifyTwoFactorCode
         }
     }
 
-    public function consumeRecoveryCode(User $user, string $code): bool
+    public function consumeRecoveryCode(User $user, string $code, ?int $expectedAuthRevision = null): bool
     {
         $normalizedCode = $this->recoveryCodes->normalize($code);
 
-        return DB::transaction(function () use ($normalizedCode, $user): bool {
+        return DB::transaction(function () use ($expectedAuthRevision, $normalizedCode, $user): bool {
             $lockedUser = User::query()
                 ->where('uid', $user->uid)
                 ->lockForUpdate()
                 ->sole();
+
+            if (!$this->authRevisionMatches($lockedUser, $expectedAuthRevision)) {
+                return false;
+            }
 
             $hashes = $lockedUser->two_factor_recovery_codes;
             if ($hashes === null || $hashes === []) {
@@ -111,5 +119,10 @@ final readonly class VerifyTwoFactorCode
         $window = is_int($value) || is_string($value) ? (int) $value : 1;
 
         return max(0, $window);
+    }
+
+    private function authRevisionMatches(User $user, ?int $expectedAuthRevision): bool
+    {
+        return $expectedAuthRevision === null || $user->auth_revision === $expectedAuthRevision;
     }
 }

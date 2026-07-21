@@ -40,7 +40,7 @@ See `workflows.svg` for the full create-page write pipeline, the cross-origin pr
 
 - The page write pipeline is factored through explicit collaborators such as `PageVersionWriter`, `WorkspaceStorageQuota`, `TagSynchronizer`, `ActorId`, and `SlugGenerator`.
 - Authorization is enforced by the shared `PageAccess` application service and handler-level checks, with route-level `can:` middleware backed by thin Policies as a second layer.
-- **MCP ships today**: `POST /mcp` (JSON-RPC, scoped bearer tokens, `app/Application/Mcp/`) is part of the runtime surface, as is Reverb-backed realtime presence/locking (`pages.presence.update`, broadcast auth via `PageAccess`).
+- **MCP ships today**: `POST /mcp` uses the official Laravel MCP transport (`app/Mcp/`) over scoped ArtifactFlow bearer-token and tool behavior (`app/Application/Mcp/`). Reverb-backed realtime presence/locking (`pages.presence.update`, broadcast auth via `PageAccess`) is also part of the runtime surface.
 
 ## Genuinely future surfaces
 

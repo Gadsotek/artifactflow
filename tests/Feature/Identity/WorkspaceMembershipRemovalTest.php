@@ -23,6 +23,7 @@ use App\Domain\PageCatalog\PageAccessSubjectType;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
 use App\Events\PagePresenceAccessRevoked;
+use App\Mail\WorkspaceInvitationMail;
 use App\Models\AuditEntry;
 use App\Models\DomainEvent;
 use App\Models\Page;
@@ -35,6 +36,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -83,6 +85,8 @@ final class WorkspaceMembershipRemovalTest extends TestCase
 
     public function test_member_removal_revokes_accepted_invitation_so_it_cannot_be_replayed(): void
     {
+        Mail::fake();
+
         $admin = $this->createUser('Admin User', 'admin@example.test');
         $member = $this->createUser('Member User', 'member@example.test');
         $workspace = app(CreateSharedWorkspace::class)->handle($admin, 'Platform Team');
@@ -124,6 +128,25 @@ final class WorkspaceMembershipRemovalTest extends TestCase
             ->where('event_type', 'workspace.membership.removed')
             ->sole();
         $this->assertSame(1, $removalEvent->payload['revoked_invitation_count']);
+
+        $reactivated = app(InviteUserToWorkspace::class)->handle(
+            actor: $admin,
+            command: new InviteUserToWorkspaceCommand(
+                workspaceUid: $workspace->uid,
+                email: $member->email,
+                role: WorkspaceRole::Editor,
+            ),
+        );
+
+        $this->assertSame($invitation->uid, $reactivated->uid);
+        $this->assertNull($reactivated->accepted_at);
+        $this->assertNull($reactivated->accepted_by_user_uid);
+        $this->assertNull($reactivated->revoked_at);
+        $this->assertSame(WorkspaceRole::Editor, $reactivated->role);
+
+        $newMembership = app(AcceptWorkspaceInvitation::class)->handle($member, $reactivated);
+        $this->assertSame(WorkspaceRole::Editor, $newMembership->role);
+        Mail::assertQueued(WorkspaceInvitationMail::class, 2);
     }
 
     public function test_member_removal_revokes_direct_page_grants_and_stale_elevated_grants_do_not_apply(): void

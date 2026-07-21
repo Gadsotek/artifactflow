@@ -20,7 +20,7 @@ final class TwoFactorPendingChallenge
         $nonce = Str::random(64);
         $createdAt = now()->getTimestamp();
 
-        Cache::put($this->cacheKey($nonce), $user->uid, $this->timeoutSeconds());
+        Cache::put($this->cacheKey($nonce), $this->cacheValue($user), $this->timeoutSeconds());
 
         $request->session()->put(self::SESSION_KEY, [
             'user_uid' => $user->uid,
@@ -28,6 +28,7 @@ final class TwoFactorPendingChallenge
             'remember' => $remember,
             'nonce' => $nonce,
             'attempts' => 0,
+            'auth_revision' => $user->auth_revision,
         ]);
         $request->session()->regenerate();
     }
@@ -43,9 +44,9 @@ final class TwoFactorPendingChallenge
 
         $uid = $marker['user_uid'];
         $nonce = $marker['nonce'];
-        $cachedUid = Cache::get($this->cacheKey($nonce));
+        $cachedValue = Cache::get($this->cacheKey($nonce));
 
-        if ($cachedUid !== $uid) {
+        if ($cachedValue !== $this->cacheValue($uid, $marker['auth_revision'])) {
             $this->clear($request);
 
             return null;
@@ -58,7 +59,11 @@ final class TwoFactorPendingChallenge
         }
 
         $user = User::query()->where('uid', $uid)->first();
-        if (!$user instanceof User || !$user->hasEnabledTwoFactor()) {
+        if (
+            !$user instanceof User
+            || !$user->hasEnabledTwoFactor()
+            || $user->auth_revision !== $marker['auth_revision']
+        ) {
             $this->clear($request);
 
             return null;
@@ -72,6 +77,11 @@ final class TwoFactorPendingChallenge
         $marker = $this->marker($request);
 
         return $marker !== null && $marker['remember'];
+    }
+
+    public function authRevision(Request $request): ?int
+    {
+        return $this->marker($request)['auth_revision'] ?? null;
     }
 
     public function recordFailure(Request $request): void
@@ -104,7 +114,7 @@ final class TwoFactorPendingChallenge
     }
 
     /**
-     * @return array{user_uid: string, created_at: int, remember: bool, nonce: string, attempts: int}|null
+     * @return array{user_uid: string, created_at: int, remember: bool, nonce: string, attempts: int, auth_revision: int}|null
      */
     private function marker(Request $request): ?array
     {
@@ -119,6 +129,7 @@ final class TwoFactorPendingChallenge
         $remember = $marker['remember'] ?? null;
         $nonce = $marker['nonce'] ?? null;
         $attempts = $marker['attempts'] ?? 0;
+        $authRevision = $marker['auth_revision'] ?? null;
 
         if (
             !is_string($uid)
@@ -128,6 +139,7 @@ final class TwoFactorPendingChallenge
             || !is_string($nonce)
             || $nonce === ''
             || (!is_int($attempts) && !(is_string($attempts) && ctype_digit((string) $attempts)))
+            || (!is_int($authRevision) && !(is_string($authRevision) && ctype_digit($authRevision)))
         ) {
             return null;
         }
@@ -138,6 +150,7 @@ final class TwoFactorPendingChallenge
             'remember' => $remember,
             'nonce' => $nonce,
             'attempts' => (int) $attempts,
+            'auth_revision' => (int) $authRevision,
         ];
     }
 
@@ -152,5 +165,18 @@ final class TwoFactorPendingChallenge
     private function cacheKey(string $nonce): string
     {
         return self::CACHE_PREFIX . hash('sha256', $nonce);
+    }
+
+    private function cacheValue(User|string $user, ?int $authRevision = null): string
+    {
+        if ($user instanceof User) {
+            return $this->cacheValue($user->uid, $user->auth_revision);
+        }
+
+        if ($authRevision === null) {
+            return '';
+        }
+
+        return hash('sha256', $user . ':' . $authRevision);
     }
 }

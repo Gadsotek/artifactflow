@@ -18,6 +18,7 @@ use App\Models\InstallationSettings;
 use App\Models\PageVersion;
 use App\Models\User;
 use App\Models\WorkspaceMembership;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -325,8 +326,8 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         $this->actingAs($admin)
             ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', [
-                'max_markdown_bytes' => (string) (64 * 1024 * 1024 + 1),
-                'max_html_bytes' => (string) (64 * 1024 * 1024 + 1),
+                'max_markdown_bytes' => (string) (5 * 1024 * 1024 + 1),
+                'max_html_bytes' => (string) (5 * 1024 * 1024 + 1),
                 'artifact_max_bytes' => (string) (64 * 1024 * 1024 + 1),
                 'max_workspace_storage_bytes' => (string) (10 * 1024 * 1024 * 1024 + 1),
                 'max_page_storage_bytes' => (string) (1024 * 1024 * 1024 + 1),
@@ -343,6 +344,25 @@ final class SystemAdminInstallationSettingsTest extends TestCase
 
         $this->assertDatabaseCount('installation_settings', 0);
         $this->assertSame(0, DomainEvent::query()->where('event_type', 'installation.limits.updated')->count());
+    }
+
+    public function test_database_rejects_content_limits_above_the_http_request_envelope(): void
+    {
+        $admin = $this->createUser('System Admin', 'db-limit-admin@example.test', true);
+
+        $this->expectException(QueryException::class);
+
+        InstallationSettings::query()->forceCreate([
+            'scope' => InstallationSettings::SCOPE_INSTALLATION,
+            'max_markdown_bytes' => 5 * 1024 * 1024 + 1,
+            'max_html_bytes' => 5 * 1024 * 1024 + 1,
+            'artifact_max_bytes' => 64 * 1024 * 1024,
+            'max_workspace_storage_bytes' => 10 * 1024 * 1024,
+            'max_page_storage_bytes' => 5 * 1024 * 1024,
+            'max_page_versions' => 10,
+            'max_tags_per_page' => 10,
+            'updated_by_user_uid' => $admin->uid,
+        ]);
     }
 
     public function test_installation_limit_settings_memoizes_current_values_per_resolved_instance(): void

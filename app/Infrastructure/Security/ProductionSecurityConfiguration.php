@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Security;
 
+use App\Application\Administration\InstallationLimitCeilings;
 use Illuminate\Contracts\Config\Repository;
 use RuntimeException;
 
@@ -58,6 +59,7 @@ final readonly class ProductionSecurityConfiguration
         $this->ensureArtifactFrameAncestors($applicationOrigin);
         $this->ensureReverbConfiguration($applicationOrigin);
         $this->ensureMailTransportIsDeliverable();
+        $this->ensureTransactionalInvitationQueue();
         $this->ensureSharedRateLimiterCacheStore();
 
         if ($this->string('filesystems.disks.artifacts.visibility') !== 'private') {
@@ -143,6 +145,14 @@ final readonly class ProductionSecurityConfiguration
 
     private function ensureArtifactReadLimitCanServeHtmlWrites(): void
     {
+        if ($this->positiveInt('pages.max_html_bytes') > InstallationLimitCeilings::CONTENT_BYTES) {
+            throw new RuntimeException('HTML write limit must not exceed the production HTTP request envelope.');
+        }
+
+        if ($this->positiveInt('pages.max_markdown_bytes') > InstallationLimitCeilings::CONTENT_BYTES) {
+            throw new RuntimeException('Markdown write limit must not exceed the HTTP request envelope.');
+        }
+
         if ($this->positiveInt('pages.artifact_max_bytes') < $this->positiveInt('pages.max_html_bytes')) {
             throw new RuntimeException('Artifact read limit must be greater than or equal to the HTML write limit.');
         }
@@ -379,6 +389,24 @@ final readonly class ProductionSecurityConfiguration
         if (!SecurityInvariants::mailTransportIsDeliverable($this->string('mail.default'), $this->configuredMailers())) {
             throw new RuntimeException(
                 'Mail transport must be a real, deliverable transport in production. The log and array drivers discard invitation and password-reset emails, and an unknown mailer fails only when the first message is sent.',
+            );
+        }
+    }
+
+    private function ensureTransactionalInvitationQueue(): void
+    {
+        $queue = $this->string('queue.default');
+
+        if (!SecurityInvariants::invitationQueueIsTransactional(
+            driver: $this->string(sprintf('queue.connections.%s.driver', $queue)),
+            queueDatabaseConnection: $this->string(sprintf('queue.connections.%s.connection', $queue)),
+            primaryDatabaseConnection: $this->string('database.default'),
+            dispatchesAfterCommit: $this->config->get(
+                sprintf('queue.connections.%s.after_commit', $queue),
+            ) !== false,
+        )) {
+            throw new RuntimeException(
+                'Invitation delivery queue must use the primary database connection with after-commit dispatch disabled in production.',
             );
         }
     }

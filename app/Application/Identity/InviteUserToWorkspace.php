@@ -112,7 +112,10 @@ final readonly class InviteUserToWorkspace
         $actorUid = ActorId::fromUser($actor);
         $workspaceUid = $workspace->uid;
 
-        if ($invitation->accepted_at instanceof DateTimeInterface) {
+        if (
+            $invitation->accepted_at instanceof DateTimeInterface
+            && !$invitation->revoked_at instanceof DateTimeInterface
+        ) {
             throw new DomainRuleViolation(
                 'This workspace invitation has already been accepted. Change the member role instead.',
             );
@@ -278,9 +281,11 @@ final readonly class InviteUserToWorkspace
             expiresAt: $expiresAt,
         );
 
-        DB::afterCommit(static function () use ($invitation, $mail): void {
-            Mail::to($invitation->invited_email)->queue($mail);
-        });
+        // ArtifactFlow's database queue is part of the same PostgreSQL source of
+        // truth as invitations. Insert the encrypted job inside this transaction:
+        // a queue write failure now rolls the invitation, event, and audit back,
+        // while a successful job cannot become visible to the worker before commit.
+        Mail::to($invitation->invited_email)->queue($mail);
     }
 
     private function acceptUrl(WorkspaceInvitation $invitation): string

@@ -7,13 +7,14 @@ namespace App\Mail;
 use App\Support\MarkdownText;
 use DateTimeInterface;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-final class WorkspaceInvitationMail extends Mailable implements ShouldQueue
+final class WorkspaceInvitationMail extends Mailable implements ShouldBeEncrypted, ShouldQueue
 {
     use Queueable;
     use SerializesModels;
@@ -28,7 +29,6 @@ final class WorkspaceInvitationMail extends Mailable implements ShouldQueue
         public readonly string $acceptUrl,
         public readonly DateTimeInterface $expiresAt,
     ) {
-        $this->afterCommit();
     }
 
     public function envelope(): Envelope

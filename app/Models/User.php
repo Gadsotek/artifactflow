@@ -27,6 +27,7 @@ use Illuminate\Notifications\Notifiable;
  * @property list<string>|null $two_factor_recovery_codes
  * @property int|null $two_factor_last_used_timestep
  * @property bool $two_factor_required
+ * @property int $auth_revision
  */
 final class User extends Authenticatable
 {
@@ -38,11 +39,12 @@ final class User extends Authenticatable
     protected $primaryKey = 'uid';
 
     /**
-     * @var array<string, bool|string>
+     * @var array<string, bool|int|string>
      */
     protected $attributes = [
         'is_system_admin' => false,
         'theme_preference' => 'system',
+        'auth_revision' => 0,
     ];
 
     /**
@@ -64,6 +66,7 @@ final class User extends Authenticatable
         'two_factor_secret',
         'two_factor_secret_created_at',
         'two_factor_recovery_codes',
+        'auth_revision',
     ];
 
     /**
@@ -83,6 +86,7 @@ final class User extends Authenticatable
             'two_factor_recovery_codes' => 'array',
             'two_factor_last_used_timestep' => 'integer',
             'two_factor_required' => 'boolean',
+            'auth_revision' => 'integer',
         ];
     }
 

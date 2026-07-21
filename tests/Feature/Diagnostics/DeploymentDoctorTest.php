@@ -400,6 +400,18 @@ final class DeploymentDoctorTest extends TestCase
         $this->assertSame(DoctorCheckStatus::Fail, $this->check($report->checks, 'reverb')->status);
     }
 
+    public function test_doctor_fails_when_html_writes_exceed_the_production_http_request_envelope(): void
+    {
+        $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
+            'pages.max_html_bytes' => 5 * 1024 * 1024 + 1,
+            'pages.artifact_max_bytes' => 10 * 1024 * 1024,
+        ]))))->run();
+
+        $check = $this->check($report->checks, 'artifact_limits');
+        $this->assertSame(DoctorCheckStatus::Fail, $check->status);
+        $this->assertStringContainsString('production HTTP request envelope', $check->detail);
+    }
+
     /**
      * Keep the doctor's punch list in correspondence with the invariants
      * ProductionSecurityConfiguration::ensureSafe() enforces at boot. Checked in
@@ -426,6 +438,7 @@ final class DeploymentDoctorTest extends TestCase
             'database_tls',        // ensureDatabaseTls
             'database_password',   // ensureDatabasePassword
             'mail_transport',      // ensureMailTransportDoesNotLogSecrets
+            'invitation_queue',    // ensureTransactionalInvitationQueue
             'secure_sessions',     // ensureSecureSessions
             'trusted_proxies',     // ensureTrustedProxies
             'artifact_storage',    // artifacts disk private
@@ -474,6 +487,7 @@ final class DeploymentDoctorTest extends TestCase
                 'ensureSecureSessions',
                 'ensureSessionDomainDoesNotCoverArtifactHost',
                 'ensureSharedRateLimiterCacheStore',
+                'ensureTransactionalInvitationQueue',
                 'ensureTrustedProxies',
             ],
             $ensureMethods,
@@ -500,6 +514,26 @@ final class DeploymentDoctorTest extends TestCase
 
         $local = (new DeploymentDoctor($this->config('local', ['mail.default' => 'log'])))->run();
         $this->assertSame(DoctorCheckStatus::Skipped, $this->check($local->checks, 'mail_transport')->status);
+    }
+
+    public function test_invitation_queue_must_share_the_primary_database_transaction_in_production(): void
+    {
+        foreach ([
+            ['queue.default' => 'sync'],
+            ['queue.connections.database.connection' => 'queue_database'],
+            ['queue.connections.database.after_commit' => true],
+        ] as $override) {
+            $report = (new DeploymentDoctor($this->config('production', array_merge(
+                $this->hardenedProductionConfig(),
+                $override,
+            ))))->run();
+
+            $this->assertSame(DoctorCheckStatus::Fail, $this->check($report->checks, 'invitation_queue')->status);
+        }
+
+        $local = (new DeploymentDoctor($this->config('local', ['queue.default' => 'sync'])))->run();
+
+        $this->assertSame(DoctorCheckStatus::Skipped, $this->check($local->checks, 'invitation_queue')->status);
     }
 
     public function test_host_ports_pass_when_docker_mappings_match_the_origin_urls(): void
@@ -586,8 +620,13 @@ final class DeploymentDoctorTest extends TestCase
                 'log' => ['transport' => 'log'],
                 'array' => ['transport' => 'array'],
             ],
+            'queue.default' => 'database',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.connection' => null,
+            'queue.connections.database.after_commit' => false,
             'pages.artifact_max_bytes' => 2_000_000,
             'pages.max_html_bytes' => 1_000_000,
+            'pages.max_markdown_bytes' => 1_000_000,
             'database.default' => 'pgsql',
             'database.connections.pgsql.sslmode' => 'prefer',
             'database.connections.pgsql.sslrootcert' => '',
