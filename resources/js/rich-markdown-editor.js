@@ -1937,6 +1937,151 @@ function exitCodeBlock(code) {
   return true;
 }
 
+function rootTextBlockAtRange(editor, range) {
+  let current =
+    range.commonAncestorContainer instanceof HTMLElement
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+
+  while (current !== null && current.parentElement !== editor) {
+    current = current.parentElement;
+  }
+
+  if (
+    !(current instanceof HTMLElement) ||
+    !current.matches('p, h1, h2, h3, h4, h5, h6, div') ||
+    current.matches('[data-editor-code-block], [data-mermaid-diagram]')
+  ) {
+    return null;
+  }
+
+  return current;
+}
+
+function fragmentHasVisibleContent(fragment) {
+  if ((fragment.textContent ?? '').trim() !== '') {
+    return true;
+  }
+
+  return (
+    fragment.querySelector(
+      'img, hr, table, ul, ol, blockquote, [data-editor-code-block], [data-mermaid-diagram]',
+    ) !== null
+  );
+}
+
+// Chromium carries active <b>/<i>/<a> ancestors into the <div> it creates for
+// the next contenteditable line. Once a list or code widget is inserted there,
+// those inline elements wrap every later block and the serializer is forced to
+// emit one unterminated emphasis span across the rest of the document. Root
+// paragraphs are therefore split explicitly: content after a mid-line caret is
+// preserved, but an Enter at the end starts a clean paragraph with no inherited
+// inline formatting.
+function insertRootParagraph(editor, range) {
+  const block = rootTextBlockAtRange(editor, range);
+
+  if (block === null) {
+    return false;
+  }
+
+  range.deleteContents();
+
+  const tail = document.createRange();
+  tail.selectNodeContents(block);
+  tail.setStart(range.endContainer, range.endOffset);
+  const tailContents = tail.extractContents();
+  const paragraph = document.createElement('p');
+
+  if (fragmentHasVisibleContent(tailContents)) {
+    paragraph.append(tailContents);
+  } else {
+    paragraph.append(document.createElement('br'));
+  }
+
+  if (!fragmentHasVisibleContent(block)) {
+    block.replaceWith(paragraph);
+  } else {
+    block.after(paragraph);
+  }
+
+  placeCaretAtEnd(paragraph);
+
+  return true;
+}
+
+// Native Enter creates another <li>; a second Enter on that empty item should
+// leave a root list. Doing this ourselves avoids Chromium creating a styled
+// <div> inside inherited inline wrappers, which is the other half of the same
+// list-corruption path.
+function exitEmptyRootListItem(editor, range) {
+  const host =
+    range.commonAncestorContainer instanceof HTMLElement
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+  const item = host?.closest('li') ?? null;
+  const list = item?.parentElement ?? null;
+
+  if (
+    !(item instanceof HTMLLIElement) ||
+    !(list instanceof HTMLUListElement || list instanceof HTMLOListElement) ||
+    list.parentElement !== editor ||
+    (item.textContent ?? '').trim() !== ''
+  ) {
+    return false;
+  }
+
+  const paragraph = document.createElement('p');
+  paragraph.append(document.createElement('br'));
+  list.after(paragraph);
+  item.remove();
+
+  if (list.querySelector(':scope > li') === null) {
+    list.remove();
+  }
+
+  placeCaretAtEnd(paragraph);
+
+  return true;
+}
+
+function replaceSelectedLinkText(editor, event) {
+  if (event.inputType !== 'insertText' || event.data === null) {
+    return false;
+  }
+
+  const selection = window.getSelection();
+
+  if (selection === null || selection.rangeCount === 0) {
+    return false;
+  }
+
+  const range = selection.getRangeAt(0);
+  const host =
+    range.commonAncestorContainer instanceof HTMLElement
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+  const link = host?.closest('a') ?? null;
+
+  if (!(link instanceof HTMLAnchorElement) || !editor.contains(link)) {
+    return false;
+  }
+
+  const linkContents = document.createRange();
+  linkContents.selectNodeContents(link);
+
+  if (
+    range.compareBoundaryPoints(Range.START_TO_START, linkContents) !== 0 ||
+    range.compareBoundaryPoints(Range.END_TO_END, linkContents) !== 0
+  ) {
+    return false;
+  }
+
+  link.textContent = event.data;
+  placeCaretAtEnd(link);
+
+  return true;
+}
+
 export function initialiseRichMarkdownEditor(form, textarea, editor, status, count) {
   let lastMarkdownSource = textarea.value;
   let mermaidTimer;
@@ -2053,11 +2198,42 @@ export function initialiseRichMarkdownEditor(form, textarea, editor, status, cou
     (event) => {
       const embeddedSource = activeEmbeddedSource(editor, event.target);
 
+      if (event instanceof InputEvent && replaceSelectedLinkText(editor, event)) {
+        event.preventDefault();
+        sync();
+        return;
+      }
+
       if (
-        embeddedSource === null ||
         !(event instanceof InputEvent) ||
         (event.inputType !== 'insertParagraph' && event.inputType !== 'insertLineBreak')
       ) {
+        return;
+      }
+
+      if (embeddedSource === null) {
+        if (event.inputType !== 'insertParagraph') {
+          return;
+        }
+
+        const selection = window.getSelection();
+
+        if (selection === null || selection.rangeCount === 0) {
+          return;
+        }
+
+        const range = selection.getRangeAt(0);
+
+        if (!editor.contains(range.commonAncestorContainer)) {
+          return;
+        }
+
+        if (!exitEmptyRootListItem(editor, range) && !insertRootParagraph(editor, range)) {
+          return;
+        }
+
+        event.preventDefault();
+        sync();
         return;
       }
 

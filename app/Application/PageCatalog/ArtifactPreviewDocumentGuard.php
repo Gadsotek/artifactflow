@@ -99,9 +99,11 @@ final class ArtifactPreviewDocumentGuard
         $result = '';
         $rawTextTag = null;
         $neutralizedContainers = [];
-        // Depth of the current SVG/MathML foreign-content subtree. Inside it, the
-        // context-sensitive raw-text tags above are parsed as markup, not skipped.
-        $foreignDepth = 0;
+        // Open SVG/MathML roots for the current foreign-content subtree. Tracking
+        // their names prevents an unmatched foreign end tag from moving this
+        // scanner back to the HTML raw-text rules before the browser does.
+        /** @var list<string> $foreignRoots */
+        $foreignRoots = [];
 
         while ($offset < $length) {
             if ($rawTextTag !== null) {
@@ -181,8 +183,15 @@ final class ArtifactPreviewDocumentGuard
             $offset = $tag['end'] + 1;
 
             if ($tag['closing']) {
-                if ($foreignDepth > 0 && ($tag['name'] === 'svg' || $tag['name'] === 'math')) {
-                    $foreignDepth--;
+                if ($foreignRoots !== [] && ($tag['name'] === 'svg' || $tag['name'] === 'math')) {
+                    for ($rootIndex = count($foreignRoots) - 1; $rootIndex >= 0; --$rootIndex) {
+                        if ($foreignRoots[$rootIndex] !== $tag['name']) {
+                            continue;
+                        }
+
+                        $foreignRoots = array_slice($foreignRoots, 0, $rootIndex);
+                        break;
+                    }
                 }
 
                 $openContainer = end($neutralizedContainers);
@@ -233,12 +242,12 @@ final class ArtifactPreviewDocumentGuard
                 ($tag['name'] === 'svg' || $tag['name'] === 'math')
                 && ($html[$tag['end'] - 1] ?? '') !== '/'
             ) {
-                $foreignDepth++;
+                $foreignRoots[] = $tag['name'];
             }
 
             if (
                 in_array($tag['name'], self::RAW_TEXT_TAGS, true)
-                && !($foreignDepth > 0 && in_array($tag['name'], self::FOREIGN_PARSED_TEXT_TAGS, true))
+                && !($foreignRoots !== [] && in_array($tag['name'], self::FOREIGN_PARSED_TEXT_TAGS, true))
             ) {
                 $rawTextTag = $tag['name'];
             }
@@ -436,7 +445,7 @@ final class ArtifactPreviewDocumentGuard
             return null;
         }
 
-        $end = $this->tagEnd($html, $tagOffset);
+        $end = $this->tagEnd($html, $cursor);
 
         if ($end === null) {
             return null;
@@ -451,29 +460,184 @@ final class ArtifactPreviewDocumentGuard
         ];
     }
 
-    private function tagEnd(string $html, int $tagOffset): ?int
+    /**
+     * Locate the closing `>` using the browser's start-tag attribute states.
+     * A quote starts a quoted attribute value only after `=`; quotes encountered
+     * in malformed attribute names are ordinary name bytes and cannot protect a
+     * later `>` from the browser tokenizer.
+     */
+    private function tagEnd(string $html, int $attributesOffset): ?int
     {
         $length = strlen($html);
-        $quote = null;
+        $cursor = $attributesOffset;
+        $state = 'before_attribute_name';
 
-        for ($cursor = $tagOffset + 1; $cursor < $length; ++$cursor) {
+        while ($cursor < $length) {
             $character = $html[$cursor];
 
-            if ($quote !== null) {
-                if ($character === $quote) {
-                    $quote = null;
-                }
+            switch ($state) {
+                case 'before_attribute_name':
+                    if ($this->isAsciiWhitespace($character)) {
+                        ++$cursor;
+                        break;
+                    }
 
-                continue;
-            }
+                    if ($character === '>') {
+                        return $cursor;
+                    }
 
-            if ($character === '"' || $character === "'") {
-                $quote = $character;
-                continue;
-            }
+                    if ($character === '/') {
+                        $state = 'self_closing_start_tag';
+                        ++$cursor;
+                        break;
+                    }
 
-            if ($character === '>') {
-                return $cursor;
+                    if ($character === '=') {
+                        // WHATWG's unexpected-equals-sign-before-attribute-name
+                        // case starts a new attribute whose name already contains
+                        // this byte. Reconsuming it would instead open an empty
+                        // attribute value and let a following quote hide markup.
+                        $state = 'attribute_name';
+                        ++$cursor;
+                        break;
+                    }
+
+                    $state = 'attribute_name';
+                    break;
+
+                case 'attribute_name':
+                    if ($this->isAsciiWhitespace($character)) {
+                        $state = 'after_attribute_name';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '/') {
+                        $state = 'self_closing_start_tag';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '=') {
+                        $state = 'before_attribute_value';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        return $cursor;
+                    }
+
+                    ++$cursor;
+                    break;
+
+                case 'after_attribute_name':
+                    if ($this->isAsciiWhitespace($character)) {
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '/') {
+                        $state = 'self_closing_start_tag';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '=') {
+                        $state = 'before_attribute_value';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        return $cursor;
+                    }
+
+                    $state = 'attribute_name';
+                    break;
+
+                case 'before_attribute_value':
+                    if ($this->isAsciiWhitespace($character)) {
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '"') {
+                        $state = 'attribute_value_double_quoted';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === "'") {
+                        $state = 'attribute_value_single_quoted';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        return $cursor;
+                    }
+
+                    $state = 'attribute_value_unquoted';
+                    break;
+
+                case 'attribute_value_double_quoted':
+                    if ($character === '"') {
+                        $state = 'after_attribute_value_quoted';
+                    }
+
+                    ++$cursor;
+                    break;
+
+                case 'attribute_value_single_quoted':
+                    if ($character === "'") {
+                        $state = 'after_attribute_value_quoted';
+                    }
+
+                    ++$cursor;
+                    break;
+
+                case 'attribute_value_unquoted':
+                    if ($this->isAsciiWhitespace($character)) {
+                        $state = 'before_attribute_name';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        return $cursor;
+                    }
+
+                    ++$cursor;
+                    break;
+
+                case 'after_attribute_value_quoted':
+                    if ($this->isAsciiWhitespace($character)) {
+                        $state = 'before_attribute_name';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '/') {
+                        $state = 'self_closing_start_tag';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        return $cursor;
+                    }
+
+                    $state = 'before_attribute_name';
+                    break;
+
+                case 'self_closing_start_tag':
+                    if ($character === '>') {
+                        return $cursor;
+                    }
+
+                    $state = 'before_attribute_name';
+                    break;
             }
         }
 

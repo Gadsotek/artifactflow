@@ -918,6 +918,77 @@ test('Bulleted list inserted at a caret becomes a sibling of the paragraph, not 
   await expect(page.locator('[data-editor-textarea]')).toHaveValue('Intro text\n\n- List item');
 });
 
+test('toolbar formatting before a list cannot wrap the remaining document in bold', async ({
+  page,
+}) => {
+  await loadEditorFixture(page, 'markdown', '<p><br></p>', '');
+
+  const editor = page.getByRole('textbox', { name: 'Page content' });
+  const textarea = page.locator('[data-editor-textarea]');
+
+  await editor.click();
+  await page.getByLabel('Block style').selectOption('h2');
+  await page.keyboard.insertText('Heading');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+
+  await page.getByRole('button', { name: 'Bold' }).click();
+  await page.keyboard.insertText('bold text');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+
+  await page.getByRole('button', { name: 'Italic' }).click();
+  await page.keyboard.insertText('italic text');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+
+  page.once('dialog', (dialog) => dialog.accept('https://example.test/reference'));
+  await page.getByRole('button', { name: 'Link' }).click();
+  await page.keyboard.insertText('link text');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+
+  await page.getByRole('button', { name: 'Bulleted list' }).click();
+  await page.keyboard.insertText('First item');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.insertText('Second item');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+
+  await page.getByRole('button', { name: 'Code block' }).click();
+  await page.keyboard.insertText('dasdsaasdds');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Divider' }).click();
+
+  await expect(textarea).toHaveValue(
+    [
+      '## Heading',
+      '',
+      '**bold text**',
+      '',
+      '_italic text_',
+      '',
+      '[link text](https://example.test/reference)',
+      '',
+      '- First item',
+      '- Second item',
+      '',
+      '```',
+      'dasdsaasdds',
+      '```',
+      '',
+      '---',
+    ].join('\n'),
+  );
+});
+
 test('block insertion splits the paragraph around a partial selection', async ({ page }) => {
   await loadEditorFixture(page, 'markdown', '<p>Alpha beta</p>', 'Alpha beta');
 
@@ -1766,6 +1837,12 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
       `<iframe data-breakout-context="abrupt-doctype" srcdoc="${escapeHtmlAttribute(rtcLeaf)}">"></iframe>` +
       '<![CDATA[">' +
       `<iframe data-breakout-context="html-cdata" srcdoc="${escapeHtmlAttribute(rtcLeaf)}">"></iframe>`;
+    const malformedAttributeNameQuoteBreakoutFrames =
+      `<div '><iframe data-breakout-context="single-quote-attribute-name" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>'></div>` +
+      `<div "><iframe data-breakout-context="double-quote-attribute-name" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>"></div>` +
+      `<div ='><iframe data-breakout-context="leading-equals-single-quote-attribute-name" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>'></div>` +
+      `<div ="><iframe data-breakout-context="leading-equals-double-quote-attribute-name" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>"></div>`;
+    const unmatchedForeignEndBreakoutFrame = `<svg></math><title><iframe data-breakout-context="unmatched-foreign-end" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe></title></svg>`;
     const dynamicNestedFrameBase64 = Buffer.from(recursivelyNestedRtc, 'utf8').toString('base64');
     const fixture = await prepareAuthenticatedDraftPreviewFixture(page);
 
@@ -1778,6 +1855,8 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
               ${rawTextBreakoutFrame}
               ${alternateCommentEndBreakoutFrames}
               ${declarationBreakoutFrames}
+              ${malformedAttributeNameQuoteBreakoutFrames}
+              ${unmatchedForeignEndBreakoutFrame}
               <script>
                 const nestedMarkup = atob('${dynamicNestedFrameBase64}');
                 const dynamicOuter = document.createElement('iframe');
