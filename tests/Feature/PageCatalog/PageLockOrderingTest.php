@@ -126,6 +126,7 @@ final class PageLockOrderingTest extends TestCase
         $parent = $this->page($owner, $workspace->uid, 'Parent');
         $child = $this->page($owner, $workspace->uid, 'Child');
         app(UpdatePageMetadata::class)->handle($owner, $this->reparentCommand($child, $owner, $parent->uid));
+        $child->refresh();
 
         $lockedTables = $this->captureLockedTables(function () use ($owner, $child): void {
             app(UpdatePageMetadata::class)->handle($owner, $this->reparentCommand($child, $owner, null));
@@ -250,6 +251,7 @@ final class PageLockOrderingTest extends TestCase
     {
         return new UpdatePageMetadataCommand(
             pageUid: $page->uid,
+            expectedMetadataRevision: $page->metadata_revision,
             title: $page->title,
             description: null,
             categoryUid: null,

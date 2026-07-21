@@ -42,6 +42,7 @@ final class PageActivityHttpTest extends TestCase
 
         app(UpdatePageMetadata::class)->handle($owner, new UpdatePageMetadataCommand(
             pageUid: $page->uid,
+            expectedMetadataRevision: $page->metadata_revision,
             title: 'Audited Page',
             description: 'Updated metadata.',
             categoryUid: null,
@@ -79,6 +80,7 @@ final class PageActivityHttpTest extends TestCase
 
         app(UpdatePageMetadata::class)->handle($owner, new UpdatePageMetadataCommand(
             pageUid: $page->uid,
+            expectedMetadataRevision: $page->metadata_revision,
             title: 'Long-lived Page',
             description: 'Updated metadata.',
             categoryUid: null,

@@ -308,6 +308,7 @@ final class PageWriteReauthorizationTest extends TestCase
         try {
             app(UpdatePageMetadata::class)->handle($admin, new UpdatePageMetadataCommand(
                 pageUid: $page->uid,
+                expectedMetadataRevision: $page->metadata_revision,
                 title: 'Reassignable Page',
                 description: null,
                 categoryUid: null,

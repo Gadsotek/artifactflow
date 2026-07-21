@@ -9,6 +9,8 @@ use App\Application\Events\DomainEventRecorder;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\Identity\WorkspaceRole;
+use App\Domain\Mcp\StaleMcpAuthenticationRevision;
+use App\Domain\PageCatalog\PageContentEncoding;
 use App\Models\McpAccessToken;
 use App\Models\User;
 use App\Models\WorkspaceMembership;
@@ -83,8 +85,8 @@ final readonly class McpAccessTokenIssuer
         ?User $actor = null,
         string $channel = 'application',
         ?array $workspaceUids = null,
+        ?int $expectedAuthRevision = null,
     ): McpIssuedAccessToken {
-        $this->ensurePrincipalCanHoldMcpToken($principal);
         $normalizedScopes = $this->normalizeScopes($scopes);
         $normalizedWorkspaceUids = $workspaceUids === null ? null : $this->normalizeWorkspaceUids($workspaceUids);
 
@@ -120,6 +122,12 @@ final readonly class McpAccessTokenIssuer
             ));
         }
 
+        $normalizedName = trim($name) === '' ? 'MCP token' : mb_substr(trim($name), 0, 120);
+
+        if (!PageContentEncoding::isStorable($normalizedName)) {
+            throw new DomainRuleViolation('MCP token name must not contain control characters or invalid text.');
+        }
+
         $plainTextToken = 'af_mcp_' . Str::random(64);
 
         // Same-transaction durability: the token row and its domain-event + audit
@@ -129,22 +137,43 @@ final readonly class McpAccessTokenIssuer
         $token = DB::transaction(function () use (
             $plainTextToken,
             $principal,
-            $name,
+            $normalizedName,
             $normalizedScopes,
             $normalizedWorkspaceUids,
             $expiresAt,
             $actor,
             $channel,
+            $expectedAuthRevision,
         ): McpAccessToken {
+            $lockedPrincipal = User::query()
+                ->whereKey($principal->uid)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$lockedPrincipal instanceof User) {
+                throw new DomainRuleViolation('MCP token principal no longer exists.');
+            }
+
+            if (
+                $expectedAuthRevision !== null
+                && $lockedPrincipal->auth_revision !== $expectedAuthRevision
+            ) {
+                throw new StaleMcpAuthenticationRevision(
+                    'Authentication changed while the MCP token was being created.',
+                );
+            }
+
+            $this->ensurePrincipalCanHoldMcpToken($lockedPrincipal);
+
             $token = McpAccessToken::query()->forceCreate([
-                'principal_user_uid' => $principal->uid,
-                'name' => trim($name) === '' ? 'MCP token' : mb_substr(trim($name), 0, 120),
+                'principal_user_uid' => $lockedPrincipal->uid,
+                'name' => $normalizedName,
                 'token_hash' => self::hashToken($plainTextToken),
                 'scopes' => $normalizedScopes,
                 'workspace_uids' => $normalizedWorkspaceUids,
                 'expires_at' => $expiresAt,
             ]);
-            $this->recordIssued($token, $principal, $actor, $channel);
+            $this->recordIssued($token, $lockedPrincipal, $actor, $channel);
 
             return $token;
         });

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Application\Identity\CreateUser;
+use App\Application\Identity\OneShotPasswordFile;
 use Illuminate\Console\Command;
 
 final class CreateUserCommand extends Command
@@ -13,7 +14,7 @@ final class CreateUserCommand extends Command
 
     protected $description = 'Create a verified login user while registration is disabled.';
 
-    public function handle(CreateUser $createUser): int
+    public function handle(CreateUser $createUser, OneShotPasswordFile $passwordFile): int
     {
         $nameOption = $this->option('name');
         $emailOption = $this->option('email');
@@ -21,7 +22,8 @@ final class CreateUserCommand extends Command
 
         $name = is_string($nameOption) ? $nameOption : '';
         $email = is_string($emailOption) ? $emailOption : '';
-        $password = is_string($passwordOption) ? $passwordOption : '';
+        $password = $passwordFile->read('ARTIFACTFLOW_CREATE_USER_PASSWORD_FILE')
+            ?? (is_string($passwordOption) ? $passwordOption : '');
 
         if (trim($password) === '') {
             $configuredPassword = config('app.create_user_password');

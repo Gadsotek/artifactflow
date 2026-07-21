@@ -41,6 +41,7 @@
                     <form class="mt-4 space-y-3" method="POST" action="{{ route('pages.metadata.update', $page) }}">
                         @csrf
                         @method('PUT')
+                        <input name="metadata_revision" type="hidden" value="{{ $page->metadata_revision }}">
                         <label class="block">
                             <span class="text-sm font-medium">Title</span>
                             <input class="mt-2 w-full" name="title" type="text" value="{{ old('title', $page->title) }}" required>

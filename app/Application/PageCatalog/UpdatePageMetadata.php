@@ -10,6 +10,7 @@ use App\Application\Identity\ActorId;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\PageCatalog\Security\BlockedPageContentException;
+use App\Domain\PageCatalog\StalePageMetadataException;
 use App\Models\Page;
 use App\Models\User;
 use App\Models\Workspace;
@@ -68,6 +69,13 @@ final readonly class UpdatePageMetadata
                 throw new AuthorizationException('You cannot edit this page.');
             }
 
+            if ($page->metadata_revision !== $command->expectedMetadataRevision) {
+                throw new StalePageMetadataException(
+                    currentRevision: $page->metadata_revision,
+                    submittedRevision: $command->expectedMetadataRevision,
+                );
+            }
+
             $title = $this->metadataRules->normalizeTitle($command->title);
             $description = $this->metadataRules->normalizeDescription($command->description);
             $this->ensureDescriptionIsSafe($actor, $page, $description);
@@ -104,6 +112,7 @@ final readonly class UpdatePageMetadata
                 'category_uid' => $categoryUid,
                 'parent_page_uid' => $parentPageUid,
                 'owner_user_uid' => $ownerUserUid,
+                'metadata_revision' => $page->metadata_revision + 1,
             ];
 
             if (in_array('title', $changedFields, true)) {

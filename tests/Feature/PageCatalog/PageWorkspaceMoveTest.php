@@ -75,6 +75,7 @@ final class PageWorkspaceMoveTest extends TestCase
             tagNames: ['Operations', 'Runbook'],
         ));
         $previousPreviewRevision = $page->preview_access_revision;
+        $previousMetadataRevision = $page->metadata_revision;
         $originalVersionUid = $page->current_version_uid;
         $page->forceFill(['access_mode' => PageAccessMode::Restricted])->save();
         PageAccessGrant::query()->forceCreate([
@@ -94,6 +95,7 @@ final class PageWorkspaceMoveTest extends TestCase
 
         $this->assertSame($targetWorkspace->uid, $movedPage->workspace_uid);
         $this->assertSame($previousPreviewRevision + 1, $movedPage->preview_access_revision);
+        $this->assertSame($previousMetadataRevision + 1, $movedPage->metadata_revision);
         $this->assertSame($targetOwner->uid, $movedPage->owner_user_uid);
         $this->assertSame('portable-runbook-2', $movedPage->slug);
         $this->assertNotNull($movedPage->category_uid);
@@ -148,6 +150,50 @@ final class PageWorkspaceMoveTest extends TestCase
             ->where('event_type', 'page.ownership.transferred')
             ->sole();
         $this->assertSame('workspace_move', $ownershipEvent->payload['reason']);
+    }
+
+    public function test_metadata_form_opened_before_a_workspace_move_cannot_restore_the_previous_owner(): void
+    {
+        Storage::fake('artifacts');
+
+        $admin = $this->createUser('Admin User', 'metadata-move-admin@example.test');
+        $previousOwner = $this->createUser('Previous Owner', 'metadata-move-owner@example.test');
+        $sourceWorkspace = app(CreateSharedWorkspace::class)->handle($admin, 'Source Team');
+        $targetWorkspace = app(CreateSharedWorkspace::class)->handle($admin, 'Target Team');
+        $this->addMember($sourceWorkspace->uid, $previousOwner, WorkspaceRole::Editor);
+        $this->addMember($targetWorkspace->uid, $previousOwner, WorkspaceRole::Editor);
+        $page = app(CreatePage::class)->handle($admin, new CreatePageCommand(
+            workspaceUid: $sourceWorkspace->uid,
+            type: PageType::Markdown,
+            title: 'Move OCC',
+            description: 'Opened before move.',
+            content: '# Move OCC',
+            ownerUserUid: $previousOwner->uid,
+        ));
+        $openedRevision = $page->metadata_revision;
+
+        $movedPage = app(MovePageToWorkspace::class)->handle($admin, new MovePageToWorkspaceCommand(
+            pageUid: $page->uid,
+            targetWorkspaceUid: $targetWorkspace->uid,
+            targetOwnerUserUid: $admin->uid,
+            confirmed: true,
+        ));
+
+        $this->actingAs($admin)
+            ->put("/pages/{$page->uid}/metadata", [
+                'metadata_revision' => $openedRevision,
+                'title' => 'Move OCC',
+                'description' => 'Opened before move.',
+                'owner_user_uid' => $previousOwner->uid,
+                'tags' => '',
+            ])
+            ->assertStatus(409);
+
+        $page->refresh();
+        $this->assertSame($targetWorkspace->uid, $page->workspace_uid);
+        $this->assertSame($admin->uid, $page->owner_user_uid);
+        $this->assertSame($openedRevision + 1, $page->metadata_revision);
+        $this->assertSame($movedPage->metadata_revision, $page->metadata_revision);
     }
 
     public function test_workspace_move_invalidates_previously_signed_artifact_preview_urls(): void

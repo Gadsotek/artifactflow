@@ -141,6 +141,43 @@ final class InstallationReadinessGuardTest extends TestCase
         $this->assertFalse($readiness->webSchemaIsReady());
     }
 
+    public function test_a_long_running_process_fails_closed_after_the_database_is_rolled_back(): void
+    {
+        /** @var MigrationRepositoryInterface&Mockery\MockInterface $repository */
+        $repository = Mockery::mock(MigrationRepositoryInterface::class);
+        /** @var Mockery\Expectation $getRanExpectation */
+        $getRanExpectation = $repository->shouldReceive('getRan');
+        $getRanExpectation
+            ->times(2)
+            ->andReturn(
+                ['0001_existing', '0002_current'],
+                ['0001_existing'],
+            );
+
+        /** @var Migrator&Mockery\MockInterface $migrator */
+        $migrator = Mockery::mock(Migrator::class);
+        /** @var Mockery\Expectation $migrationFilesExpectation */
+        $migrationFilesExpectation = $migrator->shouldReceive('getMigrationFiles');
+        $migrationFilesExpectation
+            ->times(2)
+            ->with(database_path('migrations'))
+            ->andReturn([
+                '0001_existing' => '/migrations/0001_existing.php',
+                '0002_current' => '/migrations/0002_current.php',
+            ]);
+        /** @var Mockery\Expectation $repositoryExistsExpectation */
+        $repositoryExistsExpectation = $migrator->shouldReceive('repositoryExists');
+        $repositoryExistsExpectation->times(2)->andReturnTrue();
+        /** @var Mockery\Expectation $getRepositoryExpectation */
+        $getRepositoryExpectation = $migrator->shouldReceive('getRepository');
+        $getRepositoryExpectation->times(2)->andReturn($repository);
+
+        $readiness = new InstallationReadiness($migrator);
+
+        $this->assertTrue($readiness->webSchemaIsReady());
+        $this->assertFalse($readiness->webSchemaIsReady());
+    }
+
     public function test_app_routes_remain_available_when_the_database_schema_is_current(): void
     {
         $this->get('/login')->assertOk();

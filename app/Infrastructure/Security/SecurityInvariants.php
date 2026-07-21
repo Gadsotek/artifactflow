@@ -120,9 +120,11 @@ final class SecurityInvariants
         return strtolower(trim($sslmode)) === 'verify-full';
     }
 
-    public static function postgresRootCertIsConfigured(string $rootcert): bool
+    public static function postgresRootCertIsReadable(string $rootcert): bool
     {
-        return trim($rootcert) !== '';
+        $path = trim($rootcert);
+
+        return $path !== '' && is_file($path) && is_readable($path);
     }
 
     /**
@@ -219,15 +221,30 @@ final class SecurityInvariants
      *
      * @param array<array-key, mixed> $configuredMailers the config('mail.mailers') map
      */
-    public static function mailTransportIsDeliverable(string $mailer, array $configuredMailers): bool
-    {
+    public static function mailTransportIsDeliverable(
+        string $mailer,
+        array $configuredMailers,
+        string $resendApiKey,
+    ): bool {
         $mailer = trim($mailer);
 
         if ($mailer === '' || in_array(strtolower($mailer), self::NON_DELIVERY_MAILERS, true)) {
             return false;
         }
 
-        return array_key_exists($mailer, $configuredMailers);
+        $definition = $configuredMailers[$mailer] ?? null;
+
+        if (!is_array($definition)) {
+            return false;
+        }
+
+        $transport = $definition['transport'] ?? null;
+
+        if (is_string($transport) && strtolower(trim($transport)) === 'resend') {
+            return trim($resendApiKey) !== '';
+        }
+
+        return true;
     }
 
     /**

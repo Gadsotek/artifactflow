@@ -95,7 +95,7 @@ final class PasswordResetFlowTest extends TestCase
         ]);
         $mcpToken = app(McpAccessTokenIssuer::class)->issue(
             principal: $user,
-            name: 'Reset revoked token',
+            name: 'Reset preserved token',
             scopes: [McpAccessTokenIssuer::SCOPE_SEARCH],
             expiresAt: now()->addHour(),
         )->accessToken;
@@ -126,7 +126,7 @@ final class PasswordResetFlowTest extends TestCase
         $this->assertSame(123, $user->two_factor_last_used_timestep);
         $this->assertSame(0, DB::table('sessions')->where('user_id', $user->uid)->count());
         $this->assertSame(0, TrustedDevice::query()->where('user_uid', $user->uid)->count());
-        $this->assertNotNull($mcpToken->refresh()->revoked_at);
+        $this->assertNull($mcpToken->refresh()->revoked_at);
         $this->assertSame(1, McpAccessToken::query()->where('principal_user_uid', $user->uid)->count());
         $this->assertDatabaseMissing('password_reset_tokens', ['email' => $user->email]);
         $this->assertDatabaseHas('domain_events', [
@@ -148,9 +148,9 @@ final class PasswordResetFlowTest extends TestCase
         $this->assertArrayNotHasKey('token', $auditEntry->metadata);
         $this->assertArrayNotHasKey('email', $auditEntry->metadata);
         $this->assertSame(1, $auditEntry->metadata['trusted_devices_revoked']);
-        $this->assertSame(1, $auditEntry->metadata['mcp_tokens_revoked']);
+        $this->assertArrayNotHasKey('mcp_tokens_revoked', $auditEntry->metadata);
         $this->assertSame(
-            1,
+            0,
             DomainEvent::query()
                 ->where('event_type', 'mcp_token.revoked')
                 ->where('aggregate_uid', $mcpToken->uid)

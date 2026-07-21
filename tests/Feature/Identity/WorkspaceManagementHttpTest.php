@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Identity;
 
 use App\Domain\Identity\WorkspaceRole;
+use App\Domain\Identity\WorkspaceType;
 use App\Models\AuditEntry;
 use App\Models\DomainEvent;
 use App\Models\User;
@@ -97,6 +98,17 @@ final class WorkspaceManagementHttpTest extends TestCase
         $this->actingAs($user)
             ->post('/workspaces', ['name' => '  '])
             ->assertSessionHasErrors('name');
+    }
+
+    public function test_shared_workspace_creation_rejects_unstorable_names_as_validation_errors(): void
+    {
+        $user = $this->createUser('Workspace Creator', 'unstorable-workspace@example.test');
+
+        $this->actingAs($user)
+            ->post('/workspaces', ['name' => "invalid\0workspace"])
+            ->assertSessionHasErrors('name');
+
+        $this->assertSame(0, Workspace::query()->where('type', WorkspaceType::Shared)->count());
     }
 
     private function createUser(string $name, string $email): User

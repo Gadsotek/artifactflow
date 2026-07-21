@@ -46,10 +46,14 @@ final readonly class HardDeletePage
 
         $storagePaths = [];
 
-        DB::transaction(function () use ($actor, $actorUid, $page, &$storagePaths): void {
+        DB::transaction(function () use ($actor, $actorUid, $command, $page, &$storagePaths): void {
             // Lock page then workspace, matching the append path's lock order,
             // so the storage counter decrement cannot race a version append.
             $page = $this->lockPageForHardDelete($page->uid);
+
+            if ($page->title !== $command->confirmation) {
+                throw new DomainRuleViolation('Type the page title exactly to permanently delete it.');
+            }
 
             // Re-authorize under the page lock with fresh authority. canHardDelete()
             // above ran before the lock and against PageAccess's request-scoped cache,

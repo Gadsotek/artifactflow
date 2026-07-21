@@ -221,7 +221,7 @@ final class InstallCommandTest extends TestCase
         $this->assertSame(0, Page::query()->count());
     }
 
-    public function test_production_install_runs_the_doctor_and_warns_on_failing_checks(): void
+    public function test_production_install_fails_preflight_before_provisioning_an_admin(): void
     {
         config([
             'app.env' => 'production',
@@ -232,6 +232,7 @@ final class InstallCommandTest extends TestCase
             // doctor path with no interactive prompts.
             'database.connections.pgsql.password' => 'already-set',
             'database.connections.pgsql.sslmode' => 'verify-full',
+            'database.connections.pgsql.sslrootcert' => base_path('README.md'),
             'mail.default' => 'smtp',
             'trustedproxy.raw' => '10.0.0.1',
         ]);
@@ -243,16 +244,16 @@ final class InstallCommandTest extends TestCase
             '--password' => 'correct horse battery staple',
         ])
             ->expectsOutputToContain('Installing ArtifactFlow (production mode).')
-            ->expectsOutputToContain('Running configuration doctor:')
-            ->expectsOutputToContain('Resolve the failing doctor checks above before serving traffic.')
-            ->expectsOutputToContain('Install complete. Sign in at')
-            ->assertExitCode(0);
+            ->expectsOutputToContain('Running production configuration preflight:')
+            ->expectsOutputToContain('Production installation aborted before database changes.')
+            ->doesntExpectOutputToContain('- Running database migrations')
+            ->doesntExpectOutputToContain('Install complete. Sign in at')
+            ->assertExitCode(1);
 
         $this->assertStringContainsString('APP_ENV=local', (string) file_get_contents($this->envPath));
         $this->assertStringNotContainsString('APP_ENV=production', (string) file_get_contents($this->envPath));
 
-        $admin = User::query()->where('email', 'production-admin@example.test')->sole();
-        $this->assertTrue($admin->is_system_admin);
+        $this->assertSame(0, User::query()->where('email', 'production-admin@example.test')->count());
         $this->assertSame(0, Page::query()->count());
     }
 
@@ -262,17 +263,7 @@ final class InstallCommandTest extends TestCase
             EnvFileWriter::class,
             new EnvFileWriter('/proc/artifactflow-production-install-must-not-write-env'),
         );
-        config([
-            'app.env' => 'production',
-            'app.url' => 'https://app.example.test',
-            'app.artifact_url' => 'https://artifacts.example.test',
-            'app.key' => $this->strongSecret('a'),
-            'app.artifact_url_signing_key' => $this->strongSecret('b'),
-            'database.connections.pgsql.password' => 'already-set',
-            'database.connections.pgsql.sslmode' => 'verify-full',
-            'mail.default' => 'smtp',
-            'trustedproxy.raw' => '10.0.0.1',
-        ]);
+        $this->configureSafeProductionValues();
 
         $this->runConsoleCommand('artifactflow:install', [
             '--env' => 'production',
@@ -315,17 +306,17 @@ final class InstallCommandTest extends TestCase
             ->expectsOutputToContain('Set DB_SSLMODE=verify-full and DB_SSLROOTCERT')
             ->expectsOutputToContain("Mailer 'log' will not deliver in production")
             ->expectsOutputToContain('Set TRUSTED_PROXIES to the real edge')
-            ->expectsOutputToContain('Install complete. Sign in at')
-            ->assertExitCode(0);
+            ->expectsOutputToContain('Production installation aborted before database changes.')
+            ->doesntExpectOutputToContain('- Running database migrations')
+            ->doesntExpectOutputToContain('Install complete. Sign in at')
+            ->assertExitCode(1);
 
         $env = (string) file_get_contents($this->envPath);
         $this->assertSame("APP_ENV=local\nAPP_URL=https://app.test\n", $env);
         $this->assertSame('disable', config('database.connections.pgsql.sslmode'));
         $this->assertSame('log', config('mail.default'));
         $this->assertSame('', config('trustedproxy.raw'));
-
-        $admin = User::query()->where('email', 'prod-admin@example.test')->sole();
-        $this->assertTrue($admin->is_system_admin);
+        $this->assertSame(0, User::query()->where('email', 'prod-admin@example.test')->count());
     }
 
     public function test_production_install_refuses_to_generate_missing_secrets_inside_the_image(): void
@@ -342,6 +333,7 @@ final class InstallCommandTest extends TestCase
             'app.artifact_url_signing_key' => '',
             'database.connections.pgsql.password' => 'already-set',
             'database.connections.pgsql.sslmode' => 'verify-full',
+            'database.connections.pgsql.sslrootcert' => base_path('README.md'),
             'mail.default' => 'smtp',
             'trustedproxy.raw' => '10.0.0.1',
         ]);
@@ -372,16 +364,7 @@ final class InstallCommandTest extends TestCase
         // config('app.env') stays at the harness default (testing), never production, so
         // this proves the wizard grades the doctor against the install TARGET rather than
         // the environment this process happens to have booted with.
-        config([
-            'app.url' => 'https://app.example.test',
-            'app.artifact_url' => 'https://artifacts.example.test',
-            'app.key' => $this->strongSecret('a'),
-            'app.artifact_url_signing_key' => $this->strongSecret('b'),
-            'database.connections.pgsql.password' => 'already-set',
-            'database.connections.pgsql.sslmode' => 'verify-full',
-            'mail.default' => 'smtp',
-            'trustedproxy.raw' => '10.0.0.1',
-        ]);
+        $this->configureSafeProductionValues();
 
         $this->assertNotSame('production', config('app.env'));
 
@@ -525,17 +508,9 @@ final class InstallCommandTest extends TestCase
 
     public function test_the_consumed_one_shot_admin_password_does_not_linger_for_the_in_process_doctor(): void
     {
+        $this->configureSafeProductionValues();
         config([
             'app.env' => 'production',
-            'app.url' => 'https://app.example.test',
-            'app.artifact_url' => 'https://artifacts.example.test',
-            'app.key' => $this->strongSecret('a'),
-            'app.artifact_url_signing_key' => $this->strongSecret('b'),
-            'database.connections.pgsql.password' => 'already-set',
-            'database.connections.pgsql.sslmode' => 'verify-full',
-            'database.connections.pgsql.sslrootcert' => '/etc/ssl/certs/pg-root.crt',
-            'mail.default' => 'smtp',
-            'trustedproxy.raw' => '10.0.0.1',
             // config/app.php maps this from ARTIFACTFLOW_ADMIN_PASSWORD; the one-shot
             // secret injected for this install therefore arrives configured. The final
             // doctor runs in this same process and would flag it as persistently
@@ -589,7 +564,9 @@ final class InstallCommandTest extends TestCase
             ->expectsOutputToContain('will not deliver in production')
             ->expectsOutputToContain('Set DB_SSLMODE=verify-full and DB_SSLROOTCERT')
             ->expectsOutputToContain('Set TRUSTED_PROXIES to the real edge')
-            ->assertExitCode(0);
+            ->expectsOutputToContain('Production installation aborted before database changes.')
+            ->doesntExpectOutputToContain('- Running database migrations')
+            ->assertExitCode(1);
 
         $this->assertSame('disable', config('database.connections.pgsql.sslmode'));
         $this->assertNull(config('database.connections.pgsql.sslrootcert'));
@@ -600,6 +577,48 @@ final class InstallCommandTest extends TestCase
     private function strongSecret(string $byte): string
     {
         return 'base64:' . base64_encode(str_repeat($byte, 32));
+    }
+
+    private function configureSafeProductionValues(): void
+    {
+        config([
+            'app.url' => 'https://app.example.test',
+            'app.debug' => false,
+            'app.key' => $this->strongSecret('a'),
+            'app.previous_keys' => [],
+            'app.reverb_url' => 'https://app.example.test',
+            'app.artifact_url' => 'https://artifacts.example.test',
+            'app.artifact_frame_ancestors' => 'https://app.example.test',
+            'app.artifact_url_signing_key' => $this->strongSecret('b'),
+            'app.runtime_role' => 'app',
+            'app.bootstrap_admin_command' => 'artifactflow:bootstrap-admin',
+            'app.bootstrap_admin_password' => null,
+            'app.create_user_password' => null,
+            'app.reset_user_password' => null,
+            'auth.dummy_password_hash' => '$2y$12$xm0UA0D2OPiZ6/nnQh8xgejBhHl4A5jjwewkvxe9iCf7uZYBYxgBe',
+            'broadcasting.default' => 'null',
+            'cache.default' => 'database',
+            'database.default' => 'pgsql',
+            'database.connections.pgsql.password' => 'already-set',
+            'database.connections.pgsql.sslmode' => 'verify-full',
+            'database.connections.pgsql.sslrootcert' => base_path('README.md'),
+            'filesystems.disks.artifacts.visibility' => 'private',
+            'hashing.bcrypt.rounds' => 12,
+            'hashing.driver' => 'bcrypt',
+            'mail.default' => 'smtp',
+            'queue.default' => 'database',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.connection' => null,
+            'queue.connections.database.after_commit' => false,
+            'session.driver' => 'database',
+            'session.domain' => 'app.example.test',
+            'session.encrypt' => true,
+            'session.http_only' => true,
+            'session.same_site' => 'lax',
+            'session.secure' => true,
+            'trustedproxy.raw' => '10.0.0.1',
+            'trustedproxy.proxies' => '10.0.0.1',
+        ]);
     }
 
     /**

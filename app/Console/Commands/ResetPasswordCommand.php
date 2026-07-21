@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Application\Identity\OneShotPasswordFile;
 use App\Application\Identity\ResetUserPassword;
 use App\Domain\DomainRuleViolation;
 use App\Models\User;
@@ -15,13 +16,14 @@ final class ResetPasswordCommand extends Command
 
     protected $description = 'Reset a user password and invalidate existing sessions while registration is disabled.';
 
-    public function handle(ResetUserPassword $resetUserPassword): int
+    public function handle(ResetUserPassword $resetUserPassword, OneShotPasswordFile $passwordFile): int
     {
         $emailOption = $this->option('email');
         $passwordOption = $this->option('password');
 
         $email = is_string($emailOption) ? strtolower(trim($emailOption)) : '';
-        $password = is_string($passwordOption) ? $passwordOption : '';
+        $password = $passwordFile->read('ARTIFACTFLOW_RESET_PASSWORD_FILE')
+            ?? (is_string($passwordOption) ? $passwordOption : '');
 
         if (trim($password) === '') {
             $configuredPassword = config('app.reset_user_password');

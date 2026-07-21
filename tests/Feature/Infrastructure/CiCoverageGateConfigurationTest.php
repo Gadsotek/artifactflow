@@ -175,6 +175,21 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('/var/www/html/docker/healthcheck-app.sh', $schedulerBlock);
     }
 
+    public function test_release_waits_for_the_reusable_ci_gate_on_the_exact_tag_commit(): void
+    {
+        $ciWorkflow = $this->readProjectFile('.github/workflows/ci.yml');
+        $releaseWorkflow = $this->readProjectFile('.github/workflows/release.yml');
+
+        $this->assertStringContainsString("  workflow_call:\n", $ciWorkflow);
+        $this->assertStringContainsString("  quality:\n    uses: ./.github/workflows/ci.yml\n", $releaseWorkflow);
+        $this->assertStringContainsString("    needs: quality\n", $releaseWorkflow);
+        $this->assertLessThan(
+            strpos($releaseWorkflow, '      - name: Push image'),
+            strpos($releaseWorkflow, '    needs: quality'),
+            'The exact release SHA must pass CI before any image is pushed.',
+        );
+    }
+
     public function test_production_image_keeps_runtime_storage_out_of_the_build_context(): void
     {
         $dockerignore = $this->readProjectFile('.dockerignore');

@@ -6,7 +6,6 @@ namespace App\Application\Identity;
 
 use App\Application\Audit\AuditLogger;
 use App\Application\Events\DomainEventRecorder;
-use App\Application\Mcp\McpAccessTokenRevoker;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Models\User;
@@ -20,7 +19,6 @@ final readonly class ResetUserPassword
     public function __construct(
         private DomainEventRecorder $events,
         private AuditLogger $audit,
-        private McpAccessTokenRevoker $mcpTokens,
     ) {
     }
 
@@ -42,13 +40,6 @@ final readonly class ResetUserPassword
 
             $invalidatedSessions = $this->invalidateDatabaseSessions($lockedUser);
             $trustedDevicesRevoked = DB::table('trusted_devices')->where('user_uid', $lockedUser->uid)->delete();
-            $mcpTokensRevoked = $this->mcpTokens->revokeActiveForPrincipal(
-                principal: $lockedUser,
-                actorUserUid: $actorUserUid,
-                channel: $actorUserUid === null ? 'self_service_password_reset' : 'operator_password_reset',
-                reason: 'password_reset',
-            );
-
             $event = $this->events->record(
                 eventType: DomainEventType::UserPasswordReset,
                 aggregateType: 'user',
@@ -68,7 +59,6 @@ final readonly class ResetUserPassword
                 metadata: [
                     'sessions_invalidated' => $invalidatedSessions,
                     'trusted_devices_revoked' => $trustedDevicesRevoked,
-                    'mcp_tokens_revoked' => $mcpTokensRevoked,
                 ],
             );
         });

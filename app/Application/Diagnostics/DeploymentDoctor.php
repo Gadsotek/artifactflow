@@ -111,7 +111,11 @@ final readonly class DeploymentDoctor
             );
         }
 
-        if (!SecurityInvariants::mailTransportIsDeliverable($mailer, $this->configuredMailers())) {
+        if (!SecurityInvariants::mailTransportIsDeliverable(
+            $mailer,
+            $this->configuredMailers(),
+            $this->string('services.resend.key'),
+        )) {
             return $this->fail(
                 'mail_transport',
                 'Mail transport',
@@ -660,7 +664,7 @@ final readonly class DeploymentDoctor
 
         $sslmode = strtolower($this->string('database.connections.pgsql.sslmode'));
         $enforced = SecurityInvariants::postgresSslModeIsVerifyFull($sslmode)
-            && SecurityInvariants::postgresRootCertIsConfigured($this->string('database.connections.pgsql.sslrootcert'));
+            && SecurityInvariants::postgresRootCertIsReadable($this->string('database.connections.pgsql.sslrootcert'));
 
         if (!$production) {
             return $this->skipped('database_tls', 'Database TLS', sprintf('sslmode=%s; production requires verify-full with a root certificate.', $sslmode === '' ? 'unset' : $sslmode));

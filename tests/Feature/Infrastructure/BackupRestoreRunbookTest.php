@@ -113,8 +113,290 @@ SH);
                 $this->assertFileExists($path);
                 $this->assertFileMode($path, 0600);
             }
+
+            $manifestContents = file_get_contents($targetDir . '/manifest.json');
+            $this->assertIsString($manifestContents);
+            $manifest = json_decode($manifestContents, true, flags: JSON_THROW_ON_ERROR);
+            $this->assertIsArray($manifest);
+            $this->assertSame(1, $manifest['format_version'] ?? null);
+            $this->assertSame(hash_file('sha256', $targetDir . '/postgres.dump'), $manifest['postgres_sha256'] ?? null);
+            $this->assertSame(hash_file('sha256', $targetDir . '/artifacts.tar.gz'), $manifest['artifacts_sha256'] ?? null);
         } finally {
             $this->cleanupBackupFixture($root);
+        }
+    }
+
+    public function test_restore_rejects_a_mismatched_backup_pair_before_contacting_compose(): void
+    {
+        $root = sys_get_temp_dir() . '/artifactflow-restore-hash-' . bin2hex(random_bytes(8));
+        $binDir = $root . '/bin';
+        $backupDir = $root . '/backup';
+        $compose = $binDir . '/compose';
+        $composeMarker = $root . '/compose-called';
+
+        mkdir($binDir, 0700, true);
+        mkdir($backupDir, 0700, true);
+        file_put_contents($backupDir . '/postgres.dump', 'database-a');
+        file_put_contents($backupDir . '/artifacts.tar.gz', 'artifacts-a');
+        file_put_contents($backupDir . '/manifest.json', json_encode([
+            'format_version' => 1,
+            'postgres_sha256' => hash('sha256', 'database-a'),
+            'artifacts_sha256' => hash('sha256', 'artifacts-a'),
+        ], JSON_THROW_ON_ERROR));
+        file_put_contents($backupDir . '/postgres.dump', 'database-b');
+        file_put_contents($compose, "#!/usr/bin/env bash\ntouch '" . $composeMarker . "'\nexit 91\n");
+        chmod($compose, 0700);
+
+        $process = new Process(
+            ['bash', 'scripts/restore.sh', $backupDir],
+            base_path(),
+            ['COMPOSE' => $compose],
+            null,
+            15,
+        );
+
+        try {
+            $process->run();
+            $output = $process->getOutput() . $process->getErrorOutput();
+
+            $this->assertSame(1, $process->getExitCode(), $output);
+            $this->assertStringContainsString('PostgreSQL dump hash does not match', $output);
+            $this->assertFileDoesNotExist($composeMarker);
+        } finally {
+            foreach (['postgres.dump', 'artifacts.tar.gz', 'manifest.json'] as $file) {
+                unlink($backupDir . '/' . $file);
+            }
+
+            unlink($compose);
+            rmdir($backupDir);
+            rmdir($binDir);
+            rmdir($root);
+        }
+    }
+
+    public function test_restore_explicitly_upgrades_a_recognizable_legacy_manifest_before_use(): void
+    {
+        $root = sys_get_temp_dir() . '/artifactflow-restore-legacy-' . bin2hex(random_bytes(8));
+        $binDir = $root . '/bin';
+        $backupDir = $root . '/backup';
+        $compose = $binDir . '/compose';
+
+        mkdir($binDir, 0700, true);
+        mkdir($backupDir, 0700, true);
+        file_put_contents($backupDir . '/postgres.dump', 'database');
+        file_put_contents($backupDir . '/artifacts.tar.gz', 'legacy-artifacts');
+        file_put_contents($backupDir . '/manifest.json', <<<'JSON'
+{
+  "created_at": "20260720T120000Z",
+  "ordering": "postgres_dump_first_artifacts_snapshot_second",
+  "postgres_dump": "postgres.dump",
+  "artifacts_archive": "artifacts.tar.gz",
+  "page_versions_count": 7,
+  "artifact_file_count": 5,
+  "postgres_version": "pg_dump (PostgreSQL) 17.5",
+  "tar_version": "tar (GNU tar) 1.35",
+  "compose_version": "2.39.1"
+}
+JSON);
+        file_put_contents($compose, <<<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$*" == "ps --services --status running" ]]; then
+    printf 'app\ndb\n'
+    exit 0
+fi
+
+if [[ "$*" == "ps --services --status paused" || "$*" == "ps --services --status restarting" ]]; then
+    exit 0
+fi
+
+printf 'unexpected fake compose command: %s\n' "$*" >&2
+exit 92
+SH);
+        chmod($compose, 0700);
+
+        $refusedProcess = new Process(
+            ['bash', 'scripts/restore.sh', $backupDir],
+            base_path(),
+            ['COMPOSE' => $compose],
+            null,
+            15,
+        );
+        $process = new Process(
+            ['bash', 'scripts/restore.sh', '--upgrade-legacy-manifest', $backupDir],
+            base_path(),
+            ['COMPOSE' => $compose],
+            null,
+            15,
+        );
+
+        try {
+            $refusedProcess->run();
+            $refusedOutput = $refusedProcess->getOutput() . $refusedProcess->getErrorOutput();
+            $this->assertSame(1, $refusedProcess->getExitCode(), $refusedOutput);
+            $this->assertStringContainsString('missing a supported format version or SHA-256', $refusedOutput);
+            $legacyManifestContents = file_get_contents($backupDir . '/manifest.json');
+            $this->assertIsString($legacyManifestContents);
+            $this->assertStringNotContainsString('format_version', $legacyManifestContents);
+
+            $process->run();
+            $output = $process->getOutput() . $process->getErrorOutput();
+
+            $this->assertSame(1, $process->getExitCode(), $output);
+            $this->assertStringContainsString('Upgrading legacy unhashed backup manifest', $output);
+            $this->assertStringContainsString('Legacy backup manifest upgraded with SHA-256 payload hashes', $output);
+
+            $manifestContents = file_get_contents($backupDir . '/manifest.json');
+            $this->assertIsString($manifestContents);
+            $manifest = json_decode($manifestContents, true, flags: JSON_THROW_ON_ERROR);
+            $this->assertIsArray($manifest);
+            $this->assertSame(1, $manifest['format_version'] ?? null);
+            $this->assertSame(hash('sha256', 'database'), $manifest['postgres_sha256'] ?? null);
+            $this->assertSame(hash('sha256', 'legacy-artifacts'), $manifest['artifacts_sha256'] ?? null);
+        } finally {
+            foreach (['postgres.dump', 'artifacts.tar.gz', 'manifest.json'] as $file) {
+                unlink($backupDir . '/' . $file);
+            }
+
+            unlink($compose);
+            rmdir($backupDir);
+            rmdir($binDir);
+            rmdir($root);
+        }
+    }
+
+    public function test_restore_refuses_to_upgrade_an_unrecognized_legacy_manifest(): void
+    {
+        $root = sys_get_temp_dir() . '/artifactflow-restore-legacy-invalid-' . bin2hex(random_bytes(8));
+        $binDir = $root . '/bin';
+        $backupDir = $root . '/backup';
+        $compose = $binDir . '/compose';
+        $composeMarker = $root . '/compose-called';
+
+        mkdir($binDir, 0700, true);
+        mkdir($backupDir, 0700, true);
+        file_put_contents($backupDir . '/postgres.dump', 'database');
+        file_put_contents($backupDir . '/artifacts.tar.gz', 'artifacts');
+        file_put_contents($backupDir . '/manifest.json', <<<'JSON'
+{
+  "created_at": "20260720T120000Z",
+  "ordering": "postgres_dump_first_artifacts_snapshot_second",
+  "postgres_dump": "postgres.dump",
+  "artifacts_archive": "artifacts.tar.gz",
+  "page_versions_count": 7,
+  "artifact_file_count": 5,
+  "postgres_version": "pg_dump (PostgreSQL) 17.5",
+  "tar_version": "tar (GNU tar) 1.35",
+  "compose_version": "2.39.1",
+  "unexpected_field": "must-not-be-trusted"
+}
+JSON);
+        file_put_contents($compose, "#!/usr/bin/env bash\ntouch '" . $composeMarker . "'\nexit 91\n");
+        chmod($compose, 0700);
+
+        $process = new Process(
+            ['bash', 'scripts/restore.sh', '--upgrade-legacy-manifest', $backupDir],
+            base_path(),
+            ['COMPOSE' => $compose],
+            null,
+            15,
+        );
+
+        try {
+            $process->run();
+            $output = $process->getOutput() . $process->getErrorOutput();
+
+            $this->assertSame(1, $process->getExitCode(), $output);
+            $this->assertStringContainsString('not a recognized legacy ArtifactFlow backup manifest', $output);
+            $this->assertFileDoesNotExist($composeMarker);
+            $manifestContents = file_get_contents($backupDir . '/manifest.json');
+            $this->assertIsString($manifestContents);
+            $this->assertStringNotContainsString('format_version', $manifestContents);
+        } finally {
+            foreach (['postgres.dump', 'artifacts.tar.gz', 'manifest.json'] as $file) {
+                unlink($backupDir . '/' . $file);
+            }
+
+            unlink($compose);
+            if (is_file($composeMarker)) {
+                unlink($composeMarker);
+            }
+
+            rmdir($backupDir);
+            rmdir($binDir);
+            rmdir($root);
+        }
+    }
+
+    public function test_restore_refuses_to_run_while_an_application_role_is_running_paused_or_restarting(): void
+    {
+        foreach (['app', 'artifact-host', 'worker', 'scheduler'] as $activeRole) {
+            foreach (['running', 'paused', 'restarting'] as $unsafeState) {
+                $root = sys_get_temp_dir() . '/artifactflow-restore-quiescence-' . $activeRole . '-' . $unsafeState . '-' . bin2hex(random_bytes(8));
+                $binDir = $root . '/bin';
+                $backupDir = $root . '/backup';
+                $compose = $binDir . '/compose';
+
+                mkdir($binDir, 0700, true);
+                mkdir($backupDir, 0700, true);
+                file_put_contents($backupDir . '/postgres.dump', 'database');
+                file_put_contents($backupDir . '/artifacts.tar.gz', 'not-yet-inspected');
+                file_put_contents($backupDir . '/manifest.json', json_encode([
+                    'format_version' => 1,
+                    'postgres_sha256' => hash('sha256', 'database'),
+                    'artifacts_sha256' => hash('sha256', 'not-yet-inspected'),
+                ], JSON_THROW_ON_ERROR));
+                file_put_contents($compose, <<<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$*" == "ps --services --status ${ACTIVE_STATE:?}" ]]; then
+    printf '%s\ndb\n' "${ACTIVE_ROLE:?}"
+    exit 0
+fi
+
+if [[ "$*" == "ps --services --status running" || "$*" == "ps --services --status paused" || "$*" == "ps --services --status restarting" ]]; then
+    exit 0
+fi
+
+printf 'unexpected fake compose command: %s\n' "$*" >&2
+exit 92
+SH);
+                chmod($compose, 0700);
+
+                $process = new Process(
+                    ['bash', 'scripts/restore.sh', $backupDir],
+                    base_path(),
+                    [
+                        'ACTIVE_ROLE' => $activeRole,
+                        'ACTIVE_STATE' => $unsafeState,
+                        'COMPOSE' => $compose,
+                    ],
+                    null,
+                    15,
+                );
+
+                try {
+                    $process->run();
+                    $output = $process->getOutput() . $process->getErrorOutput();
+
+                    $this->assertSame(1, $process->getExitCode(), $output);
+                    $this->assertStringContainsString(
+                        'Refusing restore while application roles are running, paused, or restarting: ' . $activeRole,
+                        $output,
+                    );
+                } finally {
+                    foreach (['postgres.dump', 'artifacts.tar.gz', 'manifest.json'] as $file) {
+                        unlink($backupDir . '/' . $file);
+                    }
+
+                    unlink($compose);
+                    rmdir($backupDir);
+                    rmdir($binDir);
+                    rmdir($root);
+                }
+            }
         }
     }
 
@@ -162,6 +444,10 @@ SH);
         $this->assertStringContainsString('database dump first', $operations);
         $this->assertStringContainsString('APP_KEY', $operations);
         $this->assertStringContainsString('ARTIFACT_URL_SIGNING_KEY', $operations);
+        $this->assertStringContainsString('same persistent private artifact', $operations);
+        $this->assertStringContainsString('ARTIFACT_STORAGE_ROOT', $operations);
+        $this->assertStringContainsString('--upgrade-legacy-manifest', $operations);
+        $this->assertStringContainsString('running, paused, or restarting', $operations);
         $this->assertStringContainsString('Retention', $operations);
         $this->assertStringContainsString('make backup-verify', $operations);
     }

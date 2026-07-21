@@ -70,12 +70,17 @@ final class RevokeMcpTokensCommandTest extends TestCase
         $this->assertCount(2, $tokens);
         $alreadyRevoked = $tokens->first();
         $this->assertInstanceOf(McpAccessToken::class, $alreadyRevoked);
-        app(McpAccessTokenRevoker::class)->revoke($alreadyRevoked, null, 'cli');
+        $this->assertTrue(app(McpAccessTokenRevoker::class)->revoke($alreadyRevoked, null, 'cli'));
+        $active = $tokens->last();
+        $this->assertInstanceOf(McpAccessToken::class, $active);
 
         $this->runConsoleCommand('artifactflow:mcp-token-revoke', [
             '--email' => 'cli-agent@example.test',
         ])
+            ->expectsOutputToContain(sprintf('MCP token already revoked or no longer exists: %s', $alreadyRevoked->uid))
+            ->expectsOutputToContain(sprintf('MCP token revoked: %s', $active->uid))
             ->expectsOutputToContain('Revoked 1 MCP token(s).')
+            ->expectsOutputToContain('No change for 1 MCP token(s) that were already revoked or no longer exist.')
             ->assertExitCode(0);
 
         foreach (McpAccessToken::query()->get() as $token) {

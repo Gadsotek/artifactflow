@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Identity;
 
 use App\Http\Requests\AppFormRequest;
+use App\Rules\StorableText;
 use Illuminate\Validation\Rule;
 
 final class StoreWorkspaceRequest extends AppFormRequest
@@ -15,7 +16,7 @@ final class StoreWorkspaceRequest extends AppFormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:120'],
+            'name' => ['required', 'string', new StorableText(), 'max:120'],
             'return_to' => ['nullable', Rule::in(['library'])],
         ];
     }

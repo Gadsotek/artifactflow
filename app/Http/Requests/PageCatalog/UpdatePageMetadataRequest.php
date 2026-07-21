@@ -18,6 +18,7 @@ final class UpdatePageMetadataRequest extends AppFormRequest
     public function rules(): array
     {
         return [
+            'metadata_revision' => ['required', 'integer', 'min:0'],
             'title' => ['required', 'string', new StorableText(), 'max:' . PageMetadataRules::MAX_TITLE_CHARACTERS],
             'description' => ['nullable', 'string', new StorableText(), 'max:' . PageMetadataRules::MAX_DESCRIPTION_CHARACTERS],
             'category_uid' => ['nullable', 'ulid'],
@@ -25,6 +26,11 @@ final class UpdatePageMetadataRequest extends AppFormRequest
             'owner_user_uid' => ['required', 'ulid'],
             'tags' => ['nullable', 'string', new StorableText(), 'max:1000'],
         ];
+    }
+
+    public function expectedMetadataRevision(): int
+    {
+        return $this->integer('metadata_revision');
     }
 
     public function withValidator(Validator $validator): void

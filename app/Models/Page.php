@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $description
  * @property string $search_vector
  * @property PageAccessMode $access_mode
+ * @property int $metadata_revision
  * @property int $preview_access_revision
  * @property PageType $type
  * @property PageStatus $status
@@ -60,6 +61,7 @@ final class Page extends Model
     {
         return [
             'access_mode' => PageAccessMode::class,
+            'metadata_revision' => 'integer',
             'preview_access_revision' => 'integer',
             'type' => PageType::class,
             'status' => PageStatus::class,

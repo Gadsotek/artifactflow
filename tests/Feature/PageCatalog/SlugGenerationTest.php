@@ -78,6 +78,7 @@ final class SlugGenerationTest extends TestCase
 
         $renamed = app(UpdatePageMetadata::class)->handle($author, new UpdatePageMetadataCommand(
             pageUid: $second->uid,
+            expectedMetadataRevision: $second->metadata_revision,
             title: 'Runbook',
             description: null,
             categoryUid: null,

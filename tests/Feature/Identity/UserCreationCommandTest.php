@@ -10,9 +10,12 @@ use App\Models\AuditEntry;
 use App\Models\DomainEvent;
 use App\Models\User;
 use App\Models\Workspace;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class UserCreationCommandTest extends TestCase
@@ -82,6 +85,59 @@ final class UserCreationCommandTest extends TestCase
         $this->assertSame(1, AuditEntry::query()->where('action', 'user.created')->count());
     }
 
+    public function test_user_creation_maps_a_concurrent_email_unique_violation_to_the_domain_error(): void
+    {
+        $connection = config('database.connections.pgsql');
+        $this->assertIsArray($connection);
+        config(['database.connections.concurrent_user_create' => $connection]);
+        $insertedCompetitor = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$insertedCompetitor): void {
+            $sql = strtolower($query->sql);
+            if (
+                $insertedCompetitor
+                || !str_contains($sql, 'from "users"')
+                || !str_contains($sql, '"email"')
+                || !in_array('racing@example.test', $query->bindings, true)
+            ) {
+                return;
+            }
+
+            $insertedCompetitor = true;
+            DB::connection('concurrent_user_create')->table('users')->insert([
+                'uid' => (string) Str::ulid(),
+                'name' => 'Concurrent Winner',
+                'email' => 'racing@example.test',
+                'email_verified_at' => now(),
+                'password' => Hash::make('correct horse battery staple'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+
+        try {
+            app(CreateUser::class)->handle(
+                name: 'Concurrent Loser',
+                email: 'racing@example.test',
+                password: 'correct horse battery staple',
+            );
+            $this->fail('Expected the concurrent duplicate email to be rejected.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame('A user with this email already exists.', $exception->getMessage());
+        } finally {
+            if ($insertedCompetitor) {
+                DB::connection('concurrent_user_create')
+                    ->table('users')
+                    ->where('email', 'racing@example.test')
+                    ->delete();
+            }
+
+            DB::purge('concurrent_user_create');
+        }
+
+        $this->assertTrue($insertedCompetitor);
+    }
+
     public function test_user_creation_rejects_invalid_inputs_without_trace_events(): void
     {
         foreach ([
@@ -140,5 +196,26 @@ final class UserCreationCommandTest extends TestCase
 
         $this->assertTrue(Hash::check('configured secure password', $user->password));
         $this->assertStringNotContainsString('configured secure password', Artisan::output());
+    }
+
+    public function test_console_user_creation_reads_a_password_from_a_one_shot_secret_file(): void
+    {
+        $secretFile = storage_path('framework/testing/create-user-password-' . Str::random(12));
+        file_put_contents($secretFile, "password from secret file\n");
+        putenv('ARTIFACTFLOW_CREATE_USER_PASSWORD_FILE=' . $secretFile);
+
+        try {
+            $exitCode = Artisan::call('artifactflow:create-user', [
+                '--name' => 'File Password User',
+                '--email' => 'file-password-user@example.test',
+            ]);
+        } finally {
+            putenv('ARTIFACTFLOW_CREATE_USER_PASSWORD_FILE');
+            unlink($secretFile);
+        }
+
+        $this->assertSame(0, $exitCode);
+        $user = User::query()->where('email', 'file-password-user@example.test')->sole();
+        $this->assertTrue(Hash::check('password from secret file', $user->password));
     }
 }

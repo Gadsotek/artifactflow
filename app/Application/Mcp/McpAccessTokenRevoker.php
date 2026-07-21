@@ -20,20 +20,27 @@ final readonly class McpAccessTokenRevoker
     ) {
     }
 
-    public function revoke(McpAccessToken $token, ?User $actor = null, string $channel = 'application'): void
+    public function revoke(McpAccessToken $token, ?User $actor = null, string $channel = 'application'): bool
     {
-        if ($token->revoked_at !== null) {
-            return;
-        }
+        return DB::transaction(function () use ($token, $actor, $channel): bool {
+            $lockedToken = McpAccessToken::query()
+                ->whereKey($token->uid)
+                ->lockForUpdate()
+                ->first();
 
-        DB::transaction(function () use ($token, $actor, $channel): void {
-            $token->forceFill(['revoked_at' => now()])->save();
+            if (!$lockedToken instanceof McpAccessToken || $lockedToken->revoked_at !== null) {
+                return false;
+            }
+
+            $lockedToken->forceFill(['revoked_at' => now()])->save();
             $this->recordRevoked(
-                token: $token,
+                token: $lockedToken,
                 actorUserUid: $actor?->uid,
                 channel: $channel,
                 reason: 'manual',
             );
+
+            return true;
         });
     }
 
