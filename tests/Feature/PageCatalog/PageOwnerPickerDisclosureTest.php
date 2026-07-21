@@ -97,6 +97,7 @@ final class PageOwnerPickerDisclosureTest extends TestCase
         // unchanged, so no page-admin authority is required and the save succeeds.
         $this->actingAs($outsider)
             ->put("/pages/{$page->uid}/metadata", [
+                'metadata_revision' => $page->metadata_revision,
                 'title' => 'Renamed By Outsider',
                 'description' => 'Edited by a non-member editor.',
                 'owner_user_uid' => $owner->uid,
@@ -126,6 +127,7 @@ final class PageOwnerPickerDisclosureTest extends TestCase
         // server rejects the transfer under page-admin authority regardless.
         $this->actingAs($outsider)
             ->put("/pages/{$page->uid}/metadata", [
+                'metadata_revision' => $page->metadata_revision,
                 'title' => 'Guarded Page',
                 'owner_user_uid' => $insider->uid,
                 'tags' => '',

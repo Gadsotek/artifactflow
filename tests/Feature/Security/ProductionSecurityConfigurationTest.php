@@ -179,6 +179,21 @@ final class ProductionSecurityConfigurationTest extends TestCase
             $this->assertUnsafeConfiguration($message);
         }
 
+        $this->configureSafeProductionValues();
+        config([
+            'mail.default' => 'resend',
+            'services.resend.key' => '',
+        ]);
+        $this->assertUnsafeConfiguration($message);
+
+        $this->configureSafeProductionValues();
+        config([
+            'mail.default' => 'resend',
+            'services.resend.key' => 're_test_delivery_key',
+        ]);
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+        $this->addToAssertionCount(1);
+
         // A real, configured transport boots.
         $this->configureSafeProductionValues();
         config(['mail.default' => 'smtp']);
@@ -331,6 +346,11 @@ final class ProductionSecurityConfigurationTest extends TestCase
         config(['database.connections.pgsql.sslrootcert' => null]);
 
         $this->assertUnsafeConfiguration('PostgreSQL verify-full requires an explicit root certificate in production.');
+
+        $this->configureSafeProductionValues();
+        config(['database.connections.pgsql.sslrootcert' => '/missing/artifactflow-postgres-ca.pem']);
+
+        $this->assertUnsafeConfiguration('PostgreSQL verify-full requires a readable root certificate file in production.');
 
         $this->configureSafeProductionValues();
         config(['database.connections.pgsql.sslmode' => 'verify-full']);
@@ -601,6 +621,33 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->assertUnsafeConfiguration('Password reset fallback must not be configured persistently in production.');
     }
 
+    public function test_one_shot_password_file_inputs_can_boot_each_operator_command_in_production(): void
+    {
+        $secretFile = storage_path('framework/testing/production-command-password-' . bin2hex(random_bytes(8)));
+        file_put_contents($secretFile, "password from a mounted secret\n");
+
+        try {
+            foreach ([
+                ['artifactflow:bootstrap-admin', 'ARTIFACTFLOW_ADMIN_PASSWORD_FILE'],
+                ['artifactflow:create-user', 'ARTIFACTFLOW_CREATE_USER_PASSWORD_FILE'],
+                ['artifactflow:reset-password', 'ARTIFACTFLOW_RESET_PASSWORD_FILE'],
+            ] as [$command, $environmentVariable]) {
+                $process = $this->runSafeProductionBootPathCommand(
+                    [$command, '--help', '--no-interaction'],
+                    [$environmentVariable => $secretFile],
+                );
+                $output = $process->getOutput() . $process->getErrorOutput();
+
+                $this->assertSame(0, $process->getExitCode(), $output);
+                $this->assertStringContainsString($command, $output);
+                $this->assertStringNotContainsString('password from a mounted secret', $output);
+                $this->assertStringNotContainsString('must not be configured persistently', $output);
+            }
+        } finally {
+            unlink($secretFile);
+        }
+    }
+
     public function test_production_trusted_proxies_must_be_explicit_and_not_the_wide_development_cidr(): void
     {
         $this->configureSafeProductionValues();
@@ -756,6 +803,55 @@ final class ProductionSecurityConfigurationTest extends TestCase
                 'SESSION_SAME_SITE' => 'lax',
                 'SESSION_SECURE_COOKIE' => 'true',
                 'TRUSTED_PROXIES' => 'REMOTE_ADDR',
+            ],
+            null,
+            30,
+        );
+
+        $process->run();
+
+        return $process;
+    }
+
+    /**
+     * @param list<string> $command
+     * @param array<string, string> $extraEnvironment
+     */
+    private function runSafeProductionBootPathCommand(array $command, array $extraEnvironment): Process
+    {
+        $process = new Process(
+            [PHP_BINARY, 'artisan', ...$command],
+            base_path(),
+            [
+                'APP_DEBUG' => 'false',
+                'APP_ENV' => 'production',
+                'APP_KEY' => 'base64:' . base64_encode(random_bytes(32)),
+                'APP_PREVIOUS_KEYS' => '',
+                'APP_RUNTIME_ROLE' => 'app',
+                'APP_URL' => 'https://app.example.test',
+                'ARTIFACT_FRAME_ANCESTORS' => 'https://app.example.test',
+                'ARTIFACT_URL' => 'https://artifacts.example.test',
+                'ARTIFACT_URL_SIGNING_KEY' => 'base64:' . base64_encode(random_bytes(32)),
+                'ARTIFACTFLOW_ADMIN_PASSWORD' => '',
+                'ARTIFACTFLOW_CREATE_USER_PASSWORD' => '',
+                'ARTIFACTFLOW_RESET_PASSWORD' => '',
+                'BCRYPT_ROUNDS' => '12',
+                'BROADCAST_CONNECTION' => 'null',
+                'CACHE_STORE' => 'database',
+                'DB_CONNECTION' => 'pgsql',
+                'DB_PASSWORD' => bin2hex(random_bytes(24)),
+                'DB_SSLMODE' => 'verify-full',
+                'DB_SSLROOTCERT' => base_path('README.md'),
+                'MAIL_MAILER' => 'smtp',
+                'QUEUE_CONNECTION' => 'database',
+                'SESSION_DOMAIN' => 'app.example.test',
+                'SESSION_DRIVER' => 'database',
+                'SESSION_ENCRYPT' => 'true',
+                'SESSION_HTTP_ONLY' => 'true',
+                'SESSION_SAME_SITE' => 'lax',
+                'SESSION_SECURE_COOKIE' => 'true',
+                'TRUSTED_PROXIES' => 'REMOTE_ADDR',
+                ...$extraEnvironment,
             ],
             null,
             30,

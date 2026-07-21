@@ -6,6 +6,7 @@ namespace App\Http\Requests\Mcp;
 
 use App\Application\Mcp\McpAccessTokenIssuer;
 use App\Http\Requests\AppFormRequest;
+use App\Rules\StorableText;
 use Illuminate\Validation\Rule;
 
 final class StoreMcpAccessTokenRequest extends AppFormRequest
@@ -16,7 +17,7 @@ final class StoreMcpAccessTokenRequest extends AppFormRequest
     public function rules(): array
     {
         return [
-            'name' => ['nullable', 'string', 'max:120'],
+            'name' => ['nullable', 'string', new StorableText(), 'max:120'],
             'scopes' => ['required', 'array', 'min:1'],
             'scopes.*' => ['required', 'string', Rule::in(McpAccessTokenIssuer::allowedScopes())],
             'workspace_uids' => ['nullable', 'array'],

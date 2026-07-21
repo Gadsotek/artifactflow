@@ -65,6 +65,7 @@ final class PageMetadataTest extends TestCase
 
         $updatedPage = app(UpdatePageMetadata::class)->handle($owner, new UpdatePageMetadataCommand(
             pageUid: $page->uid,
+            expectedMetadataRevision: $page->metadata_revision,
             title: 'New Metadata Title',
             description: 'Updated description.',
             categoryUid: $category->uid,
@@ -139,6 +140,7 @@ final class PageMetadataTest extends TestCase
 
         $updatedPage = app(UpdatePageMetadata::class)->handle($editor, new UpdatePageMetadataCommand(
             pageUid: $page->uid,
+            expectedMetadataRevision: $page->metadata_revision,
             title: 'Editor Updated Metadata',
             description: 'Updated without ownership transfer.',
             categoryUid: null,
@@ -172,6 +174,7 @@ final class PageMetadataTest extends TestCase
 
         $updatedPage = app(UpdatePageMetadata::class)->handle($owner, new UpdatePageMetadataCommand(
             pageUid: $page->uid,
+            expectedMetadataRevision: $page->metadata_revision,
             title: $page->title,
             description: $page->description,
             categoryUid: $page->category_uid,
@@ -205,6 +208,7 @@ final class PageMetadataTest extends TestCase
         try {
             app(UpdatePageMetadata::class)->handle($editor, new UpdatePageMetadataCommand(
                 pageUid: $page->uid,
+                expectedMetadataRevision: $page->metadata_revision,
                 title: 'Protected Owner',
                 description: null,
                 categoryUid: null,
@@ -238,6 +242,7 @@ final class PageMetadataTest extends TestCase
         ));
         $command = new UpdatePageMetadataCommand(
             pageUid: $page->uid,
+            expectedMetadataRevision: $page->metadata_revision,
             title: ' Stable Metadata ',
             description: ' Already current. ',
             categoryUid: null,
@@ -273,6 +278,7 @@ final class PageMetadataTest extends TestCase
         try {
             app(UpdatePageMetadata::class)->handle($reader, new UpdatePageMetadataCommand(
                 pageUid: $page->uid,
+                expectedMetadataRevision: $page->metadata_revision,
                 title: 'Unauthorized Title',
                 description: null,
                 categoryUid: null,
@@ -322,6 +328,7 @@ final class PageMetadataTest extends TestCase
         foreach ([
             new UpdatePageMetadataCommand(
                 pageUid: $page->uid,
+                expectedMetadataRevision: $page->metadata_revision,
                 title: 'Validated Metadata',
                 description: null,
                 categoryUid: $foreignCategory->uid,
@@ -331,6 +338,7 @@ final class PageMetadataTest extends TestCase
             ),
             new UpdatePageMetadataCommand(
                 pageUid: $page->uid,
+                expectedMetadataRevision: $page->metadata_revision,
                 title: 'Validated Metadata',
                 description: null,
                 categoryUid: null,
@@ -340,6 +348,7 @@ final class PageMetadataTest extends TestCase
             ),
             new UpdatePageMetadataCommand(
                 pageUid: $page->uid,
+                expectedMetadataRevision: $page->metadata_revision,
                 title: 'Validated Metadata',
                 description: null,
                 categoryUid: null,
@@ -349,6 +358,7 @@ final class PageMetadataTest extends TestCase
             ),
             new UpdatePageMetadataCommand(
                 pageUid: $page->uid,
+                expectedMetadataRevision: $page->metadata_revision,
                 title: 'Validated Metadata',
                 description: null,
                 categoryUid: null,
@@ -358,6 +368,7 @@ final class PageMetadataTest extends TestCase
             ),
             new UpdatePageMetadataCommand(
                 pageUid: $page->uid,
+                expectedMetadataRevision: $page->metadata_revision,
                 title: 'Validated Metadata',
                 description: null,
                 categoryUid: null,
@@ -397,6 +408,7 @@ final class PageMetadataTest extends TestCase
         try {
             app(UpdatePageMetadata::class)->handle($owner, new UpdatePageMetadataCommand(
                 pageUid: $page->uid,
+                expectedMetadataRevision: $page->metadata_revision,
                 title: $page->title,
                 description: null,
                 categoryUid: null,
@@ -417,6 +429,7 @@ final class PageMetadataTest extends TestCase
 
         $this->actingAs($owner)
             ->put("/pages/{$page->uid}/metadata", [
+                'metadata_revision' => $page->metadata_revision,
                 'title' => $page->title,
                 'owner_user_uid' => $reader->uid,
             ])
@@ -472,6 +485,7 @@ final class PageMetadataTest extends TestCase
 
         $this->actingAs($editor)
             ->put("/pages/{$targetPage->uid}/metadata", [
+                'metadata_revision' => $targetPage->metadata_revision,
                 'title' => $targetPage->title,
                 'owner_user_uid' => $editor->uid,
                 'parent_page_uid' => $restrictedParent->uid,
@@ -501,6 +515,7 @@ final class PageMetadataTest extends TestCase
 
         $this->actingAs($owner)
             ->put("/pages/{$page->uid}/metadata", [
+                'metadata_revision' => $page->metadata_revision,
                 'title' => '',
                 'description' => str_repeat('x', 5001),
                 'owner_user_uid' => $owner->uid,
@@ -510,6 +525,7 @@ final class PageMetadataTest extends TestCase
 
         $this->actingAs($owner)
             ->put("/pages/{$page->uid}/metadata", [
+                'metadata_revision' => $page->metadata_revision,
                 'title' => $page->title,
                 'description' => null,
                 'owner_user_uid' => $owner->uid,
@@ -523,6 +539,7 @@ final class PageMetadataTest extends TestCase
 
         $this->actingAs($owner)
             ->put("/pages/{$page->uid}/metadata", [
+                'metadata_revision' => $page->metadata_revision,
                 'title' => $hostileTitle,
                 'description' => $hostileDescription,
                 'owner_user_uid' => $owner->uid,
@@ -556,6 +573,45 @@ final class PageMetadataTest extends TestCase
         $this->assertStringNotContainsString('alert', $auditJson);
         $this->assertStringNotContainsString('onerror=', $auditJson);
         $this->assertSame(1, PageVersion::query()->where('page_uid', $page->uid)->count());
+    }
+
+    public function test_http_metadata_update_rejects_a_stale_form_without_clobbering_newer_fields(): void
+    {
+        Storage::fake('artifacts');
+
+        $owner = $this->createUser('Concurrent Owner', 'concurrent-metadata@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Concurrent Metadata Team');
+        $page = app(CreatePage::class)->handle($owner, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Original Title',
+            description: null,
+            content: '# Original',
+        ));
+        $openedRevision = $page->metadata_revision;
+
+        $this->actingAs($owner)
+            ->put("/pages/{$page->uid}/metadata", [
+                'metadata_revision' => $openedRevision,
+                'title' => 'Newer Title',
+                'owner_user_uid' => $owner->uid,
+                'tags' => 'newer-tag',
+            ])
+            ->assertRedirect("/pages/{$page->uid}");
+
+        $this->actingAs($owner)
+            ->put("/pages/{$page->uid}/metadata", [
+                'metadata_revision' => $openedRevision,
+                'title' => 'Original Title',
+                'owner_user_uid' => $owner->uid,
+                'tags' => 'stale-tag',
+            ])
+            ->assertStatus(409);
+
+        $page->refresh();
+        $this->assertSame('Newer Title', $page->title);
+        $this->assertSame(['newer-tag'], $page->tags()->pluck('name')->all());
+        $this->assertSame($openedRevision + 1, $page->metadata_revision);
     }
 
     private function createUser(string $name, string $email): User

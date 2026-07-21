@@ -50,6 +50,21 @@ final class InstallCommand extends Command
         $plan = $planner->plan($env, $needsAppKey, $needsSigningKey, $wantsReverb);
         $this->info(sprintf('Installing ArtifactFlow (%s mode).', $env));
 
+        // artifactflow:install is deliberately allowed to boot when the ordinary
+        // production safety gate cannot, because it is a recovery command. That
+        // exemption must not let the installer write through an unsafe database
+        // connection or provision an admin under an otherwise invalid deployment.
+        // Consume and clear the one-shot password first, then grade every production
+        // invariant before migrations or any other database mutation.
+        $productionAdminPassword = null;
+        if (!$local) {
+            $productionAdminPassword = $this->adminPassword();
+
+            if (!$this->productionPreflightPasses($targetAppEnv)) {
+                return 1;
+            }
+        }
+
         if ($plan->hasStep('app_key')) {
             $this->line('- Generating application key');
             Artisan::call('key:generate', ['--force' => true]);
@@ -76,12 +91,18 @@ final class InstallCommand extends Command
         }
 
         $this->line('- Running database migrations');
-        Artisan::call('migrate', ['--force' => true]);
+        $migrationExitCode = Artisan::call('migrate', ['--force' => true]);
+
+        if ($migrationExitCode !== 0) {
+            $this->error('Database migrations failed; installation stopped before admin provisioning.');
+
+            return 1;
+        }
 
         $admin = $bootstrapSystemAdmin->handle(
             $this->adminName(),
             $this->adminEmail(),
-            $this->adminPassword(),
+            $productionAdminPassword ?? $this->adminPassword(),
         );
         $this->info(sprintf('- System admin ready: %s', $admin->email));
 
@@ -121,6 +142,12 @@ final class InstallCommand extends Command
             $this->line(trim(Artisan::output()));
 
             if ($exitCode !== 0) {
+                if (!$local) {
+                    $this->error('Production installation failed its final configuration doctor.');
+
+                    return 1;
+                }
+
                 $this->warn('Resolve the failing doctor checks above before serving traffic.');
             }
         }
@@ -140,6 +167,23 @@ final class InstallCommand extends Command
         }
 
         return 0;
+    }
+
+    private function productionPreflightPasses(string $targetAppEnv): bool
+    {
+        config(['app.env' => $targetAppEnv]);
+        $this->newLine();
+        $this->line('Running production configuration preflight:');
+        $exitCode = Artisan::call('artifactflow:doctor');
+        $this->line(trim(Artisan::output()));
+
+        if ($exitCode === 0) {
+            return true;
+        }
+
+        $this->error('Production installation aborted before database changes.');
+
+        return false;
     }
 
     private function resolveTargetEnv(): ?string

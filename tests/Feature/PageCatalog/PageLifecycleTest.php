@@ -22,6 +22,7 @@ use App\Application\PageCatalog\ReturnPageToDraft;
 use App\Application\PageCatalog\ReturnPageToDraftCommand;
 use App\Application\PageCatalog\UnarchivePage;
 use App\Application\PageCatalog\UnarchivePageCommand;
+use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\Identity\WorkspaceRole;
 use App\Domain\PageCatalog\InvalidPageStatusTransition;
@@ -35,7 +36,9 @@ use App\Models\PageVersion;
 use App\Models\User;
 use App\Models\WorkspaceMembership;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -935,6 +938,57 @@ final class PageLifecycleTest extends TestCase
 
         $this->assertSame(0, DomainEvent::query()->where('event_type', 'page.hard_deleted')->count());
         $this->assertSame(0, AuditEntry::query()->where('action', 'page.hard_deleted')->count());
+    }
+
+    public function test_hard_delete_rechecks_confirmation_after_locking_a_concurrently_renamed_page(): void
+    {
+        Storage::fake('artifacts');
+
+        $owner = $this->createUser('Delete Owner', 'stale-delete-confirmation@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Delete Confirmation Team');
+        $page = app(CreatePage::class)->handle($owner, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Old Delete Title',
+            description: null,
+            content: '# Keep after rename',
+        ));
+        $renamed = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$renamed, $page): void {
+            $sql = strtolower($query->sql);
+            if (
+                $renamed
+                || str_contains($sql, 'for update')
+                || !str_contains($sql, 'from "pages"')
+                || !in_array($page->uid, $query->bindings, true)
+            ) {
+                return;
+            }
+
+            $renamed = true;
+            DB::table('pages')->where('uid', $page->uid)->update([
+                'title' => 'New Delete Title',
+                'updated_at' => now(),
+            ]);
+        });
+
+        try {
+            app(HardDeletePage::class)->handle(
+                $owner,
+                new HardDeletePageCommand($page->uid, 'Old Delete Title'),
+            );
+            $this->fail('Expected stale hard-delete confirmation to be rejected.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame(
+                'Type the page title exactly to permanently delete it.',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertTrue($renamed);
+        $this->assertSame('New Delete Title', Page::query()->findOrFail($page->uid)->title);
+        $this->assertSame(0, DomainEvent::query()->where('event_type', 'page.hard_deleted')->count());
     }
 
     public function test_failed_hard_delete_transaction_keeps_database_records_and_stored_content(): void

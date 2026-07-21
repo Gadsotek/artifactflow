@@ -102,6 +102,26 @@ final class PasswordResetCommandTest extends TestCase
         $this->assertStringNotContainsString('configured reset password', Artisan::output());
     }
 
+    public function test_console_password_reset_reads_a_password_from_a_one_shot_secret_file(): void
+    {
+        $user = $this->createUser('File Reset', 'file-reset@example.test', 'old secure password');
+        $secretFile = storage_path('framework/testing/reset-password-' . Str::random(12));
+        file_put_contents($secretFile, "password from secret file\n");
+        putenv('ARTIFACTFLOW_RESET_PASSWORD_FILE=' . $secretFile);
+
+        try {
+            $exitCode = Artisan::call('artifactflow:reset-password', [
+                '--email' => 'file-reset@example.test',
+            ]);
+        } finally {
+            putenv('ARTIFACTFLOW_RESET_PASSWORD_FILE');
+            unlink($secretFile);
+        }
+
+        $this->assertSame(0, $exitCode);
+        $this->assertTrue(Hash::check('password from secret file', $user->refresh()->password));
+    }
+
     public function test_console_password_reset_rejects_short_password_without_changes(): void
     {
         $user = $this->createUser('Short Reset', 'short-reset@example.test', 'old secure password');

@@ -66,6 +66,7 @@ final class PageMutationReauthorizationTest extends TestCase
         $this->assertRefused('You cannot edit this page.', function () use ($editor, $page, $owner): void {
             app(UpdatePageMetadata::class)->handle($editor, new UpdatePageMetadataCommand(
                 pageUid: $page->uid,
+                expectedMetadataRevision: $page->metadata_revision,
                 title: 'Renamed After Revocation',
                 description: null,
                 categoryUid: null,

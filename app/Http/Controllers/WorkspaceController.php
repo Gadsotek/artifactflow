@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Application\Identity\CreateSharedWorkspace;
+use App\Domain\DomainRuleViolation;
 use App\Http\Requests\Identity\StoreWorkspaceRequest;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Validation\ValidationException;
 
 final class WorkspaceController
 {
@@ -16,7 +18,13 @@ final class WorkspaceController
     {
         $user = $this->authenticatedUser($request);
 
-        $workspace = $createSharedWorkspace->handle($user, $request->workspaceName());
+        try {
+            $workspace = $createSharedWorkspace->handle($user, $request->workspaceName());
+        } catch (DomainRuleViolation $exception) {
+            throw ValidationException::withMessages([
+                'name' => $exception->getMessage(),
+            ]);
+        }
         $request->session()->put('current_workspace_uid', $workspace->uid);
 
         if ($request->returnsToLibrary()) {

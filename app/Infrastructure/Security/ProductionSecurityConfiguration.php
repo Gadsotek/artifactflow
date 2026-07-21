@@ -386,7 +386,11 @@ final readonly class ProductionSecurityConfiguration
 
     private function ensureMailTransportIsDeliverable(): void
     {
-        if (!SecurityInvariants::mailTransportIsDeliverable($this->string('mail.default'), $this->configuredMailers())) {
+        if (!SecurityInvariants::mailTransportIsDeliverable(
+            $this->string('mail.default'),
+            $this->configuredMailers(),
+            $this->string('services.resend.key'),
+        )) {
             throw new RuntimeException(
                 'Mail transport must be a real, deliverable transport in production. The log and array drivers discard invitation and password-reset emails, and an unknown mailer fails only when the first message is sent.',
             );
@@ -431,8 +435,14 @@ final readonly class ProductionSecurityConfiguration
             throw new RuntimeException('PostgreSQL sslmode must be verify-full in production.');
         }
 
-        if (!SecurityInvariants::postgresRootCertIsConfigured($this->string('database.connections.pgsql.sslrootcert'))) {
+        $rootCertificate = $this->string('database.connections.pgsql.sslrootcert');
+
+        if ($rootCertificate === '') {
             throw new RuntimeException('PostgreSQL verify-full requires an explicit root certificate in production.');
+        }
+
+        if (!SecurityInvariants::postgresRootCertIsReadable($rootCertificate)) {
+            throw new RuntimeException('PostgreSQL verify-full requires a readable root certificate file in production.');
         }
     }
 

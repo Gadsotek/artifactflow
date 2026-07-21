@@ -660,7 +660,7 @@ final class DeploymentDoctorTest extends TestCase
             'app.artifact_frame_ancestors' => 'https://app.example.test',
             'database.connections.pgsql.password' => 'app-local-strong-password',
             'database.connections.pgsql.sslmode' => 'verify-full',
-            'database.connections.pgsql.sslrootcert' => '/etc/ssl/certs/db-ca.pem',
+            'database.connections.pgsql.sslrootcert' => '/etc/ssl/certs/ca-certificates.crt',
             'session.driver' => 'database',
             'session.secure' => true,
             'session.encrypt' => true,

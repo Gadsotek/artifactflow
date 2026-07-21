@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Application\Identity\BootstrapSystemAdmin;
+use App\Application\Identity\OneShotPasswordFile;
 use Illuminate\Console\Command;
 
 final class BootstrapAdminCommand extends Command
@@ -13,7 +14,7 @@ final class BootstrapAdminCommand extends Command
 
     protected $description = 'Bootstrap or promote the deployment system admin.';
 
-    public function handle(BootstrapSystemAdmin $bootstrapSystemAdmin): int
+    public function handle(BootstrapSystemAdmin $bootstrapSystemAdmin, OneShotPasswordFile $passwordFile): int
     {
         $nameOption = $this->option('name');
         $emailOption = $this->option('email');
@@ -21,7 +22,8 @@ final class BootstrapAdminCommand extends Command
 
         $name = is_string($nameOption) ? $nameOption : '';
         $email = is_string($emailOption) ? $emailOption : '';
-        $password = is_string($passwordOption) ? $passwordOption : '';
+        $password = $passwordFile->read('ARTIFACTFLOW_ADMIN_PASSWORD_FILE')
+            ?? (is_string($passwordOption) ? $passwordOption : '');
 
         if (trim($password) === '') {
             $configuredPassword = config('app.bootstrap_admin_password');

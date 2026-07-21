@@ -11,8 +11,10 @@ use App\Models\DomainEvent;
 use App\Models\McpAccessToken;
 use App\Models\User;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use RuntimeException;
 use Tests\TestCase;
@@ -84,6 +86,72 @@ final class McpAccessTokenIssuerTest extends TestCase
         } finally {
             $this->assertSame(0, McpAccessToken::query()->count());
         }
+    }
+
+    public function test_issuance_locks_and_reloads_the_principal_before_creating_the_token(): void
+    {
+        $principal = $this->serviceAccount();
+        $events = [];
+
+        DB::listen(function (QueryExecuted $query) use (&$events, $principal): void {
+            $sql = strtolower($query->sql);
+
+            if (
+                str_contains($sql, 'from "users"')
+                && str_contains($sql, 'for update')
+                && in_array($principal->uid, $query->bindings, true)
+            ) {
+                $events[] = 'principal_locked';
+
+                return;
+            }
+
+            if (str_starts_with($sql, 'insert into "mcp_access_tokens"')) {
+                $events[] = 'token_created';
+            }
+        });
+
+        app(McpAccessTokenIssuer::class)->issue(
+            principal: $principal,
+            name: 'lock-order',
+            scopes: [McpAccessTokenIssuer::SCOPE_READ],
+            expiresAt: Carbon::now()->addDays(30),
+        );
+
+        $this->assertSame(['principal_locked', 'token_created'], $events);
+    }
+
+    public function test_issuance_revalidates_human_eligibility_from_the_locked_principal(): void
+    {
+        $principal = User::query()->create([
+            'name' => 'Human',
+            'email' => 'fresh-eligibility@example.test',
+            'password' => Hash::make('correct horse battery staple'),
+        ]);
+        $principal->forceFill(['two_factor_confirmed_at' => now()])->save();
+        $stalePrincipal = $principal->fresh();
+        $this->assertInstanceOf(User::class, $stalePrincipal);
+
+        DB::table('users')
+            ->where('uid', $principal->uid)
+            ->update(['two_factor_confirmed_at' => null]);
+
+        try {
+            app(McpAccessTokenIssuer::class)->issue(
+                principal: $stalePrincipal,
+                name: 'stale-eligibility',
+                scopes: [McpAccessTokenIssuer::SCOPE_READ],
+                expiresAt: Carbon::now()->addDays(30),
+            );
+            $this->fail('Expected token issuance to revalidate the locked principal.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame(
+                'Human accounts must enable two-factor authentication before minting MCP tokens.',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertSame(0, McpAccessToken::query()->count());
     }
 
     public function test_token_issuance_is_atomic_when_the_audit_write_fails(): void

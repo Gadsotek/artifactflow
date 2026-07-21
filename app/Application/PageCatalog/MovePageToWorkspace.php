@@ -113,6 +113,7 @@ final readonly class MovePageToWorkspace
                 'slug' => $newSlug,
                 'access_mode' => PageAccessMode::Inherited,
                 'status' => $newStatus,
+                'metadata_revision' => $page->metadata_revision + 1,
             ])->save();
             $this->revisions->bump($page);
             $this->storageQuota->recordBytesReleased($previousWorkspaceUid, $movingBytes);

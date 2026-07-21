@@ -17,7 +17,11 @@ env:
   IMAGE: ghcr.io/gadsotek/artifactflow
 
 jobs:
+  quality:
+    uses: ./.github/workflows/ci.yml
+
   release:
+    needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:

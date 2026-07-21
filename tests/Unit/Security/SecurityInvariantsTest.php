@@ -56,9 +56,18 @@ final class SecurityInvariantsTest extends TestCase
         $this->assertFalse(SecurityInvariants::postgresSslModeIsVerifyFull('require'));
         $this->assertFalse(SecurityInvariants::postgresSslModeIsVerifyFull(''));
 
-        $this->assertTrue(SecurityInvariants::postgresRootCertIsConfigured('/etc/ssl/certs/ca.crt'));
-        $this->assertFalse(SecurityInvariants::postgresRootCertIsConfigured(''));
-        $this->assertFalse(SecurityInvariants::postgresRootCertIsConfigured('   '));
+        $fixture = sys_get_temp_dir() . '/artifactflow-root-cert-' . bin2hex(random_bytes(8));
+        file_put_contents($fixture, 'test certificate fixture');
+
+        try {
+            $this->assertTrue(SecurityInvariants::postgresRootCertIsReadable($fixture));
+            $this->assertFalse(SecurityInvariants::postgresRootCertIsReadable($fixture . '.missing'));
+            $this->assertFalse(SecurityInvariants::postgresRootCertIsReadable(sys_get_temp_dir()));
+            $this->assertFalse(SecurityInvariants::postgresRootCertIsReadable(''));
+            $this->assertFalse(SecurityInvariants::postgresRootCertIsReadable('   '));
+        } finally {
+            unlink($fixture);
+        }
     }
 
     public function test_artifact_storage_root_must_resolve_outside_the_public_web_root(): void

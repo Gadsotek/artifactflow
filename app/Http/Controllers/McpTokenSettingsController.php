@@ -9,6 +9,8 @@ use App\Application\Identity\WorkspaceContext;
 use App\Application\Identity\WorkspaceNavigationItem;
 use App\Application\Mcp\McpAccessTokenIssuer;
 use App\Application\Mcp\McpAccessTokenRevoker;
+use App\Domain\DomainRuleViolation;
+use App\Domain\Mcp\StaleMcpAuthenticationRevision;
 use App\Http\Requests\Mcp\StoreMcpAccessTokenRequest;
 use App\Models\McpAccessToken;
 use App\Models\User;
@@ -39,6 +41,7 @@ final readonly class McpTokenSettingsController
     public function store(StoreMcpAccessTokenRequest $request): View
     {
         $user = $this->authenticatedUser($request);
+        $expectedAuthRevision = $user->auth_revision;
         $scopes = $request->scopes();
         $expiresInDays = $request->expiresInDays();
 
@@ -66,7 +69,7 @@ final readonly class McpTokenSettingsController
         }
 
         $code = $request->twoFactorCode();
-        if (!$this->twoFactor->verifyTotpAndAdvance($user, $code)) {
+        if (!$this->twoFactor->verifyTotpAndAdvance($user, $code, $expectedAuthRevision)) {
             throw ValidationException::withMessages([
                 'code' => 'The authentication code is invalid or has already been used.',
             ]);
@@ -82,15 +85,27 @@ final readonly class McpTokenSettingsController
             ? null
             : $this->validatedWorkspaceUids($user, $request->workspaceUids());
 
-        $issued = $this->issuer->issue(
-            principal: $user,
-            name: $request->tokenName(),
-            scopes: $scopes,
-            expiresAt: Carbon::now()->addDays($expiresInDays),
-            actor: $user,
-            channel: 'self-service',
-            workspaceUids: $workspaceUids,
-        );
+        try {
+            $issued = $this->issuer->issue(
+                principal: $user,
+                name: $request->tokenName(),
+                scopes: $scopes,
+                expiresAt: Carbon::now()->addDays($expiresInDays),
+                actor: $user,
+                channel: 'self-service',
+                workspaceUids: $workspaceUids,
+                expectedAuthRevision: $expectedAuthRevision,
+            );
+        } catch (StaleMcpAuthenticationRevision) {
+            throw ValidationException::withMessages([
+                'password' => 'Your authentication changed while the token was being created. '
+                    . 'Confirm your password and authentication code again.',
+            ]);
+        } catch (DomainRuleViolation $exception) {
+            throw ValidationException::withMessages([
+                'code' => $exception->getMessage(),
+            ]);
+        }
 
         return $this->view($user, $issued->plainTextToken);
     }

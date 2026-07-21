@@ -5,14 +5,18 @@ declare(strict_types=1);
 namespace Tests\Feature\Mcp;
 
 use App\Application\Identity\CreateSharedWorkspace;
+use App\Application\Identity\ResetUserPassword;
 use App\Application\Mcp\McpAccessTokenIssuer;
+use App\Application\Mcp\McpAccessTokenRevoker;
 use App\Domain\DomainRuleViolation;
 use App\Models\AuditEntry;
 use App\Models\DomainEvent;
 use App\Models\McpAccessToken;
 use App\Models\User;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use PragmaRX\Google2FA\Google2FA;
 use Tests\TestCase;
@@ -99,6 +103,63 @@ final class McpTokenSettingsTest extends TestCase
             ])
             ->assertSessionHasErrors('code');
         $this->assertSame(1, McpAccessToken::query()->count());
+    }
+
+    public function test_malformed_token_name_is_rejected_before_totp_is_consumed(): void
+    {
+        $user = $this->enableTwoFactor($this->createUser('Malformed Token User', 'malformed-token@example.test'));
+        $workspace = app(CreateSharedWorkspace::class)->handle($user, 'Malformed Token Team');
+
+        $this->actingAs($user)
+            ->post(route('settings.mcp-tokens.store'), [
+                'name' => "invalid\0token",
+                'scopes' => [McpAccessTokenIssuer::SCOPE_SEARCH],
+                'workspace_uids' => [$workspace->uid],
+                'expires_in_days' => 30,
+                'password' => 'correct horse battery staple',
+                'code' => $this->currentTotp(),
+            ])
+            ->assertSessionHasErrors('name');
+
+        $this->assertNull($user->refresh()->two_factor_last_used_timestep);
+        $this->assertSame(0, McpAccessToken::query()->count());
+    }
+
+    public function test_password_reset_between_step_up_and_issuance_rejects_the_stale_request(): void
+    {
+        $user = $this->enableTwoFactor($this->createUser('Stale Step Up User', 'stale-step-up@example.test'));
+        $workspace = app(CreateSharedWorkspace::class)->handle($user, 'Stale Step Up Team');
+        $resetTriggered = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$resetTriggered, $user): void {
+            if (
+                $resetTriggered
+                || !str_starts_with(strtolower($query->sql), 'update "users"')
+                || !str_contains(strtolower($query->sql), '"two_factor_last_used_timestep"')
+            ) {
+                return;
+            }
+
+            $resetTriggered = true;
+            app(ResetUserPassword::class)->handle($user, 'password changed during issuance');
+        });
+
+        $this->actingAs($user)
+            ->post(route('settings.mcp-tokens.store'), [
+                'name' => 'Stale step-up token',
+                'scopes' => [McpAccessTokenIssuer::SCOPE_SEARCH],
+                'workspace_uids' => [$workspace->uid],
+                'expires_in_days' => 30,
+                'password' => 'correct horse battery staple',
+                'code' => $this->currentTotp(),
+            ])
+            ->assertSessionHasErrors([
+                'password' => 'Your authentication changed while the token was being created. Confirm your password and authentication code again.',
+            ]);
+
+        $this->assertTrue($resetTriggered);
+        $this->assertTrue(Hash::check('password changed during issuance', $user->refresh()->password));
+        $this->assertSame(0, McpAccessToken::query()->count());
     }
 
     public function test_token_mint_requires_an_explicit_workspace_selection(): void
@@ -288,6 +349,32 @@ final class McpTokenSettingsTest extends TestCase
             ->delete(route('settings.mcp-tokens.destroy', $ownToken->accessToken))
             ->assertRedirect(route('settings.mcp-tokens.index'));
         $this->assertNotNull($ownToken->accessToken->refresh()->revoked_at);
+    }
+
+    public function test_revoking_two_stale_instances_of_the_same_token_records_history_once(): void
+    {
+        $user = $this->enableTwoFactor($this->createUser('Token Owner', 'idempotent-revoke@example.test'));
+        $issued = app(McpAccessTokenIssuer::class)->issue(
+            principal: $user,
+            name: 'Concurrent revoke token',
+            scopes: [McpAccessTokenIssuer::SCOPE_SEARCH],
+            expiresAt: now()->addHour(),
+        );
+        $firstRequestToken = McpAccessToken::query()->findOrFail($issued->accessToken->uid);
+        $secondRequestToken = McpAccessToken::query()->findOrFail($issued->accessToken->uid);
+        $revoker = app(McpAccessTokenRevoker::class);
+
+        $this->assertTrue($revoker->revoke($firstRequestToken, $user, 'self-service'));
+        $this->assertFalse($revoker->revoke($secondRequestToken, $user, 'self-service'));
+
+        $this->assertSame(1, DomainEvent::query()
+            ->where('event_type', 'mcp_token.revoked')
+            ->where('aggregate_uid', $issued->accessToken->uid)
+            ->count());
+        $this->assertSame(1, AuditEntry::query()
+            ->where('action', 'mcp_token.revoked')
+            ->where('auditable_uid', $issued->accessToken->uid)
+            ->count());
     }
 
     public function test_settings_page_explains_how_to_connect_and_use_mcp_clients(): void

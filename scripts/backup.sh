@@ -69,12 +69,35 @@ json_escape() {
     printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{ print $1 }'
+
+        return
+    fi
+
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{ print $1 }'
+
+        return
+    fi
+
+    printf 'Neither sha256sum nor shasum is available to hash backup files.\n' >&2
+    exit 1
+}
+
+postgres_sha256="$(sha256_file "$postgres_dump")"
+artifacts_sha256="$(sha256_file "$artifacts_archive")"
+
 cat > "$manifest_path" <<JSON
 {
+  "format_version": 1,
   "created_at": "$(json_escape "$timestamp")",
   "ordering": "postgres_dump_first_artifacts_snapshot_second",
   "postgres_dump": "postgres.dump",
   "artifacts_archive": "artifacts.tar.gz",
+  "postgres_sha256": "${postgres_sha256}",
+  "artifacts_sha256": "${artifacts_sha256}",
   "page_versions_count": ${page_versions_count:-0},
   "artifact_file_count": ${artifact_file_count:-0},
   "postgres_version": "$(json_escape "$postgres_version")",

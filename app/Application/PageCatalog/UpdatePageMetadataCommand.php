@@ -11,6 +11,7 @@ final readonly class UpdatePageMetadataCommand
      */
     public function __construct(
         public string $pageUid,
+        public int $expectedMetadataRevision,
         public string $title,
         public ?string $description,
         public ?string $categoryUid,

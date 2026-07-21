@@ -56,45 +56,47 @@ http://artifacts.artifactflow.test:18085
 
 ## First User Setup
 
-Registration is disabled by default. Create a verified login user from the app container. Read the password into your shell (hidden) and forward it into the container **by name**, so the secret never lands in a process listing or shell history:
+Registration is disabled by default. Create a verified login user from the app container. Put the password in a mounted secret file and expose only its path to the command, so the secret never lands in a process listing, shell history, or a long-lived environment variable:
 
 ```sh
-read -rs -p 'New user password: ' ARTIFACTFLOW_CREATE_USER_PASSWORD; echo
-export ARTIFACTFLOW_CREATE_USER_PASSWORD
-docker compose exec -T -e ARTIFACTFLOW_CREATE_USER_PASSWORD app \
+docker compose exec -T \
+  -e ARTIFACTFLOW_CREATE_USER_PASSWORD_FILE=/run/secrets/artifactflow_create_user_password \
+  app \
   php artisan artifactflow:create-user \
   --name="Admin User" \
   --email="admin@example.test"
-unset ARTIFACTFLOW_CREATE_USER_PASSWORD
 ```
 
-> Avoid `--password="..."` and `-e VAR="value"` with an inline value: both place the secret in the `docker compose exec` argv, where it is visible to other users via `ps`/`/proc` and is written to your shell history. The `-e VARNAME` form above passes only the variable name; Docker reads the value from your environment.
+> Provision `/run/secrets/artifactflow_create_user_password` through the deployment's secret-file mechanism before running the command, and remove or unmount it afterwards. Avoid `--password="..."` and `-e VAR="value"` with an inline value: both place the secret in the `docker compose exec` argv, where it is visible to other users via `ps`/`/proc` and may be written to shell history.
 
 The password must be at least 12 characters. The command creates a normal verified user, provisions their personal workspace, and records audit/domain events.
 
-Reset a user's password from the app container when an operator recovery path is needed. Use the same by-name forwarding so the reset password stays out of the argv and shell history:
+Reset a user's password from the app container when an operator recovery path is needed. Use a separate one-shot secret file:
 
 ```sh
-read -rs -p 'Reset password: ' ARTIFACTFLOW_RESET_PASSWORD; echo
-export ARTIFACTFLOW_RESET_PASSWORD
-docker compose exec -T -e ARTIFACTFLOW_RESET_PASSWORD app \
+docker compose exec -T \
+  -e ARTIFACTFLOW_RESET_PASSWORD_FILE=/run/secrets/artifactflow_reset_password \
+  app \
   php artisan artifactflow:reset-password \
   --email="admin@example.test"
-unset ARTIFACTFLOW_RESET_PASSWORD
 ```
 
-The command rotates the user's password and remember token, invalidates database-backed sessions for that user, and records audit/domain events without storing or printing the password.
-
-Create or promote the deployment system admin when needed. Forward the password by name as above (setting `ARTIFACTFLOW_ADMIN_PASSWORD` persistently is rejected by the production boot gate, so provide it only for this one-shot command):
+The command rotates the user's password and remember token, invalidates database-backed sessions and trusted devices for that user, and records audit/domain events without storing or printing the password. Existing MCP tokens are independent credentials and are deliberately preserved. When the reset responds to suspected credential compromise, revoke them separately:
 
 ```sh
-read -rs -p 'System admin password: ' ARTIFACTFLOW_ADMIN_PASSWORD; echo
-export ARTIFACTFLOW_ADMIN_PASSWORD
-docker compose exec -T -e ARTIFACTFLOW_ADMIN_PASSWORD app \
+docker compose exec -T app php artisan artifactflow:mcp-token-revoke \
+  --email="admin@example.test"
+```
+
+Create or promote the deployment system admin when needed. Use its dedicated one-shot secret file; the production boot gate rejects the plain `ARTIFACTFLOW_ADMIN_PASSWORD` variable before this command can run:
+
+```sh
+docker compose exec -T \
+  -e ARTIFACTFLOW_ADMIN_PASSWORD_FILE=/run/secrets/artifactflow_admin_password \
+  app \
   php artisan artifactflow:bootstrap-admin \
   --name="Admin User" \
   --email="admin@example.test"
-unset ARTIFACTFLOW_ADMIN_PASSWORD
 ```
 
 Fresh installs require System Admins to enroll TOTP 2FA by default. The password they just used to sign in counts as confirmation for `TWO_FACTOR_ENROLLMENT_PASSWORD_TIMEOUT_SECONDS` (default 180 seconds); the security screen shows the live deadline, and both starting and confirming enrollment must occur inside it. At expiry the browser returns to password confirmation, the pending QR/secret becomes unusable, and restarting enrollment after confirmation generates a fresh one. A System Admin can require 2FA for all users from the installation settings screen. If an operator loses the only admin's second factor, use the console-only break-glass path:
@@ -262,6 +264,13 @@ both the env var and the command:
 | `artifact-host` | `artifact-host` | *(default entrypoint)* | `ARTIFACT_URL=https://artifacts.example.internal` |
 | `worker` | `worker` | `sh /var/www/html/docker/start-worker.sh` | none |
 | `scheduler` | `scheduler` | `sh /var/www/html/docker/start-scheduler.sh` | none |
+
+The `app` and `artifact-host` containers must mount the **same persistent private artifact
+volume at the same `ARTIFACT_STORAGE_ROOT` path**. The app writes page-version bytes and the
+artifact host serves those exact bytes after signature and access checks; separate anonymous
+image volumes produce successful saves followed by 404 previews. Mount the app side read/write
+and the artifact-host side read-only when the storage driver and orchestrator support it. Keep
+the shared mount private and outside the image's public web root.
 
 The `worker` runs `queue:work` (outbound mail is the only queued work today) and the
 `scheduler` runs `schedule:work`, which drives `artifactflow:dispatch-domain-events` (the
@@ -518,7 +527,7 @@ Run a local Compose backup with:
 make backup
 ```
 
-The script writes `backups/<timestamp>/postgres.dump`, `backups/<timestamp>/artifacts.tar.gz`, and `backups/<timestamp>/manifest.json`. It creates the database dump first, then snapshots the private artifacts disk. This database dump first ordering is load-bearing for *new* writes: the artifact bytes are stored before the `page_versions` row is committed (see `PageVersionWriter`), so a version created during the backup window already has its file by the time the disk snapshot runs, and the worst case is an extra orphan file rather than a restored row pointing at a missing file.
+The script writes `backups/<timestamp>/postgres.dump`, `backups/<timestamp>/artifacts.tar.gz`, and `backups/<timestamp>/manifest.json`. The manifest contains a format version and SHA-256 digest for both payloads; keep all three files together. It creates the database dump first, then snapshots the private artifacts disk. This database dump first ordering is load-bearing for *new* writes: the artifact bytes are stored before the `page_versions` row is committed (see `PageVersionWriter`), so a version created during the backup window already has its file by the time the disk snapshot runs, and the worst case is an extra orphan file rather than a restored row pointing at a missing file.
 
 The ordering does not, however, cover *deletions*. A version that is pruned to the retention cap or hard-deleted removes its artifact file only after the row is deleted and the surrounding transaction commits. If that row is still present in the database dump but the delete commits and removes the file before the disk snapshot runs, the restored copy can hold a row pointing at a missing file (`verify-artifacts` reports it as `missing-file`). This is a benign, bounded inconsistency for a hot backup — the referenced version is one the deployment was already discarding — but it means a hot backup is not point-in-time consistent across both stores. For strict consistency, place the app in maintenance/read-only mode or use a coordinated volume snapshot so no version is deleted between the dump and the snapshot.
 
@@ -534,7 +543,21 @@ Restore from a backup directory with:
 make restore RESTORE_ARGS='backups/20260629T120000Z'
 ```
 
-The restore script refuses to restore over a non-empty database or non-empty artifacts root unless `--force` is supplied and the operator types `RESTORE`. It uses `pg_restore --clean --if-exists` for PostgreSQL and extracts artifacts back into the configured private artifact root. For an exact disaster recovery drill, restore into empty volumes; extracting into an existing artifacts root can leave unrelated orphan files behind. Never serve extracted artifact files from the trusted app origin or open them directly in a browser during recovery.
+Before restore, stop the `app`, `artifact-host`, `worker`, and `scheduler` roles while leaving PostgreSQL available. The restore script fails closed if any application role is running, paused, or restarting, verifies both payload hashes against `manifest.json`, and refuses to restore over a non-empty database or non-empty artifacts root unless `--force` is supplied and the operator types `RESTORE`. It uses a non-serving one-shot app container to access the artifacts volume, runs `pg_restore --clean --if-exists` for PostgreSQL, and extracts artifacts back into the configured private artifact root. For an exact disaster recovery drill, restore into empty volumes; extracting into an existing artifacts root can leave unrelated orphan files behind. Never serve extracted artifact files from the trusted app origin or open them directly in a browser during recovery.
+
+Backups created by ArtifactFlow before manifests included `format_version` and payload hashes
+remain recoverable through an explicit upgrade. First verify the backup directory's provenance and
+that its `postgres.dump`, `artifacts.tar.gz`, and `manifest.json` have remained together, then run:
+
+```sh
+make restore RESTORE_ARGS='--upgrade-legacy-manifest backups/20260629T120000Z'
+```
+
+The flag accepts only the recognizable legacy ArtifactFlow manifest shape, prints a warning that
+the old format cannot prove historical payload pairing, atomically adds hashes for both current
+payload files, and then proceeds through the normal hash verification and restore checks. It does
+not make an arbitrary missing or partial manifest trusted. The upgrade changes `manifest.json`, so
+retain an immutable copy of the original backup set when recovery policy requires one.
 
 After every restore, run:
 

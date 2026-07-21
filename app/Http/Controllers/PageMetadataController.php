@@ -7,9 +7,11 @@ namespace App\Http\Controllers;
 use App\Application\PageCatalog\UpdatePageMetadata;
 use App\Application\PageCatalog\UpdatePageMetadataCommand;
 use App\Domain\DomainRuleViolation;
+use App\Domain\PageCatalog\StalePageMetadataException;
 use App\Http\Requests\PageCatalog\UpdatePageMetadataRequest;
 use App\Models\Page;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Response;
 use Illuminate\Validation\ValidationException;
 
 final class PageMetadataController
@@ -23,12 +25,13 @@ final class PageMetadataController
         UpdatePageMetadataRequest $request,
         Page $page,
         UpdatePageMetadata $updatePageMetadata,
-    ): RedirectResponse {
+    ): RedirectResponse|Response {
         try {
             $updatePageMetadata->handle(
                 actor: $this->authenticatedUser($request),
                 command: new UpdatePageMetadataCommand(
                     pageUid: $page->uid,
+                    expectedMetadataRevision: $request->expectedMetadataRevision(),
                     title: $request->string('title')->toString(),
                     description: $request->nullableString('description'),
                     categoryUid: $request->nullableString('category_uid'),
@@ -37,6 +40,8 @@ final class PageMetadataController
                     tagNames: $request->tagNames(),
                 ),
             );
+        } catch (StalePageMetadataException $exception) {
+            return response($exception->getMessage(), 409);
         } catch (DomainRuleViolation $exception) {
             throw ValidationException::withMessages([
                 'metadata' => $exception->getMessage(),

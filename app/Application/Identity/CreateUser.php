@@ -11,6 +11,7 @@ use App\Domain\Events\DomainEventType;
 use App\Domain\PageCatalog\PageContentEncoding;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
@@ -46,11 +47,19 @@ final readonly class CreateUser
                 throw new DomainRuleViolation('A user with this email already exists.');
             }
 
-            $user = User::query()->create([
-                'name' => $normalizedName,
-                'email' => $normalizedEmail,
-                'password' => Hash::make($password),
-            ]);
+            try {
+                $user = User::query()->create([
+                    'name' => $normalizedName,
+                    'email' => $normalizedEmail,
+                    'password' => Hash::make($password),
+                ]);
+            } catch (QueryException $exception) {
+                if (!$this->isEmailUniqueViolation($exception)) {
+                    throw $exception;
+                }
+
+                throw new DomainRuleViolation('A user with this email already exists.');
+            }
             $user->forceFill(['email_verified_at' => now()])->save();
 
             $event = $this->events->record(
@@ -119,5 +128,15 @@ final readonly class CreateUser
         if (mb_strlen($password) < 12) {
             throw new DomainRuleViolation('User password must be at least 12 characters.');
         }
+    }
+
+    private function isEmailUniqueViolation(QueryException $exception): bool
+    {
+        if ((string) $exception->getCode() !== '23505') {
+            return false;
+        }
+
+        return str_contains($exception->getMessage(), 'users_email_unique')
+            || str_contains($exception->getMessage(), 'users_email_lower_unique');
     }
 }
