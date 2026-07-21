@@ -181,7 +181,11 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $releaseWorkflow = $this->readProjectFile('.github/workflows/release.yml');
 
         $this->assertStringContainsString("  workflow_call:\n", $ciWorkflow);
-        $this->assertStringContainsString("  quality:\n    uses: ./.github/workflows/ci.yml\n", $releaseWorkflow);
+        $this->assertStringContainsString(
+            "  quality:\n    permissions:\n      contents: read\n      pull-requests: read\n    uses: ./.github/workflows/ci.yml\n",
+            $releaseWorkflow,
+            'The reusable CI caller must allow every permission its nested jobs request.',
+        );
         $this->assertStringContainsString("    needs: quality\n", $releaseWorkflow);
         $this->assertLessThan(
             strpos($releaseWorkflow, '      - name: Push image'),

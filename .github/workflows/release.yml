@@ -18,6 +18,9 @@ env:
 
 jobs:
   quality:
+    permissions:
+      contents: read
+      pull-requests: read
     uses: ./.github/workflows/ci.yml
 
   release:

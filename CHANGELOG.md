@@ -36,6 +36,7 @@ Security and correctness release. It completes the official Laravel MCP migratio
 ### Internal / Tooling
 
 - Tag-driven releases now depend on the complete CI workflow before publishing images or GitHub Releases. (#17)
+- Granted the reusable release CI gate its required read-only pull-request scope so tag workflows pass GitHub's startup validation.
 - Expanded deterministic concurrency, deployment-gate, backup/restore, editor, sandbox-parser, and operational regression coverage. (#16, #17)
 - Stabilized the saved-preview recovery E2E test by synchronizing on parent-observed iframe loads and the renewal response instead of racing the artifact's self-navigating document.
 
