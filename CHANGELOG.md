@@ -37,6 +37,7 @@ Security and correctness release. It completes the official Laravel MCP migratio
 
 - Tag-driven releases now depend on the complete CI workflow before publishing images or GitHub Releases. (#17)
 - Expanded deterministic concurrency, deployment-gate, backup/restore, editor, sandbox-parser, and operational regression coverage. (#16, #17)
+- Stabilized the saved-preview recovery E2E test by synchronizing on parent-observed iframe loads and the renewal response instead of racing the artifact's self-navigating document.
 
 ### Dependencies
 

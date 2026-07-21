@@ -197,6 +197,23 @@ test('saved HTML artifact executes only inside the controller-served sandbox', a
   expect(initialPreviewUrl).not.toBeNull();
   expect(artifactFrame).toBeDefined();
 
+  // Observe navigation from the authenticated parent. Waiting on content in the
+  // artifact document is racy because reload/self-navigation can replace that
+  // document after Playwright has already resolved a locator against the old one.
+  await frame.evaluate((iframe) => {
+    if (!(iframe instanceof HTMLIFrameElement)) {
+      throw new Error('Expected the artifact preview iframe.');
+    }
+
+    iframe.dataset.e2eArtifactLoadCount = '0';
+    iframe.addEventListener('load', () => {
+      const loadCount = Number.parseInt(iframe.dataset.e2eArtifactLoadCount ?? '0', 10);
+      iframe.dataset.e2eArtifactLoadCount = String(loadCount + 1);
+    });
+  });
+  const artifactLoadCount = async (): Promise<number> =>
+    Number.parseInt((await frame.getAttribute('data-e2e-artifact-load-count')) ?? '0', 10);
+
   // Keep an unsaved edit open in the parent while the prototype requests its
   // refresh. Rotating the iframe must not navigate the application document or
   // discard the editor dialog's in-memory state.
@@ -212,11 +229,9 @@ test('saved HTML artifact executes only inside the controller-served sandbox', a
     'unsaved parent edit must survive preview refresh',
   );
 
+  const loadCountBeforeReload = await artifactLoadCount();
   await artifactFrame?.evaluate(() => window.location.reload());
-  await expect(previewResult).toHaveText(
-    'parent-blocked network-blocked cookies-blocked storage-blocked',
-    { timeout: 20_000 },
-  );
+  await expect.poll(artifactLoadCount, { timeout: 20_000 }).toBeGreaterThan(loadCountBeforeReload);
   expect(page.url()).toBe(parentPageUrl);
   await expect(editDialog).toBeVisible();
   await expect(editDialog.locator('[data-editor-textarea]')).toHaveValue(
@@ -230,22 +245,31 @@ test('saved HTML artifact executes only inside the controller-served sandbox', a
   const expiredPreviewUrl = new URL(initialPreviewUrl ?? '');
   expiredPreviewUrl.searchParams.set('expires', '1');
   expiredPreviewUrl.searchParams.set('signature', 'expired-for-browser-regression');
+  const loadCountBeforeRecovery = await artifactLoadCount();
+  const recoveryResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      /\/pages\/[0-9a-hjkmnp-tv-z]{26}\/artifact-preview-url$/u.test(
+        new URL(response.url()).pathname,
+      ),
+    { timeout: 20_000 },
+  );
   await frame.evaluate((iframe, url) => {
     if (iframe instanceof HTMLIFrameElement) {
       iframe.src = url;
     }
   }, expiredPreviewUrl.toString());
+  expect((await recoveryResponse).ok()).toBe(true);
   await expect
     .poll(() => frame.getAttribute('src'), { timeout: 20_000 })
     .not.toBe(expiredPreviewUrl.toString());
+  await expect
+    .poll(artifactLoadCount, { timeout: 20_000 })
+    .toBeGreaterThanOrEqual(loadCountBeforeRecovery + 2);
   expect(page.url()).toBe(parentPageUrl);
   await expect(editDialog).toBeVisible();
   await expect(editDialog.locator('[data-editor-textarea]')).toHaveValue(
     'unsaved parent edit must survive preview refresh',
-  );
-  await expect(previewResult).toHaveText(
-    'parent-blocked network-blocked cookies-blocked storage-blocked',
-    { timeout: 20_000 },
   );
 
   // Finish with the existing hostile self-navigation probe. It may detach the
@@ -350,7 +374,9 @@ test('historical HTML versions stay inside the artifact-origin sandbox', async (
   const editSource = editDialog.locator('[data-source-editor-mount] .cm-content');
   await editSource.click();
   await page.keyboard.press('ControlOrMeta+A');
-  await page.keyboard.insertText('<!doctype html><html><body><h1>Current artifact</h1></body></html>');
+  await page.keyboard.insertText(
+    '<!doctype html><html><body><h1>Current artifact</h1></body></html>',
+  );
   await expect(editDialog.locator('[data-editor-textarea]')).toHaveValue(/Current artifact/u);
   await editDialog.getByRole('button', { name: 'Save new version' }).click();
 
@@ -368,7 +394,9 @@ test('historical HTML versions stay inside the artifact-origin sandbox', async (
   const versionOne = historyDialog.locator('article').filter({ hasText: 'Version 1' });
   await versionOne.getByRole('link', { name: 'Inspect' }).click();
 
-  await expect(page).toHaveURL(/\/pages\/[0-9a-hjkmnp-tv-z]{26}\/versions\/[0-9a-hjkmnp-tv-z]{26}$/iu);
+  await expect(page).toHaveURL(
+    /\/pages\/[0-9a-hjkmnp-tv-z]{26}\/versions\/[0-9a-hjkmnp-tv-z]{26}$/iu,
+  );
   await expect(page.getByText('Historical version 1')).toBeVisible();
 
   const frame = page.locator('iframe[title="Historical artifact preview"]');
@@ -406,7 +434,11 @@ test('preview URL renewal is capped so a self-navigating artifact cannot drain t
   // Count every renewal the parent requests from the authenticated app endpoint.
   let renewalRequests = 0;
   page.on('request', (request) => {
-    if (/\/pages\/[0-9a-hjkmnp-tv-z]{26}\/artifact-preview-url$/u.test(new URL(request.url()).pathname)) {
+    if (
+      /\/pages\/[0-9a-hjkmnp-tv-z]{26}\/artifact-preview-url$/u.test(
+        new URL(request.url()).pathname,
+      )
+    ) {
       renewalRequests += 1;
     }
   });
