@@ -11,8 +11,7 @@ use App\Models\WorkspaceMembership;
 
 /**
  * Read query for the MCP list_workspaces tool: the workspaces an actor belongs
- * to, narrowed to the token's workspace scope. Extracted from McpController so
- * the controller no longer builds membership/workspace queries inline.
+ * to, narrowed to the token's workspace scope.
  */
 final readonly class McpWorkspaceListing
 {

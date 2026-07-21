@@ -8,7 +8,6 @@ use App\Application\PageCatalog\ArtifactContentReader;
 use App\Models\Page;
 use App\Models\PageVersion;
 use App\Models\User;
-use Illuminate\Http\JsonResponse;
 
 /**
  * MCP read tool: return one reachable page with its current content wrapped
@@ -21,23 +20,22 @@ final readonly class McpReadTool
         private ArtifactContentReader $contentReader,
         private McpPagePayload $payload,
         private McpPageHierarchy $hierarchy,
-        private McpJsonRpc $jsonRpc,
     ) {
     }
 
-    public function handle(mixed $id, User $actor, McpToolArguments $arguments): JsonResponse
+    public function handle(User $actor, McpToolArguments $arguments): McpToolResult
     {
         $page = $this->pages->viewablePage($actor, $arguments->requiredString('page_uid'));
 
         if (!$page instanceof Page) {
-            return $this->jsonRpc->notFound($id);
+            return McpToolResult::notFound();
         }
 
         $version = $page->currentVersion;
         $content = $version instanceof PageVersion ? $this->contentReader->read($version->content_storage_path) : null;
 
         if ($content === null) {
-            return $this->jsonRpc->toolError($id, [
+            return McpToolResult::error([
                 'type' => 'content_unavailable',
                 'message' => 'Page content is unavailable.',
             ]);
@@ -45,7 +43,7 @@ final readonly class McpReadTool
 
         $hierarchy = $this->hierarchy->forPages($actor, [$page]);
 
-        return $this->jsonRpc->toolSuccess($id, $this->payload->forPage($page) + [
+        return McpToolResult::success($this->payload->forPage($page) + [
             'current_version_uid' => $version?->uid,
             'hierarchy' => $hierarchy[$page->uid],
             'content' => McpDataEnvelope::text($content, $this->payload->mediaType($page)),

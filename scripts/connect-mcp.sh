@@ -3,10 +3,10 @@ set -euo pipefail
 
 # connect-mcp.sh
 #
-# Point Claude Desktop and the Codex CLI at an ArtifactFlow MCP server. Run it,
-# answer two prompts (the app URL and your MCP token), and it writes the
-# connection into each client's config using the `mcp-remote` stdio<->HTTP
-# bridge.
+# Point Claude Desktop, Claude Code, and Codex clients at an ArtifactFlow MCP
+# server. The script discovers standard and existing per-instance user configs,
+# asks which ones to update, and writes the connection through the `mcp-remote`
+# stdio<->HTTP bridge.
 #
 # Pure bash: needs only standard tools (awk/sed/grep; curl is optional, used for
 # a best-effort token check). No app, Docker, make, artisan, node, python, or
@@ -17,7 +17,10 @@ set -euo pipefail
 # is never printed; it is written only into the client config files (chmod 600),
 # and existing configs are backed up first and never overwritten blindly.
 #
-# Non-interactive use: set MCP_URL and MCP_TOKEN in the environment.
+# Non-interactive use: set MCP_URL, MCP_TOKEN, and MCP_TARGETS ("all" or the
+# comma-separated target numbers printed by the script) in the environment.
+# Repository-level .mcp.json and .codex/config.toml files are intentionally not
+# offered because this connection contains a bearer token.
 # Options: -h/--help only.
 
 SERVER_NAME="artifactflow"
@@ -113,6 +116,159 @@ if [ "$ALLOW_HTTP" = "1" ]; then
     esac
 fi
 
+# --- Discover user-level client configs and choose explicit targets ---
+TARGET_KINDS=()
+TARGET_LABELS=()
+TARGET_PATHS=()
+TARGET_SELECTED=()
+
+add_target() {
+    local kind="$1" label="$2" path="$3" index=0
+    while [ "$index" -lt "${#TARGET_PATHS[@]}" ]; do
+        [ "${TARGET_PATHS[$index]}" = "$path" ] && return 0
+        index=$((index + 1))
+    done
+
+    TARGET_KINDS[${#TARGET_KINDS[@]}]="$kind"
+    TARGET_LABELS[${#TARGET_LABELS[@]}]="$label"
+    TARGET_PATHS[${#TARGET_PATHS[@]}]="$path"
+    TARGET_SELECTED[${#TARGET_SELECTED[@]}]=0
+}
+
+discover_targets() {
+    local cfg instance active_claude_config active_codex_home index base_count profile
+
+    case "$(uname -s)" in
+        Darwin)
+            add_target "claude-desktop" "Claude Desktop (standard)" \
+                "$HOME/Library/Application Support/Claude/claude_desktop_config.json"
+            ;;
+        Linux)
+            add_target "claude-desktop" "Claude Desktop (standard)" \
+                "$HOME/.config/Claude/claude_desktop_config.json"
+            ;;
+    esac
+
+    # Existing Desktop channels or separately installed builds commonly use a
+    # sibling Claude* application-support directory. Only bounded known config
+    # locations are scanned; the rest of the home directory is never searched.
+    for cfg in \
+        "$HOME"/Library/Application\ Support/Claude*/claude_desktop_config.json \
+        "$HOME"/.config/Claude*/claude_desktop_config.json \
+        "$HOME"/.config/claude*/claude_desktop_config.json; do
+        [ -f "$cfg" ] || continue
+        instance="$(basename "$(dirname "$cfg")")"
+        add_target "claude-desktop" "Claude Desktop ($instance)" "$cfg"
+    done
+
+    if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+        active_claude_config="$CLAUDE_CONFIG_DIR/.claude.json"
+        add_target "claude-code" "Claude Code (active CLAUDE_CONFIG_DIR)" "$active_claude_config"
+        [ -f "$HOME/.claude.json" ] && add_target "claude-code" "Claude Code (default)" "$HOME/.claude.json"
+    else
+        active_claude_config="$HOME/.claude.json"
+        add_target "claude-code" "Claude Code (default)" "$active_claude_config"
+    fi
+
+    # CLAUDE_CONFIG_DIR is often used as ~/.claude-work or ~/.claude-personal.
+    # Each such instance stores its user MCP configuration inside that directory.
+    for cfg in "$HOME"/.claude*/.claude.json; do
+        [ -f "$cfg" ] || continue
+        instance="$(basename "$(dirname "$cfg")")"
+        add_target "claude-code" "Claude Code ($instance)" "$cfg"
+    done
+
+    active_codex_home="${CODEX_HOME:-$HOME/.codex}"
+    add_target "codex" "Codex (active CODEX_HOME)" "$active_codex_home/config.toml"
+    if [ "$active_codex_home" != "$HOME/.codex" ] && [ -f "$HOME/.codex/config.toml" ]; then
+        add_target "codex" "Codex (default)" "$HOME/.codex/config.toml"
+    fi
+
+    # CODEX_HOME supports parallel installations/accounts. Discover conventional
+    # sibling homes and their existing profile overlay files.
+    for cfg in "$HOME"/.codex*/config.toml; do
+        [ -f "$cfg" ] || continue
+        instance="$(basename "$(dirname "$cfg")")"
+        add_target "codex" "Codex ($instance)" "$cfg"
+    done
+
+    base_count="${#TARGET_PATHS[@]}"
+    index=0
+    while [ "$index" -lt "$base_count" ]; do
+        if [ "${TARGET_KINDS[$index]}" = "codex" ]; then
+            for profile in "$(dirname "${TARGET_PATHS[$index]}")"/*.config.toml; do
+                [ -f "$profile" ] || continue
+                instance="$(basename "$profile" .config.toml)"
+                add_target "codex-profile" "Codex profile ($instance)" "$profile"
+            done
+        fi
+        index=$((index + 1))
+    done
+}
+
+print_targets() {
+    local index=0 state
+    info ""
+    info "Discovered MCP client config targets:"
+    while [ "$index" -lt "${#TARGET_PATHS[@]}" ]; do
+        state="new"
+        [ -f "${TARGET_PATHS[$index]}" ] && state="existing"
+        printf '  %d) %s\n     %s [%s]\n' \
+            "$((index + 1))" "${TARGET_LABELS[$index]}" "${TARGET_PATHS[$index]}" "$state"
+        index=$((index + 1))
+    done
+}
+
+select_targets() {
+    local selection="${MCP_TARGETS:-}" remaining item target_index index=0 selected_count=0
+
+    print_targets
+    if [ -z "$selection" ]; then
+        if [ -t 0 ]; then
+            printf 'Configure which targets? Enter comma-separated numbers or "all": ' >&2
+            read -r selection
+        else
+            die "no target selection provided (set MCP_TARGETS=all or a comma-separated list of target numbers)"
+        fi
+    fi
+
+    selection="$(printf '%s' "$selection" | tr -d '[:space:]')"
+    [ -n "$selection" ] || die "no MCP config targets selected"
+
+    if [ "$selection" = "all" ]; then
+        while [ "$index" -lt "${#TARGET_SELECTED[@]}" ]; do
+            TARGET_SELECTED[$index]=1
+            index=$((index + 1))
+        done
+        return 0
+    fi
+
+    remaining="$selection,"
+    while [ -n "$remaining" ]; do
+        item="${remaining%%,*}"
+        remaining="${remaining#*,}"
+        case "$item" in
+            ''|*[!0-9]*) die "invalid MCP target '$item'; use target numbers or 'all'" ;;
+        esac
+        target_index=$((item - 1))
+        if [ "$target_index" -lt 0 ] || [ "$target_index" -ge "${#TARGET_PATHS[@]}" ]; then
+            die "MCP target number '$item' is out of range"
+        fi
+        TARGET_SELECTED[$target_index]=1
+    done
+
+    index=0
+    while [ "$index" -lt "${#TARGET_SELECTED[@]}" ]; do
+        [ "${TARGET_SELECTED[$index]}" = "1" ] && selected_count=$((selected_count + 1))
+        index=$((index + 1))
+    done
+    [ "$selected_count" -gt 0 ] || die "no MCP config targets selected"
+}
+
+discover_targets
+[ "${#TARGET_PATHS[@]}" -gt 0 ] || die "no supported Claude or Codex user config targets found"
+select_targets
+
 TOKEN="${MCP_TOKEN:-}"
 if [ -z "$TOKEN" ]; then
     [ -t 0 ] || die "no token provided (set MCP_TOKEN or run interactively)"
@@ -136,8 +292,9 @@ if command -v curl >/dev/null 2>&1; then
             -K - \
             -H 'Content-Type: application/json' \
             -H 'Accept: application/json' \
-            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' 2>/dev/null || echo "000"
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' 2>/dev/null || true
     )"
+    [ -n "$code" ] || code="000"
     case "$code" in
         200) info "OK: endpoint reachable and token accepted." ;;
         000) warn "could not reach $ENDPOINT (offline or wrong URL?) — writing config anyway." ;;
@@ -208,8 +365,11 @@ json_balanced() {
     ' "$1"
 }
 
-# Merge our entry into a Claude Desktop JSON config (string-aware awk). Reads the
-# existing file (may be empty/missing) and prints the merged JSON to stdout.
+# Merge our entry into a Claude Desktop or Claude Code JSON config (string-aware
+# awk). Only a root-level mcpServers key is considered: Claude Code also stores
+# project-local mcpServers deeper in ~/.claude.json, and those must stay scoped to
+# their project. Reads the existing file (may be empty/missing) and prints the
+# merged JSON to stdout.
 claude_merge() {
     local src="$1" name="$2" entry="$3"
     NAME="$name" ENTRY="$entry" awk '
@@ -222,6 +382,31 @@ claude_merge() {
         function idxfrom(str, needle, from,   p) {
             p = index(substr(str, from), needle)
             return (p == 0) ? 0 : p + from - 1
+        }
+        function key_at_depth(str, wanted, wanted_depth,   i, j, k, n, depth, c, token, esc) {
+            n = length(str); depth = 0
+            for (i = 1; i <= n; i++) {
+                c = substr(str, i, 1)
+                if (c == "{") { depth++; continue }
+                if (c == "}") { depth--; continue }
+                if (c != "\"") continue
+
+                token = ""; esc = 0
+                for (j = i + 1; j <= n; j++) {
+                    c = substr(str, j, 1)
+                    if (esc) { token = token c; esc = 0; continue }
+                    if (c == "\\") { esc = 1; continue }
+                    if (c == "\"") break
+                    token = token c
+                }
+                if (depth == wanted_depth && token == wanted) {
+                    k = j + 1
+                    while (k <= n && is_ws(substr(str, k, 1))) k++
+                    if (substr(str, k, 1) == ":") return i
+                }
+                i = j
+            }
+            return 0
         }
         function matchbrace(str, open,   i, n, depth, instr, esc, c) {
             n = length(str); depth = 0; instr = 0; esc = 0
@@ -237,9 +422,8 @@ claude_merge() {
             }
             return 0
         }
-        function remove_entry(body, name,   key, p, br, e, after, before, endp) {
-            key = "\"" name "\""
-            p = index(body, key)
+        function remove_entry(body, name,   p, br, e, after, before) {
+            p = key_at_depth(body, name, 0)
             if (p == 0) return body
             br = idxfrom(body, "{", p)
             if (br == 0) return body
@@ -261,7 +445,7 @@ claude_merge() {
                 printf "{\n  \"mcpServers\": {\n    \"%s\": %s\n  }\n}\n", name, entry
                 exit
             }
-            mspos = index(s, "\"mcpServers\"")
+            mspos = key_at_depth(s, "mcpServers", 1)
             if (mspos == 0) {
                 root = index(s, "{")
                 if (root == 0) {  # not an object; replace wholesale
@@ -293,28 +477,23 @@ claude_merge() {
     ' "$src"
 }
 
-configure_claude() {
-    local cfg
-    case "$(uname -s)" in
-        Darwin) cfg="$HOME/Library/Application Support/Claude/claude_desktop_config.json" ;;
-        Linux) cfg="$HOME/.config/Claude/claude_desktop_config.json" ;;
-        *) warn "Claude Desktop: unsupported OS; add the entry to your config manually."; return ;;
-    esac
-
-    local entry tmp
+configure_claude_config() {
+    local label="$1" cfg="$2" restart_note="$3" entry tmp source
+    [ -L "$cfg" ] && warn "$label: refusing to replace symlink $cfg" && return 0
     entry="$(claude_entry)"
     mkdir -p "$(dirname "$cfg")"
     backup_if_present "$cfg"
 
     tmp="$(mktemp)"
-    [ -f "$cfg" ] || : > "$cfg"
-    claude_merge "$cfg" "$SERVER_NAME" "$entry" > "$tmp" 2>/dev/null || true
+    source="$cfg"
+    [ -f "$source" ] || source="/dev/null"
+    claude_merge "$source" "$SERVER_NAME" "$entry" > "$tmp" 2>/dev/null || true
 
     if [ -s "$tmp" ] && json_balanced "$tmp" && grep -q "\"$SERVER_NAME\"" "$tmp"; then
         cat "$tmp" > "$cfg"
         chmod 600 "$cfg"
         rm -f "$tmp"
-        info "Claude Desktop configured: $cfg (restart Claude Desktop to load it)."
+        info "$label configured: $cfg$restart_note"
     else
         rm -f "$tmp"
         warn "could not safely merge $cfg — it was left untouched."
@@ -324,8 +503,8 @@ configure_claude() {
     fi
 }
 
-configure_codex() {
-    local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml"
+configure_codex_config() {
+    local label="$1" cfg="$2"
     local begin="# >>> $SERVER_NAME mcp (managed by scripts/connect-mcp.sh) >>>"
     local end="# <<< $SERVER_NAME mcp (managed by scripts/connect-mcp.sh) <<<"
     local block tmp allow_arg=""
@@ -333,6 +512,7 @@ configure_codex() {
     block="$(printf '%s\n[mcp_servers.%s]\ncommand = "npx"\nargs = ["-y", "mcp-remote", "%s"%s, "--header", "Authorization:${AUTH_HEADER}"]\nenv = { AUTH_HEADER = "%s" }\n%s' \
         "$begin" "$SERVER_NAME" "$ESC_ENDPOINT" "$allow_arg" "$ESC_BEARER" "$end")"
 
+    [ -L "$cfg" ] && warn "$label: refusing to replace symlink $cfg" && return 0
     mkdir -p "$(dirname "$cfg")"
     backup_if_present "$cfg"
 
@@ -375,11 +555,28 @@ configure_codex() {
     cat "$tmp" > "$cfg"
     chmod 600 "$cfg"
     rm -f "$tmp"
-    info "Codex configured: $cfg"
+    info "$label configured: $cfg"
 }
 
-configure_claude
-configure_codex
+index=0
+while [ "$index" -lt "${#TARGET_PATHS[@]}" ]; do
+    if [ "${TARGET_SELECTED[$index]}" = "1" ]; then
+        case "${TARGET_KINDS[$index]}" in
+            claude-desktop)
+                configure_claude_config "${TARGET_LABELS[$index]}" "${TARGET_PATHS[$index]}" \
+                    " (restart Claude Desktop to load it)."
+                ;;
+            claude-code)
+                configure_claude_config "${TARGET_LABELS[$index]}" "${TARGET_PATHS[$index]}" \
+                    " (restart active Claude Code sessions to load it)."
+                ;;
+            codex|codex-profile)
+                configure_codex_config "${TARGET_LABELS[$index]}" "${TARGET_PATHS[$index]}"
+                ;;
+        esac
+    fi
+    index=$((index + 1))
+done
 
 info ""
 info "Done. MCP server '$SERVER_NAME' -> $ENDPOINT"

@@ -494,9 +494,12 @@ final class McpInterfaceTest extends TestCase
         $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.42'])
             ->postJsonRpc($freshToken->plainTextToken, 'tools/list', id: 'one')
             ->assertOk();
+        $throttledSentinel = now()->subDay()->startOfSecond();
+        $freshToken->accessToken->forceFill(['last_used_at' => $throttledSentinel])->save();
         $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.42'])
             ->postJsonRpc($freshToken->plainTextToken, 'tools/list', id: 'two')
             ->assertStatus(429);
+        $this->assertTrue($freshToken->accessToken->refresh()->last_used_at?->equalTo($throttledSentinel));
 
         config(['rate_limits.mcp_pre_auth_per_minute' => 1]);
         $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.43'])
@@ -507,6 +510,32 @@ final class McpInterfaceTest extends TestCase
             ->assertStatus(429);
     }
 
+    public function test_authenticated_token_usage_writes_are_debounced(): void
+    {
+        config(['rate_limits.mcp_per_minute' => 10]);
+
+        $service = $this->createServiceAccount('Usage Agent', 'usage-agent@example.test');
+        $issued = $this->issueToken($service, ['mcp:search']);
+        $issued->accessToken->forceFill(['last_used_at' => now()->subDay()])->save();
+        $usageUpdates = 0;
+
+        DB::listen(function (QueryExecuted $query) use (&$usageUpdates): void {
+            $sql = strtolower($query->sql);
+
+            if (
+                str_starts_with($sql, 'update "mcp_access_tokens"')
+                && str_contains($sql, '"last_used_at"')
+            ) {
+                $usageUpdates++;
+            }
+        });
+
+        $this->postJsonRpc($issued->plainTextToken, 'tools/list', id: 'first-use')->assertOk();
+        $this->postJsonRpc($issued->plainTextToken, 'tools/list', id: 'second-use')->assertOk();
+
+        $this->assertSame(1, $usageUpdates);
+    }
+
     public function test_mcp_route_is_unreachable_on_the_artifact_host_runtime(): void
     {
         $service = $this->createServiceAccount('Runtime Agent', 'runtime-agent@example.test');
@@ -515,6 +544,19 @@ final class McpInterfaceTest extends TestCase
         config(['app.runtime_role' => 'artifact-host']);
 
         $this->postJsonRpc($token, 'tools/list')->assertNotFound();
+        $this->get('/mcp')->assertNotFound();
+        $this->delete('/mcp')->assertNotFound();
+    }
+
+    public function test_mcp_streamable_http_endpoint_rejects_unsupported_http_methods(): void
+    {
+        $this->get('/mcp')
+            ->assertStatus(405)
+            ->assertHeader('Allow', 'POST');
+
+        $this->delete('/mcp')
+            ->assertStatus(405)
+            ->assertHeader('Allow', 'POST');
     }
 
     public function test_lifecycle_notifications_are_acknowledged_with_202_and_no_body(): void
@@ -542,6 +584,50 @@ final class McpInterfaceTest extends TestCase
 
         // The client can then continue with normal request/response calls.
         $this->postJsonRpc($token, 'tools/list')->assertOk();
+    }
+
+    public function test_initialize_negotiates_the_current_protocol_and_starts_a_standard_session(): void
+    {
+        $service = $this->createServiceAccount('Negotiation Agent', 'negotiation-agent@example.test');
+        $token = $this->issueToken($service, ['mcp:search'])->plainTextToken;
+
+        $initialize = $this->postMcp($token, [
+            'jsonrpc' => '2.0',
+            'id' => 'negotiated-init',
+            'method' => 'initialize',
+            'params' => [
+                'protocolVersion' => '2025-11-25',
+                'capabilities' => [],
+                'clientInfo' => [
+                    'name' => 'artifactflow-tests',
+                    'version' => '1.0.0',
+                ],
+            ],
+        ]);
+
+        $initialize->assertOk();
+        $this->assertSame('2025-11-25', $initialize->json('result.protocolVersion'));
+        $this->assertSame('artifactflow', $initialize->json('result.serverInfo.name'));
+        $this->assertNotSame('', (string) $initialize->headers->get('MCP-Session-Id'));
+
+        $unsupported = $this->jsonRpcErrorPayload($this->postMcp($token, [
+            'jsonrpc' => '2.0',
+            'id' => 'unsupported-init',
+            'method' => 'initialize',
+            'params' => [
+                'protocolVersion' => '2099-01-01',
+                'capabilities' => [],
+                'clientInfo' => [
+                    'name' => 'artifactflow-tests',
+                    'version' => '1.0.0',
+                ],
+            ],
+        ]));
+
+        $this->assertSame(-32602, $unsupported['code']);
+        $unsupportedData = $unsupported['data'] ?? null;
+        $this->assertIsArray($unsupportedData);
+        $this->assertSame('2099-01-01', $unsupportedData['requested'] ?? null);
     }
 
     public function test_protocol_and_tool_argument_errors_are_reported_without_server_errors(): void
@@ -577,8 +663,17 @@ final class McpInterfaceTest extends TestCase
             'method' => 'tools/call',
             'params' => 'not-an-object',
         ]))['code']);
+        $this->assertSame(-32602, $this->jsonRpcErrorPayload($this->postMcp($token, [
+            'jsonrpc' => '2.0',
+            'id' => 'scalar-arguments',
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'search',
+                'arguments' => 'not-an-object',
+            ],
+        ]))['code']);
 
-        $unknownTool = $this->toolErrorPayload($this->postMcp($token, [
+        $unknownTool = $this->jsonRpcErrorPayload($this->postMcp($token, [
             'jsonrpc' => '2.0',
             'id' => 'unknown-tool',
             'method' => 'tools/call',
@@ -596,7 +691,7 @@ final class McpInterfaceTest extends TestCase
                 'arguments' => ['not-an-object'],
             ],
         ]));
-        $missingToolName = $this->toolErrorPayload($this->postMcp($token, [
+        $missingToolName = $this->jsonRpcErrorPayload($this->postMcp($token, [
             'jsonrpc' => '2.0',
             'id' => 'missing-tool-name',
             'method' => 'tools/call',
@@ -605,9 +700,9 @@ final class McpInterfaceTest extends TestCase
             ],
         ]));
 
-        $this->assertSame('unknown_tool', $unknownTool['type']);
+        $this->assertSame(-32602, $unknownTool['code']);
         $this->assertSame('invalid_request', $badArguments['type']);
-        $this->assertSame('invalid_request', $missingToolName['type']);
+        $this->assertSame(-32602, $missingToolName['code']);
     }
 
     public function test_search_scope_snippets_and_argument_validation_paths(): void
@@ -1685,7 +1780,7 @@ final class McpInterfaceTest extends TestCase
     ): TestResponse {
         return $this->withHeaders([
             'Authorization' => 'Bearer ' . $token,
-            'Mcp-Agent-Session' => $sessionId,
+            'MCP-Session-Id' => $sessionId,
         ])->postJson('/mcp', [
             'jsonrpc' => '2.0',
             'id' => 'call-' . $name,
@@ -1706,7 +1801,7 @@ final class McpInterfaceTest extends TestCase
     {
         return $this->withHeaders([
             'Authorization' => 'Bearer ' . $token,
-            'Mcp-Agent-Session' => 'test-session',
+            'MCP-Session-Id' => 'test-session',
         ])->postJson('/mcp', $body);
     }
 
@@ -1720,7 +1815,7 @@ final class McpInterfaceTest extends TestCase
     ): TestResponse {
         return $this->withHeaders([
             'Authorization' => 'Bearer ' . $token,
-            'Mcp-Agent-Session' => 'test-session',
+            'MCP-Session-Id' => 'test-session',
         ])->postJson('/mcp', [
             'jsonrpc' => '2.0',
             'id' => $id,

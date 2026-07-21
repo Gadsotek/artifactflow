@@ -4,6 +4,16 @@ All notable changes to ArtifactFlow will be documented here.
 
 This project is pre-1.0; expect breaking changes between alpha revisions.
 
+## Unreleased
+
+### Changed
+
+- Replaced ArtifactFlow's hand-written MCP JSON-RPC transport with the official `laravel/mcp` package. Existing scoped tokens, Editor authority ceiling, app-origin/runtime gates, throttling, untrusted-data envelopes, application handlers, and audit attribution remain in place; the package now owns protocol negotiation, standard MCP sessions, lifecycle handling, tool discovery, and schema serialization.
+
+### Dependencies
+
+- Added `laravel/mcp` 0.9.x.
+
 ## v0.0.2 — 2026-07-19
 
 Security-hardening release. No new end-user features; it tightens the untrusted-artifact isolation boundary, closes several artifact-preview parser differentials, hardens mass assignment and rate limiting, and patches the base image.

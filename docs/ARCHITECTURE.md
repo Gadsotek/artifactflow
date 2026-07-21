@@ -59,7 +59,8 @@ The codebase keeps Laravel conventions but separates business behavior into appl
 | --- | --- |
 | `Application/Identity` | Users, personal/shared workspaces, workspace roles, invitations, membership changes, two-factor auth (TOTP, recovery codes, trusted devices), theme preferences, and current workspace context. |
 | `Application/PageCatalog` | Page creation, metadata, content versions, Markdown rendering, artifact preview signing/reading, search, tags, categories, access grants, lifecycle changes, and deletion. |
-| `Application/Mcp` | MCP server: scoped bearer-token issuance/verification, the `search`/`read`/`create`/`create_category`/`create_tag`/`update`/`revert`/`list_workspaces`/`list_taxonomy` tools, and the Editor-capped effective-authority de-elevation shared with `PageAccess`. |
+| `Application/Mcp` | MCP application behavior: scoped bearer-token issuance/verification, transport-neutral tool results, tool handlers, and the Editor-capped effective-authority de-elevation shared with `PageAccess`. |
+| `Mcp` | Official Laravel MCP server and tool adapters: protocol negotiation, JSON-RPC transport, tool schemas, and delegation into `Application/Mcp`. |
 | `Application/Administration` | System Admin installation usage and runtime limit settings. |
 | `Application/Diagnostics` | The read-only deployment doctor (config checks mirroring the production boot gate). |
 | `Application/Installation` | Guided install wizard support (env writing, boot-gate value collection, admin bootstrap). |
@@ -132,7 +133,8 @@ confirmation (step-up), and minting an MCP token additionally requires a fresh T
 
 ## MCP Server
 
-An MCP server (`app/Application/Mcp`, `POST /mcp` on the **app** runtime only) lets approved
+An MCP server (`app/Mcp`, backed by the official `laravel/mcp` package, with application
+behavior in `app/Application/Mcp`) is exposed at `POST /mcp` on the **app** runtime only. It lets approved
 AI clients call `list_workspaces` / `list_taxonomy` / `search` / `read` / `create` / `create_category` / `create_tag` / `update` / `revert`
 through the *same* command handlers, policies, scanners, and optimistic-concurrency checks
 as humans. Authority flows through scoped, expiring bearer tokens (hashed at rest,
@@ -142,6 +144,13 @@ content authority in browser or MCP contexts. `McpEffectiveAuthority` additional
 workspace/page Admin to Editor while an MCP context is active, so a token can never exceed the Editor cap. Read
 content is framed as an untrusted-data envelope and never authorizes a write; every write
 still needs write scope, live access, and a matching base version.
+
+Laravel MCP owns protocol-version negotiation, standard session IDs, JSON-RPC framing,
+tool discovery/schema serialization, and lifecycle notifications. ArtifactFlow middleware
+still runs before the package transport to enforce installation readiness, runtime/origin
+isolation, pre-authentication IP throttling, token authentication, and authenticated rate
+limits. The framework adapter activates scoped authority only while a tool executes and
+clears it afterward so long-lived workers cannot retain MCP authority between calls.
 
 `search` and `read` include a hierarchy object with the visible direct parent, root-to-parent
 ancestor path, visible depth, and visible direct-child count. Ancestor traversal stops at the

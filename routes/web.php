@@ -16,7 +16,6 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DemoContentController;
 use App\Http\Controllers\InstallationSettingsController;
 use App\Http\Controllers\MarkdownPreviewController;
-use App\Http\Controllers\McpController;
 use App\Http\Controllers\McpTokenSettingsController;
 use App\Http\Controllers\PageAccessGrantController;
 use App\Http\Controllers\PageController;
@@ -38,13 +37,11 @@ use App\Http\Controllers\WorkspaceInvitationController;
 use App\Http\Controllers\WorkspaceInvitationJoinController;
 use App\Http\Controllers\WorkspaceMembershipController;
 use App\Http\Controllers\WorkspaceSettingsController;
-use App\Http\Middleware\EnforceMcpOrigin;
 use App\Http\Middleware\EnforceTwoFactorEnrollment;
 use App\Http\Middleware\RejectArtifactHostRuntime;
 use App\Http\Middleware\RequireArtifactHostRuntime;
 use App\Http\Middleware\RequireRecentPasswordConfirmation;
 use App\Http\Middleware\RequireRecentSystemAdminPasswordConfirmation;
-use App\Http\Middleware\ThrottleMcpRequests;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/artifact-previews/{pageUid}/versions/{versionUid}', ArtifactPreviewController::class)
@@ -93,13 +90,6 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
     ]);
 
     Route::view('/', 'welcome')->name('home');
-
-    Route::post('/mcp', McpController::class)
-        ->middleware([ThrottleMcpRequests::class, EnforceMcpOrigin::class, 'auth:mcp', 'throttle:mcp'])
-        ->withoutMiddleware([
-            Illuminate\Foundation\Http\Middleware\PreventRequestForgery::class,
-        ])
-        ->name('mcp');
 
     Route::middleware('guest')->group(function (): void {
         Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
