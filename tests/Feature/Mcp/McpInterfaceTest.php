@@ -728,7 +728,9 @@ final class McpInterfaceTest extends TestCase
                 'arguments' => [],
             ],
         ]));
-        $badArguments = $this->toolErrorPayload($this->postMcp($token, [
+        // laravel/mcp 0.9.1 rejects list-shaped arguments at the protocol layer
+        // (-32602) instead of letting them reach tool-level validation.
+        $badArguments = $this->jsonRpcErrorPayload($this->postMcp($token, [
             'jsonrpc' => '2.0',
             'id' => 'bad-arguments',
             'method' => 'tools/call',
@@ -747,7 +749,7 @@ final class McpInterfaceTest extends TestCase
         ]));
 
         $this->assertSame(-32602, $unknownTool['code']);
-        $this->assertSame('invalid_request', $badArguments['type']);
+        $this->assertSame(-32602, $badArguments['code']);
         $this->assertSame(-32602, $missingToolName['code']);
     }
 

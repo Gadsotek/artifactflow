@@ -19,6 +19,10 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 - Required the artifact read ceiling to cover both Markdown and HTML write ceilings at validation, application, production-startup, diagnostic, and database boundaries.
 - Advanced page metadata revisions when member removal reassigns ownership, so an already-open metadata form receives a conflict instead of overwriting the chosen replacement owner.
 
+### Changed
+
+- Upgraded laravel/mcp to v0.9.1, which ships our upstreamed malformed JSON-RPC parameter fix, and removed the local server-side shim it replaces. List-shaped tool arguments are now rejected at the protocol layer (-32602) instead of reaching tool-level validation.
+
 ## v0.0.3 — 2026-07-21
 
 Security and correctness release. It completes the official Laravel MCP migration, closes the remaining authentication and concurrent-mutation races found by adversarial review, repairs rich-Markdown serialization, and hardens installation, backup, restore, and release operations.
