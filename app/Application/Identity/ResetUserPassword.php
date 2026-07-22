@@ -36,6 +36,7 @@ final readonly class ResetUserPassword
                 'password' => Hash::make($newPassword),
                 'remember_token' => Str::random(60),
                 'auth_revision' => $lockedUser->auth_revision + 1,
+                'password_reset_notice_pending_at' => now(),
             ])->save();
 
             $invalidatedSessions = $this->invalidateDatabaseSessions($lockedUser);

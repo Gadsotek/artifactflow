@@ -28,6 +28,7 @@ use Illuminate\Notifications\Notifiable;
  * @property int|null $two_factor_last_used_timestep
  * @property bool $two_factor_required
  * @property int $auth_revision
+ * @property \Illuminate\Support\Carbon|null $password_reset_notice_pending_at
  */
 final class User extends Authenticatable
 {
@@ -67,6 +68,7 @@ final class User extends Authenticatable
         'two_factor_secret_created_at',
         'two_factor_recovery_codes',
         'auth_revision',
+        'password_reset_notice_pending_at',
     ];
 
     /**
@@ -87,6 +89,7 @@ final class User extends Authenticatable
             'two_factor_last_used_timestep' => 'integer',
             'two_factor_required' => 'boolean',
             'auth_revision' => 'integer',
+            'password_reset_notice_pending_at' => 'datetime',
         ];
     }
 

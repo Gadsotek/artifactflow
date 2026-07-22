@@ -458,6 +458,39 @@ final class WorkspaceMembershipRemovalTest extends TestCase
         $this->assertSame($replacement->uid, $removalEvent->payload['replacement_owner_user_uid']);
     }
 
+    public function test_member_removal_reassignment_invalidates_open_metadata_forms(): void
+    {
+        $admin = $this->createUser('Admin User', 'revision-admin@example.test');
+        $member = $this->createUser('Member User', 'revision-member@example.test');
+        $replacement = $this->createUser('Replacement User', 'revision-replacement@example.test');
+        $staleOwnerChoice = $this->createUser('Stale Owner Choice', 'revision-stale-owner@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($admin, 'Revision Team');
+        $membership = $this->addMember($workspace->uid, $member, WorkspaceRole::Editor);
+        $this->addMember($workspace->uid, $replacement, WorkspaceRole::Editor);
+        $this->addMember($workspace->uid, $staleOwnerChoice, WorkspaceRole::Editor);
+        $page = $this->createPage($workspace->uid, $member, 'Revision protected page')->refresh();
+        $openedMetadataRevision = $page->metadata_revision;
+
+        app(RemoveWorkspaceMember::class)->handle($admin, new RemoveWorkspaceMemberCommand(
+            workspaceUid: $workspace->uid,
+            membershipUid: $membership->uid,
+            replacementOwnerUserUid: $replacement->uid,
+        ));
+
+        $page->refresh();
+        $this->assertSame($openedMetadataRevision + 1, $page->metadata_revision);
+
+        $this->actingAs($admin)
+            ->put("/pages/{$page->uid}/metadata", [
+                'metadata_revision' => $openedMetadataRevision,
+                'title' => $page->title,
+                'owner_user_uid' => $staleOwnerChoice->uid,
+            ])
+            ->assertStatus(409);
+
+        $this->assertSame($replacement->uid, $page->refresh()->owner_user_uid);
+    }
+
     public function test_non_admin_outsider_personal_workspace_and_last_admin_removal_are_rejected(): void
     {
         $admin = $this->createUser('Admin User', 'admin@example.test');

@@ -689,7 +689,19 @@ final class ProductionSecurityConfigurationTest extends TestCase
             'pages.artifact_max_bytes' => 512,
         ]);
 
-        $this->assertUnsafeConfiguration('Artifact read limit must be greater than or equal to the HTML write limit.');
+        $this->assertUnsafeConfiguration('Artifact read limit must be greater than or equal to every content write limit.');
+    }
+
+    public function test_artifact_read_limit_must_cover_markdown_write_limit(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'pages.max_markdown_bytes' => 1024,
+            'pages.max_html_bytes' => 256,
+            'pages.artifact_max_bytes' => 512,
+        ]);
+
+        $this->assertUnsafeConfiguration('Artifact read limit must be greater than or equal to every content write limit.');
     }
 
     public function test_html_write_limit_must_fit_the_production_http_request_envelope(): void
@@ -736,6 +748,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
             'database.connections.pgsql.sslrootcert' => '/etc/ssl/certs/ca-certificates.crt',
             'pages.artifact_max_bytes' => 1024 * 1024,
             'pages.max_html_bytes' => 1024 * 1024,
+            'pages.max_markdown_bytes' => 1024 * 1024,
             'reverb.apps.apps.0.configured_allowed_origins' => ['https://app.example.test'],
             'reverb.apps.apps.0.allowed_origins' => ['app.example.test'],
             'reverb.apps.apps.0.max_connections' => 1000,

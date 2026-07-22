@@ -28,9 +28,9 @@ final readonly class InstallationLimitValues
             throw new DomainRuleViolation('HTML write limit must not exceed the production HTTP request envelope.');
         }
 
-        if ($this->artifactMaxBytes < $this->maxHtmlBytes) {
+        if ($this->artifactMaxBytes < max($this->maxHtmlBytes, $this->maxMarkdownBytes)) {
             throw new DomainRuleViolation(
-                'Artifact read limit must be greater than or equal to the HTML write limit.',
+                'Artifact read limit must be greater than or equal to every content write limit.',
             );
         }
     }

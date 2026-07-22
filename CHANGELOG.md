@@ -6,6 +6,19 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+### Security
+
+- Bound authenticated browser sessions to the user authentication revision, closing the verified race where an old-password login could finish concurrently with a completed password reset.
+- Prompted users once after their first successful post-reset login to review any active MCP tokens that deliberately survived the password reset.
+- Made every Laravel MCP HTTP route session-free and applied the pre-authenticated source-IP limiter to the package-generated compatibility methods as well as POST requests.
+- Rebuilt the production FrankenPHP binary with grpc-go v1.82.1, clearing GHSA-hrxh-6v49-42gf from the nightly image audit while upstream still resolves the vulnerable dependency.
+
+### Fixed
+
+- Returned the retryable JSON-RPC installation-readiness response for every MCP transport method, including package-generated GET and DELETE compatibility routes.
+- Required the artifact read ceiling to cover both Markdown and HTML write ceilings at validation, application, production-startup, diagnostic, and database boundaries.
+- Advanced page metadata revisions when member removal reassigns ownership, so an already-open metadata form receives a conflict instead of overwriting the chosen replacement owner.
+
 ## v0.0.3 — 2026-07-21
 
 Security and correctness release. It completes the official Laravel MCP migration, closes the remaining authentication and concurrent-mutation races found by adversarial review, repairs rich-Markdown serialization, and hardens installation, backup, restore, and release operations.

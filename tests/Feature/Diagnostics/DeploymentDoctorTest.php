@@ -412,6 +412,19 @@ final class DeploymentDoctorTest extends TestCase
         $this->assertStringContainsString('production HTTP request envelope', $check->detail);
     }
 
+    public function test_doctor_fails_when_artifact_reads_cannot_serve_markdown_writes(): void
+    {
+        $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
+            'pages.max_markdown_bytes' => 2048,
+            'pages.max_html_bytes' => 32,
+            'pages.artifact_max_bytes' => 1024,
+        ]))))->run();
+
+        $check = $this->check($report->checks, 'artifact_limits');
+        $this->assertSame(DoctorCheckStatus::Fail, $check->status);
+        $this->assertStringContainsString('every content write limit', $check->detail);
+    }
+
     /**
      * Keep the doctor's punch list in correspondence with the invariants
      * ProductionSecurityConfiguration::ensureSafe() enforces at boot. Checked in

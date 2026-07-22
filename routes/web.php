@@ -37,6 +37,7 @@ use App\Http\Controllers\WorkspaceInvitationController;
 use App\Http\Controllers\WorkspaceInvitationJoinController;
 use App\Http\Controllers\WorkspaceMembershipController;
 use App\Http\Controllers\WorkspaceSettingsController;
+use App\Http\Middleware\EnforceCurrentAuthenticationRevision;
 use App\Http\Middleware\EnforceTwoFactorEnrollment;
 use App\Http\Middleware\RejectArtifactHostRuntime;
 use App\Http\Middleware\RequireArtifactHostRuntime;
@@ -128,7 +129,12 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
             ->route('login')
             ->withErrors(['invitation' => 'This workspace invitation is no longer valid.']));
 
-    Route::middleware(['auth', EnforceTwoFactorEnrollment::class, 'throttle:artifactflow-authenticated'])->group(function (): void {
+    Route::middleware([
+        'auth',
+        EnforceCurrentAuthenticationRevision::class,
+        EnforceTwoFactorEnrollment::class,
+        'throttle:artifactflow-authenticated',
+    ])->group(function (): void {
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
         Route::post('/demo-content', DemoContentController::class)
             ->middleware('throttle:artifactflow-page-writes')

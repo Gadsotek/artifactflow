@@ -560,15 +560,17 @@ final readonly class DeploymentDoctor
             );
         }
 
-        if ($read < $write) {
+        $largestWrite = max($write, $markdownWrite);
+
+        if ($read < $largestWrite) {
             return $this->fail(
                 'artifact_limits',
                 'Artifact size limits',
-                'Artifact read limit must be greater than or equal to the HTML write limit.',
+                'Artifact read limit must be greater than or equal to every content write limit.',
             );
         }
 
-        return $this->pass('artifact_limits', 'Artifact size limits', sprintf('Read %d >= write %d bytes.', $read, $write));
+        return $this->pass('artifact_limits', 'Artifact size limits', sprintf('Read %d >= largest write %d bytes.', $read, $largestWrite));
     }
 
     private function httpsOriginsCheck(bool $production): DoctorCheck

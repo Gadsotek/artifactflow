@@ -319,6 +319,27 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         $this->assertSame(0, DomainEvent::query()->where('event_type', 'installation.limits.updated')->count());
     }
 
+    public function test_installation_limit_updates_require_artifact_read_limit_to_cover_markdown_write_limit(): void
+    {
+        $admin = $this->createUser('System Admin', 'markdown-read-settings-admin@example.test', true);
+
+        $this->actingAs($admin)
+            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->put('/admin/settings', [
+                'max_markdown_bytes' => '2048',
+                'max_html_bytes' => '32',
+                'artifact_max_bytes' => '1024',
+                'max_workspace_storage_bytes' => '4096',
+                'max_page_storage_bytes' => '2048',
+                'max_page_versions' => '2',
+                'max_tags_per_page' => '8',
+            ])
+            ->assertSessionHasErrors('artifact_max_bytes');
+
+        $this->assertDatabaseCount('installation_settings', 0);
+        $this->assertSame(0, DomainEvent::query()->where('event_type', 'installation.limits.updated')->count());
+    }
+
     public function test_installation_limit_updates_reject_byte_values_above_hard_safety_ceilings(): void
     {
         $admin = $this->createUser('System Admin', 'huge-settings-admin@example.test', true);
@@ -357,6 +378,25 @@ final class SystemAdminInstallationSettingsTest extends TestCase
             'max_markdown_bytes' => 5 * 1024 * 1024 + 1,
             'max_html_bytes' => 5 * 1024 * 1024 + 1,
             'artifact_max_bytes' => 64 * 1024 * 1024,
+            'max_workspace_storage_bytes' => 10 * 1024 * 1024,
+            'max_page_storage_bytes' => 5 * 1024 * 1024,
+            'max_page_versions' => 10,
+            'max_tags_per_page' => 10,
+            'updated_by_user_uid' => $admin->uid,
+        ]);
+    }
+
+    public function test_database_rejects_artifact_read_limit_below_a_content_write_limit(): void
+    {
+        $admin = $this->createUser('System Admin', 'db-read-limit-admin@example.test', true);
+
+        $this->expectException(QueryException::class);
+
+        InstallationSettings::query()->forceCreate([
+            'scope' => InstallationSettings::SCOPE_INSTALLATION,
+            'max_markdown_bytes' => 2048,
+            'max_html_bytes' => 32,
+            'artifact_max_bytes' => 1024,
             'max_workspace_storage_bytes' => 10 * 1024 * 1024,
             'max_page_storage_bytes' => 5 * 1024 * 1024,
             'max_page_versions' => 10,

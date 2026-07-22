@@ -45,6 +45,7 @@ final class UpdateInstallationLimitsRequest extends AppFormRequest
                 'min:1',
                 'max:' . InstallationLimitCeilings::ARTIFACT_READ_BYTES,
                 'gte:max_html_bytes',
+                'gte:max_markdown_bytes',
             ],
             'max_workspace_storage_bytes' => [
                 'required',

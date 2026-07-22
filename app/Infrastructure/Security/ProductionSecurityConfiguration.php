@@ -153,8 +153,11 @@ final readonly class ProductionSecurityConfiguration
             throw new RuntimeException('Markdown write limit must not exceed the HTTP request envelope.');
         }
 
-        if ($this->positiveInt('pages.artifact_max_bytes') < $this->positiveInt('pages.max_html_bytes')) {
-            throw new RuntimeException('Artifact read limit must be greater than or equal to the HTML write limit.');
+        if ($this->positiveInt('pages.artifact_max_bytes') < max(
+            $this->positiveInt('pages.max_html_bytes'),
+            $this->positiveInt('pages.max_markdown_bytes'),
+        )) {
+            throw new RuntimeException('Artifact read limit must be greater than or equal to every content write limit.');
         }
     }
 

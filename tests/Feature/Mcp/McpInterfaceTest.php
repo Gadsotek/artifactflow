@@ -559,6 +559,52 @@ final class McpInterfaceTest extends TestCase
             ->assertHeader('Allow', 'POST');
     }
 
+    public function test_mcp_transport_routes_are_session_free_and_compatibility_methods_are_pre_auth_throttled(): void
+    {
+        config([
+            'session.driver' => 'database',
+            'rate_limits.mcp_pre_auth_per_minute' => 2,
+        ]);
+        RateLimiter::clear('mcp-ip:203.0.113.91');
+
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
+            $response = $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.91'])
+                ->get('/mcp')
+                ->assertStatus(405)
+                ->assertHeader('Allow', 'POST');
+
+            $this->assertSame([], $response->headers->getCookies());
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.91'])
+            ->get('/mcp')
+            ->assertTooManyRequests();
+
+        $deleteResponse = $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.92'])
+            ->delete('/mcp')
+            ->assertStatus(405)
+            ->assertHeader('Allow', 'POST');
+
+        $this->assertSame([], $deleteResponse->headers->getCookies());
+
+        $service = $this->createServiceAccount('Stateless Agent', 'stateless-agent@example.test');
+        $token = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_SEARCH])->plainTextToken;
+        $postResponse = $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.93'])
+            ->withHeaders([
+                'Authorization' => 'Bearer ' . $token,
+                'MCP-Session-Id' => 'stateless-session',
+            ])
+            ->postJson('/mcp', [
+                'jsonrpc' => '2.0',
+                'id' => 'stateless-tools-list',
+                'method' => 'tools/list',
+            ])
+            ->assertOk();
+
+        $this->assertSame([], $postResponse->headers->getCookies());
+        $this->assertDatabaseCount('sessions', 0);
+    }
+
     public function test_lifecycle_notifications_are_acknowledged_with_202_and_no_body(): void
     {
         $service = $this->createServiceAccount('Lifecycle Agent', 'lifecycle-agent@example.test');
