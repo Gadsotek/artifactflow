@@ -24,6 +24,12 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         $this->assertStringContainsString("defineValue(window, 'WebTransport', blockedConstructor)", $hardened);
         $this->assertStringContainsString("normalizedCommand === 'inserthtml'", $hardened);
         $this->assertStringContainsString("defineValue(Document.prototype, 'execCommand'", $hardened);
+        $this->assertStringContainsString("defineValue(Document, 'parseHTMLUnsafe', noop)", $hardened);
+        $this->assertStringNotContainsString("hardenMarkupMethod(Document, 'parseHTMLUnsafe')", $hardened);
+        $this->assertStringContainsString("defineValue(Element.prototype, 'setHTMLUnsafe', noop)", $hardened);
+        $this->assertStringContainsString("defineValue(ShadowRoot.prototype, 'setHTMLUnsafe', noop)", $hardened);
+        $this->assertStringNotContainsString("hardenMarkupMethod(Element.prototype, 'setHTMLUnsafe')", $hardened);
+        $this->assertStringNotContainsString("hardenMarkupMethod(ShadowRoot.prototype, 'setHTMLUnsafe')", $hardened);
         // Programmatic self-navigation is neutralized where the browser allows it.
         $this->assertStringContainsString("defineValue(window.location, 'assign', noop)", $hardened);
         $this->assertStringContainsString("defineValue(window.location, 'replace', noop)", $hardened);

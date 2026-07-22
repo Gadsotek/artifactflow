@@ -346,13 +346,17 @@
     hardenMarkupSetter(Element.prototype, 'innerHTML');
     hardenMarkupSetter(Element.prototype, 'outerHTML');
 
+    // Declarative Shadow DOM can hide nested browsing contexts inside template
+    // contents that ordinary DOM traversal cannot reach, especially once a
+    // closed shadow root is materialized. Disable these explicitly unsafe parser
+    // entry points instead of attempting incomplete post-parse cleanup.
     if (typeof ShadowRoot === 'function') {
       hardenMarkupSetter(ShadowRoot.prototype, 'innerHTML');
-      hardenMarkupMethod(ShadowRoot.prototype, 'setHTMLUnsafe');
+      defineValue(ShadowRoot.prototype, 'setHTMLUnsafe', noop);
     }
 
     hardenMarkupMethod(Element.prototype, 'insertAdjacentHTML', 1);
-    hardenMarkupMethod(Element.prototype, 'setHTMLUnsafe');
+    defineValue(Element.prototype, 'setHTMLUnsafe', noop);
     hardenMarkupMethod(Range.prototype, 'createContextualFragment');
     const nativeParseFromString = DOMParser.prototype.parseFromString;
     defineValue(DOMParser.prototype, 'parseFromString', function parseFromString(markup, type) {
@@ -366,7 +370,7 @@
     // pretending a chunk-local rewrite is a security boundary.
     defineValue(Document.prototype, 'write', noop);
     defineValue(Document.prototype, 'writeln', noop);
-    hardenMarkupMethod(Document, 'parseHTMLUnsafe');
+    defineValue(Document, 'parseHTMLUnsafe', noop);
     hardenNodeInsertionSinks();
     blockLegacyMarkupInsertion();
     blockXSLTMaterialization();

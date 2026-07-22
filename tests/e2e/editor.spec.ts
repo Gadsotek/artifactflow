@@ -1844,6 +1844,14 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
       `<div ="><iframe data-breakout-context="leading-equals-double-quote-attribute-name" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>"></div>`;
     const unmatchedForeignEndBreakoutFrame = `<svg></math><title><iframe data-breakout-context="unmatched-foreign-end" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe></title></svg>`;
     const dynamicNestedFrameBase64 = Buffer.from(recursivelyNestedRtc, 'utf8').toString('base64');
+    const declarativeShadowOpenBase64 = Buffer.from(
+      `<div data-declarative-shadow-host="open"><template shadowrootmode="open"><iframe srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe></template></div>`,
+      'utf8',
+    ).toString('base64');
+    const declarativeShadowClosedBase64 = Buffer.from(
+      `<div data-declarative-shadow-host="closed"><template shadowrootmode="closed"><iframe srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe></template></div>`,
+      'utf8',
+    ).toString('base64');
     const fixture = await prepareAuthenticatedDraftPreviewFixture(page);
 
     await page.setContent(
@@ -1859,6 +1867,8 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
               ${unmatchedForeignEndBreakoutFrame}
               <script>
                 const nestedMarkup = atob('${dynamicNestedFrameBase64}');
+                const declarativeShadowOpenMarkup = atob('${declarativeShadowOpenBase64}');
+                const declarativeShadowClosedMarkup = atob('${declarativeShadowClosedBase64}');
                 const dynamicOuter = document.createElement('iframe');
                 dynamicOuter.id = 'dynamic-create-element';
                 dynamicOuter.srcdoc = nestedMarkup;
@@ -1972,10 +1982,95 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
                 const shadowRoot = shadowHost.attachShadow({ mode: 'open' });
                 shadowRoot.innerHTML = nestedMarkup;
 
-                const unsafeHtmlHost = document.createElement('div');
-                document.body.append(unsafeHtmlHost);
-                if (typeof unsafeHtmlHost.setHTMLUnsafe === 'function') {
-                  unsafeHtmlHost.setHTMLUnsafe(nestedMarkup);
+                const elementUnsafeSetterIsNoop = (markup, sentinel) => {
+                  const target = document.createElement('div');
+                  target.textContent = sentinel;
+                  document.body.append(target);
+
+                  if (typeof target.setHTMLUnsafe !== 'function') {
+                    return false;
+                  }
+
+                  try {
+                    target.setHTMLUnsafe(markup);
+
+                    return target.textContent === sentinel && target.childElementCount === 0;
+                  } catch {
+                    return false;
+                  }
+                };
+                const shadowUnsafeSetterIsNoop = (markup, sentinel) => {
+                  const host = document.createElement('div');
+                  document.body.append(host);
+                  const target = host.attachShadow({ mode: 'open' });
+                  target.textContent = sentinel;
+
+                  if (typeof target.setHTMLUnsafe !== 'function') {
+                    return false;
+                  }
+
+                  try {
+                    target.setHTMLUnsafe(markup);
+
+                    return target.textContent === sentinel && target.childElementCount === 0;
+                  } catch {
+                    return false;
+                  }
+                };
+                const unsafeElementSettersBlocked =
+                  elementUnsafeSetterIsNoop(
+                    declarativeShadowOpenMarkup,
+                    'element-open-sentinel',
+                  ) &&
+                  elementUnsafeSetterIsNoop(
+                    declarativeShadowClosedMarkup,
+                    'element-closed-sentinel',
+                  );
+                const unsafeShadowSettersBlocked =
+                  shadowUnsafeSetterIsNoop(
+                    declarativeShadowOpenMarkup,
+                    'shadow-open-sentinel',
+                  ) &&
+                  shadowUnsafeSetterIsNoop(
+                    declarativeShadowClosedMarkup,
+                    'shadow-closed-sentinel',
+                  );
+
+                let unsafeDocumentParserBlocked = true;
+                let closedShadowParserBlocked = true;
+                if (typeof Document.parseHTMLUnsafe === 'function') {
+                  try {
+                    const unsafeParsed = Document.parseHTMLUnsafe(
+                      '<!doctype html><div id="declarative-shadow-host"><template shadowrootmode="open"><iframe data-declarative-shadow-context></iframe></template></div>',
+                    );
+                    const declarativeShadowHost = unsafeParsed.getElementById(
+                      'declarative-shadow-host',
+                    );
+
+                    if (declarativeShadowHost !== null) {
+                      document.body.append(document.adoptNode(declarativeShadowHost));
+                      const declarativeShadowFrame = declarativeShadowHost.shadowRoot?.querySelector(
+                        '[data-declarative-shadow-context]',
+                      );
+                      unsafeDocumentParserBlocked =
+                        declarativeShadowFrame === null ||
+                        declarativeShadowFrame === undefined ||
+                        declarativeShadowFrame.contentWindow === null;
+                    }
+                  } catch {
+                    unsafeDocumentParserBlocked = true;
+                  }
+
+                  try {
+                    const closedShadowParsed = Document.parseHTMLUnsafe(
+                      '<!doctype html><div><template shadowrootmode="closed"><iframe></iframe></template></div>',
+                    );
+                    // A closed shadow root cannot be inspected after parsing. The unsafe
+                    // document parser must therefore be disabled rather than cleaned up later.
+                    closedShadowParserBlocked = closedShadowParsed === undefined;
+                  } catch {
+                    closedShadowParserBlocked = true;
+                  }
                 }
 
                 const execCommandHost = document.createElement('div');
@@ -2001,6 +2096,10 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
                     prefixedNamespaceBlocked &&
                     objectCoercionBlocked &&
                     surroundContentsBlocked &&
+                    unsafeElementSettersBlocked &&
+                    unsafeShadowSettersBlocked &&
+                    unsafeDocumentParserBlocked &&
+                    closedShadowParserBlocked &&
                     execCommandNestedContextBlocked &&
                     xsltState !== 'xslt-enabled'
                       ? 'nested-contexts-blocked'
