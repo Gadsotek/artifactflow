@@ -6,6 +6,10 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+### Security
+
+- Disabled the declarative-shadow-DOM parser entry points (`Document.parseHTMLUnsafe`, `Element.prototype.setHTMLUnsafe`, `ShadowRoot.prototype.setHTMLUnsafe`) in the artifact-preview guard instead of sanitizing their input. Input sanitization could not reach a nested browsing context hidden inside a declarative shadow root, which the parser materialized into a live, script-executing frame — a bypass of the nested-context defense confirmed by an empirical Chromium harness and now covered by draft-preview and saved-artifact end-to-end tests.
+
 ## v0.0.4 — 2026-07-22
 
 Security release. It binds browser sessions to the user authentication revision, closes the remaining old-password login race, makes the MCP transport fully session-free, clears the grpc-go HIGH finding from the production image, adopts laravel/mcp v0.9.1 with the upstreamed malformed-parameter fix, and prompts users to review surviving MCP tokens after a password reset.

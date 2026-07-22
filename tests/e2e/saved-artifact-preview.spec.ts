@@ -129,6 +129,93 @@ test('saved HTML artifact executes only inside the controller-served sandbox', a
         storageState = 'storage-blocked';
       }
 
+      let unsafeParserState = 'unsafe-parser-blocked';
+      if (typeof Document.parseHTMLUnsafe === 'function') {
+        let openShadowParserBlocked = true;
+        let closedShadowParserBlocked = true;
+
+        try {
+          const unsafeParsed = Document.parseHTMLUnsafe(
+            '<!doctype html><div id="declarative-shadow-host"><template shadowrootmode="open"><iframe data-declarative-shadow-context></iframe></template></div>',
+          );
+          const declarativeShadowHost = unsafeParsed.getElementById('declarative-shadow-host');
+
+          if (declarativeShadowHost !== null) {
+            document.body.append(document.adoptNode(declarativeShadowHost));
+            const declarativeShadowFrame = declarativeShadowHost.shadowRoot?.querySelector(
+              '[data-declarative-shadow-context]',
+            );
+            openShadowParserBlocked =
+              declarativeShadowFrame === null ||
+              declarativeShadowFrame === undefined ||
+              declarativeShadowFrame.contentWindow === null;
+          }
+        } catch {
+          openShadowParserBlocked = true;
+        }
+
+        try {
+          const closedShadowParsed = Document.parseHTMLUnsafe(
+            '<!doctype html><div><template shadowrootmode="closed"><iframe></iframe></template></div>',
+          );
+          closedShadowParserBlocked = closedShadowParsed === undefined;
+        } catch {
+          closedShadowParserBlocked = true;
+        }
+
+        unsafeParserState =
+          openShadowParserBlocked && closedShadowParserBlocked
+            ? 'unsafe-parser-blocked'
+            : 'unsafe-parser-escaped';
+      }
+
+      const declarativeShadowOpenMarkup =
+        '<div data-declarative-shadow-host="open"><template shadowrootmode="open"><iframe></iframe></template></div>';
+      const declarativeShadowClosedMarkup =
+        '<div data-declarative-shadow-host="closed"><template shadowrootmode="closed"><iframe></iframe></template></div>';
+      const elementUnsafeSetterIsNoop = (markup, sentinel) => {
+        const target = document.createElement('div');
+        target.textContent = sentinel;
+        document.body.append(target);
+
+        if (typeof target.setHTMLUnsafe !== 'function') {
+          return false;
+        }
+
+        try {
+          target.setHTMLUnsafe(markup);
+
+          return target.textContent === sentinel && target.childElementCount === 0;
+        } catch {
+          return false;
+        }
+      };
+      const shadowUnsafeSetterIsNoop = (markup, sentinel) => {
+        const host = document.createElement('div');
+        document.body.append(host);
+        const target = host.attachShadow({ mode: 'open' });
+        target.textContent = sentinel;
+
+        if (typeof target.setHTMLUnsafe !== 'function') {
+          return false;
+        }
+
+        try {
+          target.setHTMLUnsafe(markup);
+
+          return target.textContent === sentinel && target.childElementCount === 0;
+        } catch {
+          return false;
+        }
+      };
+      const unsafeSetterState =
+        elementUnsafeSetterIsNoop(declarativeShadowOpenMarkup, 'element-open-sentinel') &&
+        elementUnsafeSetterIsNoop(declarativeShadowClosedMarkup, 'element-closed-sentinel') &&
+        shadowUnsafeSetterIsNoop(declarativeShadowOpenMarkup, 'shadow-open-sentinel') &&
+        shadowUnsafeSetterIsNoop(declarativeShadowClosedMarkup, 'shadow-closed-sentinel')
+          ? 'unsafe-setters-blocked'
+          : 'unsafe-setters-escaped';
+
       fetch('${baseUrl}/saved-preview-network-check')
         .then(() => {
           document.getElementById('result').textContent = [
@@ -136,6 +223,8 @@ test('saved HTML artifact executes only inside the controller-served sandbox', a
             'network-accessible',
             cookieState,
             storageState,
+            unsafeParserState,
+            unsafeSetterState,
           ].join(' ');
         })
         .catch(() => {
@@ -144,6 +233,8 @@ test('saved HTML artifact executes only inside the controller-served sandbox', a
             'network-blocked',
             cookieState,
             storageState,
+            unsafeParserState,
+            unsafeSetterState,
           ].join(' ');
         });
 
@@ -178,7 +269,7 @@ test('saved HTML artifact executes only inside the controller-served sandbox', a
   const previewResult = page.frameLocator('iframe[title="Artifact preview"]').locator('#result');
   await expect(previewResult).toBeAttached({ timeout: 20_000 });
   await expect(previewResult).toHaveText(
-    'parent-blocked network-blocked cookies-blocked storage-blocked',
+    'parent-blocked network-blocked cookies-blocked storage-blocked unsafe-parser-blocked unsafe-setters-blocked',
     { timeout: 20_000 },
   );
   await expect(page.locator('body')).not.toHaveAttribute(
