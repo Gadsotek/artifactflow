@@ -106,6 +106,38 @@ final class InstallationReadinessGuardTest extends TestCase
         $this->assertNull($issuedToken->accessToken->refresh()->last_used_at);
     }
 
+    public function test_every_mcp_transport_method_returns_json_while_migrations_are_pending(): void
+    {
+        $latestMigration = DB::table('migrations')
+            ->orderByDesc('migration')
+            ->value('migration');
+        $this->assertIsString($latestMigration);
+        DB::table('migrations')->where('migration', $latestMigration)->delete();
+
+        foreach (['GET', 'DELETE'] as $method) {
+            $response = $this->call($method, '/mcp');
+
+            $response
+                ->assertStatus(503)
+                ->assertHeader('Content-Type', 'application/json')
+                ->assertHeader('Retry-After', '30')
+                ->assertExactJson([
+                    'jsonrpc' => '2.0',
+                    'id' => null,
+                    'error' => [
+                        'code' => -32000,
+                        'message' => 'ArtifactFlow is temporarily unavailable while database migrations are pending.',
+                        'data' => [
+                            'type' => 'installation_not_ready',
+                            'retryable' => true,
+                            'operator_action' => 'Run make migrate, or make install for a guided first-time setup.',
+                        ],
+                    ],
+                ]);
+            $this->assertSame([], $response->headers->getCookies());
+        }
+    }
+
     public function test_a_long_running_process_rechecks_after_the_available_migration_manifest_changes(): void
     {
         /** @var MigrationRepositoryInterface&Mockery\MockInterface $repository */

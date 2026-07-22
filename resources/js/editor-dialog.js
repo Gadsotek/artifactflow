@@ -28,6 +28,10 @@ for (const trigger of document.querySelectorAll('[data-open-editor-dialog]')) {
 }
 
 for (const dialog of document.querySelectorAll('[data-editor-dialog]')) {
+  if (dialog instanceof HTMLDialogElement && dialog.hasAttribute('data-auto-open-editor-dialog')) {
+    dialog.showModal();
+  }
+
   dialog.addEventListener('click', (event) => {
     if (event.target === dialog) {
       closeDialog(dialog);

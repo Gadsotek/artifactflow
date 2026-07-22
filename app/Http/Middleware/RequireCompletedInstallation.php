@@ -33,7 +33,7 @@ final readonly class RequireCompletedInstallation
             return $next($request);
         }
 
-        $response = $request->routeIs('mcp')
+        $response = $request->is('mcp')
             ? $this->mcpUnavailableResponse($request)
             : response()->view('installation.required', status: Response::HTTP_SERVICE_UNAVAILABLE);
         $response->headers->set('Cache-Control', 'no-store, private');

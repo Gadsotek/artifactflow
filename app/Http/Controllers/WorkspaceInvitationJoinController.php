@@ -10,6 +10,7 @@ use App\Application\Identity\RegisterWorkspaceInvitationUser;
 use App\Application\Identity\RegisterWorkspaceInvitationUserCommand;
 use App\Domain\DomainRuleViolation;
 use App\Http\Requests\Identity\RegisterWorkspaceInvitationUserRequest;
+use App\Http\Support\AuthenticationSessionRevision;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
@@ -33,6 +34,7 @@ final class WorkspaceInvitationJoinController
     public function __construct(
         private readonly RegisterWorkspaceInvitationUser $registerInvitationUser,
         private readonly RecordSuccessfulLogin $recordSuccessfulLogin,
+        private readonly AuthenticationSessionRevision $sessionRevision,
     ) {
     }
 
@@ -107,6 +109,7 @@ final class WorkspaceInvitationJoinController
         // Session and login side effects run only after the account+membership commit.
         Auth::login($registration->user);
         $request->session()->regenerate();
+        $this->sessionRevision->bind($request, $registration->user);
         $this->recordSuccessfulLogin->handle($registration->user);
         $request->session()->put('current_workspace_uid', $registration->membership->workspace_uid);
 

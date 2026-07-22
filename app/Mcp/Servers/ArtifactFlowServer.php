@@ -14,7 +14,6 @@ use App\Mcp\Tools\RevertTool;
 use App\Mcp\Tools\SearchTool;
 use App\Mcp\Tools\UpdateTool;
 use Laravel\Mcp\Server;
-use Laravel\Mcp\Transport\JsonRpcResponse;
 
 final class ArtifactFlowServer extends Server
 {
@@ -47,47 +46,4 @@ final class ArtifactFlowServer extends Server
         UpdateTool::class,
         RevertTool::class,
     ];
-
-    /**
-     * Laravel MCP 0.9 passes a non-object params member into a typed constructor,
-     * which becomes an HTTP 500 before its JSON-RPC exception mapper can respond.
-     * Keep malformed callers on the protocol error path while the package is 0.x.
-     */
-    public function handle(string $rawMessage): void
-    {
-        $message = json_decode($rawMessage, true);
-
-        if (is_array($message) && array_key_exists('params', $message) && !is_array($message['params'])) {
-            $requestId = $message['id'] ?? null;
-            $requestId = is_int($requestId) || is_string($requestId) ? $requestId : null;
-            $this->transport->send(JsonRpcResponse::error(
-                $requestId,
-                -32602,
-                'Invalid params: The [params] member must be an object.',
-            )->toJson());
-
-            return;
-        }
-
-        if (
-            is_array($message)
-            && ($message['method'] ?? null) === 'tools/call'
-            && isset($message['params'])
-            && is_array($message['params'])
-            && array_key_exists('arguments', $message['params'])
-            && !is_array($message['params']['arguments'])
-        ) {
-            $requestId = $message['id'] ?? null;
-            $requestId = is_int($requestId) || is_string($requestId) ? $requestId : null;
-            $this->transport->send(JsonRpcResponse::error(
-                $requestId,
-                -32602,
-                'Invalid params: The [arguments] member must be an object.',
-            )->toJson());
-
-            return;
-        }
-
-        parent::handle($rawMessage);
-    }
 }

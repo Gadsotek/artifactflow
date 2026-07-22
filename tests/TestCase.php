@@ -4,12 +4,28 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use App\Http\Support\AuthenticationSessionRevision;
+use App\Models\User;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Http\UploadedFile;
 use RuntimeException;
 
 abstract class TestCase extends BaseTestCase
 {
+    public function actingAs(Authenticatable $user, $guard = null): static
+    {
+        parent::actingAs($user, $guard);
+
+        if ($user instanceof User && ($guard === null || $guard === 'web')) {
+            $this->withSession([
+                AuthenticationSessionRevision::SESSION_KEY => $user->auth_revision,
+            ]);
+        }
+
+        return $this;
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

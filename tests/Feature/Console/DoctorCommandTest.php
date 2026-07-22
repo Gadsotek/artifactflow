@@ -100,6 +100,7 @@ final class DoctorCommandTest extends TestCase
             'app.create_user_password' => '',
             'app.reset_user_password' => '',
             'pages.artifact_max_bytes' => 2_000_000,
+            'pages.max_markdown_bytes' => 1_000_000,
             'pages.max_html_bytes' => 1_000_000,
             'filesystems.disks.artifacts.visibility' => 'private',
         ]);

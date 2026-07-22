@@ -256,7 +256,10 @@ final readonly class RemoveWorkspaceMember
                 throw new LogicException('Owned pages require a resolved replacement owner.');
             }
 
-            $page->forceFill(['owner_user_uid' => $replacementOwnerUserUid])->save();
+            $page->forceFill([
+                'owner_user_uid' => $replacementOwnerUserUid,
+                'metadata_revision' => $page->metadata_revision + 1,
+            ])->save();
             $this->searchVectors->refreshPage($page->uid);
             $this->ownershipTransfers->record(
                 page: $page,

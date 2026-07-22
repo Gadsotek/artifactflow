@@ -9,6 +9,8 @@ use App\Application\Identity\TrustedDeviceManager;
 use App\Application\Identity\TwoFactorPendingChallenge;
 use App\Application\Identity\VerifyTwoFactorCode;
 use App\Http\Requests\Auth\TwoFactorChallengeRequest;
+use App\Http\Support\AuthenticationSessionRevision;
+use App\Http\Support\PasswordResetTokenReviewNotice;
 use App\Http\Support\SafeIntendedRedirect;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -24,6 +26,8 @@ final readonly class TwoFactorChallengeController
         private VerifyTwoFactorCode $verifyTwoFactorCode,
         private TrustedDeviceManager $trustedDevices,
         private SafeIntendedRedirect $safeIntendedRedirect,
+        private AuthenticationSessionRevision $sessionRevision,
+        private PasswordResetTokenReviewNotice $tokenReviewNotice,
     ) {
     }
 
@@ -84,6 +88,8 @@ final readonly class TwoFactorChallengeController
         Auth::login($user, $remember);
         $recordSuccessfulLogin->handle($user);
         $request->session()->regenerate();
+        $this->sessionRevision->bind($request, $user);
+        $this->tokenReviewNotice->consume($request, $user);
         $this->safeIntendedRedirect->forgetUnsafeIntendedUrl($request);
 
         $redirect = redirect()->intended(route('dashboard', absolute: false));

@@ -9,6 +9,8 @@ use App\Application\Identity\TrustedDeviceManager;
 use App\Application\Identity\TwoFactorPendingChallenge;
 use App\Http\Middleware\RequireRecentPasswordConfirmation;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Support\AuthenticationSessionRevision;
+use App\Http\Support\PasswordResetTokenReviewNotice;
 use App\Http\Support\SafeIntendedRedirect;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,6 +23,8 @@ final class AuthenticatedSessionController
         private readonly SafeIntendedRedirect $safeIntendedRedirect,
         private readonly TwoFactorPendingChallenge $pendingChallenge,
         private readonly TrustedDeviceManager $trustedDevices,
+        private readonly AuthenticationSessionRevision $sessionRevision,
+        private readonly PasswordResetTokenReviewNotice $tokenReviewNotice,
     ) {
     }
 
@@ -45,6 +49,8 @@ final class AuthenticatedSessionController
         Auth::login($user, $request->remember());
         $recordSuccessfulLogin->handle($user);
         $request->session()->regenerate();
+        $this->sessionRevision->bind($request, $user);
+        $this->tokenReviewNotice->consume($request, $user);
         if (!$user->hasEnabledTwoFactor()) {
             $request->session()->put(
                 RequireRecentPasswordConfirmation::SESSION_KEY,

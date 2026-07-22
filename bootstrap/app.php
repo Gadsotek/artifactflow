@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Middleware\AddSecurityHeaders;
+use App\Http\Middleware\EnforceCurrentAuthenticationRevision;
 use App\Http\Middleware\EnforceMcpOrigin;
 use App\Http\Middleware\EnforceRuntimeRoleSurface;
 use App\Http\Middleware\EnforceTwoFactorEnrollment;
@@ -26,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'web',
             RejectArtifactHostRuntime::class,
             'auth',
+            EnforceCurrentAuthenticationRevision::class,
             EnforceTwoFactorEnrollment::class,
             'throttle:artifactflow-authenticated',
         ],

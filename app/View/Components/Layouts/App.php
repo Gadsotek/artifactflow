@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\View\Components\Layouts;
 
 use App\Application\Administration\RealtimeConfiguration;
+use App\Http\Support\PasswordResetTokenReviewNotice;
 use App\Models\Page;
 use App\Models\User;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
@@ -35,6 +36,8 @@ final class App extends Component
     public string $newPageUrl;
 
     public ?string $realtimeConfigJson;
+
+    public ?int $passwordResetTokenReviewCount;
 
     /**
      * @throws JsonException
@@ -72,6 +75,10 @@ final class App extends Component
         $this->realtimeConfigJson = $realtimeConfig === null
             ? null
             : json_encode($realtimeConfig, JSON_THROW_ON_ERROR);
+        $tokenReviewCount = $request->session()->get(PasswordResetTokenReviewNotice::SESSION_KEY);
+        $this->passwordResetTokenReviewCount = is_int($tokenReviewCount) && $tokenReviewCount > 0
+            ? $tokenReviewCount
+            : null;
     }
 
     public function render(): View

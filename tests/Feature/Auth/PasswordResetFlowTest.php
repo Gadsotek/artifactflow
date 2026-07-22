@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Auth;
 
 use App\Application\Identity\CreatePersonalWorkspaceForUser;
+use App\Application\Identity\ResetUserPassword;
 use App\Application\Mcp\McpAccessTokenIssuer;
 use App\Models\AuditEntry;
 use App\Models\DomainEvent;
@@ -18,6 +19,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\SendQueuedNotifications;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -246,6 +248,38 @@ final class PasswordResetFlowTest extends TestCase
 
         $this->assertTrue(Hash::check('old secure password', $user->refresh()->password));
         $this->assertSame(0, DomainEvent::query()->where('event_type', 'user.password_reset')->count());
+    }
+
+    public function test_in_flight_old_password_login_is_invalidated_after_a_completed_password_reset(): void
+    {
+        $user = $this->createUser('Reset Race User', 'reset-race@example.test', 'old secure password');
+        $resetTriggered = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$resetTriggered, $user): void {
+            $sql = strtolower($query->sql);
+
+            if (
+                $resetTriggered
+                || !str_starts_with($sql, 'select * from "users"')
+                || !in_array($user->email, $query->bindings, true)
+            ) {
+                return;
+            }
+
+            $resetTriggered = true;
+            app(ResetUserPassword::class)->handle($user, 'new secure password');
+        });
+
+        $this->post('/login', [
+            'email' => $user->email,
+            'password' => 'old secure password',
+        ])->assertRedirect('/dashboard');
+
+        $this->assertTrue($resetTriggered);
+        $this->assertTrue(Hash::check('new secure password', $user->refresh()->password));
+        Auth::forgetGuards();
+        $this->get('/dashboard')->assertRedirect('/login');
+        $this->assertGuest();
     }
 
     public function test_password_reset_submit_response_is_uniform_for_unknown_email_and_bad_token(): void

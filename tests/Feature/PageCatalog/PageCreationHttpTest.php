@@ -975,6 +975,7 @@ final class PageCreationHttpTest extends TestCase
         $version = PageVersion::query()->where('page_uid', $page->uid)->sole();
         $url = app(ArtifactPreviewUrl::class)->temporaryUrl($page, $version);
         config([
+            'pages.max_markdown_bytes' => 16,
             'pages.max_html_bytes' => 16,
             'pages.artifact_max_bytes' => 16,
         ]);

@@ -110,6 +110,34 @@
                     {{ $slot }}
                 </main>
             </div>
+
+            @if ($passwordResetTokenReviewCount !== null)
+                <dialog
+                    class="artifactflow-editor-dialog af-compact-dialog"
+                    data-auto-open-editor-dialog
+                    data-editor-dialog
+                    data-password-reset-token-review-notice
+                    aria-labelledby="password-reset-token-review-title"
+                >
+                    <div class="artifactflow-editor-dialog-panel">
+                        <div class="af-dialog-header">
+                            <div>
+                                <p class="af-eyebrow">Account security</p>
+                                <h2 id="password-reset-token-review-title">Review your MCP tokens</h2>
+                                <p>
+                                    Your password was recently reset.
+                                    Your {{ $passwordResetTokenReviewCount }} active MCP {{ $passwordResetTokenReviewCount === 1 ? 'token was' : 'tokens were' }} not revoked.
+                                    Review {{ $passwordResetTokenReviewCount === 1 ? 'it' : 'them' }} to make sure you recognize every credential.
+                                </p>
+                            </div>
+                            <button class="artifactflow-editor-dialog-close" data-close-editor-dialog type="button" aria-label="Dismiss token review notice">Dismiss</button>
+                        </div>
+                        <div class="flex justify-end p-6">
+                            <a class="af-primary-button" href="{{ route('settings.mcp-tokens.index') }}">Review tokens</a>
+                        </div>
+                    </div>
+                </dialog>
+            @endif
         @else
             <main class="min-h-screen">
                 {{ $slot }}
