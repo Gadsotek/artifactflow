@@ -1,10 +1,14 @@
 # ArtifactFlow Roadmap
 
-ArtifactFlow's first open-source alpha has shipped, and the current alpha line remains feature-frozen while it gathers real team feedback. Work should stay focused on security, correctness, release readiness, documentation, and small usability fixes to existing behavior. New authorization or content-boundary models belong in deliberate post-alpha work informed by that feedback.
+ArtifactFlow is a self-hosted, versioned artifact vault for deliberate outputs created with AI. It preserves the artifact, its authoritative source or original, retained versions, searchable content, ownership, permissions, previews, and audit history. It is not agent memory, a chat archive, or an AI generation platform.
+
+The first open-source alpha has shipped, and the current alpha line remains feature-frozen while it gathers real team feedback. Alpha work should stay focused on security, correctness, release readiness, documentation, and small usability fixes to existing behavior. The active product-design focus is expanding the vault from Markdown and self-contained HTML into searchable PDF and Word document artifacts without weakening its authorization, version, storage, or preview boundaries.
 
 This roadmap records direction, not a release promise. Every item still requires tests-first implementation and the security gates in `AGENTS.md`.
 
 Public summary: https://artifactflow.app/roadmap/
+
+Artifact identity and version semantics: [docs/ARTIFACT-LIFECYCLE.md](docs/ARTIFACT-LIFECYCLE.md)
 
 ## Alpha boundary
 
@@ -51,7 +55,9 @@ Required security properties:
 6. Rate-limit creation and redemption, record non-secret create/revoke/redeem audit events, and give access managers a clear inventory with expiry, status, and last-redemption metadata.
 7. Add browser-level proof for token leakage, one-time concurrency, revocation/expiry, uniform failures, and the HTML sandbox boundary before enabling the feature.
 
-## Beta candidate: searchable PDF pages
+## Focus: searchable PDF artifacts
+
+Tracking: [GitHub issue #32](https://github.com/Gadsotek/artifactflow/issues/32)
 
 PDF upload is deferred until beta. A PDF should participate in the same workspace catalog, permissions, lifecycle, versioning, tags, and search experience as Markdown pages and HTML artifacts, while remaining a distinct non-executable content type.
 
@@ -84,7 +90,42 @@ PDFs must not be converted into executable HTML or rendered directly in the auth
 - deleting or hard-deleting a PDF removes every original, rendered derivative, OCR artifact, and search projection required by the existing retention rules;
 - browser tests prove the reader cannot execute PDF-provided active content or access app-origin credentials.
 
-## Beta candidate: nested shared workspaces
+## Focus: searchable Word document artifacts
+
+Tracking: [GitHub issue #33](https://github.com/Gadsotek/artifactflow/issues/33)
+
+Word document support is focused on modern `.docx` files. Legacy binary `.doc` and macro-enabled `.docm` files remain outside the first design. A Word document should participate in the same workspace catalog, permissions, lifecycle, versioning, tags, search, preview, download, and MCP experience as other artifacts.
+
+Planned experience:
+
+- upload a DOCX artifact into a personal or shared workspace with the usual title, description, category, tags, and owner;
+- extract paragraphs, headings, lists, tables, links, document properties, and other useful text into permission-aware search;
+- provide a safe, non-executable preview without injecting converted document HTML into the authenticated application DOM;
+- download the authorized original while keeping it in private storage;
+- replace the document by appending an immutable artifact version and retaining the original plus extracted-text history for each version;
+- define how an optional generator source, such as Markdown or Python, can be preserved beside a generated DOCX without pretending that every uploaded document has one.
+
+DOCX is a ZIP/XML container, not trusted text. Processing must reject malformed packages, external relationships, macros, embedded active content, oversized decompression, excessive part counts, parser exhaustion, and unsupported encryption before any derived preview becomes available.
+
+### Security and processing plan
+
+1. Define compressed and expanded byte limits, part-count limits, parser time, memory, relationship, image, table, and text-extraction limits.
+2. Validate the package signature, content types, relationships, and ZIP structure rather than trusting the extension or browser-supplied MIME type.
+3. Parse and convert only in an isolated worker whose OS or container boundary denies outbound network access and enforces hard resource limits.
+4. Keep the original private. Render previews into non-executable derivatives, or use an equally isolated viewer boundary, without allowing document links, embedded objects, or converted markup to inherit the app origin.
+5. Escape extracted text and metadata everywhere they appear. A parser or preview failure must remain visible and must never make the original public.
+6. Apply workspace and page authorization consistently to upload, processing status, preview, download, search snippets, MCP access, version history, archival, deletion, and every derivative.
+
+### Required proof before beta
+
+- ordinary DOCX files become searchable and previewable with useful structure retained;
+- replacing a Word document appends a version and removes stale extracted text from current search results;
+- malformed ZIPs, zip bombs, external relationships, macros, embedded objects, encrypted files, and parser-exhaustion inputs fail safely;
+- restricted titles, snippets, extracted text, originals, preview derivatives, and processing status never leak through search, Library, direct URLs, MCP, logs, or jobs;
+- deletion and retention rules remove the original, extracted text, preview derivatives, and any attached generator source for the affected version;
+- browser tests prove document previews cannot execute document-provided active content or access app-origin credentials.
+
+## Later beta candidate: nested shared workspaces
 
 Nested workspaces are deferred until after alpha feedback. [Confluence Cloud currently keeps spaces flat](https://support.atlassian.com/confluence-cloud/docs/navigate-spaces/) and nests content inside each space; ArtifactFlow would therefore be making a deliberate product choice rather than copying Confluence parity.
 

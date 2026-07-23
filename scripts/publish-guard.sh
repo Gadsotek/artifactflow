@@ -7,6 +7,7 @@ set -euo pipefail
 
 public_paths=(
     "docs/ARCHITECTURE.md"
+    "docs/ARTIFACT-LIFECYCLE.md"
     "docs/OPERATIONS.md"
     "docs/architecture/README.md"
     "docs/architecture/overview.svg"
@@ -16,6 +17,7 @@ public_paths=(
 
 published_docs=(
     "docs/ARCHITECTURE.md"
+    "docs/ARTIFACT-LIFECYCLE.md"
     "docs/OPERATIONS.md"
     "docs/architecture/README.md"
     "docs/architecture/overview.svg"
@@ -52,6 +54,7 @@ readme_links=(
     "docs/architecture/overview.svg"
     "docs/architecture/workflows.svg"
     "docs/ARCHITECTURE.md"
+    "docs/ARTIFACT-LIFECYCLE.md"
     "docs/OPERATIONS.md"
     "THREAT-MODEL.md"
 )

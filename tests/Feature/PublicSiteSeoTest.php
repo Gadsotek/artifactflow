@@ -19,6 +19,7 @@ final class PublicSiteSeoTest extends TestCase
         'site/mcp/index.html' => 'https://artifactflow.app/mcp/',
         'site/self-hosting/index.html' => 'https://artifactflow.app/self-hosting/',
         'site/engineering-harness/index.html' => 'https://artifactflow.app/engineering-harness/',
+        'site/workflow/index.html' => 'https://artifactflow.app/workflow/',
         'site/roadmap/index.html' => 'https://artifactflow.app/roadmap/',
     ];
 
@@ -119,6 +120,35 @@ final class PublicSiteSeoTest extends TestCase
 
         $this->assertCount(count(self::PAGES), array_unique($titles));
         $this->assertCount(count(self::PAGES), array_unique($descriptions));
+    }
+
+    public function test_every_public_page_keeps_the_engineering_harness_second_in_main_navigation(): void
+    {
+        $expectedLinks = [
+            ['Product', '/#product'],
+            ['Harness', '/engineering-harness/'],
+            ['Safety', '/security/'],
+            ['MCP', '/mcp/'],
+            ['Self-host', '/self-hosting/'],
+            ['Roadmap', '/roadmap/'],
+            ['GitHub ↗', 'https://github.com/Gadsotek/artifactflow'],
+        ];
+
+        foreach (array_keys(self::PAGES) as $relativePath) {
+            $xpath = $this->htmlXPath(base_path($relativePath));
+            $links = $xpath->query('//nav[@aria-label="Main navigation"]/a');
+
+            $this->assertNotFalse($links);
+            $this->assertSame(count($expectedLinks), $links->length, $relativePath);
+
+            foreach ($expectedLinks as $index => [$label, $href]) {
+                $link = $links->item($index);
+
+                $this->assertInstanceOf(DOMElement::class, $link);
+                $this->assertSame($label, trim($link->textContent), $relativePath);
+                $this->assertSame($href, $link->getAttribute('href'), $relativePath);
+            }
+        }
     }
 
     /**
@@ -228,12 +258,12 @@ final class PublicSiteSeoTest extends TestCase
         }
     }
 
-    public function test_every_page_loads_early_theme_control_and_only_the_gallery_loads_deferred_gallery_code(): void
+    public function test_every_page_loads_early_theme_control_and_only_interactive_pages_load_deferred_site_code(): void
     {
         foreach (array_keys(self::PAGES) as $relativePath) {
             $xpath = $this->htmlXPath(base_path($relativePath));
             $this->assertSame(
-                '/assets/site.css?v=20260722-2',
+                '/assets/site.css?v=20260723-3',
                 $this->singleAttribute($xpath, '//link[@rel="stylesheet"]', 'href', $relativePath),
             );
 
@@ -245,23 +275,26 @@ final class PublicSiteSeoTest extends TestCase
             $toggles = $xpath->query('//button[@data-theme-toggle]');
             $lightMarks = $xpath->query('//header//img[@src="/assets/artifactflow-mark.svg"]');
             $darkMarks = $xpath->query('//header//img[@src="/assets/artifactflow-mark-light.svg"]');
+            $themeIcons = $xpath->query('//button[@data-theme-toggle]//*[local-name()="svg"]');
             $this->assertNotFalse($toggles);
             $this->assertNotFalse($lightMarks);
             $this->assertNotFalse($darkMarks);
+            $this->assertNotFalse($themeIcons);
             $this->assertSame(1, $toggles->length);
             $this->assertSame(1, $lightMarks->length);
             $this->assertSame(1, $darkMarks->length);
+            $this->assertSame(2, $themeIcons->length, sprintf('%s must use two aligned SVG theme icons.', $relativePath));
 
             $scripts = $xpath->query('//script[@src]');
             $this->assertNotFalse($scripts);
 
-            if ($relativePath === 'site/index.html') {
+            if (in_array($relativePath, ['site/index.html', 'site/mcp/index.html'], true)) {
                 $this->assertSame(2, $scripts->length);
                 $this->assertSame(
                     'defer',
                     $this->singleAttribute(
                         $xpath,
-                        '//script[@src="/assets/site.js?v=20260722-2"]',
+                        '//script[@src="/assets/site.js?v=20260723-1"]',
                         'defer',
                         $relativePath,
                     ),
@@ -271,6 +304,22 @@ final class PublicSiteSeoTest extends TestCase
             }
 
             $this->assertSame(1, $scripts->length, sprintf('%s only needs the theme control.', $relativePath));
+        }
+    }
+
+    public function test_every_public_image_declares_intrinsic_dimensions(): void
+    {
+        foreach (array_keys(self::PAGES) as $relativePath) {
+            $xpath = $this->htmlXPath(base_path($relativePath));
+            $images = $xpath->query('//img');
+
+            $this->assertNotFalse($images);
+
+            foreach ($images as $image) {
+                $this->assertInstanceOf(DOMElement::class, $image);
+                $this->assertTrue($image->hasAttribute('width'), sprintf('%s has an image without width.', $relativePath));
+                $this->assertTrue($image->hasAttribute('height'), sprintf('%s has an image without height.', $relativePath));
+            }
         }
     }
 
@@ -289,6 +338,33 @@ final class PublicSiteSeoTest extends TestCase
         $this->assertStringContainsString(':root[data-theme="dark"]', $css);
         $this->assertStringContainsString(':root:not([data-theme="light"])', $css);
         $this->assertStringContainsString('.brand-mark-on-dark', $css);
+        $this->assertStringContainsString('--theme-toggle-sun: #fff;', $css);
+        $this->assertStringContainsString('--theme-toggle-moon: #000;', $css);
+        $this->assertStringContainsString('color: var(--theme-toggle-sun);', $css);
+        $this->assertStringContainsString('color: var(--theme-toggle-moon);', $css);
+        $this->assertSame(2, substr_count($css, '--theme-toggle-moon: #fff;'));
+    }
+
+    public function test_theme_control_uses_a_touch_friendly_target(): void
+    {
+        $css = file_get_contents(base_path('site/assets/site.css'));
+
+        $this->assertIsString($css);
+        $this->assertMatchesRegularExpression(
+            '/\.theme-toggle\s*\{[^}]*width:\s*4\.5rem;[^}]*height:\s*2\.75rem;[^}]*\}/s',
+            $css,
+        );
+    }
+
+    public function test_static_site_javascript_is_in_the_repository_lint_and_format_gates(): void
+    {
+        $package = file_get_contents(base_path('package.json'));
+        $eslint = file_get_contents(base_path('eslint.config.js'));
+
+        $this->assertIsString($package);
+        $this->assertIsString($eslint);
+        $this->assertSame(3, substr_count($package, 'site/assets/*.js'));
+        $this->assertStringContainsString("'site/assets/*.js'", $eslint);
     }
 
     public function test_shared_styles_follow_the_system_dark_mode_without_client_side_theming(): void
@@ -300,6 +376,45 @@ final class PublicSiteSeoTest extends TestCase
         $this->assertStringContainsString('color-scheme: dark', $css);
         $this->assertStringContainsString('--paper: #0d0f13', $css);
         $this->assertStringNotContainsString('localStorage', $css);
+    }
+
+    public function test_gallery_intro_keeps_readable_distance_from_the_section_edge(): void
+    {
+        $css = file_get_contents(base_path('site/assets/site.css'));
+
+        $this->assertIsString($css);
+        $this->assertStringNotContainsString(".gallery {\n  padding-top: 0;", $css);
+    }
+
+    public function test_safety_cards_keep_dark_surfaces_when_the_site_uses_the_light_theme(): void
+    {
+        $css = file_get_contents(base_path('site/assets/site.css'));
+
+        $this->assertIsString($css);
+        $this->assertMatchesRegularExpression(
+            '/\.safety \.split-card\s*\{[^}]*color:\s*var\(--white\);[^}]*border-color:\s*rgba\(255, 253, 248, 0\.28\);[^}]*background:\s*rgba\(255, 255, 255, 0\.05\);[^}]*\}/s',
+            $css,
+        );
+    }
+
+    public function test_harness_describes_approval_hooks_as_bypassable_policy(): void
+    {
+        $harness = file_get_contents(base_path('site/engineering-harness/index.html'));
+
+        $this->assertIsString($harness);
+        $this->assertStringContainsString(
+            '<h2>Human approval remains the rule for consequential external actions.</h2>',
+            $harness,
+        );
+        $this->assertStringContainsString('<strong>Defense in depth, not hostile containment</strong>', $harness);
+        $this->assertStringContainsString('These controls are bypassable.', $harness);
+        $this->assertStringContainsString('workflow guardrails for cooperative agent hosts', $harness);
+        $this->assertStringContainsString('unrestricted host access', $harness);
+        $this->assertStringContainsString('cannot prove that every possible execution path will comply', $harness);
+        $this->assertStringNotContainsString(
+            '<h2>Automation stops at consequential external actions.</h2>',
+            $harness,
+        );
     }
 
     public function test_homepage_publishes_responsive_modern_screenshot_sources(): void
@@ -403,6 +518,314 @@ final class PublicSiteSeoTest extends TestCase
             $roadmapPage,
         );
         $this->assertStringContainsString('https://artifactflow.app/roadmap/', $llms);
+    }
+
+    public function test_llms_txt_uses_the_proposed_markdown_structure(): void
+    {
+        $llms = file_get_contents(base_path('site/llms.txt'));
+
+        $this->assertIsString($llms);
+        $this->assertMatchesRegularExpression('/\A# ArtifactFlow\n\n> .+\n/', $llms);
+        $this->assertStringContainsString('## Product', $llms);
+        $this->assertStringContainsString(
+            '- [Home](https://artifactflow.app/):',
+            $llms,
+        );
+        $this->assertStringContainsString('## Repository documentation', $llms);
+        $this->assertStringContainsString(
+            '- [Threat model](https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md):',
+            $llms,
+        );
+        $this->assertDoesNotMatchRegularExpression('/^- [^[]+:\s+https:\/\//m', $llms);
+    }
+
+    public function test_public_copy_frames_artifactflow_as_a_versioned_artifact_vault(): void
+    {
+        $homepage = file_get_contents(base_path('site/index.html'));
+        $readme = file_get_contents(base_path('README.md'));
+        $agents = file_get_contents(base_path('AGENTS.md'));
+        $llms = file_get_contents(base_path('site/llms.txt'));
+
+        $this->assertIsString($homepage);
+        $this->assertIsString($readme);
+        $this->assertIsString($agents);
+        $this->assertIsString($llms);
+        $this->assertStringContainsString(
+            '<h1>Keep the artifact. Keep the source. Keep every version.</h1>',
+            $homepage,
+        );
+        $this->assertStringContainsString('The missing artifact layer between AI chat and production.', $homepage);
+        $this->assertStringContainsString('Preserves the output, not the conversation.', $homepage);
+        $this->assertStringContainsString('A self-hosted, versioned artifact vault', $homepage);
+        $this->assertStringContainsString('href="/engineering-harness/"', $homepage);
+        $this->assertStringNotContainsString('artifactflow.untrusted_data', $homepage);
+        $this->assertStringNotContainsString('PostgreSQL with verified TLS', $homepage);
+        $this->assertStringContainsString('versioned artifact vault', $readme);
+        $this->assertStringContainsString('versioned artifact vault', $agents);
+        $this->assertStringContainsString('versioned artifact vault', $llms);
+        $this->assertStringNotContainsString('internal knowledge base', $readme);
+        $this->assertStringNotContainsString('Confluence on steroids', $agents);
+    }
+
+    public function test_homepage_conversion_elements_preserve_the_locked_positioning(): void
+    {
+        $homepage = file_get_contents(base_path('site/index.html'));
+
+        $this->assertIsString($homepage);
+        $this->assertStringContainsString(
+            '<a class="button" href="/self-hosting/#local">Evaluate locally →</a>',
+            $homepage,
+        );
+        $this->assertStringContainsString('<p class="kicker">The gap after generation</p>', $homepage);
+        $this->assertStringNotContainsString('<p class="kicker">A category of its own</p>', $homepage);
+
+        $workflow = strpos($homepage, 'id="workflow"');
+        $agents = strpos($homepage, 'id="agents"');
+        $gallery = strpos($homepage, 'id="gallery"');
+        $safety = strpos($homepage, 'id="safety"');
+
+        $this->assertIsInt($workflow);
+        $this->assertIsInt($agents);
+        $this->assertIsInt($gallery);
+        $this->assertIsInt($safety);
+        $this->assertTrue($workflow < $agents);
+        $this->assertTrue($agents < $gallery);
+        $this->assertTrue($gallery < $safety);
+        $this->assertStringNotContainsString('id="capabilities"', $homepage);
+        $this->assertStringNotContainsString('Inside the current alpha', $homepage);
+        $this->assertStringNotContainsString('The vault around the artifact.', $homepage);
+        $this->assertStringNotContainsString('class="feature-grid"', $homepage);
+    }
+
+    public function test_homepage_hero_names_isolated_runnable_html_as_the_first_use_case(): void
+    {
+        $homepage = file_get_contents(base_path('site/index.html'));
+
+        $this->assertIsString($homepage);
+        $this->assertStringContainsString(
+            'run untrusted single-file HTML on a separate origin',
+            $homepage,
+        );
+        $this->assertStringContainsString('<p class="hero-wedge">', $homepage);
+        $this->assertStringContainsString('<strong>Built first for executable HTML</strong>', $homepage);
+        $this->assertStringContainsString(
+            'run their untrusted code on a separate origin away from the app that holds your login.',
+            $homepage,
+        );
+        $this->assertStringContainsString(
+            '<div class="signal"><strong>Runnable HTML</strong><span>Separate origin, no app cookies</span></div>',
+            $homepage,
+        );
+        $this->assertStringNotContainsString('safely run untrusted HTML', $homepage);
+    }
+
+    public function test_homepage_compresses_audience_terminology_proof_and_evaluation_copy(): void
+    {
+        $homepage = file_get_contents(base_path('site/index.html'));
+        $mcpPage = file_get_contents(base_path('site/mcp/index.html'));
+
+        $this->assertIsString($homepage);
+        $this->assertIsString($mcpPage);
+        $this->assertStringContainsString(
+            'Built for technical teams that regularly create small internal tools, operational documents, diagrams, and prototypes with AI.',
+            $homepage,
+        );
+        $this->assertStringContainsString('<p class="artifact-terms">', $homepage);
+        $this->assertStringContainsString(
+            '<strong>Terminology:</strong> An artifact is the managed record. Each version retains its authoritative source or original; previews and runtimes are derived ways to use it.',
+            $homepage,
+        );
+        $this->assertStringNotContainsString(
+            'future binary documents retain private originals and bounded derivatives',
+            $homepage,
+        );
+        $this->assertStringContainsString(
+            'Keep their authoritative source, find them later, preview them, run generated HTML away from the authenticated app, and preserve every revision.',
+            $homepage,
+        );
+        $this->assertStringContainsString('<h2>One vault for people and agents.</h2>', $homepage);
+        $this->assertStringContainsString('against an isolated test database', $mcpPage);
+        $this->assertStringContainsString('<p class="kicker">Understand the boundaries</p>', $homepage);
+        $this->assertStringContainsString(
+            '<h2 id="details-heading">Follow each concern to its source.</h2>',
+            $homepage,
+        );
+        $this->assertStringNotContainsString(
+            'The workflow is simple. Its boundaries are explicit.',
+            $homepage,
+        );
+        $this->assertStringNotContainsString('<p class="kicker">The explanations</p>', $homepage);
+        $this->assertStringNotContainsString('The homepage stays focused on the artifact lifecycle.', $homepage);
+        $this->assertStringNotContainsString('Select any image to inspect it full size.', $homepage);
+        $this->assertSame(4, substr_count($homepage, '<span class="preview-hint">View full size</span>'));
+        $this->assertStringContainsString(
+            'Executable artifacts are currently limited to single-file HTML. Network access is intentionally constrained by the runtime security model.',
+            $homepage,
+        );
+        $this->assertStringNotContainsString(
+            'Every write keeps the normal version and audit path.',
+            $homepage,
+        );
+        $this->assertStringContainsString('<h2>Run ArtifactFlow locally.</h2>', $homepage);
+        $this->assertStringContainsString(
+            'Evaluate the artifact workflow and security boundaries against your own use case.',
+            $homepage,
+        );
+        $this->assertStringContainsString(
+            '<a class="button button-primary" href="/self-hosting/#local">Run locally →</a>',
+            $homepage,
+        );
+        $this->assertStringContainsString(
+            '<a class="button button-light" href="https://github.com/Gadsotek/artifactflow">Inspect the source on GitHub ↗</a>',
+            $homepage,
+        );
+        $this->assertStringNotContainsString('Why not GitHub', $homepage);
+        $this->assertStringNotContainsString('Why not Notion', $homepage);
+    }
+
+    public function test_mcp_proof_is_static_by_default_and_animates_only_on_request(): void
+    {
+        $homepage = file_get_contents(base_path('site/index.html'));
+        $mcpPage = file_get_contents(base_path('site/mcp/index.html'));
+        $css = file_get_contents(base_path('site/assets/site.css'));
+        $javascript = file_get_contents(base_path('site/assets/site.js'));
+
+        $this->assertIsString($homepage);
+        $this->assertIsString($mcpPage);
+        $this->assertIsString($css);
+        $this->assertIsString($javascript);
+        $this->assertStringContainsString(
+            'data-mcp-animation data-mcp-layout="compact"',
+            $homepage,
+        );
+        $this->assertSame(3, substr_count($homepage, 'class="mcp-compact-step"'));
+        $this->assertStringContainsString('data-mcp-step="search"', $homepage);
+        $this->assertStringContainsString('data-mcp-step="read"', $homepage);
+        $this->assertStringContainsString('data-mcp-step="update"', $homepage);
+        $this->assertStringContainsString('page_uid: 01ky7atfyh…0hef0f', $homepage);
+        $this->assertStringContainsString('base_version_uid: 01KY7ATFYM…53H9NN', $homepage);
+        $this->assertStringNotContainsString('page_uid: 01ky7atf…', $homepage);
+        $this->assertStringNotContainsString('base_version_uid: 01KY7ATF…', $homepage);
+        $this->assertStringContainsString('data-mcp-play>▶ Replay</button>', $homepage);
+        $this->assertStringContainsString(
+            'Captured from real MCP calls against an isolated test database. Identifiers are shortened for display; the full session is on the MCP page.',
+            $homepage,
+        );
+        $this->assertStringContainsString('href="/mcp/#session">See the full MCP session →</a>', $homepage);
+        $this->assertStringNotContainsString('Show more', $homepage);
+
+        $this->assertStringContainsString('<section id="session">', $mcpPage);
+        $this->assertStringContainsString('data-mcp-animation data-mcp-layout="session"', $mcpPage);
+        $this->assertSame(4, substr_count($mcpPage, 'class="mcp-session-step"'));
+        $this->assertStringContainsString('data-mcp-step="conflict"', $mcpPage);
+        $this->assertStringContainsString('"type": "conflict"', $mcpPage);
+        $this->assertStringContainsString('"retryable": true', $mcpPage);
+        $this->assertStringContainsString('/assets/site.js?v=20260723-1', $mcpPage);
+
+        $this->assertStringContainsString('@keyframes mcp-compact-cycle', $css);
+        $this->assertStringContainsString('@keyframes mcp-session-cycle', $css);
+        $this->assertStringContainsString('.mcp-animation.is-playing', $css);
+        $this->assertStringContainsString(
+            "@media (prefers-reduced-motion: reduce) {\n  html",
+            $css,
+        );
+        $this->assertStringContainsString(
+            ".mcp-animation.is-playing [data-mcp-step] {\n    animation: none;",
+            $css,
+        );
+        $this->assertStringContainsString('[data-mcp-play]', $javascript);
+        $this->assertStringContainsString("animation.classList.add('is-playing');", $javascript);
+        $this->assertStringContainsString("window.matchMedia('(prefers-reduced-motion: reduce)')", $javascript);
+    }
+
+    public function test_repository_descriptions_share_the_artifact_vault_category(): void
+    {
+        $expectedCopy = [
+            'CONTRIBUTING.md' => 'versioned artifact vault',
+            'SECURITY.md' => 'versioned artifact vault',
+            'docs/ARCHITECTURE.md' => 'versioned artifact vault',
+            'docs/architecture/README.md' => 'versioned artifact vault',
+            'site/README.md' => 'versioned artifact vault',
+            'package.json' => 'Versioned artifact vault',
+            'composer.json' => 'Versioned artifact vault',
+        ];
+
+        foreach ($expectedCopy as $relativePath => $positioning) {
+            $copy = file_get_contents(base_path($relativePath));
+
+            $this->assertIsString($copy);
+            $this->assertStringContainsString($positioning, $copy, sprintf('%s must share the product category.', $relativePath));
+        }
+    }
+
+    public function test_roadmap_prioritizes_pdf_and_word_document_artifacts(): void
+    {
+        $roadmap = file_get_contents(base_path('ROADMAP.md'));
+        $roadmapPage = file_get_contents(base_path('site/roadmap/index.html'));
+
+        $this->assertIsString($roadmap);
+        $this->assertIsString($roadmapPage);
+        $this->assertStringContainsString('## Focus: searchable PDF artifacts', $roadmap);
+        $this->assertStringContainsString('## Focus: searchable Word document artifacts', $roadmap);
+        $this->assertStringContainsString('Searchable PDF artifacts', $roadmapPage);
+        $this->assertStringContainsString('Searchable Word documents', $roadmapPage);
+        $this->assertStringContainsString('DOCX', $roadmapPage);
+        $this->assertStringContainsString(
+            '[GitHub issue #32](https://github.com/Gadsotek/artifactflow/issues/32)',
+            $roadmap,
+        );
+        $this->assertStringContainsString(
+            '[GitHub issue #33](https://github.com/Gadsotek/artifactflow/issues/33)',
+            $roadmap,
+        );
+        $this->assertStringContainsString(
+            'href="https://github.com/Gadsotek/artifactflow/issues/32">Track PDF issue #32 ↗</a>',
+            $roadmapPage,
+        );
+        $this->assertStringContainsString(
+            'href="https://github.com/Gadsotek/artifactflow/issues/33">Track Word issue #33 ↗</a>',
+            $roadmapPage,
+        );
+    }
+
+    public function test_artifact_workflow_separates_current_invariants_guidance_and_roadmap_direction(): void
+    {
+        $workflowDocumentation = file_get_contents(base_path('docs/ARTIFACT-LIFECYCLE.md'));
+        $workflowPage = file_get_contents(base_path('site/workflow/index.html'));
+        $homepage = file_get_contents(base_path('site/index.html'));
+        $readme = file_get_contents(base_path('README.md'));
+        $llms = file_get_contents(base_path('site/llms.txt'));
+
+        $this->assertIsString($workflowDocumentation);
+        $this->assertIsString($workflowPage);
+        $this->assertIsString($homepage);
+        $this->assertIsString($readme);
+        $this->assertIsString($llms);
+
+        foreach ([$workflowDocumentation, $workflowPage] as $workflow) {
+            $this->assertStringContainsString('Current invariant', $workflow);
+            $this->assertStringContainsString('Product guidance', $workflow);
+            $this->assertStringContainsString('Roadmap direction', $workflow);
+            $this->assertStringContainsString('stable artifact UID', $workflow);
+            $this->assertStringContainsString('Guidance, not an enforced invariant', $workflow);
+            $this->assertStringContainsString('Draft is a lifecycle status, not mutable content', $workflow);
+            $this->assertStringContainsString('creates no version', $workflow);
+            $this->assertStringContainsString('metadata revision', $workflow);
+            $this->assertStringContainsString('not a content-version snapshot', $workflow);
+            $this->assertStringContainsString('PDF and DOCX support is roadmap work, not current behavior', $workflow);
+            $this->assertStringContainsString('Per-version catalog metadata is not promised', $workflow);
+            $this->assertStringContainsString('optional generator source', $workflow);
+        }
+
+        $this->assertStringContainsString('href="/workflow/"', $homepage);
+        $this->assertStringContainsString(
+            '- [Artifact workflow](docs/ARTIFACT-LIFECYCLE.md):',
+            $readme,
+        );
+        $this->assertStringContainsString(
+            '- [Artifact workflow](https://artifactflow.app/workflow/):',
+            $llms,
+        );
     }
 
     private function htmlXPath(string $path): DOMXPath

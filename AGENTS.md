@@ -4,13 +4,15 @@ This file is the source of truth for AI agents and automation working in this re
 
 ## Project Context
 
-ArtifactFlow is a security-first Laravel application for storing, organizing, searching, versioning, and safely rendering AI-generated Markdown/wiki pages and HTML artifacts.
+ArtifactFlow is a security-first Laravel application and self-hosted, versioned artifact vault for deliberate tools and documents created with AI.
 
 Upstream repository: `https://github.com/Gadsotek/artifactflow`.
 Default commit author: `Gadsotek <14184492+Gadsotek@users.noreply.github.com>`.
 Project license: `AGPL-3.0-or-later` with a separate commercial licensing path documented in `COMMERCIAL.md`.
 
-The long-term product direction is an internal executable knowledge base, roughly "Confluence on steroids" for rich generated artifacts and architecture knowledge. The current MVP must stay narrower but now includes Markdown/wiki pages plus single-file HTML artifact pages: authenticated users can create Markdown pages with inline Mermaid diagrams, paste or upload single-file HTML artifacts into personal or shared workspaces, preview HTML safely from an isolated origin, tag/search/version pages, control access through workspace roles and page overrides, and share internal authenticated links.
+The long-term product direction is a durable system of record for AI-generated artifacts: preserve the authoritative source or original, every retained version, searchable content, ownership, permissions, safe previews or execution, and audit history. ArtifactFlow preserves the output, not the conversation. It is not agent memory, a vector database, a chat archive, an AI generation platform, or static hosting.
+
+The current MVP stays narrower and includes Markdown/wiki pages plus single-file HTML artifact pages: authenticated users can create Markdown pages with inline Mermaid diagrams, paste or upload single-file HTML artifacts into personal or shared workspaces, preview HTML safely from an isolated origin, tag/search/version pages, control access through workspace roles and page overrides, and share internal authenticated links. Approved AI clients can retrieve authoritative source and preserve new versions through MCP under the same authorization, scanning, concurrency, and audit rules as the web interface. Searchable PDF and Word document artifacts are the next product focus, but they remain roadmap work until their security boundaries and implementation are deliberately completed.
 
 Do not drift the MVP into full Confluence parity, public marketplace, AI generation platform, ZIP uploader, approval workflow system, enterprise RBAC suite, non-Mermaid diagram rendering, or public sharing product unless the project direction and architecture are deliberately updated first.
 

@@ -1,6 +1,6 @@
 # Cross-Repository AI Harness Contract
 
-ArtifactFlow is the security-sensitive reference workload for an evolving AI engineering harness
+ArtifactFlow is the security-sensitive, versioned artifact vault used as the reference workload for an evolving AI engineering harness
 used with Codex and Claude Code. The workflow combines durable repository instructions, tests before
 production behavior, explicit agent handoffs, conservative command and file guards, isolated PHP and
 browser test databases, adversarial review, human approval boundaries, and a comprehensive release

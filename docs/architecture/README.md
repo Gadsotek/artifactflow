@@ -1,5 +1,7 @@
 # ArtifactFlow: Architecture (one-pager)
 
+ArtifactFlow is a self-hosted, versioned artifact vault for tools and documents created with AI. These diagrams show how the current HTML and Markdown artifact types move through that vault and how untrusted HTML execution stays isolated from authenticated data.
+
 Two self-contained SVGs (open in any browser; embeddable in the main README):
 
 > For the full **written** architecture — layers, application modules, the runtime-role split — see [`../ARCHITECTURE.md`](../ARCHITECTURE.md). This page is just the diagram index.

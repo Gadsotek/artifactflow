@@ -2,7 +2,7 @@
   "$schema": "https://getcomposer.org/schema.json",
   "name": "artifactflow/artifactflow",
   "type": "project",
-  "description": "Self-hosted vault for safely storing, searching, versioning, and previewing AI-generated HTML artifacts.",
+  "description": "Versioned artifact vault for tools and documents created with AI.",
   "homepage": "https://artifactflow.app",
   "keywords": [
     "artifactflow",

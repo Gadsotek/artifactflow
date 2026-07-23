@@ -1,8 +1,9 @@
 # Contributing to ArtifactFlow
 
-Thanks for your interest. ArtifactFlow is a self-hosted vault for safely storing, searching,
-versioning, and previewing AI-generated HTML artifacts and Markdown. It is **security-first** and
-**test-first**; contributions are held to that bar.
+Thanks for your interest. ArtifactFlow is a self-hosted, versioned artifact vault for tools and
+documents created with AI. It preserves authoritative artifacts and versions for people and agents,
+with searchable content, governance, and safe previews where applicable. It is **security-first**
+and **test-first**; contributions are held to that bar.
 
 > **Security issues do NOT go here.** Never open a public issue or PR that describes a live
 > vulnerability; follow [`SECURITY.md`](SECURITY.md) for private disclosure.

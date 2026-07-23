@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://artifactflow.app/</loc></url>
+  <url><loc>https://artifactflow.app/workflow/</loc></url>
   <url><loc>https://artifactflow.app/security/</loc></url>
   <url><loc>https://artifactflow.app/mcp/</loc></url>
   <url><loc>https://artifactflow.app/self-hosting/</loc></url>
