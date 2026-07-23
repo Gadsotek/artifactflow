@@ -12,7 +12,7 @@ export default [
     js.configs.recommended,
     prettier,
     {
-        files: ['resources/js/**/*.js'],
+        files: ['resources/js/**/*.js', 'site/assets/*.js'],
         languageOptions: {
             ecmaVersion: 2024,
             sourceType: 'module',

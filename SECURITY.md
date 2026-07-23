@@ -1,8 +1,9 @@
 # Security Policy
 
-ArtifactFlow is a **security-sensitive** application: its core function is to store and render
-**untrusted, AI-generated HTML** and Markdown for multiple tenants. We take vulnerability reports
-seriously and appreciate responsible disclosure.
+ArtifactFlow is a **security-sensitive**, self-hosted, versioned artifact vault for tools and
+documents created with AI. Its current core includes storing and rendering **untrusted,
+AI-generated HTML** and Markdown for multiple tenants. We take vulnerability reports seriously and
+appreciate responsible disclosure.
 
 ## Reporting a vulnerability
 

@@ -1,7 +1,9 @@
 # site/
 
-Static marketing/landing page for ArtifactFlow, published separately from the
-application. It is a deliberately plain multipage site: each route is an
+Static marketing/landing page for ArtifactFlow, a self-hosted, versioned artifact vault for tools
+and documents created with AI. It is published separately from the application and deliberately
+keeps the homepage focused on the product. The artifact-workflow, security, MCP, self-hosting,
+roadmap, and engineering-harness subpages hold the deeper explanations. Each route is an
 `index.html`, shared presentation lives in `assets/site.css`, and every page
 loads the small `assets/theme.js` color-mode control before rendering. Only the
 homepage gallery loads the deferred `assets/site.js` script. All content remains
@@ -12,6 +14,7 @@ access begins only when a visitor follows an external link.
 Canonical routes:
 
 - `/`
+- `/workflow/`
 - `/security/`
 - `/mcp/`
 - `/self-hosting/`

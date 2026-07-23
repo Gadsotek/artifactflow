@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Artifact Identity, Drafts, and Versions | ArtifactFlow</title>
+<meta name="description" content="How ArtifactFlow assigns stable artifact identity, appends immutable content versions, separates draft status from unsaved preview, and plans document artifacts.">
+<link rel="canonical" href="https://artifactflow.app/workflow/">
+<meta property="og:title" content="Artifact Identity, Drafts, and Versions | ArtifactFlow">
+<meta property="og:description" content="Understand stable artifact identity, immutable revisions, draft lifecycle state, metadata changes, and future PDF and DOCX versions.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://artifactflow.app/workflow/">
+<meta property="og:site_name" content="ArtifactFlow">
+<meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Artifact Identity, Drafts, and Versions | ArtifactFlow">
+<meta name="twitter:description" content="One artifact keeps a stable identity while immutable content revisions, lifecycle state, and metadata changes remain explicit.">
+<meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
+<meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#0d0f13" media="(prefers-color-scheme: dark)" data-theme-color="dark">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script src="/assets/theme.js?v=20260722-2" data-theme-bootstrap></script>
+    <link rel="stylesheet" href="/assets/site.css?v=20260723-3">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "Artifact identity, drafts, and versions",
+  "description": "ArtifactFlow's current identity and version rules, product guidance, and document-artifact roadmap direction.",
+  "url": "https://artifactflow.app/workflow/",
+  "isPartOf": { "@id": "https://artifactflow.app/#website" }
+}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="shell nav">
+    <a class="brand" href="/" aria-label="ArtifactFlow home"><img class="brand-mark brand-mark-on-light" src="/assets/artifactflow-mark.svg" alt="" aria-hidden="true" width="512" height="512"><img class="brand-mark brand-mark-on-dark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512">Artifact<span class="brand-flow">Flow</span></a>
+    <nav class="nav-links" aria-label="Main navigation">
+      <a href="/#product">Product</a>
+      <a href="/engineering-harness/">Harness</a>
+      <a href="/security/">Safety</a>
+      <a href="/mcp/">MCP</a>
+      <a href="/self-hosting/">Self-host</a>
+      <a href="/roadmap/">Roadmap</a>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="3.5"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path></svg></span><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><path d="M20.4 15.3A8.5 8.5 0 0 1 8.7 3.6a8.5 8.5 0 1 0 11.7 11.7Z"></path></svg></span></button>
+      <a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <header class="detail-hero">
+    <div class="shell">
+      <p class="eyebrow">Artifact workflow</p>
+      <h1>One artifact. Stable identity. Immutable revisions.</h1>
+      <p class="lede">A managed artifact keeps one durable identity while its authoritative content evolves through retained versions. Lifecycle status, unsaved preview, and catalog metadata remain separate concepts rather than hidden forms of mutable content.</p>
+      <div class="detail-actions">
+        <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/ARTIFACT-LIFECYCLE.md">Read the source document ↗</a>
+        <a class="button" href="/mcp/#session">See a versioned MCP write →</a>
+      </div>
+    </div>
+  </header>
+
+  <article class="section">
+    <div class="article-shell article-grid">
+      <div class="article-content">
+        <section id="labels">
+          <p class="kicker">Read the labels first</p>
+          <h2>Current behavior and future direction are not mixed.</h2>
+          <ul class="detail-list">
+            <li><strong>Current invariant</strong>Behavior enforced by the application today.</li>
+            <li><strong>Product guidance</strong>A choice ArtifactFlow recommends to people and agents, but cannot infer from content alone.</li>
+            <li><strong>Roadmap direction</strong>A design constraint for future format work, not an alpha feature claim.</li>
+          </ul>
+        </section>
+
+        <section id="identity">
+          <p class="kicker">Current invariant</p>
+          <h2>The managed record stays stable while content moves forward.</h2>
+          <p>A page is the managed artifact. It has a stable artifact UID that remains the same while its content changes. Every stored content revision receives its own version UID and version number, and the artifact points to the current version.</p>
+          <p>Creation stores immutable version one. A content update appends another immutable version and advances the current pointer. Retained versions remain in history, while links, access, ownership, hierarchy, taxonomy, and audit attach to the stable artifact. When the configured per-artifact limit is exceeded, ArtifactFlow prunes the oldest whole versions and records that pruning.</p>
+        </section>
+
+        <section id="same-or-new">
+          <p class="kicker">Product guidance</p>
+          <h2>Keep the identity when the artifact still does the same job.</h2>
+          <p>Append a version when the purpose, durable link, expected audience, ownership, and access remain conceptually continuous. A complete rewrite can still be a new version of the same calculator or runbook.</p>
+          <p>Create a new artifact when both results should coexist, the work has forked into another purpose, audience, owner, or access boundary, or carrying the old identity forward would make its links and history misleading.</p>
+          <div class="callout">
+            <strong>Guidance, not an enforced invariant</strong>
+            <p>ArtifactFlow cannot determine semantic identity by counting changed bytes. The person or agent performing the write chooses whether the result continues an existing artifact or begins an independent lifecycle.</p>
+          </div>
+        </section>
+
+        <section id="drafts">
+          <p class="kicker">Current invariant</p>
+          <h2>Draft is a lifecycle status, not mutable content.</h2>
+          <p>A newly created artifact starts in Draft with an immutable first version. Every saved content update appends an immutable version, including while it remains in Draft. Editing Approved or Deprecated content returns the artifact to Draft because the revised content has not retained the previous status.</p>
+          <p>A status transition does not itself create a content version. An unsaved single-file HTML draft preview is different again: it renders temporary editor input on the isolated artifact origin, creates no version, and does not alter the stored artifact.</p>
+          <ul class="detail-list">
+            <li><strong>Draft status</strong>Saved lifecycle state backed by immutable content versions.</li>
+            <li><strong>Unsaved draft preview</strong>Ephemeral editor content that has not been persisted.</li>
+          </ul>
+        </section>
+
+        <section id="metadata">
+          <p class="kicker">Current invariant</p>
+          <h2>Content history and catalog changes use different concurrency paths.</h2>
+          <p>A content version retains the authoritative payload. Catalog metadata such as title, description, category, parent, owner, and tags belongs to the stable artifact record.</p>
+          <p>Metadata writes use a separate optimistic metadata revision and produce domain events and audit entries. A metadata revision is not a content-version snapshot, and content history does not currently promise to restore historical catalog metadata.</p>
+        </section>
+
+        <section id="formats">
+          <p class="kicker">Current formats</p>
+          <h2>Source, result, and preview depend on the payload type.</h2>
+          <div class="split-cards">
+            <article class="split-card">
+              <h3>Single-file HTML</h3>
+              <p>The retained payload is both source and executable result. It runs on the separate artifact origin under the documented iframe, CSP, signed-capability, and no-app-cookie boundary.</p>
+            </article>
+            <article class="split-card">
+              <h3>Markdown and Mermaid</h3>
+              <p>The retained payload is Markdown source. The application derives its rendered view, and untrusted raw HTML or JavaScript never executes in the authenticated application DOM.</p>
+            </article>
+          </div>
+        </section>
+
+        <section id="documents">
+          <p class="kicker">Roadmap direction</p>
+          <h2>Document formats keep the original and derive bounded ways to use it.</h2>
+          <p>PDF and DOCX support is roadmap work, not current behavior. Each replacement is intended to append an immutable version with a private original. Bounded, isolated processing may derive searchable text, OCR output, structural metadata, and a safe non-executable preview.</p>
+          <p>The planned boundary keeps authorization consistent across search, preview, download, version history, MCP, processing status, and deletion. Per-version catalog metadata is not promised; that needs a separate product and data-model decision.</p>
+          <p>For generated DOCX, preserving an optional generator source such as Markdown or Python beside the binary original remains an open design question. ArtifactFlow must not pretend every uploaded document has one.</p>
+          <div class="page-links">
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/issues/32"><strong>PDF issue #32 ↗</strong><span>Private originals, bounded extraction, OCR, search, safe reading, and immutable replacement.</span></a>
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/issues/33"><strong>DOCX issue #33 ↗</strong><span>ZIP and relationship limits, extracted structure, safe preview, and optional source pairing.</span></a>
+            <a class="page-link" href="/roadmap/"><strong>Product roadmap</strong><span>Candidate scope, required proof, and explicit non-promises.</span></a>
+            <a class="page-link" href="/security/"><strong>Security model</strong><span>Current executable HTML boundary and documented residual risks.</span></a>
+          </div>
+        </section>
+      </div>
+
+      <aside class="detail-aside" aria-label="On this page">
+        <strong>On this page</strong>
+        <a href="#labels">Statement labels</a>
+        <a href="#identity">Artifact identity</a>
+        <a href="#same-or-new">Same or new artifact</a>
+        <a href="#drafts">Drafts</a>
+        <a href="#metadata">Content and metadata</a>
+        <a href="#formats">Current formats</a>
+        <a href="#documents">PDF and DOCX direction</a>
+      </aside>
+    </div>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <div class="footer-grid">
+      <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">A self-hosted, versioned artifact vault for tools and documents created with AI.</p></div>
+      <div class="footer-column"><strong>Explore</strong><a href="/">Home</a><a href="/workflow/" aria-current="page">Artifact workflow</a><a href="/security/">Safety</a><a href="/mcp/">MCP server</a><a href="/self-hosting/">Self-hosting</a><a href="/engineering-harness/">Engineering harness</a><a href="/roadmap/">Roadmap</a></div>
+      <div class="footer-column"><strong>Repository</strong><a href="https://github.com/Gadsotek/artifactflow">Source</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/docs/ARTIFACT-LIFECYCLE.md">Artifact lifecycle</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/ROADMAP.md">Roadmap</a></div>
+      <div class="footer-column"><strong>License</strong><span>AGPL-3.0-or-later</span><a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a><a href="mailto:gadsotek@gmail.com">Contact</a></div>
+    </div>
+    <div class="footer-end"><span>© 2026 Gadsotek</span><span>Preserves the output, not the conversation.</span></div>
+  </div>
+</footer>
+</body>
+</html>

@@ -6,7 +6,7 @@ Primary audience: operators, engineering teams, security reviewers, maintainers,
 
 > Looking for the diagrams? See the [architecture one-pager](architecture/README.md) (`overview.svg` + `workflows.svg`). **This** document is the full written architecture; that one is just the diagram index.
 
-ArtifactFlow is a security-first Laravel modular monolith for internal Markdown/wiki pages and isolated single-file HTML artifact pages. PostgreSQL is the source of truth. The app is not event-sourced and is not fully event-driven: command handlers synchronously persist important state changes, audit entries, and durable domain events in the same transaction, while normal relational tables hold current state. The durable `domain_events` table is a transactional outbox: a scheduled relay (`artifactflow:dispatch-domain-events`, run every minute by the `scheduler` role) dispatches recorded events after commit, and the single listener registered today is observational (it logs dispatch). Side effects move onto listeners only when asynchronous retry is worth more than same-transaction atomicity.
+ArtifactFlow is a security-first Laravel modular monolith and self-hosted, versioned artifact vault for tools and documents created with AI. The current alpha preserves Markdown/wiki pages and isolated single-file HTML artifact pages, their authoritative source, retained versions, searchable content, permissions, and audit history. PostgreSQL is the source of truth. The app is not event-sourced and is not fully event-driven: command handlers synchronously persist important state changes, audit entries, and durable domain events in the same transaction, while normal relational tables hold current state. The durable `domain_events` table is a transactional outbox: a scheduled relay (`artifactflow:dispatch-domain-events`, run every minute by the `scheduler` role) dispatches recorded events after commit, and the single listener registered today is observational (it logs dispatch). Side effects move onto listeners only when asynchronous retry is worth more than same-transaction atomicity.
 
 The central architecture decision is the two-origin artifact boundary. Untrusted HTML never executes on the authenticated application origin. It is stored privately, authorized through the app, signed with a short-lived HMAC URL, and served only by a separate artifact-host runtime with no app cookies.
 
@@ -96,6 +96,8 @@ Current business tables include:
 ## Page Model
 
 The core unit is a page:
+
+The product-facing rules for stable identity, immutable content versions, draft lifecycle state, metadata revisions, and future document payloads are documented in [ARTIFACT-LIFECYCLE.md](ARTIFACT-LIFECYCLE.md).
 
 - Markdown pages store portable Markdown source, render sanitized HTML in the app origin, and support strict Mermaid rendering.
 - HTML artifact pages store a single-file HTML version, never render that HTML in the app origin, and preview through the artifact-host origin.

@@ -1,14 +1,28 @@
 # ArtifactFlow
 
-ArtifactFlow is a self-hosted team library for storing, searching, versioning, and safely previewing AI-generated single-file HTML artifacts, Markdown pages, and Mermaid diagrams. It stores and manages generated content; it does not generate it. Untrusted HTML executes only on a separate cookieless artifact origin.
+> ArtifactFlow is a self-hosted, versioned artifact vault for tools and documents created with AI.
 
-- Home: https://artifactflow.app/
-- Security architecture: https://artifactflow.app/security/
-- MCP server: https://artifactflow.app/mcp/
-- Self-hosting: https://artifactflow.app/self-hosting/
-- Engineering harness: https://artifactflow.app/engineering-harness/
-- Product roadmap: https://artifactflow.app/roadmap/
-- GitHub repository: https://github.com/Gadsotek/artifactflow
-- Threat model: https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md
-- Security policy: https://github.com/Gadsotek/artifactflow/blob/main/SECURITY.md
-- Operations guide: https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md
+ArtifactFlow preserves the output, not the conversation. It keeps the authoritative source or original, every retained version, searchable content, ownership, permissions, safe previews, and audit history. It is not agent memory, a vector database, a chat archive, an AI generator, or a static site generator.
+
+The current public alpha supports Markdown pages, Mermaid diagrams, and self-contained HTML artifacts. Searchable PDF and Word document artifacts are the next product focus. Untrusted HTML executes only on a separate cookieless artifact origin; the security page and threat model document the boundary and its residual risks.
+
+## Product
+
+- [Home](https://artifactflow.app/): Product overview, current screenshots, capabilities, alpha status, and project boundaries.
+- [Artifact workflow](https://artifactflow.app/workflow/): Stable identity, immutable content versions, draft lifecycle state, metadata changes, and format-specific payloads.
+- [Security architecture](https://artifactflow.app/security/): Two-origin isolation, sandbox and CSP controls, signed previews, defense in depth, and residual risks.
+- [MCP server](https://artifactflow.app/mcp/): Current operations, token scopes, authority limits, untrusted-data envelopes, and write safeguards.
+- [Self-hosting](https://artifactflow.app/self-hosting/): Local evaluation and production requirements for origins, runtime roles, PostgreSQL, storage, secrets, and mail.
+- [Product roadmap](https://artifactflow.app/roadmap/): Current alpha boundary, post-alpha and beta candidates, required proof, and explicit non-promises.
+
+## Repository documentation
+
+- [GitHub repository](https://github.com/Gadsotek/artifactflow): Source code, installation instructions, license, and project status.
+- [Artifact lifecycle](https://github.com/Gadsotek/artifactflow/blob/main/docs/ARTIFACT-LIFECYCLE.md): Authoritative identity, immutable-version, draft, metadata, and future document-payload semantics.
+- [Threat model](https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md): Security boundaries, attacker cases, maintained controls, and documented residual risks.
+- [Security policy](https://github.com/Gadsotek/artifactflow/blob/main/SECURITY.md): Supported versions and vulnerability reporting process.
+- [Operations guide](https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md): Production configuration, deployment, backup, restore, and release operations.
+
+## Optional
+
+- [Engineering harness](https://artifactflow.app/engineering-harness/): Case study for tested Codex and Claude Code guardrails, isolated test environments, and human approval boundaries.

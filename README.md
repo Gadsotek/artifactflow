@@ -2,9 +2,9 @@
 
 # ArtifactFlow
 
-**A self-hosted vault for safely storing, versioning, searching, and previewing untrusted AI‑generated HTML artifacts and Markdown: generated code runs sealed in a two‑origin sandbox, never on your app.**
+**A self-hosted, versioned artifact vault for tools and documents created with AI. Keep the authoritative source or original, every retained version, searchable content, ownership, permissions, safe previews, and audit history.**
 
-[artifactflow.app](https://artifactflow.app) · [Roadmap](https://artifactflow.app/roadmap/) · [Source](https://github.com/Gadsotek/artifactflow)
+[artifactflow.app](https://artifactflow.app) · [Artifact workflow](https://artifactflow.app/workflow/) · [Roadmap](https://artifactflow.app/roadmap/) · [Source](https://github.com/Gadsotek/artifactflow)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Commercial license](https://img.shields.io/badge/license-commercial_available-green.svg)](COMMERCIAL.md)
@@ -19,7 +19,13 @@
 > [!WARNING]
 > **Alpha — self‑hosted, evolving, not independently audited.** ArtifactFlow is a 0.x internal‑team tool, not a hardened multi‑tenant SaaS. Its security rests on a **two‑origin split that is mandatory, not optional**: a real deployment needs **two separate HTTPS origins** (the app and the artifact host), and the production boot gate **refuses to start** if that boundary — or any other part of its security contract — is incomplete. Expect breaking changes between alpha revisions; pin a revision for anything you depend on. Read the [threat model](THREAT-MODEL.md) (including its documented residuals) and the [operations guide](docs/OPERATIONS.md) before inviting users.
 
-AI tools now generate dashboards, diagrams, runbooks, and one‑file HTML apps by the dozen. But those artifacts are **untrusted code**: you can't just open them on a page that carries your session cookie. ArtifactFlow is the place to keep them: an internal knowledge base where AI‑generated Markdown and single‑file HTML stay searchable, versioned, and *runnable*, without ever letting untrusted HTML execute on your authenticated origin.
+AI tools now produce useful dashboards, diagrams, runbooks, reports, and one-file HTML apps by the dozen. A chat is temporary, a new software project is often too heavy, and static hosting does not provide a searchable system of record with ownership, permissions, versions, and audit history.
+
+ArtifactFlow is **the missing artifact layer between AI chat and production**. It turns a deliberate AI output into a managed team asset without requiring every calculator, one-pager, or document to become its own repository and deployment.
+
+> **Preserves the output, not the conversation.** ArtifactFlow is not agent memory, a vector database, a chat archive, an AI generator, or a static site generator. Agents and people preserve artifacts in the vault; teams search, preview, run, update, and govern them.
+
+The current public alpha supports Markdown pages, Mermaid diagrams, and self-contained HTML artifacts. Searchable PDF and Word document artifacts are the next product focus; see the [roadmap](ROADMAP.md).
 
 ![ArtifactFlow dashboard](site/assets/app-dashboard.jpg)
 
@@ -44,15 +50,15 @@ The artifact's JavaScript really *runs*, but in an opaque origin with no cookies
 - Artifacts must be a **single self‑contained HTML file**: CSP and defense-in-depth guards block ordinary external subresources and connection APIs, so CDN‑linked dependencies (React, Tailwind, Chart.js…) will not load. Script-initiated top-level navigation cannot be fully prevented, and WebRTC blocking is browser-dependent; the opaque origin still keeps app cookies and tenant data out of reach. Ask your AI to inline everything into one file. This is a deliberate boundary, not a limitation to work around; [the threat model documents the residuals and browser boundary](THREAT-MODEL.md).
 - Best‑effort secret‑blocking on save (credentials, private keys, JWTs, provider tokens) without persisting matched values; suspicious JS patterns are recorded as advisory findings. Scanning is advisory and bypassable by light obfuscation — a clean scan is not proof no secret was stored; isolation is the boundary.
 
-**📚 Knowledge base**
-- Markdown/wiki pages with a rich editor over portable Markdown source, inline Mermaid diagrams (strict, no external calls), and authorization‑aware `[[Page Name]]` wiki links. *(Markdown pages are a complementary surface, not the headline — that's safely running untrusted AI‑generated HTML/JS. The rich editor is a convenience over the **authoritative portable Markdown source**; switch to source view for byte‑exact control.)*
+**📦 Versioned artifact vault**
+- Markdown/wiki pages with a rich editor over portable Markdown source, inline Mermaid diagrams (strict, no external calls), and authorization‑aware `[[Page Name]]` wiki links. Markdown and HTML are the current artifact types within the vault; neither format defines the product category. The rich editor is a convenience over the **authoritative portable Markdown source**; switch to source view for byte‑exact control.
 - Immutable, retention‑capped versioning (oldest pruned past a configurable limit) with historical previews, source diffs against the current version, restore, archive/unarchive, and Admin‑only hard delete. Historical HTML stays on the isolated artifact origin under the same opaque sandbox as the current preview.
 - Weighted PostgreSQL full‑text search across metadata, tags, and extracted content, including text inside artifact source.
 - Installation-wide tags stay consistent across workspaces; categories remain workspace-local, can be created while saving a page, and are qualified by workspace in cross-workspace filters. Moving a page reuses or creates its category in the target workspace, and the Library can create and open a new shared workspace directly.
 - Personal + shared workspaces, Reader/Editor/Admin roles, and per‑page permission overrides that never leak restricted titles or UIDs. System Admin is an installation/account role, not a content superuser: page and workspace access still requires normal membership or an explicit page grant.
 - An installation-wide coworker directory makes registered human users (including System Admins) discoverable by name, email, and UID to other authenticated humans. Those fields identify people but confer no authority: every page grant and workspace membership change is independently authorized server-side, and automation service accounts are excluded from human pickers. Explicit page Reader and Editor grants can be given without workspace membership; page Admin grants remain limited to members of the page workspace.
 
-**🤖 AI‑first (MCP)**
+**🤖 First-class MCP interface**
 - An [MCP](https://modelcontextprotocol.io) server using the official Laravel MCP transport (app‑origin only) lets approved AI clients `list_workspaces` / `list_taxonomy` / `search` / `read` / `create` / `create_category` / `create_tag` / `update` / `revert`, through the *same* handlers, policies, scanners, optimistic‑concurrency checks, and audit trail as humans. Page creation accepts category and tag names inline; standalone taxonomy writes require live Editor access in an in-scope workspace. Taxonomy discovery returns only searchable tags and workspace-qualified categories the token can reach, with all user-authored labels and slugs in explicit untrusted-data envelopes. Page search/read results include visibility-filtered parent, ancestor path, depth, and direct-child count metadata; inaccessible relatives remain undisclosed.
 - MCP tokens can be read-only or read-write, scoped to selected workspaces, hard-capped to Editor authority (admin power stripped at code level), and receive content as explicit *untrusted-data envelopes*, never a shortcut around permissions.
 
@@ -135,6 +141,7 @@ Read the full [**threat model**](THREAT-MODEL.md) and [operations guide](docs/OP
 
 ## Documentation
 
+- [Artifact workflow](docs/ARTIFACT-LIFECYCLE.md): stable identity, immutable content versions, draft lifecycle state, metadata changes, and future document payloads.
 - [Architecture](docs/ARCHITECTURE.md): layers, application modules, the runtime‑role split.
 - [Roadmap](ROADMAP.md): the alpha scope boundary and post-alpha product directions.
 - [Operations](docs/OPERATIONS.md): deploy, backup/restore, MCP tokens, 2FA break‑glass.

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MCP Server for AI Artifacts | ArtifactFlow</title>
-<meta name="description" content="Connect approved AI clients to a self-hosted Markdown and HTML artifact library through ArtifactFlow's scoped, audited, Editor-capped MCP server.">
+<meta name="description" content="Connect approved AI clients to ArtifactFlow's versioned artifact vault through scoped MCP search, read, create, update, and revert operations.">
 <link rel="canonical" href="https://artifactflow.app/mcp/">
 <meta property="og:title" content="MCP Server for AI Artifacts | ArtifactFlow">
 <meta property="og:description" content="Search, read, create, update, and revert AI artifacts through scoped MCP tools and the same policies used by people.">
@@ -12,23 +12,23 @@
 <meta property="og:url" content="https://artifactflow.app/mcp/">
 <meta property="og:site_name" content="ArtifactFlow">
 <meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
-<meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard in a browser frame beside the product name and self-hosted library description">
+<meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="MCP Server for AI Artifacts | ArtifactFlow">
-<meta name="twitter:description" content="A self-hosted MCP content library with workspace scopes, untrusted-data envelopes, versioning, and audit attribution.">
+<meta name="twitter:description" content="Let approved agents retrieve authoritative source and preserve new artifact versions through scoped, audited MCP access.">
 <meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
-<meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard in a browser frame beside the product name and self-hosted library description">
+<meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
 <meta name="theme-color" content="#0d0f13" media="(prefers-color-scheme: dark)" data-theme-color="dark">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <script src="/assets/theme.js?v=20260722-2" data-theme-bootstrap></script>
-<link rel="stylesheet" href="/assets/site.css?v=20260722-2">
+    <link rel="stylesheet" href="/assets/site.css?v=20260723-3">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "WebPage",
   "name": "MCP Server for AI Artifacts",
-  "description": "ArtifactFlow's scoped MCP interface for its self-hosted artifact library.",
+  "description": "ArtifactFlow's scoped MCP interface for its versioned artifact vault.",
   "url": "https://artifactflow.app/mcp/",
   "isPartOf": { "@id": "https://artifactflow.app/#website" }
 }
@@ -39,14 +39,15 @@
 
 <header class="site-header">
   <div class="shell nav">
-    <a class="brand" href="/" aria-label="ArtifactFlow home"><img class="brand-mark brand-mark-on-light" src="/assets/artifactflow-mark.svg" alt="" aria-hidden="true"><img class="brand-mark brand-mark-on-dark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true">Artifact<span class="brand-flow">Flow</span></a>
+    <a class="brand" href="/" aria-label="ArtifactFlow home"><img class="brand-mark brand-mark-on-light" src="/assets/artifactflow-mark.svg" alt="" aria-hidden="true" width="512" height="512"><img class="brand-mark brand-mark-on-dark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512">Artifact<span class="brand-flow">Flow</span></a>
     <nav class="nav-links" aria-label="Main navigation">
       <a href="/#product">Product</a>
+      <a href="/engineering-harness/">Harness</a>
       <a href="/security/">Safety</a>
       <a href="/mcp/" aria-current="page">MCP</a>
       <a href="/self-hosting/">Self-host</a>
       <a href="/roadmap/">Roadmap</a>
-      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true">☀</span><span aria-hidden="true">☾</span></button>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="3.5"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path></svg></span><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><path d="M20.4 15.3A8.5 8.5 0 0 1 8.7 3.6a8.5 8.5 0 1 0 11.7 11.7Z"></path></svg></span></button>
       <a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a>
     </nav>
   </div>
@@ -56,8 +57,8 @@
   <header class="detail-hero">
     <div class="shell">
       <p class="eyebrow">Model Context Protocol</p>
-      <h1>Give AI clients the same artifact library as the team.</h1>
-      <p class="lede">ArtifactFlow stores and manages content; it does not generate it. Its MCP server lets approved clients work with Markdown pages and single-file HTML artifacts through scoped tokens, normal application policies, immutable versions, and attributable audit history.</p>
+      <h1>Let agents retrieve the source and preserve the next version.</h1>
+      <p class="lede">MCP is the agent interface to ArtifactFlow's versioned artifact vault. Approved clients can find, read, create, update, and revert Markdown pages and single-file HTML artifacts through scoped tokens, normal application policies, immutable versions, and attributable audit history.</p>
       <div class="detail-actions">
         <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md#mcp-access">MCP operations guide ↗</a>
         <a class="button" href="https://github.com/Gadsotek/artifactflow">Get the source ↗</a>
@@ -70,9 +71,95 @@
       <div class="article-content">
         <section id="role">
           <p class="kicker">A durable destination</p>
-          <h2>The server manages generated work; it is not an AI generator.</h2>
+          <h2>The server preserves deliberate outputs; it is not agent memory or an AI generator.</h2>
           <p>Connect an MCP-capable coding assistant or internal agent when it needs to find existing architecture knowledge, place a generated runbook into a team workspace, update a dashboard artifact, or revert a page. ArtifactFlow remains the system of record; PostgreSQL and private artifact storage are authoritative.</p>
           <p>Browser users and MCP principals reach the same application handlers. The transport does not bypass workspace membership, per-page grants, scanning, optimistic concurrency, version retention, domain events, or the audit trail.</p>
+        </section>
+
+        <section id="session">
+          <p class="kicker">A real MCP session</p>
+          <h2>Search, read the source, preserve a revision, and reject a stale write.</h2>
+          <p>This sequence was captured through the real MCP endpoint against an isolated test database. It shows selected response fields from one coherent session. Press replay to run the sequence; the page never starts motion on its own.</p>
+          <div class="mcp-animation" data-mcp-animation data-mcp-layout="session" aria-label="Full MCP search, read, update, and stale-write conflict session">
+            <div class="code-card mcp-proof">
+              <header><span>Captured MCP session</span><span>isolated test environment</span></header>
+              <div class="mcp-flow" aria-hidden="true">
+                <span data-mcp-indicator="search"><b>01</b> Search</span>
+                <i></i>
+                <span data-mcp-indicator="read"><b>02</b> Read</span>
+                <i></i>
+                <span data-mcp-indicator="update"><b>03</b> Update</span>
+                <i></i>
+                <span data-mcp-indicator="conflict"><b>04</b> Conflict</span>
+              </div>
+              <div class="mcp-session-stage" id="mcp-full-session">
+                <pre class="mcp-session-step" data-mcp-step="search"><code><span class="dim">tools/call: search</span>
+{
+  "query": "Q3 capacity"
+}
+
+<span class="dim">tools/result: search</span>
+{
+  "results": [{
+    "uid": "01ky7atfyh5k56m1x4sa0hef0f",
+    "title": {
+      "kind": "artifactflow.untrusted_data",
+      "data": "Q3 Capacity Plan"
+    },
+    "type": "markdown",
+    "status": "approved"
+  }]
+}</code></pre>
+                <pre class="mcp-session-step" data-mcp-step="read"><code><span class="dim">tools/call: read</span>
+{
+  "page_uid": "01ky7atfyh5k56m1x4sa0hef0f"
+}
+
+<span class="dim">tools/result: read</span>
+{
+  "uid": "01ky7atfyh5k56m1x4sa0hef0f",
+  "current_version_uid": "01KY7ATFYMVAHRD7BHXZ53H9NN",
+  "content": {
+    "kind": "artifactflow.untrusted_data",
+    "media_type": "text/markdown",
+    "data": "# Q3 Capacity Plan\n\nInitial draft."
+  }
+}</code></pre>
+                <pre class="mcp-session-step" data-mcp-step="update"><code><span class="dim">tools/call: update</span>
+{
+  "page_uid": "01ky7atfyh5k56m1x4sa0hef0f",
+  "content": "# Q3 Capacity Plan\n\nApproved revision from MCP.",
+  "base_version_uid": "01KY7ATFYMVAHRD7BHXZ53H9NN"
+}
+
+<span class="dim">tools/result: update</span>
+{
+  "page_uid": "01ky7atfyh5k56m1x4sa0hef0f",
+  "version_uid": "01KY7ATG2ZQR56Z8M3R407H2NX",
+  "current_version_uid": "01KY7ATG2ZQR56Z8M3R407H2NX"
+}</code></pre>
+                <pre class="mcp-session-step" data-mcp-step="conflict"><code><span class="dim">tools/call: update</span>
+{
+  "page_uid": "01ky7atfyh5k56m1x4sa0hef0f",
+  "content": "# Q3 Capacity Plan\n\nA stale competing revision.",
+  "base_version_uid": "01KY7ATFYMVAHRD7BHXZ53H9NN"
+}
+
+<span class="dim">tools/result: update</span>
+{
+  "type": "conflict",
+  "message": "This page changed since you opened it.",
+  "retryable": true,
+  "current_version_uid": "01KY7ATG2ZQR56Z8M3R407H2NX"
+}</code></pre>
+              </div>
+            </div>
+            <div class="mcp-animation-controls">
+              <button class="button button-primary" type="button" aria-controls="mcp-full-session" data-mcp-play>▶ Replay full session</button>
+              <span data-mcp-status aria-live="polite">Static search frame</span>
+            </div>
+          </div>
+          <p class="transcript-note">The second update deliberately reuses the stale base version. ArtifactFlow returns a retryable conflict and the current version UID instead of silently replacing the accepted revision.</p>
         </section>
 
         <section id="tools">
@@ -139,6 +226,7 @@ export MCP_TOKEN="&lt;token-shown-once&gt;"
           <p class="kicker">Go deeper</p>
           <h2>Plan the token and deployment together.</h2>
           <div class="page-links">
+            <a class="page-link" href="/workflow/"><strong>Artifact workflow</strong><span>Stable identity, immutable versions, draft state, and content-versus-metadata rules.</span></a>
             <a class="page-link" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md#mcp-access"><strong>MCP access operations ↗</strong><span>Token creation, scopes, service accounts, rate limits, and revocation.</span></a>
             <a class="page-link" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/ARCHITECTURE.md#mcp-server"><strong>MCP architecture ↗</strong><span>Transport adapters, authority de-elevation, envelopes, and tool handlers.</span></a>
             <a class="page-link" href="/security/"><strong>HTML security model</strong><span>Why preview grants never travel through MCP results.</span></a>
@@ -150,6 +238,7 @@ export MCP_TOKEN="&lt;token-shown-once&gt;"
       <aside class="detail-aside" aria-label="On this page">
         <strong>On this page</strong>
         <a href="#role">What the server does</a>
+        <a href="#session">Real MCP session</a>
         <a href="#tools">Current tools</a>
         <a href="#tokens">Scopes and authority</a>
         <a href="#untrusted-data">Untrusted-data envelopes</a>
@@ -163,13 +252,14 @@ export MCP_TOKEN="&lt;token-shown-once&gt;"
 <footer class="site-footer">
   <div class="shell">
     <div class="footer-grid">
-      <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">A self-hosted team library for the useful tools and documents your AI creates.</p></div>
-      <div class="footer-column"><strong>Explore</strong><a href="/">Home</a><a href="/security/">Safety</a><a href="/mcp/" aria-current="page">MCP server</a><a href="/self-hosting/">Self-hosting</a><a href="/engineering-harness/">Engineering harness</a><a href="/roadmap/">Roadmap</a></div>
+      <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">A self-hosted, versioned artifact vault for tools and documents created with AI.</p></div>
+      <div class="footer-column"><strong>Explore</strong><a href="/">Home</a><a href="/workflow/">Artifact workflow</a><a href="/security/">Safety</a><a href="/mcp/" aria-current="page">MCP server</a><a href="/self-hosting/">Self-hosting</a><a href="/engineering-harness/">Engineering harness</a><a href="/roadmap/">Roadmap</a></div>
       <div class="footer-column"><strong>Repository</strong><a href="https://github.com/Gadsotek/artifactflow">Source</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md">Threat model</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md">Operations</a></div>
       <div class="footer-column"><strong>License</strong><span>AGPL-3.0-or-later</span><a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a><a href="mailto:gadsotek@gmail.com">Contact</a></div>
     </div>
-    <div class="footer-end"><span>© 2026 Gadsotek</span><span>AI makes it. Your team keeps it.</span></div>
+    <div class="footer-end"><span>© 2026 Gadsotek</span><span>Preserves the output, not the conversation.</span></div>
   </div>
 </footer>
+<script src="/assets/site.js?v=20260723-1" defer></script>
 </body>
 </html>
