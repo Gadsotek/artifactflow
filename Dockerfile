@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM php:8.5.8-cli-trixie@sha256:e2b5f2495f2a268082fbb88d8045511bd770390e062b21c35110be78e082d1a3 AS php-base
+FROM php:8.5.8-cli-trixie@sha256:58b996c35ce0511cdbaa1fc0476a194fd0221097d721ff7df5af0b6f1a3d0202 AS php-base
 
 ARG INSTALL_XDEBUG=0
 
