@@ -427,6 +427,10 @@ make quality-full
 
 `make e2e` is isolated from the normal local development app. It creates a temporary database on `db-test`, starts dedicated `e2e-app` and `e2e-artifact-host` services on `http://localhost:18180` and `http://127.0.0.1:18181` (different hosts on purpose, so app session cookies never reach the artifact origin), runs migrations, routes browser-test setup commands to the isolated app, and drops the temporary database when the run exits. The e2e containers are created with `--env-file docker/e2e.env` (a committed, comments-only interpolation guard), so values from your personal `.env` never leak into the e2e services — their configuration comes only from the compose-file defaults and the `E2E_*` variables the Makefile passes explicitly. Use `E2E_APP_PORT` and `E2E_ARTIFACT_HOST_PORT` if those ports are already occupied.
 
+Every Playwright test runs on Chromium. Tests marked `@artifact-security` also run on Firefox and
+WebKit; add that title tag whenever a regression depends on CSP, iframe sandboxing, origin/cookie
+isolation, nested browsing contexts, browser networking behavior, or Mermaid sanitization.
+
 Run the deterministic draft-capability mutation corpus independently when changing the token
 format, signing context, claim validation, expiry, or content binding:
 
@@ -452,7 +456,8 @@ CI runs:
 - 100% type-coverage enforcement.
 - PCOV line-coverage enforcement against the committed `COVERAGE_MIN` floor.
 - Vite asset build.
-- Playwright E2E suite on Chromium (cross-engine Firefox and WebKit coverage is planned; tracked separately).
+- Full Playwright E2E suite on Chromium, plus the tagged artifact security corpus on Firefox and
+  WebKit.
 - Production Caddy/FrankenPHP image build.
 - Trivy image scan with vulnerability, secret, and misconfiguration scanners.
 - Trivy filesystem scan combining repository secret and misconfiguration checks.
@@ -461,9 +466,9 @@ Nightly audit repeats dependency audits, production image build, and Trivy so ne
 
 ### Manual Safari and iOS security pass
 
-Automated E2E currently runs on Chromium only; Firefox and WebKit remain deferred because the broader
-suite has known engine-specific instability, so an occasional run in released Safari matters more,
-not less. Before a
+Automated E2E runs the full suite on Chromium and the artifact security corpus on Firefox and
+Playwright WebKit. Playwright WebKit is not released Safari and cannot reproduce every macOS/iOS
+integration detail, so an occasional run in released Safari still matters. Before a
 security-sensitive release, and after changing artifact CSP,
 iframe sandbox flags, preview routing, fullscreen behavior, or browser-facing guard code—exercise
 current macOS Safari plus a physical iPhone or iPad Safari. Use a test/staging deployment with real

@@ -115,12 +115,67 @@ final class OriginHostSeparationConfigurationTest extends TestCase
         }
     }
 
-    public function test_playwright_runs_the_e2e_suite_on_chromium(): void
+    public function test_playwright_runs_the_full_suite_on_chromium_and_artifact_security_tests_cross_engine(): void
     {
         $config = $this->readProjectFile('playwright.config.ts');
+        $makefile = $this->readProjectFile('Makefile');
+        $workflow = $this->readProjectFile('.github/workflows/ci.yml');
 
-        $this->assertStringContainsString("name: 'chromium'", $config);
+        foreach (['chromium', 'firefox', 'webkit'] as $project) {
+            $this->assertStringContainsString(sprintf("name: '%s'", $project), $config);
+        }
+
         $this->assertStringContainsString("devices['Desktop Chrome']", $config);
+        $this->assertStringContainsString("devices['Desktop Firefox']", $config);
+        $this->assertStringContainsString("devices['Desktop Safari']", $config);
+        $this->assertStringContainsString('grepInvert: excludeNonArtifactSecurityTests', $config);
+        $this->assertStringContainsString('playwright install --with-deps chromium firefox webkit', $makefile);
+        $this->assertStringContainsString('playwright install-deps chromium firefox webkit', $workflow);
+        $this->assertStringContainsString('playwright install chromium firefox webkit', $workflow);
+
+        $securityCases = [
+            'tests/e2e/editor.spec.ts' => [
+                'HTML draft preview executes only inside an opaque isolated sandbox @artifact-security',
+                'HTML draft preview blocks recursively nested browsing contexts before WebRTC can escape @artifact-security',
+                'HTML draft preview refuses external script sources while inline scripts run @artifact-security',
+            ],
+            'tests/e2e/saved-artifact-preview.spec.ts' => [
+                'saved HTML artifact executes only inside the controller-served sandbox @artifact-security',
+                'historical HTML versions stay inside the artifact-origin sandbox @artifact-security',
+                'preview URL renewal is capped so a self-navigating artifact cannot drain the viewer rate limit @artifact-security',
+            ],
+            'tests/e2e/artifact-cookie-isolation.spec.ts' => [
+                'artifact preview requests carry no application cookies @artifact-security',
+            ],
+            'tests/e2e/mermaid-security.spec.ts' => [
+                'hostile Mermaid source neither executes nor escapes the strict renderer @artifact-security',
+            ],
+        ];
+
+        foreach ($securityCases as $securitySpec => $expectedCases) {
+            $spec = $this->readProjectFile($securitySpec);
+
+            foreach ($expectedCases as $expectedCase) {
+                $this->assertStringContainsString(
+                    $expectedCase,
+                    $spec,
+                    sprintf('%s must opt its artifact-boundary tests into cross-engine coverage.', $securitySpec),
+                );
+            }
+        }
+
+        $specs = glob(base_path('tests/e2e/*.spec.ts'));
+        $this->assertIsArray($specs);
+
+        foreach ($specs as $specPath) {
+            $spec = file_get_contents($specPath);
+            $this->assertIsString($spec);
+            $this->assertStringNotContainsString(
+                'networkidle',
+                $spec,
+                sprintf('%s must use explicit readiness assertions that are stable in WebKit.', $specPath),
+            );
+        }
     }
 
     private function assertHostsDiffer(string $appUrl, string $artifactUrl, string $where): void

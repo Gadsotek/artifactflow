@@ -49,6 +49,14 @@ make audit        # composer audit + npm audit + pinned-sanitizer guard
 make build-prod   # production image builds
 ```
 
+The complete browser suite runs on Chromium. Artifact-boundary regressions whose correctness
+depends on browser enforcement or engine-specific behavior must include `@artifact-security` in
+their Playwright test title; the harness automatically runs those tests on Firefox and WebKit too.
+Use the tag for CSP, iframe sandboxing, artifact-origin routing or cookies, nested contexts,
+browser networking APIs, and Mermaid sanitization—not for ordinary UI/layout coverage. See
+[`tests/e2e/README.md`](tests/e2e/README.md). Playwright WebKit is not released Safari or iOS, so
+the manual Safari/iOS release pass remains required.
+
 Run the full suite via the Makefile only: in particular **use `make test`**, never
 `php artisan test` / `pest` directly (the suite is wired to an isolated test database). The
 project's engineering standards (layered architecture, strict types, command/handler structure, the

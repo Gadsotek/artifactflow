@@ -10,7 +10,7 @@ use DOMXPath;
 use JsonException;
 use Tests\TestCase;
 
-final class MarketingSiteSeoTest extends TestCase
+final class PublicSiteSeoTest extends TestCase
 {
     /** @var array<string, string> */
     private const array PAGES = [
@@ -42,7 +42,7 @@ final class MarketingSiteSeoTest extends TestCase
         'twitter:image:alt',
     ];
 
-    public function test_every_marketing_page_has_unique_complete_search_and_social_metadata(): void
+    public function test_every_public_page_has_unique_complete_search_and_social_metadata(): void
     {
         $titles = [];
         $descriptions = [];
@@ -157,7 +157,7 @@ final class MarketingSiteSeoTest extends TestCase
         $this->assertSame([], array_values(array_diff(array_unique($types), ['WebSite', 'Organization', 'WebPage'])));
     }
 
-    public function test_sitemap_contains_each_canonical_marketing_url_exactly_once(): void
+    public function test_sitemap_contains_each_canonical_public_url_exactly_once(): void
     {
         $path = base_path('site/sitemap.xml');
         $this->assertFileExists($path);
@@ -181,7 +181,7 @@ final class MarketingSiteSeoTest extends TestCase
         $this->assertStringNotContainsString('<lastmod>', $document->saveXML() ?: '');
     }
 
-    public function test_marketing_robots_policy_permits_indexing_without_deciding_training_crawler_policy(): void
+    public function test_public_robots_policy_permits_indexing_without_deciding_training_crawler_policy(): void
     {
         $path = base_path('site/robots.txt');
         $this->assertFileExists($path);
@@ -197,7 +197,7 @@ final class MarketingSiteSeoTest extends TestCase
         $this->assertStringNotContainsString("User-agent: ClaudeBot\n", $robots);
     }
 
-    public function test_root_relative_marketing_links_resolve_to_static_pages_or_assets(): void
+    public function test_root_relative_public_links_resolve_to_static_pages_or_assets(): void
     {
         foreach (array_keys(self::PAGES) as $relativePath) {
             $xpath = $this->htmlXPath(base_path($relativePath));
@@ -340,7 +340,7 @@ final class MarketingSiteSeoTest extends TestCase
         $this->assertSame(630, $dimensions[1]);
     }
 
-    public function test_public_marketing_pages_do_not_use_em_dashes(): void
+    public function test_public_pages_do_not_use_em_dashes(): void
     {
         foreach (array_keys(self::PAGES) as $relativePath) {
             $html = file_get_contents(base_path($relativePath));

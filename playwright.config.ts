@@ -1,8 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const requestedTestGrep = process.env.E2E_GREP ? new RegExp(process.env.E2E_GREP, 'u') : undefined;
+// Every test runs on Chromium. Tests whose title carries @artifact-security
+// additionally run on Firefox and WebKit; see tests/e2e/README.md.
+const excludeNonArtifactSecurityTests = /^(?!.*@artifact-security)/u;
+
 export default defineConfig({
   testDir: './tests/e2e',
-  grep: process.env.E2E_GREP ? new RegExp(process.env.E2E_GREP, 'u') : undefined,
+  grep: requestedTestGrep,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -19,9 +24,15 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-    // Cross-engine Firefox and WebKit coverage is planned but deferred: the
-    // existing suite is flaky on those engines (pervasive `networkidle` waits
-    // trip WebKit; sub-pixel layout trips a tight Firefox assertion). Tracked
-    // separately so the sandbox specs can be hardened and scoped for it.
+    {
+      name: 'firefox',
+      grepInvert: excludeNonArtifactSecurityTests,
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      grepInvert: excludeNonArtifactSecurityTests,
+      use: { ...devices['Desktop Safari'] },
+    },
   ],
 });

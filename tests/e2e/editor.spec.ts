@@ -69,13 +69,13 @@ async function prepareAuthenticatedDraftPreviewFixture(
     'Failed to prepare the draft preview e2e account.',
   );
 
-  await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/dashboard$/u);
 
-  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'domcontentloaded' });
   const createForm = page.locator('[data-html-draft-preview-form]');
   const csrfToken = await createForm.locator('input[name="_token"]').inputValue();
   const workspaceUid = await createForm.locator('select[name="workspace_uid"]').inputValue();
@@ -83,7 +83,7 @@ async function prepareAuthenticatedDraftPreviewFixture(
   // Start the synthetic fixture in a fresh document. The real create page has
   // already imported the preview module; ES modules execute once per document,
   // so setContent() in that same document would not initialise the replacement form.
-  const fixtureResponse = await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
+  const fixtureResponse = await page.goto(`${baseUrl}/up`, { waitUntil: 'domcontentloaded' });
   const csp = fixtureResponse?.headers()['content-security-policy'] ?? '';
   const cspNonce = /'nonce-([^']+)'/u.exec(csp)?.[1] ?? '';
 
@@ -147,7 +147,7 @@ async function openAuthenticatedDraftPreview(page: Page): Promise<void> {
 }
 
 async function loadAppOriginCspNonce(page: Page): Promise<string> {
-  const response = await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
+  const response = await page.goto(`${baseUrl}/up`, { waitUntil: 'domcontentloaded' });
   const csp = response?.headers()['content-security-policy'] ?? '';
   const nonce = /'nonce-([^']+)'/u.exec(csp)?.[1] ?? '';
 
@@ -205,7 +205,7 @@ async function loadEditorFixture(
     `
       : '';
 
-  await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/up`, { waitUntil: 'domcontentloaded' });
   await page.setContent(`
     <!doctype html>
     <html class="dark" data-theme="dark">
@@ -1250,7 +1250,7 @@ test('Markdown source round-trips an image into the rich editor as a real <img>'
 test('upload creation mode swaps content for the file input but keeps the organize metadata and derives a title from the file', async ({
   page,
 }) => {
-  await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/up`, { waitUntil: 'domcontentloaded' });
   await page.setContent(`
     <!doctype html>
     <html>
@@ -1373,7 +1373,7 @@ test('HTML paste mode does not redispatch an unchanged type selection', async ({
 test('workspace tabs and dashboard dialogs progressively disclose administration', async ({
   page,
 }) => {
-  await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/up`, { waitUntil: 'domcontentloaded' });
   await page.setContent(`
     <!doctype html>
     <html>
@@ -1409,9 +1409,10 @@ test('workspace tabs and dashboard dialogs progressively disclose administration
     </html>
   `);
 
-  await expect(
-    page.getByRole('button', { name: 'Create workspace' }),
-  ).toHaveAttribute('data-editor-dialog-trigger-ready', '');
+  await expect(page.getByRole('button', { name: 'Create workspace' })).toHaveAttribute(
+    'data-editor-dialog-trigger-ready',
+    '',
+  );
   await page.getByRole('button', { name: 'Create workspace' }).click();
   await expect(page.getByText('Create shared workspace')).toBeVisible();
   await page.getByRole('button', { name: 'Close workspace form' }).click();
@@ -1436,7 +1437,7 @@ test('workspace tabs and dashboard dialogs progressively disclose administration
 test('create-page workspace filters categories and parent pages without leaving the form', async ({
   page,
 }) => {
-  await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/up`, { waitUntil: 'domcontentloaded' });
   await page.setContent(`
     <!doctype html>
     <html>
@@ -1480,7 +1481,8 @@ test('create-page workspace filters categories and parent pages without leaving 
     .poll(async () => {
       const box = await page.getByRole('button', { name: 'Create category' }).boundingBox();
 
-      return box?.width ?? 100;
+      // Browser engines can report a sub-pixel remainder such as 24.000015px.
+      return Math.round(box?.width ?? 100);
     })
     .toBeLessThanOrEqual(24);
   await expect(page.locator('option[value="alpha-category"]')).toBeEnabled();
@@ -1525,7 +1527,7 @@ test('create-page workspace filters categories and parent pages without leaving 
 test('content editor initialization keeps focus on the create-page workspace controls', async ({
   page,
 }) => {
-  await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/up`, { waitUntil: 'domcontentloaded' });
   await page.setContent(`
     <!doctype html>
     <html>
@@ -1558,7 +1560,7 @@ test('content editor initialization keeps focus on the create-page workspace con
 test('page workspace move keeps owner choices scoped to the selected target workspace', async ({
   page,
 }) => {
-  await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/up`, { waitUntil: 'domcontentloaded' });
   await page.setContent(`
     <!doctype html>
     <html>
@@ -1676,7 +1678,9 @@ test('copy page link writes the stable page URL and announces success', async ({
   await expect(copyButton).toBeEnabled();
 });
 
-test('HTML draft preview executes only inside an opaque no-network sandbox', async ({ page }) => {
+test('HTML draft preview executes only inside an opaque isolated sandbox @artifact-security', async ({
+  page,
+}) => {
   test.setTimeout(120_000);
 
   let outboundRequests = 0;
@@ -1778,7 +1782,7 @@ test('HTML draft preview executes only inside an opaque no-network sandbox', asy
   expect(leakedConsoleMessages).toEqual([]);
 });
 
-test('HTML draft preview blocks recursively nested browsing contexts before WebRTC can escape', async ({
+test('HTML draft preview blocks recursively nested browsing contexts before WebRTC can escape @artifact-security', async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -2122,7 +2126,7 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
   }
 });
 
-test('HTML draft preview refuses external script sources while inline scripts run', async ({
+test('HTML draft preview refuses external script sources while inline scripts run @artifact-security', async ({
   page,
 }) => {
   test.setTimeout(120_000);

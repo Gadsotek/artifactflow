@@ -29,6 +29,7 @@ E2E_ARTIFACT_HOST_PORT ?= 18181
 E2E_APP_URL ?= http://localhost:$(E2E_APP_PORT)
 E2E_ARTIFACT_URL ?= http://127.0.0.1:$(E2E_ARTIFACT_HOST_PORT)
 E2E_DB_NAME ?= $(TEST_DB_DATABASE)_e2e_$(TEST_DB_RUN_ID)
+E2E_LOCK_DIR ?= storage/framework/testing/e2e.lock
 PRODUCTION_IMAGE ?= artifactflow-app:production
 TRIVY_IMAGE ?= aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
 TRIVY_CACHE_DIR ?= $(HOME)/.cache/trivy
@@ -388,13 +389,21 @@ e2e:
 	$(MAKE) test-env-up
 	@set -euo pipefail; \
 		db_name="$(E2E_DB_NAME)"; \
-		echo "Using isolated e2e database $$db_name"; \
-		$(MAKE) test-db-create TEST_DB_NAME="$$db_name"; \
+		lock_dir="$(abspath $(E2E_LOCK_DIR))"; \
+		mkdir -p "$$(dirname "$$lock_dir")"; \
+		if ! mkdir "$$lock_dir" 2>/dev/null; then \
+			echo "Another make e2e run is already using the shared e2e services and ports."; \
+			echo "If no run is active, remove the stale lock with: rmdir $$lock_dir"; \
+			exit 1; \
+		fi; \
 		cleanup() { \
 			$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env stop $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) >/dev/null 2>&1 || true; \
 			$(MAKE) test-db-drop TEST_DB_NAME="$$db_name"; \
+			rmdir "$$lock_dir" >/dev/null 2>&1 || true; \
 		}; \
 		trap cleanup EXIT; \
+		echo "Using isolated e2e database $$db_name"; \
+		$(MAKE) test-db-create TEST_DB_NAME="$$db_name"; \
 		E2E_DB_DATABASE="$$db_name" \
 		E2E_APP_PORT="$(E2E_APP_PORT)" \
 		E2E_ARTIFACT_HOST_PORT="$(E2E_ARTIFACT_HOST_PORT)" \
@@ -422,7 +431,7 @@ e2e:
 
 e2e-install:
 	if [ -f package-lock.json ]; then npm ci; else npm install; fi
-	npx playwright install --with-deps chromium
+	npx playwright install --with-deps chromium firefox webkit
 
 build-prod:
 	$(DOCKER_BUILD) --pull --target production --tag $(PRODUCTION_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) .

@@ -15,7 +15,10 @@ const cssAsset = `${baseUrl}/build/${manifest['resources/css/app.css'].file}`;
 async function contrastRatio(locator: Locator): Promise<number> {
   return locator.evaluate((element) => {
     const rgb = (value: string): [number, number, number] => {
-      const channels = value.match(/[\d.]+/gu)?.slice(0, 3).map(Number);
+      const channels = value
+        .match(/[\d.]+/gu)
+        ?.slice(0, 3)
+        .map(Number);
       if (channels?.length !== 3) {
         throw new Error(`Expected an RGB color, received ${value}`);
       }
@@ -26,9 +29,7 @@ async function contrastRatio(locator: Locator): Promise<number> {
       const channels = color.map((channel) => {
         const normalized = channel / 255;
 
-        return normalized <= 0.04045
-          ? normalized / 12.92
-          : ((normalized + 0.055) / 1.055) ** 2.4;
+        return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
       });
 
       return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
@@ -45,7 +46,7 @@ async function contrastRatio(locator: Locator): Promise<number> {
 test.use({ screenshot: 'off', trace: 'off', video: 'off' });
 
 test('two-factor recovery login is an explicit alternate mode', async ({ page }) => {
-  await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/up`, { waitUntil: 'domcontentloaded' });
   await page.setContent(`
     <!doctype html>
     <html class="dark" data-theme="dark">
@@ -105,7 +106,7 @@ test('two-factor enrollment countdown sends an expired setup to password confirm
   const deadline = Math.floor(Date.now() / 1000) + 2;
   const expiredUrl = `${baseUrl}/up?two-factor-enrollment-expired=1`;
 
-  await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/up`, { waitUntil: 'domcontentloaded' });
   await page.setContent(`
     <!doctype html>
     <html data-theme="light">

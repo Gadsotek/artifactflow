@@ -235,7 +235,9 @@ The deterministic capability corpus is
 `tests/Feature/PageCatalog/ArtifactDraftPreviewCapabilitiesFuzzTest.php` and is exposed as
 `make fuzz-capabilities`; the same file runs once inside the ordinary CI Pest suite. Browser attack cases live primarily in
 `tests/e2e/editor.spec.ts`, `tests/e2e/saved-artifact-preview.spec.ts`,
-`tests/e2e/artifact-cookie-isolation.spec.ts`, and `tests/e2e/mermaid-security.spec.ts`.
+`tests/e2e/artifact-cookie-isolation.spec.ts`, and `tests/e2e/mermaid-security.spec.ts`. The full
+Playwright suite runs on Chromium; cases marked `@artifact-security` additionally run on Firefox
+and WebKit. New browser-dependent artifact-boundary regressions must carry that tag.
 
 ## 8. Explicitly NOT defended (and that's fine)
 
