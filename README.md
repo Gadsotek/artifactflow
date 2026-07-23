@@ -4,6 +4,8 @@
 
 **A self-hosted vault for safely storing, versioning, searching, and previewing untrusted AI‑generated HTML artifacts and Markdown: generated code runs sealed in a two‑origin sandbox, never on your app.**
 
+[artifactflow.app](https://artifactflow.app) · [Roadmap](https://artifactflow.app/roadmap/) · [Source](https://github.com/Gadsotek/artifactflow)
+
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Commercial license](https://img.shields.io/badge/license-commercial_available-green.svg)](COMMERCIAL.md)
 [![PHP 8.5](https://img.shields.io/badge/PHP-8.5-777BB4.svg)](composer.json)
@@ -38,8 +40,8 @@ The artifact's JavaScript really *runs*, but in an opaque origin with no cookies
 
 **🔒 Safe artifact rendering**
 - Single‑file HTML artifacts execute only from the isolated, cookieless artifact origin behind sandboxed iframes; saved artifacts are reached through renewable signed short‑lived URLs, and pre‑save drafts through authenticated, content-bound short-lived capabilities. There is no expiry timer or parent-window reload: when a prototype self‑reload encounters an expired saved URL, the authenticated parent renews and restores only the iframe.
-- Paste‑or‑upload preview in an opaque, no‑network sandbox *before* saving.
-- Artifacts must be a **single self‑contained HTML file**: the sandbox blocks external scripts, styles, and network calls, so CDN‑linked dependencies (React, Tailwind, Chart.js…) will not load. Ask your AI to inline everything into one file. This is a deliberate boundary, not a limitation to work around — [it keeps the artifact offline, immutable, and sealed](THREAT-MODEL.md).
+- Paste‑or‑upload preview in an opaque, network-restricted sandbox *before* saving.
+- Artifacts must be a **single self‑contained HTML file**: CSP and defense-in-depth guards block ordinary external subresources and connection APIs, so CDN‑linked dependencies (React, Tailwind, Chart.js…) will not load. Script-initiated top-level navigation cannot be fully prevented, and WebRTC blocking is browser-dependent; the opaque origin still keeps app cookies and tenant data out of reach. Ask your AI to inline everything into one file. This is a deliberate boundary, not a limitation to work around; [the threat model documents the residuals and browser boundary](THREAT-MODEL.md).
 - Best‑effort secret‑blocking on save (credentials, private keys, JWTs, provider tokens) without persisting matched values; suspicious JS patterns are recorded as advisory findings. Scanning is advisory and bypassable by light obfuscation — a clean scan is not proof no secret was stored; isolation is the boundary.
 
 **📚 Knowledge base**

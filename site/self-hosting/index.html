@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Self-host ArtifactFlow</title>
+<meta name="description" content="Evaluate ArtifactFlow locally and understand its production requirements: two HTTPS origins, PostgreSQL TLS, private storage, secrets, mail, workers, and boot checks.">
+<link rel="canonical" href="https://artifactflow.app/self-hosting/">
+<meta property="og:title" content="Self-host ArtifactFlow">
+<meta property="og:description" content="A practical overview of ArtifactFlow's local quickstart, production runtime roles, and mandatory two-origin deployment boundary.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://artifactflow.app/self-hosting/">
+<meta property="og:site_name" content="ArtifactFlow">
+<meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard in a browser frame beside the product name and self-hosted library description">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Self-host ArtifactFlow">
+<meta name="twitter:description" content="Local evaluation in Compose; deliberate production deployment with two origins and a fail-closed boot gate.">
+<meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard in a browser frame beside the product name and self-hosted library description">
+<meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#0d0f13" media="(prefers-color-scheme: dark)" data-theme-color="dark">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script src="/assets/theme.js?v=20260722-2" data-theme-bootstrap></script>
+<link rel="stylesheet" href="/assets/site.css?v=20260722-2">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "Self-host ArtifactFlow",
+  "description": "Local evaluation and production requirements for ArtifactFlow.",
+  "url": "https://artifactflow.app/self-hosting/",
+  "isPartOf": { "@id": "https://artifactflow.app/#website" }
+}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="shell nav">
+    <a class="brand" href="/" aria-label="ArtifactFlow home"><img class="brand-mark brand-mark-on-light" src="/assets/artifactflow-mark.svg" alt="" aria-hidden="true"><img class="brand-mark brand-mark-on-dark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true">Artifact<span class="brand-flow">Flow</span></a>
+    <nav class="nav-links" aria-label="Main navigation">
+      <a href="/#product">Product</a>
+      <a href="/security/">Safety</a>
+      <a href="/mcp/">MCP</a>
+      <a href="/self-hosting/" aria-current="page">Self-host</a>
+      <a href="/roadmap/">Roadmap</a>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true">☀</span><span aria-hidden="true">☾</span></button>
+      <a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <header class="detail-hero">
+    <div class="shell">
+      <p class="eyebrow">Run it on your infrastructure</p>
+      <h1>Self-host the library and preserve the boundary.</h1>
+      <p class="lede">ArtifactFlow is easy to evaluate with Docker Compose. Production is intentionally more explicit: deploy the same image in separate roles, keep artifact bytes private, and provide two real HTTPS origins so untrusted code never executes where users authenticate.</p>
+      <div class="detail-actions">
+        <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md">Read the operations guide ↗</a>
+        <a class="button" href="https://github.com/Gadsotek/artifactflow">Clone the repository ↗</a>
+      </div>
+    </div>
+  </header>
+
+  <article class="section">
+    <div class="article-shell article-grid">
+      <div class="article-content">
+        <section id="local">
+          <p class="kicker">Local evaluation</p>
+          <h2>Start with Docker Compose and GNU make.</h2>
+          <p>The local stack targets PHP 8.5, Laravel 13, PostgreSQL, Caddy, and FrankenPHP, but those runtimes live inside containers. You need Docker with Compose v2 and GNU <code>make</code>. Contributors running the full quality suite also need Node.js, npm, Python, and Semgrep.</p>
+          <pre aria-label="ArtifactFlow local quickstart"><code>git clone https://github.com/Gadsotek/artifactflow
+cd artifactflow
+make up
+make shell
+php artisan artifactflow:install</code></pre>
+          <p>The guided installer runs inside the application container after the stack is reachable. Choose the local environment, create the first System Admin, optionally seed demo content, then sign in at <code>http://localhost:18080/login</code>.</p>
+          <div class="callout">
+            <strong>Development stack only</strong>
+            <p>The bundled Compose file uses local credentials and non-TLS services. It is not a production deployment template and should not be presented as one.</p>
+          </div>
+        </section>
+
+        <section id="origins">
+          <p class="kicker">Mandatory production topology</p>
+          <h2>One code image serves separate trust boundaries.</h2>
+          <p>The supported production unit is the repository's Dockerfile-built image with <code>APP_ENV=production</code>. The runtime role and container command determine which responsibility each instance owns.</p>
+          <ul class="detail-list">
+            <li><strong><code>app</code></strong>Authenticated browser UI, sessions, editing, search, workspace management, MCP, and preview-grant issuance on the application hostname.</li>
+            <li><strong><code>artifact-host</code></strong>Cookieless static artifact execution on a different hostname, accepting only signed saved previews and content-bound draft previews.</li>
+            <li><strong><code>worker</code></strong>Queue processing in a non-serving role using the same immutable image.</li>
+            <li><strong><code>scheduler</code></strong>Scheduled maintenance in a non-serving role using the image's scheduler start command.</li>
+          </ul>
+          <p>The app and artifact-host instances must mount the same private artifact store; the artifact-host side should be read-only where the storage platform permits it. Application cookies must never be sent to the artifact hostname.</p>
+        </section>
+
+        <section id="requirements">
+          <p class="kicker">Operator-provided services</p>
+          <h2>A production environment has a concrete security contract.</h2>
+          <ul class="detail-list">
+            <li><strong>Two HTTPS hostnames</strong>One application origin and one artifact origin, with correctly preserved external scheme, host, and port through the trusted proxy.</li>
+            <li><strong>PostgreSQL with verified TLS</strong>Production requires server-identity verification, including <code>DB_SSLMODE=verify-full</code> and a trusted database CA.</li>
+            <li><strong>Private persistent artifact storage</strong>Saved HTML must not be web-accessible outside the artifact-host authorization path and must be backed up consistently with PostgreSQL.</li>
+            <li><strong>Independent secrets</strong><code>APP_KEY</code> and a dedicated high-entropy <code>ARTIFACT_URL_SIGNING_KEY</code> come from a secret manager and must not be reused.</li>
+            <li><strong>Mail and proxy delivery</strong>A deliverable mail configuration, correct TLS termination, response headers, request-size limits, and host routing are part of the deployment.</li>
+            <li><strong>Shared rate-limit state for replicas</strong>Multiple app replicas need shared rate-limit storage so authentication and preview limits do not fragment per container.</li>
+          </ul>
+          <p>The base product does not require Redis, Meilisearch, S3, or SSO. Operators may choose suitable infrastructure, but a deployment must preserve the documented security behavior rather than copying development defaults.</p>
+        </section>
+
+        <section id="boot-gate">
+          <p class="kicker">Fail closed</p>
+          <h2>The image refuses an incomplete production contract.</h2>
+          <p>Production boot validates the runtime role, distinct origins, signing keys, frame-ancestor policy, private storage, database TLS, mail, administrative bootstrap path, and other security-critical settings. An unsafe combination stops startup instead of degrading into a less isolated mode.</p>
+          <p>Before the schema is ready, application-origin browser and MCP requests also stop at an installation-readiness boundary before database sessions or bearer-token lookup. Browsers receive a secured setup response, MCP receives a retryable JSON-RPC 503, and only the session-free <code>/up</code> health endpoint remains available. The artifact origin does not disclose setup state.</p>
+          <p>Readiness is cached only for the exact migration-file manifest, so deploying a new migration invalidates success immediately. Run the guided installer for a first installation or the approved migration workflow for an existing one.</p>
+        </section>
+
+        <section id="installation">
+          <p class="kicker">First production install</p>
+          <h2>Provision configuration before the first serving container starts.</h2>
+          <p>Supply production variables from the platform's secret manager. Run the installer as a one-off container with the same image and environment, passing the first administrator password through a mounted secret file. Then run the deployment doctor before starting every serving role.</p>
+          <pre aria-label="Production installation outline"><code>docker run --rm --env-file &lt;production-env&gt; &lt;image&gt; \
+  php artisan artifactflow:install \
+  --env=production --name='Ops' --email='ops@example.test'
+
+docker run --rm --env-file &lt;production-env&gt; &lt;image&gt; \
+  php artisan artifactflow:doctor</code></pre>
+          <p>The exact storage mounts, secret-file path, network policy, database endpoint, hostnames, and service orchestration depend on the deployment platform. The <a href="https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md">operations guide</a> is authoritative for those details.</p>
+        </section>
+
+        <section id="operate">
+          <p class="kicker">Operate the whole system</p>
+          <h2>Backups and releases include data, artifacts, and key custody.</h2>
+          <p>Consistent recovery needs a PostgreSQL dump and the private artifact tree, validated together by the repository's backup workflow. <code>APP_KEY</code> and the artifact signing key are deliberately not copied into data backups, so secret-manager custody and recovery procedures must be tested separately.</p>
+          <p>Before inviting users, complete the alpha release checklist, verify signed preview behavior in supported browsers, run the deployment doctor, validate backup restoration, and keep the dependency, test, build, and image-scan gates green.</p>
+        </section>
+
+        <section id="next">
+          <p class="kicker">Related guides</p>
+          <h2>Carry the same boundary from architecture to operations.</h2>
+          <div class="page-links">
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md"><strong>Operations guide ↗</strong><span>Environment, roles, storage, database, proxy, backup, restore, and release procedures.</span></a>
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/blob/main/RELEASE-CHECKLIST.md"><strong>Alpha release checklist ↗</strong><span>Pre-release gates and manual security checks.</span></a>
+            <a class="page-link" href="/security/"><strong>Security architecture</strong><span>How two origins, iframe sandboxing, CSP, and signed grants fit together.</span></a>
+            <a class="page-link" href="/mcp/"><strong>MCP server</strong><span>Scope automation clients within the application trust boundary.</span></a>
+          </div>
+        </section>
+      </div>
+
+      <aside class="detail-aside" aria-label="On this page">
+        <strong>On this page</strong>
+        <a href="#local">Local evaluation</a>
+        <a href="#origins">Runtime roles</a>
+        <a href="#requirements">Production requirements</a>
+        <a href="#boot-gate">Boot and readiness gates</a>
+        <a href="#installation">First installation</a>
+        <a href="#operate">Backups and releases</a>
+      </aside>
+    </div>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <div class="footer-grid">
+      <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">A self-hosted team library for the useful tools and documents your AI creates.</p></div>
+      <div class="footer-column"><strong>Explore</strong><a href="/">Home</a><a href="/security/">Safety</a><a href="/mcp/">MCP server</a><a href="/self-hosting/" aria-current="page">Self-hosting</a><a href="/engineering-harness/">Engineering harness</a><a href="/roadmap/">Roadmap</a></div>
+      <div class="footer-column"><strong>Repository</strong><a href="https://github.com/Gadsotek/artifactflow">Source</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md">Operations</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md">Threat model</a></div>
+      <div class="footer-column"><strong>License</strong><span>AGPL-3.0-or-later</span><a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a><a href="mailto:gadsotek@gmail.com">Contact</a></div>
+    </div>
+    <div class="footer-end"><span>© 2026 Gadsotek</span><span>AI makes it. Your team keeps it.</span></div>
+  </div>
+</footer>
+</body>
+</html>

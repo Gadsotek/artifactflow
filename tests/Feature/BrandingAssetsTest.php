@@ -23,7 +23,7 @@ final class BrandingAssetsTest extends TestCase
         $site = file_get_contents(base_path('site/index.html'));
 
         $this->assertIsString($site);
-        $this->assertStringContainsString('assets/artifactflow-mark.svg', $site);
-        $this->assertStringContainsString('<link rel="icon" type="image/svg+xml" href="favicon.svg">', $site);
+        $this->assertStringContainsString('/assets/artifactflow-mark.svg', $site);
+        $this->assertStringContainsString('<link rel="icon" type="image/svg+xml" href="/favicon.svg">', $site);
     }
 }

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArtifactFlow Roadmap | Current Alpha and Beta Candidates</title>
+<meta name="description" content="ArtifactFlow's public product direction: what exists in the current alpha, what may follow, which security proof comes first, and what is not promised.">
+<link rel="canonical" href="https://artifactflow.app/roadmap/">
+<meta property="og:title" content="ArtifactFlow Roadmap | Current Alpha and Beta Candidates">
+<meta property="og:description" content="Current alpha boundaries, post-alpha candidates, beta candidates, and the proof required before ArtifactFlow expands.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://artifactflow.app/roadmap/">
+<meta property="og:site_name" content="ArtifactFlow">
+<meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard in a browser frame beside the product name and self-hosted library description">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ArtifactFlow Roadmap | Current Alpha and Beta Candidates">
+<meta name="twitter:description" content="Direction without invented dates: current alpha, candidate work, explicit boundaries, and required security proof.">
+<meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard in a browser frame beside the product name and self-hosted library description">
+<meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#0d0f13" media="(prefers-color-scheme: dark)" data-theme-color="dark">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script src="/assets/theme.js?v=20260722-2" data-theme-bootstrap></script>
+<link rel="stylesheet" href="/assets/site.css?v=20260722-2">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "ArtifactFlow Roadmap",
+  "description": "Current alpha boundaries, candidate product work, and required security proof.",
+  "url": "https://artifactflow.app/roadmap/",
+  "isPartOf": { "@id": "https://artifactflow.app/#website" }
+}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="shell nav">
+    <a class="brand" href="/" aria-label="ArtifactFlow home"><img class="brand-mark brand-mark-on-light" src="/assets/artifactflow-mark.svg" alt="" aria-hidden="true"><img class="brand-mark brand-mark-on-dark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true">Artifact<span class="brand-flow">Flow</span></a>
+    <nav class="nav-links" aria-label="Main navigation">
+      <a href="/#product">Product</a>
+      <a href="/security/">Safety</a>
+      <a href="/mcp/">MCP</a>
+      <a href="/self-hosting/">Self-host</a>
+      <a href="/roadmap/" aria-current="page">Roadmap</a>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true">☀</span><span aria-hidden="true">☾</span></button>
+      <a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <header class="detail-hero">
+    <div class="shell">
+      <p class="eyebrow">Product direction</p>
+      <h1>Build the boundary before expanding the surface.</h1>
+      <p class="lede">Direction, not a release promise. ArtifactFlow's alpha is intentionally narrow while real teams test it. Candidate work moves forward only after its authorization, storage, isolation, and operational boundaries are written down and proven.</p>
+      <div class="detail-actions">
+        <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/ROADMAP.md">Read the source roadmap ↗</a>
+        <a class="button" href="https://github.com/Gadsotek/artifactflow/releases">View releases ↗</a>
+      </div>
+    </div>
+  </header>
+
+  <article class="section">
+    <div class="article-shell article-grid">
+      <div class="article-content">
+        <section id="now">
+          <p class="kicker">Available now</p>
+          <h2>The alpha has shipped and remains deliberately focused.</h2>
+          <p>The current alpha line is feature-frozen while it gathers feedback. Work stays concentrated on security, correctness, release readiness, documentation, and small usability improvements to behavior that already exists.</p>
+          <ul class="detail-list">
+            <li><strong>HTML, Markdown, and Mermaid</strong>Store, search, version, and share generated content through authenticated personal and shared workspaces.</li>
+            <li><strong>Visible page hierarchy</strong>The Library, Overview, page detail, and MCP expose authorization-filtered parent and child context within one workspace.</li>
+            <li><strong>Isolated HTML execution</strong>Generated HTML runs on the separate artifact origin under the documented iframe, CSP, and signed-preview boundary.</li>
+            <li><strong>Scoped MCP access</strong>Nine operations cover workspace discovery, taxonomy, search, read, create, update, and revert without granting preview capabilities.</li>
+          </ul>
+          <div class="callout">
+            <strong>The alpha boundary stays flat</strong>
+            <p>Workspaces remain independent permission boundaries. Page hierarchy is navigation over the existing page model, not a second permission system or nested workspace inheritance.</p>
+          </div>
+        </section>
+
+        <section id="sharing">
+          <p class="kicker">Post-alpha candidate</p>
+          <h2>External sharing requires a new capability boundary.</h2>
+          <p>Expiring and one-time links are candidates for deliberate post-alpha work. They are not current features. Before implementation, ArtifactFlow needs an architecture decision covering the share origin, version semantics, recipient verification, downloads, revocation, and uniform failure behavior.</p>
+          <p>Any accepted design must store only a hash of the random secret, reveal only the selected page or version, re-check state on every redemption, consume one-time links atomically, preserve HTML isolation, and prove that tokens and restricted metadata do not leak.</p>
+        </section>
+
+        <section id="beta">
+          <p class="kicker">Beta candidates</p>
+          <h2>Two larger surfaces are documented, but not scheduled.</h2>
+          <div class="split-cards">
+            <article class="split-card">
+              <h3>Searchable PDF pages</h3>
+              <p>PDFs would join the same permission-aware catalog and version history as other pages while remaining non-executable. Search needs bounded parsing, OCR, private originals, safe reading, and proof that titles, snippets, files, and processing status never leak.</p>
+            </article>
+            <article class="split-card">
+              <h3>Nested shared workspaces</h3>
+              <p>A candidate three-level hierarchy would preserve exact workspace catalogs while parent roles flow downward. Cycle prevention, reparenting, role resolution, preview invalidation, search visibility, and exact MCP scopes must become server-side invariants first.</p>
+            </article>
+          </div>
+        </section>
+
+        <section id="proof">
+          <p class="kicker">Before beta</p>
+          <h2>Scheduling follows proof, not the other way around.</h2>
+          <ol class="flow-steps">
+            <li>Write the product rule and architecture decision before changing schema or authorization behavior.</li>
+            <li>Update the threat model and identify the information each new boundary could expose.</li>
+            <li>Implement tests first, including authorization failures, concurrency, revocation, storage cleanup, and browser-level isolation.</li>
+            <li>Pass the repository's static analysis, test, security, build, image, and release gates before presenting the work as available.</li>
+          </ol>
+        </section>
+
+        <section id="not-promised">
+          <p class="kicker">Explicitly not promised</p>
+          <h2>A candidate is not a date, order, or commitment.</h2>
+          <ul class="detail-list">
+            <li><strong>No target dates</strong>The roadmap does not promise a release date or quarter for candidate work.</li>
+            <li><strong>No guaranteed ordering</strong>Feedback and security findings may change priorities before a candidate is scheduled.</li>
+            <li><strong>No built-in AI generation</strong>ArtifactFlow stores and manages generated content; it is not becoming an AI generation platform.</li>
+            <li><strong>No broad public hosting product</strong>Scoped external links are a candidate boundary, not a public marketplace or anonymous artifact-hosting service.</li>
+            <li><strong>No automatic enterprise expansion</strong>SSO, a full approval system, and a broad enterprise RBAC suite remain outside the current roadmap.</li>
+          </ul>
+        </section>
+
+        <section id="source">
+          <p class="kicker">Source of truth</p>
+          <h2>Follow the repository when details change.</h2>
+          <p>This page is a readable summary. The versioned repository roadmap remains authoritative and contains the detailed security properties and proof required for each candidate.</p>
+          <div class="page-links">
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/blob/main/ROADMAP.md"><strong>Repository roadmap ↗</strong><span>Current direction, candidate rules, security plans, and required proof.</span></a>
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md"><strong>Threat model ↗</strong><span>Maintained boundaries, residual risks, attacker cases, and evidence.</span></a>
+            <a class="page-link" href="/security/"><strong>Security architecture</strong><span>The current two-origin boundary for executable HTML.</span></a>
+            <a class="page-link" href="/engineering-harness/"><strong>Engineering harness</strong><span>How candidate work moves from written rules to verified implementation.</span></a>
+          </div>
+        </section>
+      </div>
+
+      <aside class="detail-aside" aria-label="On this page">
+        <strong>On this page</strong>
+        <a href="#now">Available now</a>
+        <a href="#sharing">Post-alpha candidate</a>
+        <a href="#beta">Beta candidates</a>
+        <a href="#proof">Before beta</a>
+        <a href="#not-promised">Explicitly not promised</a>
+        <a href="#source">Source of truth</a>
+      </aside>
+    </div>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <div class="footer-grid">
+      <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">A self-hosted team library for the useful tools and documents your AI creates.</p></div>
+      <div class="footer-column"><strong>Explore</strong><a href="/">Home</a><a href="/security/">Safety</a><a href="/mcp/">MCP server</a><a href="/self-hosting/">Self-hosting</a><a href="/engineering-harness/">Engineering harness</a><a href="/roadmap/" aria-current="page">Roadmap</a></div>
+      <div class="footer-column"><strong>Repository</strong><a href="https://github.com/Gadsotek/artifactflow">Source</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/ROADMAP.md">Roadmap</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md">Threat model</a></div>
+      <div class="footer-column"><strong>License</strong><span>AGPL-3.0-or-later</span><a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a><a href="mailto:gadsotek@gmail.com">Contact</a></div>
+    </div>
+    <div class="footer-end"><span>© 2026 Gadsotek</span><span>AI makes it. Your team keeps it.</span></div>
+  </div>
+</footer>
+</body>
+</html>

@@ -4,6 +4,8 @@ ArtifactFlow's first open-source alpha has shipped, and the current alpha line r
 
 This roadmap records direction, not a release promise. Every item still requires tests-first implementation and the security gates in `AGENTS.md`.
 
+Public summary: https://artifactflow.app/roadmap/
+
 ## Alpha boundary
 
 The alpha keeps the current model:
@@ -45,7 +47,7 @@ Required security properties:
 2. Re-check page state and link state on every redemption. Revocation, expiry, page archival/deletion, and relevant access revisions must fail closed with a uniform not-found response.
 3. Consume one-time links atomically under a lock so concurrent requests cannot redeem the same capability twice.
 4. Reveal only the explicitly shared page/version. Never expose workspace membership, coworker directory entries, sibling titles, taxonomy, search, history, MCP, or authenticated application navigation.
-5. Keep executable HTML on the isolated artifact origin under the existing opaque sandbox and no-network CSP. No external share may place untrusted content or a bearer token into the authenticated app DOM or cookies.
+5. Keep executable HTML on the isolated artifact origin under the existing opaque sandbox and network-restrictive CSP. Ordinary fetch and connection APIs stay blocked, while the documented self-navigation and browser-dependent WebRTC residuals still apply. No external share may place untrusted content or a bearer token into the authenticated app DOM or cookies.
 6. Rate-limit creation and redemption, record non-secret create/revoke/redeem audit events, and give access managers a clear inventory with expiry, status, and last-redemption metadata.
 7. Add browser-level proof for token leakage, one-time concurrency, revocation/expiry, uniform failures, and the HTML sandbox boundary before enabling the feature.
 
@@ -68,7 +70,7 @@ PDFs must not be converted into executable HTML or rendered directly in the auth
 
 1. Define upload size, page-count, decompression, parser time, memory, and OCR limits before accepting PDFs.
 2. Validate the file signature and structure rather than trusting the extension or browser-supplied MIME type. Malware scanning remains advisory.
-3. Extract text and metadata in an isolated, no-network worker with hard resource limits. Record parser and OCR versions so documents can be safely reprocessed after security updates.
+3. Extract text and metadata in an isolated worker whose OS or container boundary denies outbound network access and enforces hard resource limits. Record parser and OCR versions so documents can be safely reprocessed after security updates.
 4. Store originals in private storage and serve them only through authorized, short-lived access. The reader must use either non-executable rendered pages or an equally isolated viewer boundary; embedded JavaScript, actions, links, attachments, forms, and external fetches must never inherit the app origin.
 5. Index only normalized extracted text and non-secret metadata. Extraction failures must not make the original public or silently mark it as fully searchable.
 6. Apply workspace/page authorization consistently to upload, processing status, reading, download, search snippets, MCP access, version history, archival, and deletion.

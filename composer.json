@@ -3,7 +3,7 @@
   "name": "artifactflow/artifactflow",
   "type": "project",
   "description": "Self-hosted vault for safely storing, searching, versioning, and previewing AI-generated HTML artifacts.",
-  "homepage": "https://github.com/Gadsotek/artifactflow",
+  "homepage": "https://artifactflow.app",
   "keywords": [
     "artifactflow",
     "laravel",

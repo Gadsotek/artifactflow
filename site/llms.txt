@@ -1,0 +1,14 @@
+# ArtifactFlow
+
+ArtifactFlow is a self-hosted team library for storing, searching, versioning, and safely previewing AI-generated single-file HTML artifacts, Markdown pages, and Mermaid diagrams. It stores and manages generated content; it does not generate it. Untrusted HTML executes only on a separate cookieless artifact origin.
+
+- Home: https://artifactflow.app/
+- Security architecture: https://artifactflow.app/security/
+- MCP server: https://artifactflow.app/mcp/
+- Self-hosting: https://artifactflow.app/self-hosting/
+- Engineering harness: https://artifactflow.app/engineering-harness/
+- Product roadmap: https://artifactflow.app/roadmap/
+- GitHub repository: https://github.com/Gadsotek/artifactflow
+- Threat model: https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md
+- Security policy: https://github.com/Gadsotek/artifactflow/blob/main/SECURITY.md
+- Operations guide: https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md
