@@ -6,9 +6,22 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.0.5 — 2026-07-23
+
+Security and tooling release. It closes a declarative-shadow-DOM sandbox escape in the artifact preview, re-enables cross-engine end-to-end coverage on the artifact-security corpus, and refreshes dependencies.
+
 ### Security
 
-- Disabled the declarative-shadow-DOM parser entry points (`Document.parseHTMLUnsafe`, `Element.prototype.setHTMLUnsafe`, `ShadowRoot.prototype.setHTMLUnsafe`) in the artifact-preview guard instead of sanitizing their input. Input sanitization could not reach a nested browsing context hidden inside a declarative shadow root, which the parser materialized into a live, script-executing frame — a bypass of the nested-context defense confirmed by an empirical Chromium harness and now covered by draft-preview and saved-artifact end-to-end tests.
+- Disabled the declarative-shadow-DOM parser entry points (`Document.parseHTMLUnsafe`, `Element.prototype.setHTMLUnsafe`, `ShadowRoot.prototype.setHTMLUnsafe`) in the artifact-preview guard instead of sanitizing their input. Input sanitization could not reach a nested browsing context hidden inside a declarative shadow root, which the parser materialized into a live, script-executing frame — a bypass of the nested-context defense confirmed by an empirical Chromium harness and now covered by draft-preview and saved-artifact end-to-end tests. (#23)
+
+### Internal / Tooling
+
+- Re-enabled cross-engine end-to-end coverage: the full Playwright suite runs on Chromium and the `@artifact-security` corpus additionally on Firefox and WebKit, guarded by an atomic run lock over the shared services and a configuration check that pins the cross-engine title list and forbids `networkidle`. (#30)
+- Exempted Dependabot from the DCO sign-off gate so automated dependency pull requests satisfy the required checks. (#28)
+
+### Dependencies
+
+- Bumped `laravel/framework`, `laravel/reverb`, `resend/resend-php`, `tailwindcss`, and related minor and patch dependencies, and refreshed the FrankenPHP/PHP base image digest. (#25, #26, #27)
 
 ## v0.0.4 — 2026-07-22
 
