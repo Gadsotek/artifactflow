@@ -2,7 +2,7 @@
   "$schema": "https://www.schemastore.org/package.json",
   "name": "artifactflow",
   "description": "Self-hosted vault for safely storing, searching, versioning, and previewing AI-generated HTML artifacts.",
-  "homepage": "https://github.com/Gadsotek/artifactflow",
+  "homepage": "https://artifactflow.app",
   "repository": {
     "type": "git",
     "url": "https://github.com/Gadsotek/artifactflow.git"

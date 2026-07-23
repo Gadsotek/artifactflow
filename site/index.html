@@ -3,1155 +3,63 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ArtifactFlow · a home for the useful things your AI makes</title>
+<title>ArtifactFlow | Self-hosted library for AI-generated HTML and Markdown</title>
 <meta name="description" content="ArtifactFlow is a self-hosted team library for AI-generated HTML artifacts, Markdown, and Mermaid. Save, search, version, share, and run untrusted HTML on an isolated origin.">
-<meta property="og:title" content="ArtifactFlow · AI makes it. Your team keeps it.">
+<link rel="canonical" href="https://artifactflow.app/">
+<meta property="og:title" content="ArtifactFlow | Self-hosted library for AI-generated HTML and Markdown">
 <meta property="og:description" content="A self-hosted team library for generated HTML artifacts and Markdown, with untrusted code isolated from your authenticated app.">
 <meta property="og:type" content="website">
-<meta name="theme-color" content="#f4f0e7">
-<link rel="icon" type="image/svg+xml" href="favicon.svg">
-<style>
-:root {
-  --paper: #f4f0e7;
-  --paper-deep: #e8e1d3;
-  --ink: #151a18;
-  --ink-soft: #4e5752;
-  --line: rgba(21, 26, 24, 0.18);
-  --line-strong: rgba(21, 26, 24, 0.54);
-  --accent: #675df6;
-  --accent-dark: #5146e5;
-  --violet-soft: #f0efff;
-  --violet-card: #d8d6f8;
-  --violet-line: #8d85db;
-  --white: #fffdf8;
-  --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --shell: 76rem;
-  --gutter: clamp(1.15rem, 4vw, 3.75rem);
-  --radius: 1.25rem;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  scroll-behavior: smooth;
-}
-
-body {
-  margin: 0;
-  color: var(--ink);
-  background:
-    radial-gradient(circle at 8% 4%, rgba(103, 93, 246, 0.1), transparent 25rem),
-    linear-gradient(var(--paper), var(--paper));
-  font-family: var(--sans);
-  font-size: 1rem;
-  line-height: 1.65;
-  -webkit-font-smoothing: antialiased;
-}
-
-img {
-  display: block;
-  max-width: 100%;
-}
-
-a {
-  color: inherit;
-}
-
-button,
-a {
-  -webkit-tap-highlight-color: transparent;
-}
-
-::selection {
-  color: var(--white);
-  background: var(--accent);
-}
-
-.skip-link {
-  position: fixed;
-  top: 0.75rem;
-  left: 0.75rem;
-  z-index: 100;
-  padding: 0.7rem 1rem;
-  color: var(--white);
-  background: var(--ink);
-  transform: translateY(-160%);
-}
-
-.skip-link:focus {
-  transform: translateY(0);
-}
-
-.shell {
-  width: min(100%, var(--shell));
-  margin-inline: auto;
-  padding-inline: var(--gutter);
-}
-
-.eyebrow,
-.kicker,
-.mono {
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
-}
-
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.65rem;
-  margin: 0 0 1.4rem;
-  color: var(--accent-dark);
-}
-
-.eyebrow::before {
-  width: 0.65rem;
-  height: 0.65rem;
-  border-radius: 999px;
-  background: var(--accent);
-  content: "";
-}
-
-.kicker {
-  margin: 0 0 0.8rem;
-  color: var(--accent-dark);
-}
-
-h1,
-h2,
-h3,
-p {
-  margin-top: 0;
-}
-
-h1,
-h2 {
-  font-family: var(--serif);
-  font-weight: 600;
-  letter-spacing: -0.045em;
-}
-
-h1 {
-  max-width: 15ch;
-  margin-bottom: 1.5rem;
-  font-size: clamp(2.8rem, 5.8vw, 4.8rem);
-  line-height: 0.98;
-}
-
-h2 {
-  max-width: 16ch;
-  margin-bottom: 1.15rem;
-  font-size: clamp(2.3rem, 5.2vw, 4.7rem);
-  line-height: 0.98;
-}
-
-h3 {
-  margin-bottom: 0.55rem;
-  font-size: 1.05rem;
-  line-height: 1.3;
-}
-
-.lede {
-  max-width: 43rem;
-  color: var(--ink-soft);
-  font-size: clamp(1.08rem, 2vw, 1.32rem);
-}
-
-.site-header {
-  position: relative;
-  z-index: 10;
-  border-bottom: 1px solid var(--line);
-}
-
-.nav {
-  display: flex;
-  min-height: 5rem;
-  align-items: center;
-  gap: 1.5rem;
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  margin-right: auto;
-  font-size: 1.12rem;
-  font-weight: 800;
-  letter-spacing: -0.035em;
-  text-decoration: none;
-}
-
-.brand-flow {
-  color: var(--accent-dark);
-}
-
-.brand-mark {
-  width: 2.7rem;
-  height: 2.7rem;
-  margin-right: -0.18rem;
-  object-fit: contain;
-}
-
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: clamp(0.8rem, 2vw, 1.5rem);
-}
-
-.nav-links a {
-  color: var(--ink-soft);
-  font-size: 0.86rem;
-  font-weight: 650;
-  text-decoration: none;
-}
-
-.nav-links a:hover,
-.nav-links a:focus-visible {
-  color: var(--ink);
-}
-
-.button {
-  display: inline-flex;
-  min-height: 3rem;
-  align-items: center;
-  justify-content: center;
-  padding: 0.78rem 1.15rem;
-  border: 1px solid var(--ink);
-  border-radius: 999px;
-  background: transparent;
-  font-size: 0.84rem;
-  font-weight: 800;
-  text-decoration: none;
-  transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
-}
-
-.button:hover,
-.button:focus-visible {
-  transform: translateY(-2px);
-}
-
-.button-primary {
-  color: var(--white);
-  background: var(--ink);
-  box-shadow: 0.28rem 0.28rem 0 var(--accent);
-}
-
-.button-primary:hover,
-.button-primary:focus-visible {
-  background: var(--accent-dark);
-  box-shadow: 0.38rem 0.38rem 0 var(--ink);
-}
-
-.button-light {
-  color: var(--ink);
-  background: var(--white);
-}
-
-.hero {
-  padding: clamp(4rem, 9vw, 8rem) 0 4rem;
-  overflow: hidden;
-}
-
-.hero-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(22rem, 1.08fr);
-  gap: clamp(2.5rem, 6vw, 6.5rem);
-  align-items: center;
-}
-
-.hero-copy .lede {
-  max-width: 36rem;
-}
-
-.hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.85rem;
-  margin-top: 2rem;
-}
-
-.hero-note {
-  max-width: 38rem;
-  margin: 1.5rem 0 0;
-  color: var(--ink-soft);
-  font-size: 0.82rem;
-}
-
-.hero-visual {
-  position: relative;
-  min-width: 0;
-}
-
-.window {
-  margin: 0;
-  overflow: hidden;
-  border: 1px solid var(--ink);
-  border-radius: var(--radius);
-  background: var(--white);
-  box-shadow: clamp(0.8rem, 2vw, 1.5rem) clamp(0.8rem, 2vw, 1.5rem) 0 var(--ink);
-}
-
-.window-bar {
-  display: flex;
-  min-height: 2.5rem;
-  align-items: center;
-  gap: 0.42rem;
-  padding: 0.65rem 0.8rem;
-  border-bottom: 1px solid var(--line);
-  background: var(--paper-deep);
-}
-
-.window-dot {
-  width: 0.62rem;
-  height: 0.62rem;
-  border: 1px solid var(--ink);
-  border-radius: 999px;
-}
-
-.window-label {
-  margin-left: auto;
-  color: var(--ink-soft);
-  font-family: var(--mono);
-  font-size: 0.62rem;
-}
-
-.window img {
-  width: 100%;
-  height: auto;
-}
-
-.float-card {
-  position: absolute;
-  right: -1.15rem;
-  bottom: -1.8rem;
-  max-width: 14rem;
-  padding: 1rem 1.05rem;
-  border: 1px solid var(--ink);
-  border-radius: 0.9rem;
-  background: var(--violet-card);
-  box-shadow: 0.4rem 0.4rem 0 var(--ink);
-  transform: rotate(-2deg);
-}
-
-.float-card strong {
-  display: block;
-  margin-bottom: 0.25rem;
-  font-size: 0.88rem;
-}
-
-.float-card span {
-  display: block;
-  font-size: 0.76rem;
-  line-height: 1.45;
-}
-
-.signal-strip {
-  border-block: 1px solid var(--line-strong);
-  background: var(--paper-deep);
-}
-
-.signals {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-}
-
-.signal {
-  padding: 1.2rem 1rem;
-  border-left: 1px solid var(--line);
-}
-
-.signal:first-child {
-  border-left: 0;
-}
-
-.signal strong,
-.signal span {
-  display: block;
-}
-
-.signal strong {
-  margin-bottom: 0.18rem;
-  font-size: 0.88rem;
-}
-
-.signal span {
-  color: var(--ink-soft);
-  font-size: 0.75rem;
-}
-
-.section {
-  padding: clamp(5rem, 10vw, 9rem) 0;
-}
-
-.section-head {
-  display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(18rem, 0.55fr);
-  gap: 2rem;
-  align-items: end;
-  margin-bottom: clamp(2.4rem, 5vw, 4.5rem);
-}
-
-.section-head .lede {
-  justify-self: end;
-}
-
-.problem-grid,
-.feature-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-}
-
-.problem-card,
-.feature-card {
-  position: relative;
-  min-height: 15rem;
-  padding: 1.5rem;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: rgba(255, 253, 248, 0.64);
-}
-
-.problem-card:nth-child(2) {
-  background: var(--violet-soft);
-}
-
-.problem-card:nth-child(3) {
-  background: var(--violet-card);
-}
-
-.card-number {
-  display: block;
-  margin-bottom: 3.2rem;
-  color: var(--accent-dark);
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  font-weight: 800;
-}
-
-.problem-card h3 {
-  font-family: var(--serif);
-  font-size: 1.7rem;
-  letter-spacing: -0.035em;
-}
-
-.problem-card p,
-.feature-card p {
-  margin-bottom: 0;
-  color: var(--ink-soft);
-  font-size: 0.92rem;
-}
-
-.gallery {
-  padding-top: 0;
-}
-
-.gallery-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
-  gap: 1.25rem;
-}
-
-.shot {
-  margin: 0;
-  overflow: hidden;
-  border: 1px solid var(--ink);
-  border-radius: var(--radius);
-  background: var(--white);
-}
-
-.preview-trigger img {
-  width: 100%;
-  height: auto;
-  transition: transform 180ms ease;
-}
-
-.shot figcaption {
-  padding: 1rem 1.15rem 1.15rem;
-  color: var(--ink-soft);
-  font-size: 0.82rem;
-}
-
-.shot figcaption strong {
-  color: var(--ink);
-}
-
-.preview-trigger {
-  position: relative;
-  display: block;
-  overflow: hidden;
-  border-bottom: 1px solid var(--line);
-  background: var(--paper-deep);
-  cursor: zoom-in;
-}
-
-.preview-trigger:hover img,
-.preview-trigger:focus-visible img {
-  transform: scale(1.015);
-}
-
-.preview-trigger:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: -3px;
-}
-
-.preview-hint {
-  position: absolute;
-  right: 0.75rem;
-  bottom: 0.75rem;
-  padding: 0.42rem 0.65rem;
-  color: var(--white);
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 999px;
-  background: rgba(21, 26, 24, 0.88);
-  font-family: var(--mono);
-  font-size: 0.64rem;
-  font-weight: 750;
-  letter-spacing: 0.04em;
-  pointer-events: none;
-}
-
-.image-preview {
-  width: min(94vw, 92rem);
-  max-width: none;
-  max-height: 94vh;
-  margin: auto;
-  padding: 0;
-  overflow: hidden;
-  color: var(--ink);
-  border: 1px solid var(--ink);
-  border-radius: var(--radius);
-  background: var(--white);
-  box-shadow: 0.75rem 0.75rem 0 rgba(0, 0, 0, 0.42);
-}
-
-.image-preview::backdrop {
-  background: rgba(10, 12, 11, 0.82);
-  backdrop-filter: blur(5px);
-}
-
-.image-preview[open] {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-}
-
-.preview-bar {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.8rem 1rem;
-  border-bottom: 1px solid var(--line);
-  background: var(--paper-deep);
-}
-
-.preview-caption {
-  margin: 0 auto 0 0;
-  font-size: 0.82rem;
-  font-weight: 700;
-}
-
-.preview-original,
-.preview-close {
-  font-family: var(--mono);
-  font-size: 0.68rem;
-  font-weight: 750;
-}
-
-.preview-original {
-  text-underline-offset: 0.2em;
-}
-
-.preview-close {
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  color: var(--white);
-  border: 0;
-  border-radius: 999px;
-  background: var(--ink);
-  cursor: pointer;
-}
-
-.preview-close:hover,
-.preview-close:focus-visible {
-  background: var(--accent-dark);
-}
-
-.preview-image-wrap {
-  display: grid;
-  min-height: 0;
-  place-items: center;
-  overflow: auto;
-  background: #111412;
-}
-
-.preview-image {
-  width: 100%;
-  height: auto;
-  max-height: calc(94vh - 3.7rem);
-  object-fit: contain;
-}
-
-.safety {
-  color: var(--white);
-  background: var(--ink);
-}
-
-.safety .kicker {
-  color: #afa9ff;
-}
-
-.safety .lede {
-  color: rgba(255, 253, 248, 0.72);
-}
-
-.origin-flow {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 1rem;
-  align-items: stretch;
-  margin-top: 3rem;
-}
-
-.origin {
-  min-height: 18rem;
-  padding: clamp(1.4rem, 3vw, 2.2rem);
-  border: 1px solid rgba(255, 253, 248, 0.35);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.origin-artifact {
-  color: var(--ink);
-  border-color: var(--violet-line);
-  background: var(--violet-card);
-}
-
-.origin-label {
-  display: block;
-  margin-bottom: 2rem;
-  font-family: var(--mono);
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.origin h3 {
-  max-width: 15ch;
-  font-family: var(--serif);
-  font-size: clamp(1.7rem, 3vw, 2.6rem);
-  letter-spacing: -0.035em;
-}
-
-.origin ul {
-  margin: 1.5rem 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.origin li {
-  padding: 0.5rem 0;
-  border-top: 1px solid currentColor;
-  font-size: 0.84rem;
-  opacity: 0.82;
-}
-
-.origin-arrow {
-  display: grid;
-  width: 8rem;
-  place-items: center;
-  text-align: center;
-}
-
-.origin-arrow span {
-  display: block;
-  color: #afa9ff;
-  font-family: var(--mono);
-  font-size: 0.66rem;
-  line-height: 1.45;
-}
-
-.origin-arrow b {
-  display: block;
-  margin: 0.55rem 0;
-  color: var(--violet-card);
-  font-size: 2rem;
-}
-
-.safety-note {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1.5rem;
-  padding: 1rem 1.15rem;
-  border: 1px solid rgba(255, 253, 248, 0.25);
-  border-radius: 0.8rem;
-  color: rgba(255, 253, 248, 0.72);
-  font-size: 0.82rem;
-}
-
-.safety-note strong {
-  flex: none;
-  color: var(--white);
-}
-
-.feature-card {
-  min-height: 13rem;
-  background: var(--white);
-}
-
-.feature-icon {
-  display: grid;
-  width: 2.35rem;
-  height: 2.35rem;
-  margin-bottom: 2.5rem;
-  place-items: center;
-  border: 1px solid var(--ink);
-  border-radius: 0.65rem;
-  background: var(--paper-deep);
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  font-weight: 800;
-}
-
-.agents {
-  background: var(--paper-deep);
-}
-
-.agents-grid {
-  display: grid;
-  grid-template-columns: 0.82fr 1.18fr;
-  gap: clamp(2rem, 6vw, 6rem);
-  align-items: center;
-}
-
-.agent-points {
-  display: grid;
-  gap: 0.7rem;
-  margin: 2rem 0 0;
-}
-
-.agent-point {
-  display: flex;
-  gap: 0.75rem;
-  align-items: baseline;
-  padding-top: 0.7rem;
-  border-top: 1px solid var(--line);
-  color: var(--ink-soft);
-  font-size: 0.9rem;
-}
-
-.agent-point::before {
-  color: var(--accent);
-  content: "✓";
-  font-weight: 900;
-}
-
-.code-card {
-  overflow: hidden;
-  border: 1px solid var(--ink);
-  border-radius: var(--radius);
-  background: var(--ink);
-  box-shadow: 0.75rem 0.75rem 0 var(--accent);
-}
-
-.code-card header {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.8rem 1rem;
-  color: rgba(255, 253, 248, 0.62);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-  font-family: var(--mono);
-  font-size: 0.64rem;
-}
-
-.code-card pre {
-  margin: 0;
-  padding: 1.3rem;
-  overflow-x: auto;
-  color: var(--white);
-  font-family: var(--mono);
-  font-size: clamp(0.68rem, 1.3vw, 0.8rem);
-  line-height: 1.8;
-}
-
-.code-card .dim {
-  color: #89948e;
-}
-
-.code-card .key {
-  color: #afa9ff;
-}
-
-.code-card .value {
-  color: #d8d6f8;
-}
-
-.deploy-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: clamp(1.25rem, 4vw, 3rem);
-  align-items: start;
-}
-
-.terminal {
-  overflow: hidden;
-  border: 1px solid var(--ink);
-  border-radius: var(--radius);
-  background: var(--white);
-  box-shadow: 0.75rem 0.75rem 0 var(--violet-card);
-}
-
-.terminal header {
-  padding: 0.8rem 1rem;
-  border-bottom: 1px solid var(--line);
-  background: var(--paper-deep);
-  font-family: var(--mono);
-  font-size: 0.66rem;
-  font-weight: 800;
-}
-
-.terminal pre {
-  margin: 0;
-  padding: 1.25rem;
-  overflow-x: auto;
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  line-height: 1.85;
-}
-
-.terminal .prompt {
-  color: var(--accent-dark);
-}
-
-.production-card {
-  padding: clamp(1.5rem, 4vw, 2.3rem);
-  border: 1px solid var(--ink);
-  border-radius: var(--radius);
-  background: var(--violet-card);
-}
-
-.production-card h3 {
-  max-width: 18ch;
-  font-family: var(--serif);
-  font-size: 2rem;
-  letter-spacing: -0.035em;
-}
-
-.production-card p {
-  color: #30372f;
-}
-
-.role-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin: 1.2rem 0 1.6rem;
-}
-
-.role {
-  padding: 0.35rem 0.62rem;
-  border: 1px solid var(--ink);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.35);
-  font-family: var(--mono);
-  font-size: 0.64rem;
-  font-weight: 800;
-}
-
-.alpha {
-  padding-top: 0;
-}
-
-.alpha-box {
-  display: grid;
-  grid-template-columns: 0.8fr 1.2fr;
-  gap: clamp(2rem, 5vw, 5rem);
-  padding: clamp(1.6rem, 4vw, 3rem);
-  border: 1px solid var(--ink);
-  border-radius: var(--radius);
-  background: var(--white);
-}
-
-.alpha-box h2 {
-  font-size: clamp(2.2rem, 4vw, 3.6rem);
-}
-
-.alpha-list {
-  display: grid;
-  gap: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.alpha-list li {
-  padding: 0.85rem 0;
-  border-top: 1px solid var(--line);
-  color: var(--ink-soft);
-  font-size: 0.9rem;
-}
-
-.alpha-list li:first-child {
-  border-top: 0;
-}
-
-.closing {
-  position: relative;
-  overflow: hidden;
-  padding-block: clamp(4rem, 7vw, 6rem);
-  color: var(--white);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: #1b1e29;
-}
-
-.closing::before {
-  position: absolute;
-  inset: -65% -12%;
-  background: radial-gradient(circle at 76% 50%, rgba(103, 93, 246, 0.32), transparent 32rem);
-  content: "";
-  pointer-events: none;
-}
-
-.closing .shell {
-  position: relative;
-  z-index: 1;
-}
-
-.closing .kicker {
-  color: #afa9ff;
-}
-
-.closing-grid {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 2rem;
-  align-items: center;
-}
-
-.closing h2 {
-  max-width: 14ch;
-  margin-bottom: 0;
-}
-
-.closing .button-primary {
-  color: var(--white);
-  border-color: rgba(255, 255, 255, 0.28);
-  background: linear-gradient(135deg, #857cff, #5a4fe9);
-  box-shadow: 0 12px 30px rgba(92, 78, 233, 0.32);
-}
-
-.closing .button-primary:hover,
-.closing .button-primary:focus-visible {
-  background: var(--accent-dark);
-  box-shadow: 0 16px 38px rgba(92, 78, 233, 0.42);
-}
-
-.site-footer {
-  color: rgba(255, 253, 248, 0.72);
-  background: var(--ink);
-}
-
-.footer-grid {
-  display: grid;
-  grid-template-columns: 1.2fr repeat(3, 0.7fr);
-  gap: 2rem;
-  padding-block: 3rem;
-}
-
-.footer-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  color: var(--white);
-  font-size: 1.1rem;
-  font-weight: 800;
-}
-
-.footer-brand-mark {
-  width: 2rem;
-  height: 2rem;
-}
-
-.footer-brand .brand-flow {
-  color: #9f98ff;
-}
-
-.footer-column strong {
-  display: block;
-  margin-bottom: 0.65rem;
-  color: var(--white);
-  font-size: 0.78rem;
-}
-
-.footer-column a,
-.footer-column span {
-  display: block;
-  margin-top: 0.35rem;
-  color: inherit;
-  font-size: 0.78rem;
-  text-decoration: none;
-}
-
-.footer-column a:hover,
-.footer-column a:focus-visible {
-  color: var(--white);
-}
-
-.footer-end {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 1.2rem 0 2rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.16);
-  font-family: var(--mono);
-  font-size: 0.62rem;
-}
-
-@media (max-width: 62rem) {
-  .hero-grid,
-  .agents-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .hero-copy {
-    max-width: 47rem;
-  }
-
-  .hero-visual {
-    max-width: 52rem;
-  }
-
-  .section-head,
-  .alpha-box {
-    grid-template-columns: 1fr;
-  }
-
-  .section-head .lede {
-    justify-self: start;
-  }
-
-  .problem-grid,
-  .feature-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .origin-flow {
-    grid-template-columns: 1fr;
-  }
-
-  .origin-arrow {
-    width: auto;
-    min-height: 5rem;
-  }
-
-  .origin-arrow b {
-    transform: rotate(90deg);
-  }
-
-  .footer-grid {
-    grid-template-columns: 1.2fr 1fr 1fr;
-  }
-}
-
-@media (max-width: 44rem) {
-  .nav-links a:not(.button) {
-    display: none;
-  }
-
-  .nav {
-    min-height: 4.4rem;
-  }
-
-  .hero {
-    padding-top: 3.5rem;
-  }
-
-  h1 {
-    font-size: clamp(2.55rem, 11vw, 3.6rem);
-  }
-
-  .float-card {
-    right: -0.35rem;
-    bottom: -2.4rem;
-  }
-
-  .signals,
-  .problem-grid,
-  .feature-grid,
-  .gallery-grid,
-  .deploy-grid,
-  .closing-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .signal {
-    border-top: 1px solid var(--line);
-    border-left: 0;
-  }
-
-  .signal:first-child {
-    border-top: 0;
-  }
-
-  .problem-card,
-  .feature-card {
-    min-height: auto;
-  }
-
-  .card-number,
-  .feature-icon {
-    margin-bottom: 1.6rem;
-  }
-
-  .closing .button {
-    width: 100%;
-  }
-
-  .footer-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .footer-grid > :first-child {
-    grid-column: 1 / -1;
-  }
-
-  .footer-end {
-    flex-direction: column;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-
-  .button {
-    transition: none;
-  }
-
-  .preview-trigger img {
-    transition: none;
-  }
-}
-</style>
+<meta property="og:url" content="https://artifactflow.app/">
+<meta property="og:site_name" content="ArtifactFlow">
+<meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard in a browser frame beside the product name and self-hosted library description">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ArtifactFlow | Self-hosted library for AI-generated HTML and Markdown">
+<meta name="twitter:description" content="Store, search, version, and safely run AI-generated HTML and Markdown on your own infrastructure.">
+<meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard in a browser frame beside the product name and self-hosted library description">
+<meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#0d0f13" media="(prefers-color-scheme: dark)" data-theme-color="dark">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script src="/assets/theme.js?v=20260722-2" data-theme-bootstrap></script>
+<link rel="stylesheet" href="/assets/site.css?v=20260722-2">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://artifactflow.app/#website",
+      "url": "https://artifactflow.app/",
+      "name": "ArtifactFlow",
+      "description": "A self-hosted team library for AI-generated HTML artifacts, Markdown, and Mermaid.",
+      "publisher": { "@id": "https://artifactflow.app/#organization" }
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://artifactflow.app/#organization",
+      "name": "ArtifactFlow",
+      "url": "https://artifactflow.app/",
+      "logo": "https://artifactflow.app/assets/artifactflow-mark.svg",
+      "sameAs": ["https://github.com/Gadsotek/artifactflow"]
+    }
+  ]
+}
+</script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
 
 <header class="site-header">
   <div class="shell nav">
-    <a class="brand" href="#top" aria-label="ArtifactFlow home"><img class="brand-mark" src="assets/artifactflow-mark.svg" alt="" aria-hidden="true">Artifact<span class="brand-flow">Flow</span></a>
+    <a class="brand" href="/" aria-label="ArtifactFlow home"><img class="brand-mark brand-mark-on-light" src="/assets/artifactflow-mark.svg" alt="" aria-hidden="true"><img class="brand-mark brand-mark-on-dark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true">Artifact<span class="brand-flow">Flow</span></a>
     <nav class="nav-links" aria-label="Main navigation">
-      <a href="#product">Product</a>
-      <a href="#safety">Safety</a>
-      <a href="#agents">MCP</a>
-      <a href="#self-host">Self-host</a>
+      <a href="/#product">Product</a>
+      <a href="/security/">Safety</a>
+      <a href="/mcp/">MCP</a>
+      <a href="/self-hosting/">Self-host</a>
+      <a href="/roadmap/">Roadmap</a>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true">☀</span><span aria-hidden="true">☾</span></button>
       <a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a>
     </nav>
   </div>
@@ -1166,7 +74,7 @@ h3 {
         <p class="lede">Save generated HTML tools, Markdown docs, and Mermaid diagrams in one searchable team library. Version every change. Share through your own accounts. Run untrusted code away from the app that holds your login.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow">Get the source ↗</a>
-          <a class="button" href="#safety">See the safety model ↓</a>
+          <a class="button" href="/security/">See the safety model →</a>
         </div>
         <p class="hero-note">AGPL-3.0-or-later · commercial licensing available · built for internal teams, not public artifact hosting.</p>
       </div>
@@ -1179,8 +87,11 @@ h3 {
             <span class="window-dot"></span>
             <span class="window-label">workspace / team library</span>
           </div>
-          <a class="preview-trigger" href="assets/app-dashboard.jpg" data-preview-caption="Workspace dashboard" aria-label="Preview the ArtifactFlow workspace dashboard">
-            <img src="assets/app-dashboard.jpg" alt="ArtifactFlow workspace dashboard with search, popular tags, drafts, and team members" width="1600" height="1000">
+          <a class="preview-trigger" href="/assets/app-dashboard.jpg" data-preview-caption="Workspace dashboard" aria-label="Preview the ArtifactFlow workspace dashboard">
+            <picture>
+              <source type="image/avif" srcset="/assets/app-dashboard-800.avif 800w, /assets/app-dashboard-1200.avif 1200w, /assets/app-dashboard-1600.avif 1600w" sizes="(max-width: 62rem) 90vw, 48vw">
+              <img src="/assets/app-dashboard.jpg" srcset="/assets/app-dashboard-800.jpg 800w, /assets/app-dashboard-1200.jpg 1200w, /assets/app-dashboard.jpg 1600w" sizes="(max-width: 62rem) 90vw, 48vw" alt="ArtifactFlow workspace dashboard with search, popular tags, drafts, and team members" width="1600" height="1000" fetchpriority="high">
+            </picture>
             <span class="preview-hint">Preview image</span>
           </a>
         </figure>
@@ -1243,22 +154,31 @@ h3 {
 
       <div class="gallery-grid">
         <figure class="shot">
-          <a class="preview-trigger" href="assets/app-dashboard.jpg" data-preview-caption="Workspace dashboard" aria-label="Preview the workspace dashboard">
-            <img src="assets/app-dashboard.jpg" alt="ArtifactFlow workspace dashboard with search, popular tags, drafts, and team members" width="1600" height="1000" loading="lazy">
+          <a class="preview-trigger" href="/assets/app-dashboard.jpg" data-preview-caption="Workspace dashboard" aria-label="Preview the workspace dashboard">
+            <picture>
+              <source type="image/avif" srcset="/assets/app-dashboard-800.avif 800w, /assets/app-dashboard-1200.avif 1200w, /assets/app-dashboard-1600.avif 1600w" sizes="(max-width: 44rem) 92vw, 31vw">
+              <img src="/assets/app-dashboard.jpg" srcset="/assets/app-dashboard-800.jpg 800w, /assets/app-dashboard-1200.jpg 1200w, /assets/app-dashboard.jpg 1600w" sizes="(max-width: 44rem) 92vw, 31vw" alt="ArtifactFlow workspace dashboard with search, popular tags, drafts, and team members" width="1600" height="1000" loading="lazy">
+            </picture>
             <span class="preview-hint">Preview image</span>
           </a>
           <figcaption><strong>Workspace dashboard.</strong> Search, drafts, tags, people, and workspace administration share one starting point.</figcaption>
         </figure>
         <figure class="shot">
-          <a class="preview-trigger" href="assets/app-artifact-live.jpg" data-preview-caption="Live HTML artifact" aria-label="Preview a live HTML artifact">
-            <img src="assets/app-artifact-live.jpg" alt="A live HTML artifact executing JavaScript inside ArtifactFlow's sandboxed preview" width="1600" height="1000" loading="lazy">
+          <a class="preview-trigger" href="/assets/app-artifact-live.jpg" data-preview-caption="Live HTML artifact" aria-label="Preview a live HTML artifact">
+            <picture>
+              <source type="image/avif" srcset="/assets/app-artifact-live-800.avif 800w, /assets/app-artifact-live-1200.avif 1200w, /assets/app-artifact-live-1600.avif 1600w" sizes="(max-width: 44rem) 92vw, 31vw">
+              <img src="/assets/app-artifact-live.jpg" srcset="/assets/app-artifact-live-800.jpg 800w, /assets/app-artifact-live-1200.jpg 1200w, /assets/app-artifact-live.jpg 1600w" sizes="(max-width: 44rem) 92vw, 31vw" alt="A live HTML artifact executing JavaScript inside ArtifactFlow's sandboxed preview" width="1600" height="1000" loading="lazy">
+            </picture>
             <span class="preview-hint">Preview image</span>
           </a>
           <figcaption><strong>Live HTML artifact.</strong> JavaScript runs inside the sandbox; script patterns are advisory findings, not the security boundary.</figcaption>
         </figure>
         <figure class="shot">
-          <a class="preview-trigger" href="assets/app-markdown.jpg" data-preview-caption="Markdown and Mermaid page" aria-label="Preview a Markdown and Mermaid page">
-            <img src="assets/app-markdown.jpg" alt="A Markdown page with a rendered Mermaid diagram, wiki link, versions, and access settings" width="1600" height="1000" loading="lazy">
+          <a class="preview-trigger" href="/assets/app-markdown.jpg" data-preview-caption="Markdown and Mermaid page" aria-label="Preview a Markdown and Mermaid page">
+            <picture>
+              <source type="image/avif" srcset="/assets/app-markdown-800.avif 800w, /assets/app-markdown-1200.avif 1200w, /assets/app-markdown-1600.avif 1600w" sizes="(max-width: 44rem) 92vw, 31vw">
+              <img src="/assets/app-markdown.jpg" srcset="/assets/app-markdown-800.jpg 800w, /assets/app-markdown-1200.jpg 1200w, /assets/app-markdown.jpg 1600w" sizes="(max-width: 44rem) 92vw, 31vw" alt="A Markdown page with a rendered Mermaid diagram, wiki link, versions, and access settings" width="1600" height="1000" loading="lazy">
+            </picture>
             <span class="preview-hint">Preview image</span>
           </a>
           <figcaption><strong>Markdown + Mermaid.</strong> Portable source, rich editing, permission-aware wiki links, and strict diagram rendering.</figcaption>
@@ -1270,13 +190,13 @@ h3 {
   <dialog class="image-preview" id="image-preview" aria-labelledby="preview-caption">
     <div class="preview-bar">
       <p class="preview-caption" id="preview-caption">Screenshot preview</p>
-      <a class="preview-original" href="assets/app-dashboard.jpg" target="_blank" rel="noopener">Open original ↗</a>
+      <a class="preview-original" href="/assets/app-dashboard.jpg" target="_blank" rel="noopener">Open original ↗</a>
       <form method="dialog">
         <button class="preview-close" type="submit" aria-label="Close image preview">×</button>
       </form>
     </div>
     <div class="preview-image-wrap">
-      <img class="preview-image" src="assets/app-dashboard.jpg" alt="">
+      <img class="preview-image" src="/assets/app-dashboard.jpg" alt="">
     </div>
   </dialog>
 
@@ -1314,7 +234,7 @@ h3 {
           <ul>
             <li>No application cookies</li>
             <li>Opaque sandboxed iframe</li>
-            <li>CSP blocks network, forms, frames, workers</li>
+            <li>CSP blocks ordinary requests, forms, frames, workers</li>
             <li>Inline scripts may run; isolation does the work</li>
           </ul>
         </article>
@@ -1323,6 +243,9 @@ h3 {
       <div class="safety-note">
         <strong>Honest boundary:</strong>
         <span>Secret scanning and the injected JavaScript guard are defense in depth. They are bypassable. The browser-enforced origin, iframe sandbox, and response-header CSP are the security boundary.</span>
+      </div>
+      <div class="detail-actions">
+        <a class="button button-light" href="/security/">Read the full security model →</a>
       </div>
     </div>
   </section>
@@ -1359,6 +282,9 @@ h3 {
           <div class="agent-point">MCP authority is hard-capped at Editor; administrator power is stripped in code.</div>
           <div class="agent-point">Page content is returned inside an explicit untrusted-data envelope.</div>
           <div class="agent-point">Writes keep scanning, versioning, concurrency checks, events, and audit attribution.</div>
+        </div>
+        <div class="detail-actions">
+          <a class="button" href="/mcp/">Explore the MCP server →</a>
         </div>
       </div>
 
@@ -1416,8 +342,22 @@ h3 {
           </div>
           <p>Bring two HTTPS hostnames, PostgreSQL with verified TLS, private persistent storage, secrets, mail, and correctly scoped proxy wiring. Set <code>APP_ENV=production</code>; the boot gate refuses an incomplete security contract.</p>
           <a class="button button-light" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md">Read the operations guide ↗</a>
+          <a class="button button-light" href="/self-hosting/">Self-hosting overview →</a>
         </article>
       </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="engineering-heading">
+    <div class="shell">
+      <div class="section-head">
+        <div>
+          <p class="kicker">How it is built</p>
+          <h2 id="engineering-heading">A security-sensitive workload for an AI engineering harness.</h2>
+        </div>
+        <p class="lede">ArtifactFlow is also the reference workload for tested Codex and Claude Code guardrails, persistent repository context, isolated test environments, adversarial review, and explicit human approval boundaries.</p>
+      </div>
+      <a class="button" href="/engineering-harness/">Read the engineering case study →</a>
     </div>
   </section>
 
@@ -1429,12 +369,45 @@ h3 {
         <p class="lede">Pin a revision. Expect breaking changes. Read the threat model before trusting it with work that matters.</p>
       </div>
       <ul class="alpha-list">
-        <li>Single-file HTML only; network access from artifacts is blocked by design.</li>
+        <li>Single-file HTML only; ordinary network requests are blocked, with documented self-navigation and browser-dependent WebRTC residuals.</li>
         <li>No public sharing, marketplace, approval workflow, or built-in AI generation.</li>
-        <li>Version restore exists; a visual diff UI does not yet.</li>
+        <li>Source diffs exist; a visual diff UI does not yet.</li>
         <li>Automatic orphan-file garbage collection is deferred; operators have a report-first manual command.</li>
         <li>Internally adversarially reviewed and broadly tested, but not independently audited by a third party.</li>
       </ul>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="roadmap-heading">
+    <div class="shell">
+      <div class="section-head">
+        <div>
+          <p class="kicker">Direction, not a deadline</p>
+          <h2 id="roadmap-heading">Expand only after the next boundary is proven.</h2>
+        </div>
+        <p class="lede">The alpha stays focused while candidate work is specified, threat-modeled, tested, and reviewed. The roadmap records direction without inventing release dates.</p>
+      </div>
+      <div class="problem-grid">
+        <article class="problem-card">
+          <span class="card-number">NOW</span>
+          <h3>Current alpha</h3>
+          <p>Security, correctness, release readiness, documentation, and careful improvements to existing behavior.</p>
+        </article>
+        <article class="problem-card">
+          <span class="card-number">NEXT</span>
+          <h3>Post-alpha candidate</h3>
+          <p>Expiring external links only after their capability, revocation, version, and isolation rules are proven.</p>
+        </article>
+        <article class="problem-card">
+          <span class="card-number">BETA</span>
+          <h3>Candidate surfaces</h3>
+          <p>Searchable PDF pages and nested shared workspaces, each gated by new security and authorization evidence.</p>
+        </article>
+      </div>
+      <div class="detail-actions">
+        <a class="button button-primary" href="/roadmap/">Read the public roadmap →</a>
+        <a class="button" href="https://github.com/Gadsotek/artifactflow/blob/main/ROADMAP.md">Open the source roadmap ↗</a>
+      </div>
     </div>
   </section>
 
@@ -1453,14 +426,17 @@ h3 {
   <div class="shell">
     <div class="footer-grid">
       <div>
-        <div class="footer-brand"><img class="footer-brand-mark" src="assets/artifactflow-mark-light.svg" alt="" aria-hidden="true"><span>Artifact<span class="brand-flow">Flow</span></span></div>
-        <p style="max-width:24rem;font-size:.82rem">A self-hosted team library for the useful tools and documents your AI creates.</p>
+        <div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true"><span>Artifact<span class="brand-flow">Flow</span></span></div>
+        <p class="footer-summary">A self-hosted team library for the useful tools and documents your AI creates.</p>
       </div>
       <div class="footer-column">
         <strong>Product</strong>
-        <a href="#product">What it does</a>
-        <a href="#safety">Safety model</a>
-        <a href="#agents">MCP agents</a>
+        <a href="/#product">What it does</a>
+        <a href="/security/">Safety model</a>
+        <a href="/mcp/">MCP server</a>
+        <a href="/self-hosting/">Self-hosting</a>
+        <a href="/engineering-harness/">Engineering harness</a>
+        <a href="/roadmap/">Roadmap</a>
       </div>
       <div class="footer-column">
         <strong>Repository</strong>
@@ -1481,36 +457,6 @@ h3 {
     </div>
   </div>
 </footer>
-<script>
-const imagePreview = document.querySelector('#image-preview');
-const previewImage = imagePreview?.querySelector('.preview-image');
-const previewCaption = imagePreview?.querySelector('.preview-caption');
-const previewOriginal = imagePreview?.querySelector('.preview-original');
-
-if (imagePreview && previewImage && previewCaption && previewOriginal && typeof imagePreview.showModal === 'function') {
-  document.querySelectorAll('.preview-trigger').forEach((trigger) => {
-    trigger.addEventListener('click', (event) => {
-      const thumbnail = trigger.querySelector('img');
-
-      if (!thumbnail) {
-        return;
-      }
-
-      event.preventDefault();
-      previewImage.src = trigger.href;
-      previewImage.alt = thumbnail.alt;
-      previewCaption.textContent = trigger.dataset.previewCaption ?? thumbnail.alt;
-      previewOriginal.href = trigger.href;
-      imagePreview.showModal();
-    });
-  });
-
-  imagePreview.addEventListener('click', (event) => {
-    if (event.target === imagePreview) {
-      imagePreview.close();
-    }
-  });
-}
-</script>
+<script src="/assets/site.js?v=20260722-2" defer></script>
 </body>
 </html>

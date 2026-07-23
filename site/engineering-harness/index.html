@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Engineering Orchestration Harness | ArtifactFlow</title>
+<meta name="description" content="A case study of ArtifactFlow's evolving AI engineering harness: repository context, TDD, isolated tests, Codex and Claude Code guardrails, handoffs, review, and release gates.">
+<link rel="canonical" href="https://artifactflow.app/engineering-harness/">
+<meta property="og:title" content="AI Engineering Orchestration Harness | ArtifactFlow">
+<meta property="og:description" content="How a security-sensitive Laravel product exercises an evolving, reusable workflow for AI-assisted software engineering.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://artifactflow.app/engineering-harness/">
+<meta property="og:site_name" content="ArtifactFlow">
+<meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard in a browser frame beside the product name and self-hosted library description">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="AI Engineering Orchestration Harness | ArtifactFlow">
+<meta name="twitter:description" content="Test-first delivery, persistent repository context, agent guardrails, adversarial review, and explicit human approval boundaries.">
+<meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard in a browser frame beside the product name and self-hosted library description">
+<meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#0d0f13" media="(prefers-color-scheme: dark)" data-theme-color="dark">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script src="/assets/theme.js?v=20260722-2" data-theme-bootstrap></script>
+<link rel="stylesheet" href="/assets/site.css?v=20260722-2">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "AI Engineering Orchestration Harness",
+  "description": "ArtifactFlow's evolving case study for AI-assisted software engineering workflows.",
+  "url": "https://artifactflow.app/engineering-harness/",
+  "isPartOf": { "@id": "https://artifactflow.app/#website" }
+}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="shell nav">
+    <a class="brand" href="/" aria-label="ArtifactFlow home"><img class="brand-mark brand-mark-on-light" src="/assets/artifactflow-mark.svg" alt="" aria-hidden="true"><img class="brand-mark brand-mark-on-dark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true">Artifact<span class="brand-flow">Flow</span></a>
+    <nav class="nav-links" aria-label="Main navigation">
+      <a href="/#product">Product</a>
+      <a href="/security/">Safety</a>
+      <a href="/mcp/">MCP</a>
+      <a href="/self-hosting/">Self-host</a>
+      <a href="/roadmap/">Roadmap</a>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true">☀</span><span aria-hidden="true">☾</span></button>
+      <a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <header class="detail-hero">
+    <div class="shell">
+      <p class="eyebrow">Engineering case study</p>
+      <h1>An evolving harness for AI-assisted software engineering.</h1>
+      <p class="lede">ArtifactFlow is the real, security-sensitive workload behind a reusable repository workflow for Codex and Claude Code: durable context, tests before behavior, constrained commands, isolated databases, explicit handoffs, adversarial review, and human approval where automation should stop.</p>
+      <div class="detail-actions">
+        <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/harness/README.md">Read the harness contract ↗</a>
+        <a class="button" href="https://github.com/Gadsotek/artifactflow">Inspect the repository ↗</a>
+      </div>
+    </div>
+  </header>
+
+  <article class="section">
+    <div class="article-shell article-grid">
+      <div class="article-content">
+        <section id="definition">
+          <p class="kicker">Start before code</p>
+          <h2>Product definition and architecture constrain the agents.</h2>
+          <p>The repository begins with a written product boundary: safely store and render generated HTML and Markdown for authenticated internal teams. <code>AGENTS.md</code>, the README, architecture documents, threat model, operations guide, and roadmap describe what the system is and what it deliberately is not.</p>
+          <p>That persistent context matters more than a clever one-off prompt. It keeps implementation work aligned with the modular-monolith structure, the two-origin security model, UID identifiers, typed application commands, durable events, authorization rules, and the narrow alpha scope.</p>
+        </section>
+
+        <section id="tdd">
+          <p class="kicker">Executable expectations</p>
+          <h2>New behavior starts with a failing test.</h2>
+          <p>Feature work and bug fixes add or update a failing test before production code changes. Focused Laravel tests cover use cases, validation, authorization, and database behavior. Browser tests are reserved for interactions and security boundaries that a PHP response assertion cannot prove, including opaque iframe behavior and hostile DOM construction.</p>
+          <p>The point is not a ceremonial red-green cycle. Tests become a stable handoff artifact: another agent or reviewer can see the intended behavior, reproduce the failure, and verify that the eventual implementation solves the specified problem without weakening a neighboring boundary.</p>
+        </section>
+
+        <section id="context-handoffs">
+          <p class="kicker">Persistent context</p>
+          <h2>Repository state and explicit handoffs outlive a chat window.</h2>
+          <p>Architecture decisions, threat assumptions, commands, test rules, and release requirements live in versioned files. Work can be split into bounded research, implementation, review, or verification tasks, but the durable result returns to the repository as tests, code, documentation, and a concise handoff rather than undocumented agent memory.</p>
+          <p>This supports multi-agent work without pretending parallelism is automatically useful. Tasks need clear ownership, non-overlapping write scopes, and an integration point. Security claims are traced back to code and tests rather than accepted from an agent summary.</p>
+        </section>
+
+        <section id="guardrails">
+          <p class="kicker">Tested policy</p>
+          <h2>Codex and Claude Code receive the same conservative guard rules.</h2>
+          <p>Project hooks inspect prompt, command, approval, and file-write events exposed by each agent host. Shared Python policy blocks or escalates high-risk patterns: direct Laravel test runners, secret-bearing file reads, destructive Git operations, recursive deletion, Docker volume removal, command constructions that hide interpreter behavior, and pushes without explicit approval.</p>
+          <p><code>make ai-hooks-test</code> exercises the policy corpus. Codex adds an exec-policy file; Claude Code and Codex have separate hook configuration, but both call the shared policy implementation.</p>
+          <div class="callout">
+            <strong>Defense in depth, not a sandbox</strong>
+            <p>A command-string denylist cannot understand arbitrary code at runtime. Real secret isolation still requires an OS or container boundary where credentials are absent or unreadable and network access is constrained.</p>
+          </div>
+        </section>
+
+        <section id="isolation">
+          <p class="kicker">Safe test environments</p>
+          <h2>PHP and browser tests never inherit the development database.</h2>
+          <p>The Laravel wrapper creates a unique temporary PostgreSQL database, injects the testing environment, runs the selected suite, and drops only that database. Direct <code>php artisan test</code>, Pest, or PHPUnit commands are prohibited because they can inherit local application configuration.</p>
+          <p>The browser wrapper goes further: it creates another isolated database, starts dedicated app and artifact-host services on separate hosts and ports, applies migrations, routes Playwright setup commands into that environment, and tears the database down afterwards. The origin split remains real even during browser tests.</p>
+        </section>
+
+        <section id="approval">
+          <p class="kicker">Human authority</p>
+          <h2>Automation stops at consequential external actions.</h2>
+          <ul class="detail-list">
+            <li><strong>Pushes require approval</strong>A clean local commit does not imply permission to publish it. Every <code>git push</code> requires explicit approval for that push.</li>
+            <li><strong>Destructive commands require approval</strong>Recursive deletion, worktree-discarding Git commands, Docker volume deletion, and reset targets cannot be inferred from a coding request.</li>
+            <li><strong>External account changes are separate</strong>Repository settings, deployment mutations, credentials, and third-party publishing remain owner actions unless specifically authorized.</li>
+            <li><strong>Unexpected database risk halts work</strong>If a test or migration may have touched local development data, the agent must stop and disclose it before any further database write.</li>
+          </ul>
+        </section>
+
+        <section id="review">
+          <p class="kicker">Verification</p>
+          <h2>Adversarial review and release gates challenge the implementation.</h2>
+          <p>Security-sensitive changes are reviewed against trust boundaries and triggerability, then exercised with focused regression cases. The full gate set combines style, maximum-level static analysis, type and line coverage, dependency audit, Semgrep rules and fixtures, secret-risk checks, asset build, isolated browser tests, production-image build, and image scanning.</p>
+          <p>Documentation is part of the same verification loop. Architecture, operations, and threat claims must match what the code and tests currently enforce; a polished claim that outruns implementation is a defect.</p>
+        </section>
+
+        <section id="contract">
+          <p class="kicker">Cross-repository contract</p>
+          <h2>Shared guard files carry a versioned drift contract.</h2>
+          <p><code>harness/ai-hooks-contract.json</code> records a contract version and SHA-256 hashes for the policy files intended to stay shared. Some files must be byte-identical; others permit declared project substitutions such as a repository slug or focused test name before hashing.</p>
+          <p>A Laravel drift test enforces ArtifactFlow's side without depending on a sibling checkout in CI. A deliberate harness change is coordinated across participating repositories, then bumps the contract version and affected hashes. This is a compact reuse mechanism, not a package manager or a released universal framework.</p>
+        </section>
+
+        <section id="portable">
+          <p class="kicker">What transfers</p>
+          <h2>The workflow is reusable; the workload stays specific.</h2>
+          <div class="split-cards">
+            <article class="split-card">
+              <h3>Framework-agnostic</h3>
+              <p>Persistent repository instructions, test-first handoffs, approval boundaries, command/file policy, isolated mutable dependencies, review roles, evidence-backed security audits, and a versioned drift contract can transfer to other stacks.</p>
+            </article>
+            <article class="split-card">
+              <h3>ArtifactFlow-specific</h3>
+              <p>Laravel command wrappers, PostgreSQL setup, Playwright service topology, the two-origin HTML sandbox, content-scanning rules, MCP authority model, exact gate commands, and the threat corpus belong to this product.</p>
+            </article>
+          </div>
+          <div class="callout">
+            <strong>Current status</strong>
+            <p>This is an evolving case study and reusable harness contract proven against ArtifactFlow. It is not presented as a finished, universal multi-agent framework.</p>
+          </div>
+        </section>
+
+        <section id="next">
+          <p class="kicker">Inspect the evidence</p>
+          <h2>Start with the public contract and the security workload.</h2>
+          <div class="page-links">
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/blob/main/harness/README.md"><strong>Harness README ↗</strong><span>Public overview and the versioned cross-repository drift contract.</span></a>
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/tree/main/scripts/ai-hooks"><strong>Agent guard scripts ↗</strong><span>Shared policy, harness runner, and host-specific integration notes.</span></a>
+            <a class="page-link" href="/security/"><strong>Reference security workload</strong><span>The two-origin browser boundary that drives adversarial tests.</span></a>
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/blob/main/CONTRIBUTING.md"><strong>Contribution workflow ↗</strong><span>Environment, tests, gates, sign-off, and review expectations.</span></a>
+          </div>
+        </section>
+      </div>
+
+      <aside class="detail-aside" aria-label="On this page">
+        <strong>On this page</strong>
+        <a href="#definition">Definition and architecture</a>
+        <a href="#tdd">TDD implementation</a>
+        <a href="#context-handoffs">Context and handoffs</a>
+        <a href="#guardrails">Agent guardrails</a>
+        <a href="#isolation">Isolated tests</a>
+        <a href="#approval">Human approvals</a>
+        <a href="#review">Review and gates</a>
+        <a href="#contract">Drift contract</a>
+      </aside>
+    </div>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <div class="footer-grid">
+      <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">A self-hosted team library for the useful tools and documents your AI creates.</p></div>
+      <div class="footer-column"><strong>Explore</strong><a href="/">Home</a><a href="/security/">Safety</a><a href="/mcp/">MCP server</a><a href="/self-hosting/">Self-hosting</a><a href="/engineering-harness/" aria-current="page">Engineering harness</a><a href="/roadmap/">Roadmap</a></div>
+      <div class="footer-column"><strong>Repository</strong><a href="https://github.com/Gadsotek/artifactflow">Source</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/harness/README.md">Harness contract</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md">Threat model</a></div>
+      <div class="footer-column"><strong>License</strong><span>AGPL-3.0-or-later</span><a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a><a href="mailto:gadsotek@gmail.com">Contact</a></div>
+    </div>
+    <div class="footer-end"><span>© 2026 Gadsotek</span><span>AI makes it. Your team keeps it.</span></div>
+  </div>
+</footer>
+</body>
+</html>

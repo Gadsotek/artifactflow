@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Safely Run Untrusted AI-Generated HTML | ArtifactFlow</title>
+<meta name="description" content="How ArtifactFlow safely previews untrusted AI-generated HTML with two origins, sandboxed iframes, strict CSP, signed URLs, and content-bound draft capabilities.">
+<link rel="canonical" href="https://artifactflow.app/security/">
+<meta property="og:title" content="Safely Run Untrusted AI-Generated HTML | ArtifactFlow">
+<meta property="og:description" content="A technical explanation of ArtifactFlow's two-origin HTML sandbox and its honest security boundaries.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://artifactflow.app/security/">
+<meta property="og:site_name" content="ArtifactFlow">
+<meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard in a browser frame beside the product name and self-hosted library description">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Safely Run Untrusted AI-Generated HTML | ArtifactFlow">
+<meta name="twitter:description" content="Why origin isolation, not sanitization, is the security boundary for generated HTML.">
+<meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard in a browser frame beside the product name and self-hosted library description">
+<meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#0d0f13" media="(prefers-color-scheme: dark)" data-theme-color="dark">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script src="/assets/theme.js?v=20260722-2" data-theme-bootstrap></script>
+<link rel="stylesheet" href="/assets/site.css?v=20260722-2">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "Safely Run Untrusted AI-Generated HTML",
+  "description": "ArtifactFlow's two-origin security model for generated HTML.",
+  "url": "https://artifactflow.app/security/",
+  "isPartOf": { "@id": "https://artifactflow.app/#website" }
+}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="shell nav">
+    <a class="brand" href="/" aria-label="ArtifactFlow home"><img class="brand-mark brand-mark-on-light" src="/assets/artifactflow-mark.svg" alt="" aria-hidden="true"><img class="brand-mark brand-mark-on-dark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true">Artifact<span class="brand-flow">Flow</span></a>
+    <nav class="nav-links" aria-label="Main navigation">
+      <a href="/#product">Product</a>
+      <a href="/security/" aria-current="page">Safety</a>
+      <a href="/mcp/">MCP</a>
+      <a href="/self-hosting/">Self-host</a>
+      <a href="/roadmap/">Roadmap</a>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true">☀</span><span aria-hidden="true">☾</span></button>
+      <a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <header class="detail-hero">
+    <div class="shell">
+      <p class="eyebrow">Security architecture</p>
+      <h1>Run generated HTML without trusting it.</h1>
+      <p class="lede">AI-generated HTML is executable code. ArtifactFlow lets useful single-file tools run, but keeps them away from the origin that carries your login, authorization state, and application data.</p>
+      <div class="detail-actions">
+        <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md">Read the threat model ↗</a>
+        <a class="button" href="https://github.com/Gadsotek/artifactflow/blob/main/SECURITY.md">Security policy ↗</a>
+      </div>
+    </div>
+  </header>
+
+  <article class="section">
+    <div class="article-shell article-grid">
+      <div class="article-content">
+        <section id="why-untrusted">
+          <p class="kicker">Start with the code</p>
+          <h2>A generated artifact is a program, not a document.</h2>
+          <p>A one-file dashboard, calculator, architecture map, or runbook can contain JavaScript. If that code executes on the same origin as an authenticated application, the browser may make the application's cookies, storage, DOM, and same-origin endpoints available to it. The source may look harmless and still contain accidental or deliberately hostile behavior.</p>
+          <p>ArtifactFlow therefore treats every pasted or uploaded HTML artifact as untrusted executable content. It does not declare arbitrary HTML safe after removing a few tags. Advisory scanning can identify obvious credentials and suspicious patterns, but isolation must still hold when scanning misses something.</p>
+          <div class="callout">
+            <strong>The load-bearing rule</strong>
+            <p>Untrusted artifact bytes never execute in the authenticated application origin or its DOM. This applies to saved versions and to the preview shown before a page is saved.</p>
+          </div>
+        </section>
+
+        <section id="two-origins">
+          <p class="kicker">Two origins</p>
+          <h2>Identity and execution live in different browser boundaries.</h2>
+          <div class="split-cards">
+            <article class="split-card">
+              <h3>App origin</h3>
+              <p>Owns login, session cookies, CSRF protection, workspace authorization, editing, search, versions, audit, and issuance of tightly scoped preview grants. It never serves artifact HTML as an application document.</p>
+            </article>
+            <article class="split-card">
+              <h3>Artifact origin</h3>
+              <p>Runs as a separate cookieless HTTP surface. It accepts only the saved-preview or draft-preview requests assigned to that runtime role and cannot expose login, dashboard, or management routes.</p>
+            </article>
+          </div>
+          <p>The production boot gate rejects overlapping origins and other incomplete boundary configuration. A real deployment needs two separate HTTPS hostnames; changing only a port on one cookie-bearing host is not the supported security model.</p>
+        </section>
+
+        <section id="browser-policy">
+          <p class="kicker">Browser enforcement</p>
+          <h2>The iframe is intentionally capable and intentionally cut off.</h2>
+          <p>Artifact JavaScript may run inside an opaque sandboxed iframe. The iframe does not receive <code>allow-same-origin</code>, top-navigation, popup, form, download, or pointer-lock powers. Response-header Content Security Policy denies ordinary subresources and connections with directives including <code>default-src 'none'</code>, <code>connect-src 'none'</code>, <code>form-action 'none'</code>, and nested browsing-context restrictions.</p>
+          <p>The artifact response also limits who may embed it with <code>frame-ancestors</code>. Modern browser requests for artifact documents are expected to be iframe destinations, preventing the normal product flow from opening a signed artifact as an unsandboxed top-level tab.</p>
+          <p>Artifacts are therefore self-contained by design. CDN scripts, external styles, API calls, forms, workers, nested frames, and remote images are not product features to re-enable around the boundary.</p>
+        </section>
+
+        <section id="preview-flows">
+          <p class="kicker">Preview delivery</p>
+          <h2>Saved and unsaved previews use different short-lived grants.</h2>
+          <h3>Saved versions</h3>
+          <ol class="flow-steps">
+            <li>The app origin authorizes the viewer and issues a short-lived HMAC-signed URL for a particular page version and preview purpose.</li>
+            <li>The artifact origin verifies the signature, expiry, runtime role, and requested version before reading immutable bytes from private storage.</li>
+            <li>If a running artifact later self-reloads after expiry, the authenticated parent can renew and replace only the iframe URL; the application document and unsaved editor state stay in place.</li>
+          </ol>
+          <h3>Draft previews</h3>
+          <ol class="flow-steps">
+            <li>An authenticated Editor asks the app origin for a capability tied to its purpose, artifact origin, workspace, nonce, exact UTF-8 byte length, and SHA-256 digest.</li>
+            <li>The browser posts that capability and the exact draft directly into the cookieless artifact iframe.</li>
+            <li>The artifact receiver verifies the short-lived capability, reflects the matching bytes once, and never persists the draft.</li>
+          </ol>
+          <p>This avoids sending an unsaved draft through a public URL and avoids ever rendering it on the authenticated origin.</p>
+        </section>
+
+        <section id="defense-in-depth">
+          <p class="kicker">Defense in depth</p>
+          <h2>Scanning and the injected guard help without becoming the boundary.</h2>
+          <ul class="detail-list">
+            <li><strong>Secret blocking</strong>Pattern-based scanning rejects obvious credentials, private keys, JWTs, and provider-token patterns without persisting the matched secret. It is bypassable by obfuscation, and a clean scan is not proof that no secret was stored.</li>
+            <li><strong>Advisory findings</strong>Expected artifact behavior such as inline JavaScript is recorded as a warning, not falsely certified as safe.</li>
+            <li><strong>Early document guard</strong>An injected in-realm guard blocks common network, storage, popup, and nested-context APIs. Hostile code can tamper with same-realm JavaScript, so the guard is deliberately classified as defense in depth.</li>
+            <li><strong>Server hardening</strong>Static nested browsing-context markup is made inert before parsing, complementing CSP and browser-level regression tests for dynamic DOM APIs.</li>
+          </ul>
+        </section>
+
+        <section id="residuals">
+          <p class="kicker">Honest residuals</p>
+          <h2>Isolation narrows risk; it does not make hostile code benevolent.</h2>
+          <p>A sandboxed iframe can still navigate itself to another site. Browser CSP does not provide a shipped directive that fully prevents that self-navigation. The isolated frame has no app cookies or other tenants' data to steal, but data a viewer is persuaded to type into an artifact, the viewer's IP address, and a view confirmation may still be exposed through navigation.</p>
+          <p>Browser behavior is not perfectly uniform. Chromium regression tests exercise the maintained attack corpus; Safari on macOS and iOS remains a documented manual release check. A legacy browser without modern sandbox protections is outside the intended trust envelope.</p>
+          <div class="callout">
+            <strong>Alpha disclosure</strong>
+            <p>ArtifactFlow is a young 0.x internal-team tool. It has broad automated coverage and repeated AI-assisted adversarial review, but it has not received an independent third-party security audit. Pin a revision and read the full threat model before using it for important work.</p>
+          </div>
+        </section>
+
+        <section id="next">
+          <p class="kicker">Authoritative detail</p>
+          <h2>Trace the claims to the implementation documents.</h2>
+          <div class="page-links">
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md"><strong>Threat model ↗</strong><span>Controls, attacker cases, residuals, and regression evidence.</span></a>
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/ARCHITECTURE.md"><strong>Architecture ↗</strong><span>Runtime roles, preview flows, storage, and application layers.</span></a>
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/architecture/README.md"><strong>Architecture maps ↗</strong><span>Visual system overview and the two-origin workflow.</span></a>
+            <a class="page-link" href="/self-hosting/"><strong>Self-hosting</strong><span>What production operators must provide to preserve the boundary.</span></a>
+          </div>
+        </section>
+      </div>
+
+      <aside class="detail-aside" aria-label="On this page">
+        <strong>On this page</strong>
+        <a href="#why-untrusted">Why HTML is untrusted</a>
+        <a href="#two-origins">Two origins</a>
+        <a href="#browser-policy">Iframe and CSP</a>
+        <a href="#preview-flows">Preview flows</a>
+        <a href="#defense-in-depth">Defense in depth</a>
+        <a href="#residuals">Residual risks</a>
+      </aside>
+    </div>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <div class="footer-grid">
+      <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">A self-hosted team library for the useful tools and documents your AI creates.</p></div>
+      <div class="footer-column"><strong>Explore</strong><a href="/">Home</a><a href="/security/" aria-current="page">Safety</a><a href="/mcp/">MCP server</a><a href="/self-hosting/">Self-hosting</a><a href="/engineering-harness/">Engineering harness</a><a href="/roadmap/">Roadmap</a></div>
+      <div class="footer-column"><strong>Repository</strong><a href="https://github.com/Gadsotek/artifactflow">Source</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md">Threat model</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/SECURITY.md">Security policy</a></div>
+      <div class="footer-column"><strong>License</strong><span>AGPL-3.0-or-later</span><a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a><a href="mailto:gadsotek@gmail.com">Contact</a></div>
+    </div>
+    <div class="footer-end"><span>© 2026 Gadsotek</span><span>AI makes it. Your team keeps it.</span></div>
+  </div>
+</footer>
+</body>
+</html>
