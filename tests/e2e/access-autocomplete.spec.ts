@@ -21,7 +21,7 @@ function runAppCommand(appCommand: string): void {
 }
 
 async function login(page: Page, email: string, password: string): Promise<void> {
-  await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -44,7 +44,7 @@ test('page access autocomplete finds and grants a registered coworker', async ({
   );
 
   await login(page, ownerEmail, password);
-  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'domcontentloaded' });
   await expect(page.locator('[data-content-editor]')).toHaveAttribute('data-editor-ready', 'true');
   await page.locator('input[name="title"]').fill(pageTitle);
   await page.getByRole('textbox', { name: 'Page content' }).fill(`# ${pageTitle}`);
@@ -66,7 +66,9 @@ test('page access autocomplete finds and grants a registered coworker', async ({
   await expect(option).toBeVisible();
   await option.click();
   await expect(picker).toHaveValue(coworkerEmail);
-  await expect(dialog.getByText(`Granting access to ${coworkerName} (${coworkerEmail}).`)).toBeVisible();
+  await expect(
+    dialog.getByText(`Granting access to ${coworkerName} (${coworkerEmail}).`),
+  ).toBeVisible();
 
   await dialog.getByRole('button', { name: 'Grant user access' }).click();
   await expect(page).toHaveURL(/\/pages\/[0-9a-hjkmnp-tv-z]{26}$/u);

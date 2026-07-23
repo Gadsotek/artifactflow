@@ -11,7 +11,10 @@ import { fileURLToPath } from 'node:url';
 // and asserts, at the network layer, that no artifact request carries a Cookie
 // header while the app requests demonstrably do.
 const baseUrl = (process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:18180').replace(/\/$/u, '');
-const artifactBaseUrl = (process.env.E2E_ARTIFACT_URL ?? 'http://127.0.0.1:18181').replace(/\/$/u, '');
+const artifactBaseUrl = (process.env.E2E_ARTIFACT_URL ?? 'http://127.0.0.1:18181').replace(
+  /\/$/u,
+  '',
+);
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 const appCommandTarget = process.env.E2E_APP_COMMAND_TARGET ?? 'run-e2e-app-cmd';
 
@@ -33,14 +36,16 @@ function runAppCommand(appCommand: string, failureMessage: string): void {
 }
 
 async function login(page: Page, email: string, password: string): Promise<void> {
-  await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/dashboard$/u);
 }
 
-test('artifact preview requests carry no application cookies', async ({ page }) => {
+test('artifact preview requests carry no application cookies @artifact-security', async ({
+  page,
+}) => {
   // Two full preview flows (saved signed-URL iframe plus draft form POST) with
   // a fetch-based save in between comfortably exceed the default timeout on CI.
   test.setTimeout(120_000);
@@ -97,11 +102,15 @@ test('artifact preview requests carry no application cookies', async ({ page }) 
     page.waitForRequest(
       (request) => request.url() === `${baseUrl}/pages/create` && request.isNavigationRequest(),
     ),
-    page.goto(`${baseUrl}/pages/create`, { waitUntil: 'networkidle' }),
+    page.goto(`${baseUrl}/pages/create`, { waitUntil: 'domcontentloaded' }),
   ]);
   const appRequestHeaders = await createRequest.allHeaders();
   expect(appRequestHeaders['cookie'] ?? '').toContain('artifactflow_session');
-  expect((await page.context().cookies(baseUrl)).some((cookie) => cookie.name === 'artifactflow_session')).toBe(true);
+  expect(
+    (await page.context().cookies(baseUrl)).some(
+      (cookie) => cookie.name === 'artifactflow_session',
+    ),
+  ).toBe(true);
 
   const editorForm = page.locator('[data-content-editor]');
   await expect(editorForm).toHaveAttribute('data-editor-ready', 'true');
@@ -138,15 +147,17 @@ test('artifact preview requests carry no application cookies', async ({ page }) 
     { timeout: 20_000 },
   );
   const draftRequestPromise = page.waitForRequest(
-    (request) => request.url() === `${artifactBaseUrl}/artifact-previews/draft` && request.method() === 'POST',
+    (request) =>
+      request.url() === `${artifactBaseUrl}/artifact-previews/draft` && request.method() === 'POST',
     { timeout: 20_000 },
   );
   await page.getByRole('button', { name: 'Preview HTML before saving' }).click();
   const capabilityRequest = await capabilityRequestPromise;
   const draftRequest = await draftRequestPromise;
-  await expect(
-    page.frameLocator('[data-html-draft-preview-frame]').locator('#result'),
-  ).toHaveText('artifact-executed', { timeout: 20_000 });
+  await expect(page.frameLocator('[data-html-draft-preview-frame]').locator('#result')).toHaveText(
+    'artifact-executed',
+    { timeout: 20_000 },
+  );
 
   // Flow 2: saved preview. Saving redirects to the page view, whose iframe
   // loads the signed preview URL from the artifact origin.
@@ -154,9 +165,10 @@ test('artifact preview requests carry no application cookies', async ({ page }) 
   await expect(page).toHaveURL(/\/pages\/[0-9a-hjkmnp-tv-z]{26}$/u, { timeout: 20_000 });
   await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 20_000 });
   const savedFrame = page.locator('iframe[title="Artifact preview"]');
-  await expect(
-    page.frameLocator('iframe[title="Artifact preview"]').locator('#result'),
-  ).toHaveText('artifact-executed', { timeout: 20_000 });
+  await expect(page.frameLocator('iframe[title="Artifact preview"]').locator('#result')).toHaveText(
+    'artifact-executed',
+    { timeout: 20_000 },
+  );
 
   // The parser-initiated load of a cross-origin iframe can race the network
   // instrumentation of its out-of-process frame, so its request event is not
@@ -180,9 +192,10 @@ test('artifact preview requests carry no application cookies', async ({ page }) 
     (element as HTMLIFrameElement).src = `${url}&cookieprobe=1`;
   }, savedSrc);
   const savedRequest = await savedRequestPromise;
-  await expect(
-    page.frameLocator('iframe[title="Artifact preview"]').locator('#result'),
-  ).toHaveText('artifact-executed', { timeout: 20_000 });
+  await expect(page.frameLocator('iframe[title="Artifact preview"]').locator('#result')).toHaveText(
+    'artifact-executed',
+    { timeout: 20_000 },
+  );
 
   // Sensitivity guard: sec-fetch-* headers exist only in the final
   // network-layer header set (never in provisional headers), so seeing them

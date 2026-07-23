@@ -21,7 +21,7 @@ function runAppCommand(appCommand: string): void {
 }
 
 async function login(page: Page, email: string, password: string): Promise<void> {
-  await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -34,7 +34,7 @@ async function createMarkdownPage(
   parentTitle: string | null = null,
 ): Promise<string> {
   if (parentTitle === null) {
-    await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'networkidle' });
+    await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'domcontentloaded' });
   } else {
     await expect(page.getByRole('link', { name: 'New page', exact: true })).toHaveAttribute(
       'href',
@@ -83,7 +83,7 @@ test('Library and Overview visually nest a child page beneath its visible parent
   const childWorkspaceUid = await createMarkdownPage(page, childTitle, parentTitle);
   expect(childWorkspaceUid).toBe(workspaceUid);
   await page.goto(`${baseUrl}/pages?workspace_uid=${workspaceUid}&sort=title`, {
-    waitUntil: 'networkidle',
+    waitUntil: 'domcontentloaded',
   });
 
   const parentHeading = page.getByRole('heading', { name: parentTitle, exact: true });
@@ -100,7 +100,7 @@ test('Library and Overview visually nest a child page beneath its visible parent
 
   expect(childX - parentX).toBeGreaterThan(20);
 
-  await page.goto(`${baseUrl}/dashboard`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/dashboard`, { waitUntil: 'domcontentloaded' });
   const overviewParentHeading = page.getByRole('heading', { name: parentTitle, exact: true });
   const overviewChildHeading = page.getByRole('heading', { name: childTitle, exact: true });
   const overviewParentRow = page

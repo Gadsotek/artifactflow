@@ -32,14 +32,16 @@ function assertSavedPreviewSchemaReady(): void {
 }
 
 async function login(page: Page, email: string, password: string): Promise<void> {
-  await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/dashboard$/u);
 }
 
-test('saved HTML artifact executes only inside the controller-served sandbox', async ({ page }) => {
+test('saved HTML artifact executes only inside the controller-served sandbox @artifact-security', async ({
+  page,
+}) => {
   // This flow is heavy: a fetch-based save that rebuilds the document, then a
   // cross-origin signed-URL iframe that must load and execute the artifact. On
   // CI that comfortably exceeds the default per-test timeout.
@@ -75,7 +77,7 @@ test('saved HTML artifact executes only inside the controller-served sandbox', a
   });
 
   await login(page, email, password);
-  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'domcontentloaded' });
 
   const editorForm = page.locator('[data-content-editor]');
   await expect(editorForm).toHaveAttribute('data-editor-ready', 'true');
@@ -308,7 +310,9 @@ test('saved HTML artifact executes only inside the controller-served sandbox', a
   // Keep an unsaved edit open in the parent while the prototype requests its
   // refresh. Rotating the iframe must not navigate the application document or
   // discard the editor dialog's in-memory state.
-  await page.getByRole('button', { name: 'Edit HTML source' }).click();
+  const editButton = page.getByRole('button', { name: 'Edit HTML source' });
+  await expect(editButton).toHaveAttribute('data-editor-dialog-trigger-ready', '');
+  await editButton.click();
   const editDialog = page.locator('#html-source-editor');
   await expect(editDialog).toBeVisible();
   const savedSourceEditor = editDialog.locator('[data-source-editor-mount] .cm-content');
@@ -378,7 +382,9 @@ test('saved HTML artifact executes only inside the controller-served sandbox', a
   expect(page.url()).toBe(parentPageUrl);
 });
 
-test('historical HTML versions stay inside the artifact-origin sandbox', async ({ page }) => {
+test('historical HTML versions stay inside the artifact-origin sandbox @artifact-security', async ({
+  page,
+}) => {
   test.setTimeout(90_000);
 
   const runSuffix = randomUUID().replaceAll('-', '').slice(0, 12);
@@ -399,7 +405,7 @@ test('historical HTML versions stay inside the artifact-origin sandbox', async (
   });
 
   await login(page, email, password);
-  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'domcontentloaded' });
 
   const createEditor = page.locator('[data-content-editor]');
   await expect(createEditor).toHaveAttribute('data-editor-ready', 'true');
@@ -457,9 +463,9 @@ test('historical HTML versions stay inside the artifact-origin sandbox', async (
 
   await expect(page).toHaveURL(/\/pages\/[0-9a-hjkmnp-tv-z]{26}$/u, { timeout: 20_000 });
   await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 20_000 });
-  await page.waitForLoadState('networkidle');
-
-  await page.getByRole('button', { name: 'Edit HTML source' }).click();
+  const editButton = page.getByRole('button', { name: 'Edit HTML source' });
+  await expect(editButton).toHaveAttribute('data-editor-dialog-trigger-ready', '');
+  await editButton.click();
   const editDialog = page.locator('#html-source-editor');
   await expect(editDialog).toBeVisible();
   const editSource = editDialog.locator('[data-source-editor-mount] .cm-content');
@@ -473,13 +479,14 @@ test('historical HTML versions stay inside the artifact-origin sandbox', async (
 
   await expect(editDialog).toBeHidden({ timeout: 20_000 });
   await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 20_000 });
-  await page.waitForLoadState('networkidle');
   await expect(
     page.frameLocator('iframe[title="Artifact preview"]').getByRole('heading', {
       name: 'Current artifact',
     }),
   ).toBeVisible({ timeout: 20_000 });
-  await page.getByRole('button', { name: 'Versions' }).click();
+  const versionsButton = page.getByRole('button', { name: 'Versions' });
+  await expect(versionsButton).toHaveAttribute('data-editor-dialog-trigger-ready', '');
+  await versionsButton.click();
   const historyDialog = page.locator('#page-versions-dialog');
   await expect(historyDialog).toBeVisible();
   const versionOne = historyDialog.locator('article').filter({ hasText: 'Version 1' });
@@ -504,7 +511,7 @@ test('historical HTML versions stay inside the artifact-origin sandbox', async (
   expect(outboundRequests).toBe(0);
 });
 
-test('preview URL renewal is capped so a self-navigating artifact cannot drain the viewer rate limit', async ({
+test('preview URL renewal is capped so a self-navigating artifact cannot drain the viewer rate limit @artifact-security', async ({
   page,
 }) => {
   // Same heavy save + cross-origin signed-URL load as the isolation test, plus a
@@ -535,7 +542,7 @@ test('preview URL renewal is capped so a self-navigating artifact cannot drain t
   });
 
   await login(page, email, password);
-  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'domcontentloaded' });
 
   const editorForm = page.locator('[data-content-editor]');
   await expect(editorForm).toHaveAttribute('data-editor-ready', 'true');

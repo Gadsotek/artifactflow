@@ -14,6 +14,9 @@ final class E2eIsolationConfigurationTest extends TestCase
         $makefile = $this->readProjectFile('Makefile');
 
         $this->assertStringContainsString('E2E_DB_NAME ?= $(TEST_DB_DATABASE)_e2e_$(TEST_DB_RUN_ID)', $makefile);
+        $this->assertStringContainsString('E2E_LOCK_DIR ?= storage/framework/testing/e2e.lock', $makefile);
+        $this->assertStringContainsString('if ! mkdir "$$lock_dir" 2>/dev/null; then', $makefile);
+        $this->assertStringContainsString('rmdir "$$lock_dir"', $makefile);
         $this->assertStringContainsString('test-db-create TEST_DB_NAME="$$db_name"', $makefile);
         $this->assertStringContainsString('test-db-drop TEST_DB_NAME="$$db_name"', $makefile);
         $this->assertStringContainsString('E2E_DB_DATABASE="$$db_name"', $makefile);

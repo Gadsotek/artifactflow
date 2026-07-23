@@ -61,7 +61,9 @@ const hostileDiagrams = [
 // control forces the pipeline to prove it actually renders sanitized SVG.
 const controlDiagram = {
   label: 'benign control diagram',
-  source: ['graph TD', '  Start[Start] --> Middle[ProcessStep]', '  Middle --> End[Finished]'].join('\n'),
+  source: ['graph TD', '  Start[Start] --> Middle[ProcessStep]', '  Middle --> End[Finished]'].join(
+    '\n',
+  ),
 };
 
 function diagramBlock(source: string, attrs = ''): string {
@@ -78,7 +80,9 @@ function diagramBlock(source: string, attrs = ''): string {
   `;
 }
 
-test('hostile Mermaid source neither executes nor escapes the strict renderer', async ({ page }) => {
+test('hostile Mermaid source neither executes nor escapes the strict renderer @artifact-security', async ({
+  page,
+}) => {
   const dialogs: string[] = [];
   const consoleErrors: string[] = [];
   let canaryRequests = 0;
@@ -97,7 +101,7 @@ test('hostile Mermaid source neither executes nor escapes the strict renderer', 
     await route.abort();
   });
 
-  await page.goto(`${baseUrl}/up`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/up`, { waitUntil: 'domcontentloaded' });
   await page.setContent(`
     <!doctype html>
     <html>
@@ -139,7 +143,9 @@ test('hostile Mermaid source neither executes nor escapes the strict renderer', 
     const dangerous: string[] = [];
 
     for (const canvas of document.querySelectorAll('[data-mermaid-canvas]')) {
-      for (const node of canvas.querySelectorAll('script, foreignObject, iframe, object, embed, image, img')) {
+      for (const node of canvas.querySelectorAll(
+        'script, foreignObject, iframe, object, embed, image, img',
+      )) {
         dangerous.push(`node:${node.tagName.toLowerCase()}`);
       }
 
@@ -152,7 +158,11 @@ test('hostile Mermaid source neither executes nor escapes the strict renderer', 
             dangerous.push(`attr:${name}`);
           }
 
-          if ((name === 'href' || name === 'xlink:href' || name === 'src') && value !== '' && !value.startsWith('#')) {
+          if (
+            (name === 'href' || name === 'xlink:href' || name === 'src') &&
+            value !== '' &&
+            !value.startsWith('#')
+          ) {
             dangerous.push(`ref:${name}=${value}`);
           }
         }
@@ -165,7 +175,10 @@ test('hostile Mermaid source neither executes nor escapes the strict renderer', 
     };
   });
 
-  expect(verdict.dangerous, 'sanitized SVG must contain no executable or external-reference nodes').toEqual([]);
+  expect(
+    verdict.dangerous,
+    'sanitized SVG must contain no executable or external-reference nodes',
+  ).toEqual([]);
   expect(verdict.pwned, 'no hostile payload may reach the main-origin window').toBe(false);
   expect(dialogs).toEqual([]);
   expect(consoleErrors).toEqual([]);
