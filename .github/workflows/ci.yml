@@ -257,7 +257,7 @@ jobs:
   # exempt: the check grades contribution commits, and the job is explicitly
   # allowed to be skipped in ci-required below.
   dco:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && github.actor != 'dependabot-preview[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
