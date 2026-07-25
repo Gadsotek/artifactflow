@@ -117,8 +117,8 @@ EXPOSE 8000
 
 CMD ["sh", "/var/www/html/docker/start-local.sh"]
 
-# FrankenPHP v1.12.6 still resolves grpc-go v1.81.1. Rebuild the bundled
-# binary with the patched dependency until upstream ships v1.82.1 or newer.
+# FrankenPHP v1.12.6 still resolves vulnerable Go dependencies. Rebuild the
+# bundled binary with patched versions until upstream ships them or newer.
 FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:26b34dc4f9dcc353cb8888fd6e6b32b5553cca36f7e803e1dc424027fbbbb77d AS frankenphp-security-builder
 
 ENV PATH="/usr/local/go/bin:${PATH}"
@@ -126,6 +126,7 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 WORKDIR /go/src/app/caddy
 
 RUN go get google.golang.org/grpc@v1.82.1 \
+    && go get github.com/getkin/kin-openapi@v0.144.0 \
     && go mod tidy
 
 WORKDIR /go/src/app/caddy/frankenphp
@@ -134,7 +135,9 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
         -ldflags "-w -s -X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP v1.12.6 PHP $PHP_VERSION Caddy' -X 'github.com/caddyserver/caddy/v2.CustomBinaryName=frankenphp' -X 'github.com/caddyserver/caddy/v2/modules/caddyhttp.ServerHeader=FrankenPHP Caddy'" \
         -buildvcs=true \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.82\.1'
+        | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.82\.1' \
+    && go version -m /usr/local/bin/frankenphp \
+        | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.144\.0'
 
 FROM dunglas/frankenphp:1-php8.5-alpine@sha256:4c533f2a1878c2b279afc6c4a5cec3709483835789d316b1e44bdf707afd26aa AS production
 
@@ -145,7 +148,8 @@ COPY --from=frankenphp-security-builder /usr/local/bin/frankenphp /usr/local/bin
 # minimum-version constraint below intentionally permits a later patched Alpine
 # revision, so this layer is not byte-for-byte reproducible from the base digest
 # alone; the release image digest, SBOM, and provenance identify the exact output.
-# The source-rebuilt binary above upgrades grpc-go for GHSA-hrxh-6v49-42gf.
+# The source-rebuilt binary above upgrades grpc-go for GHSA-hrxh-6v49-42gf
+# and kin-openapi for GHSA-r277-6w6q-xmqw.
 # Current apk minimum: c-ares CVE-2026-33630 is fixed in 1.34.8-r0.
 RUN setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp \
     && apk add --no-cache "c-ares>=1.34.8-r0"

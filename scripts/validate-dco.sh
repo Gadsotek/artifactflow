@@ -4,8 +4,12 @@ set -eu
 
 DCO_PATTERN='^Signed-off-by: [^[:space:]<]([^<]*[^[:space:]<])? <[^[:space:]@<>][^[:space:]@<>]*@[^[:space:]@<>][^[:space:]@<>]*\.[^[:space:]@<>][^[:space:]@<>]*>$'
 
+parse_trailers() {
+    git --git-dir="${TMPDIR:-/tmp}" -c core.bare=true interpret-trailers --parse
+}
+
 if [ "${1:-}" = "--message-stdin" ]; then
-    if git interpret-trailers --parse | grep -qE "$DCO_PATTERN"; then
+    if parse_trailers | grep -qE "$DCO_PATTERN"; then
         exit 0
     fi
 
@@ -24,7 +28,7 @@ range="${base_sha}..${head_sha}"
 missing=0
 
 for sha in $(git rev-list --no-merges "$range"); do
-    if git log -1 --format=%B "$sha" | git interpret-trailers --parse | grep -qE "$DCO_PATTERN"; then
+    if git log -1 --format=%B "$sha" | parse_trailers | grep -qE "$DCO_PATTERN"; then
         continue
     fi
 

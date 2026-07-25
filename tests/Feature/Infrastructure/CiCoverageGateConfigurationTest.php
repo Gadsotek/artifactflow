@@ -175,6 +175,18 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('/var/www/html/docker/healthcheck-app.sh', $schedulerBlock);
     }
 
+    public function test_production_frankenphp_rebuild_pins_scanner_required_go_security_updates(): void
+    {
+        $dockerfile = $this->readProjectFile('Dockerfile');
+
+        $this->assertStringContainsString('go get google.golang.org/grpc@v1.82.1', $dockerfile);
+        $this->assertStringContainsString('go get github.com/getkin/kin-openapi@v0.144.0', $dockerfile);
+        $this->assertStringContainsString(
+            "grep -E 'github\\.com/getkin/kin-openapi[[:space:]]+v0\\.144\\.0'",
+            $dockerfile,
+        );
+    }
+
     public function test_release_waits_for_the_reusable_ci_gate_on_the_exact_tag_commit(): void
     {
         $ciWorkflow = $this->readProjectFile('.github/workflows/ci.yml');

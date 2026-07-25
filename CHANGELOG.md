@@ -6,6 +6,19 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.0.6 — 2026-07-25
+
+Security maintenance release. It clears the nightly dependency and production-image audit findings without adding product features.
+
+### Security
+
+- Updated DOMPurify to 3.4.12 and `brace-expansion` to 5.0.8 to clear the npm audit findings. (#36)
+- Rebuilt the production FrankenPHP binary with `kin-openapi` v0.144.0 and pinned an embedded-module verification check, clearing GHSA-r277-6w6q-xmqw from the Trivy image scan. (#36)
+
+### Internal / Tooling
+
+- Made DCO trailer parsing independent of the current checkout layout so Docker-backed validation also works from linked worktrees. (#36)
+
 ## v0.0.5 — 2026-07-23
 
 Security and tooling release. It closes a declarative-shadow-DOM sandbox escape in the artifact preview, re-enables cross-engine end-to-end coverage on the artifact-security corpus, and refreshes dependencies.
