@@ -34,7 +34,10 @@ final class DcoValidatorTest extends TestCase
 
     private function validate(string $message): Process
     {
-        $process = new Process(['sh', base_path('scripts/validate-dco.sh'), '--message-stdin']);
+        $process = new Process(
+            ['sh', base_path('scripts/validate-dco.sh'), '--message-stdin'],
+            sys_get_temp_dir(),
+        );
         $process->setInput($message);
         $process->run();
 
