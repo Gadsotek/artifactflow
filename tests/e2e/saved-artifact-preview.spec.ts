@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 
 const baseUrl = (process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:18180').replace(/\/$/u, '');
@@ -39,6 +40,111 @@ async function login(page: Page, email: string, password: string): Promise<void>
   await expect(page).toHaveURL(/\/dashboard$/u);
 }
 
+test('saved image is normalized into a scriptless isolated preview @artifact-security', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await page.clock.install({ time: new Date() });
+
+  const runSuffix = randomUUID().replaceAll('-', '').slice(0, 12);
+  const email = `image-preview-e2e-${runSuffix}@example.test`;
+  const password = `af${randomUUID().replaceAll('-', '')}`;
+  const title = `Image preview sandbox ${runSuffix}`;
+  const payloadMarker = 'artifactflow-image-payload-must-disappear';
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAD0lEQVQImWNUSHhwQcIBAAkOAopyJglZAAAAAElFTkSuQmCC',
+    'base64',
+  );
+  const hostileUpload = Buffer.concat([
+    png,
+    Buffer.from(`<script>parent.document.body.dataset.imagePayload="${payloadMarker}"</script>`),
+  ]);
+  let renewalRequests = 0;
+  page.on('request', (request) => {
+    if (
+      /\/pages\/[0-9a-hjkmnp-tv-z]{26}\/artifact-preview-url$/u.test(
+        new URL(request.url()).pathname,
+      )
+    ) {
+      renewalRequests += 1;
+    }
+  });
+
+  assertSavedPreviewSchemaReady();
+  runAppCommand(
+    `php artisan artifactflow:create-user --name=ImagePreviewE2E --email=${email} --password=${password}`,
+    'Failed to prepare the image preview e2e account.',
+  );
+
+  await login(page, email, password);
+  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'domcontentloaded' });
+
+  await expect(page.locator('[data-create-page-form]')).toHaveAttribute(
+    'data-create-page-mode-ready',
+    'true',
+  );
+  await page.locator('select[name="mode"]').selectOption('image_upload');
+  await expect(page.locator('select[name="type"]')).toHaveValue('image');
+  await expect(page.locator('select[name="mode"]')).toHaveValue('image_upload');
+  await page.locator('input[name="title"]').fill(title);
+  await page.locator('textarea[name="description"]').fill('A searchable deployment screenshot.');
+  await page.locator('input[name="image_file"]').setInputFiles({
+    name: 'deployment.png',
+    mimeType: 'image/png',
+    buffer: hostileUpload,
+  });
+
+  const previewResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().resourceType() === 'document' &&
+      new URL(response.url()).pathname.startsWith('/artifact-previews/'),
+  );
+
+  await page.getByRole('button', { name: 'Save page' }).click();
+  await expect(page).toHaveURL(/\/pages\/[0-9a-hjkmnp-tv-z]{26}$/u, { timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 20_000 });
+
+  const frame = page.locator('iframe[title="Image preview"]');
+  await expect(frame).toHaveAttribute('sandbox', '');
+  await expect(frame).toHaveAttribute('allow', '');
+  await expect(frame).toHaveAttribute('referrerpolicy', 'no-referrer');
+
+  const previewResponse = await previewResponsePromise;
+  const csp = await previewResponse.headerValue('content-security-policy');
+  expect(csp).toContain("default-src 'none'");
+  expect(csp).toContain("script-src 'none'");
+  expect(csp).toContain("connect-src 'none'");
+  expect(csp).toContain('sandbox');
+  expect(csp).not.toContain('sandbox allow-scripts');
+  expect(new URL(previewResponse.url()).origin).not.toBe(new URL(baseUrl).origin);
+
+  const previewImage = page
+    .frameLocator('iframe[title="Image preview"]')
+    .locator('[data-artifactflow-image-preview]');
+  await expect(previewImage).toBeVisible({ timeout: 20_000 });
+  await expect
+    .poll(() =>
+      previewImage.evaluate((image) =>
+        image instanceof HTMLImageElement
+          ? [image.complete, image.naturalWidth, image.naturalHeight]
+          : [false, 0, 0],
+      ),
+    )
+    .toEqual([true, 2, 1]);
+  await expect(
+    page.frameLocator('iframe[title="Image preview"]').locator('html'),
+  ).not.toContainText(payloadMarker);
+  await expect(page.locator('body')).not.toHaveAttribute('data-image-payload', payloadMarker);
+
+  // Expiry closes future loads; it must not turn an already-rendered image into
+  // a perpetual full-body download. Advancing beyond half of the 60-second TTL
+  // catches the former timer without adding a real-time delay to the suite.
+  expect(renewalRequests).toBe(0);
+  await page.clock.fastForward(31_000);
+  await page.waitForTimeout(500);
+  expect(renewalRequests).toBe(0);
+});
+
 test('saved HTML artifact executes only inside the controller-served sandbox @artifact-security', async ({
   page,
 }) => {
@@ -54,6 +160,26 @@ test('saved HTML artifact executes only inside the controller-served sandbox @ar
   const leakedConsoleMessages: string[] = [];
   let outboundRequests = 0;
   let navigationRequests = 0;
+  let speculativeConnectionCount = 0;
+  const speculativeProbe = createServer((socket) => {
+    speculativeConnectionCount += 1;
+    socket.destroy();
+  });
+  await new Promise<void>((resolve, reject) => {
+    speculativeProbe.once('error', reject);
+    speculativeProbe.listen(0, '127.0.0.1', () => {
+      speculativeProbe.off('error', reject);
+      resolve();
+    });
+  });
+  speculativeProbe.unref();
+  const speculativeProbeAddress = speculativeProbe.address();
+
+  if (speculativeProbeAddress === null || typeof speculativeProbeAddress === 'string') {
+    throw new Error('Expected an IPv4 TCP probe address.');
+  }
+
+  const speculativeProbeUrl = `http://127.0.0.1:${speculativeProbeAddress.port}`;
 
   assertSavedPreviewSchemaReady();
   runAppCommand(
@@ -218,6 +344,210 @@ test('saved HTML artifact executes only inside the controller-served sandbox @ar
           ? 'unsafe-setters-blocked'
           : 'unsafe-setters-escaped';
 
+      const dynamicHint = document.createElement('link');
+      dynamicHint.rel = 'preconnect';
+      dynamicHint.href = 'https://dynamic-hint.invalid';
+      document.head.append(dynamicHint);
+      const dynamicRefresh = document.createElement('meta');
+      dynamicRefresh.httpEquiv = 'refresh';
+      dynamicRefresh.content = '3600;url=https://dynamic-refresh.invalid';
+      document.head.append(dynamicRefresh);
+      const dangerousSubtree = document.createElement('div');
+      dangerousSubtree.innerHTML =
+        '<link rel="dns-prefetch" href="//subtree-hint.invalid">' +
+        '<meta http-equiv="refresh" content="3600;url=https://subtree-refresh.invalid">';
+      document.body.append(dangerousSubtree);
+      const postInsertionHint = document.createElement('link');
+      document.head.append(postInsertionHint);
+      const postInsertionHintWasConnected = postInsertionHint.isConnected;
+      postInsertionHint.rel = 'preconnect';
+      postInsertionHint.href = '${speculativeProbeUrl}/post-insertion-hint';
+      const postInsertionAttributeHint = document.createElement('link');
+      postInsertionAttributeHint.href = '${speculativeProbeUrl}/post-insertion-attribute-hint';
+      document.head.append(postInsertionAttributeHint);
+      postInsertionAttributeHint.setAttribute('rel', 'dns-prefetch');
+      const postInsertionTokenHint = document.createElement('link');
+      postInsertionTokenHint.href = '${speculativeProbeUrl}/post-insertion-token-hint';
+      document.head.append(postInsertionTokenHint);
+      postInsertionTokenHint.relList.add('preconnect');
+      const postInsertionToggleHint = document.createElement('link');
+      postInsertionToggleHint.href = '${speculativeProbeUrl}/post-insertion-toggle-hint';
+      document.head.append(postInsertionToggleHint);
+      postInsertionToggleHint.relList.toggle('prefetch', true);
+      const safeToggleRemovalLink = document.createElement('link');
+      safeToggleRemovalLink.rel = 'stylesheet';
+      document.head.append(safeToggleRemovalLink);
+      const safeToggleRemovalResult = safeToggleRemovalLink.relList.toggle('prefetch', false);
+      const safeToggleRemovalState =
+        safeToggleRemovalLink.isConnected &&
+        safeToggleRemovalLink.rel === 'stylesheet' &&
+        safeToggleRemovalResult === false
+          ? 'rel-toggle-removal-preserved'
+          : 'rel-toggle-removal-destroyed';
+      const postInsertionReplaceHint = document.createElement('link');
+      postInsertionReplaceHint.rel = 'alternate';
+      postInsertionReplaceHint.href = '${speculativeProbeUrl}/post-insertion-replace-hint';
+      document.head.append(postInsertionReplaceHint);
+      postInsertionReplaceHint.relList.replace('alternate', 'prerender');
+      const postInsertionNamespaceHint = document.createElement('link');
+      postInsertionNamespaceHint.href = '${speculativeProbeUrl}/post-insertion-namespace-hint';
+      document.head.append(postInsertionNamespaceHint);
+      postInsertionNamespaceHint.setAttributeNS(null, 'rel', 'prefetch');
+      const postInsertionRefresh = document.createElement('meta');
+      postInsertionRefresh.content = '3600;url=https://post-insertion-refresh.invalid';
+      document.head.append(postInsertionRefresh);
+      postInsertionRefresh.httpEquiv = 'refresh';
+      const dynamicNavigationState =
+        !dynamicHint.isConnected &&
+        !dynamicRefresh.isConnected &&
+        dangerousSubtree.querySelector('link[rel="dns-prefetch"], meta[http-equiv="refresh"]') ===
+          null &&
+        postInsertionHintWasConnected &&
+        !postInsertionHint.isConnected &&
+        !postInsertionAttributeHint.isConnected &&
+        !postInsertionTokenHint.isConnected &&
+        !postInsertionToggleHint.isConnected &&
+        !postInsertionReplaceHint.isConnected &&
+        !postInsertionNamespaceHint.isConnected &&
+        !postInsertionRefresh.isConnected
+          ? 'dynamic-navigation-markup-blocked'
+          : 'dynamic-navigation-markup-delayed';
+
+      const statefulString = (first, second) => {
+        let coercions = 0;
+
+        return {
+          toString() {
+            coercions += 1;
+
+            return coercions === 1 ? first : second;
+          },
+        };
+      };
+      const statefulRelLink = document.createElement('link');
+      statefulRelLink.href = '${speculativeProbeUrl}/stateful-property-rel';
+      document.head.append(statefulRelLink);
+      statefulRelLink.rel = statefulString('stylesheet', 'preconnect');
+      const statefulRelFrozen =
+        statefulRelLink.isConnected && statefulRelLink.rel === 'stylesheet';
+
+      const statefulAttributeNameLink = document.createElement('link');
+      document.head.append(statefulAttributeNameLink);
+      statefulAttributeNameLink.rel = statefulString('stylesheet', 'preconnect');
+      statefulAttributeNameLink.setAttribute(
+        statefulString('class', 'href'),
+        '${speculativeProbeUrl}/stateful-attribute-name',
+      );
+      const statefulAttributeNameFrozen =
+        statefulAttributeNameLink.isConnected &&
+        statefulAttributeNameLink.rel === 'stylesheet' &&
+        statefulAttributeNameLink.getAttribute('href') === null &&
+        statefulAttributeNameLink.className ===
+          '${speculativeProbeUrl}/stateful-attribute-name';
+
+      const statefulAttributeValueLink = document.createElement('link');
+      statefulAttributeValueLink.href = '${speculativeProbeUrl}/stateful-attribute-value';
+      document.head.append(statefulAttributeValueLink);
+      statefulAttributeValueLink.setAttribute(
+        'rel',
+        statefulString('stylesheet', 'preconnect'),
+      );
+      const statefulAttributeValueFrozen =
+        statefulAttributeValueLink.isConnected &&
+        statefulAttributeValueLink.rel === 'stylesheet';
+
+      const statefulNamespaceLink = document.createElement('link');
+      statefulNamespaceLink.href = '${speculativeProbeUrl}/stateful-namespace-value';
+      document.head.append(statefulNamespaceLink);
+      statefulNamespaceLink.setAttributeNS(
+        null,
+        'rel',
+        statefulString('stylesheet', 'preconnect'),
+      );
+      const statefulNamespaceFrozen =
+        statefulNamespaceLink.isConnected && statefulNamespaceLink.rel === 'stylesheet';
+
+      const statefulAttributeNodeLink = document.createElement('link');
+      statefulAttributeNodeLink.href = '${speculativeProbeUrl}/stateful-attribute-node';
+      document.head.append(statefulAttributeNodeLink);
+      const statefulRelAttribute = document.createAttribute('rel');
+      statefulRelAttribute.value = 'alternate';
+      statefulAttributeNodeLink.setAttributeNode(statefulRelAttribute);
+      statefulRelAttribute.value = statefulString('stylesheet', 'preconnect');
+      const statefulAttributeNodeFrozen =
+        statefulAttributeNodeLink.isConnected &&
+        statefulAttributeNodeLink.rel === 'stylesheet';
+
+      const statefulRelListAddLink = document.createElement('link');
+      statefulRelListAddLink.href = '${speculativeProbeUrl}/stateful-rel-list-add';
+      document.head.append(statefulRelListAddLink);
+      statefulRelListAddLink.relList.add(statefulString('stylesheet', 'preconnect'));
+      const statefulRelListAddFrozen =
+        statefulRelListAddLink.isConnected &&
+        statefulRelListAddLink.rel === 'stylesheet';
+
+      const statefulRelListToggleLink = document.createElement('link');
+      statefulRelListToggleLink.href = '${speculativeProbeUrl}/stateful-rel-list-toggle';
+      document.head.append(statefulRelListToggleLink);
+      statefulRelListToggleLink.relList.toggle(
+        statefulString('stylesheet', 'preconnect'),
+        true,
+      );
+      const statefulRelListToggleFrozen =
+        statefulRelListToggleLink.isConnected &&
+        statefulRelListToggleLink.rel === 'stylesheet';
+
+      const statefulRelListReplaceLink = document.createElement('link');
+      statefulRelListReplaceLink.rel = 'alternate';
+      statefulRelListReplaceLink.href =
+        '${speculativeProbeUrl}/stateful-rel-list-replace';
+      document.head.append(statefulRelListReplaceLink);
+      statefulRelListReplaceLink.relList.replace(
+        'alternate',
+        statefulString('stylesheet', 'preconnect'),
+      );
+      const statefulRelListReplaceFrozen =
+        statefulRelListReplaceLink.isConnected &&
+        statefulRelListReplaceLink.rel === 'stylesheet';
+
+      const statefulRelListValueLink = document.createElement('link');
+      statefulRelListValueLink.href = '${speculativeProbeUrl}/stateful-rel-list-value';
+      document.head.append(statefulRelListValueLink);
+      statefulRelListValueLink.relList.value = statefulString('stylesheet', 'preconnect');
+      const statefulRelListValueFrozen =
+        statefulRelListValueLink.isConnected &&
+        statefulRelListValueLink.rel === 'stylesheet';
+
+      const statefulExecCommandHost = document.createElement('div');
+      statefulExecCommandHost.contentEditable = 'true';
+      statefulExecCommandHost.textContent = 'selection';
+      document.body.append(statefulExecCommandHost);
+      const statefulExecCommandSelection = getSelection();
+      const statefulExecCommandRange = document.createRange();
+      statefulExecCommandRange.selectNodeContents(statefulExecCommandHost);
+      statefulExecCommandSelection.removeAllRanges();
+      statefulExecCommandSelection.addRange(statefulExecCommandRange);
+      document.execCommand(
+        statefulString('copy', 'insertHTML'),
+        false,
+        '<iframe data-stateful-exec-command></iframe>',
+      );
+      const statefulExecCommandFrozen =
+        statefulExecCommandHost.querySelector('[data-stateful-exec-command]') === null;
+      const statefulCoercionState =
+        statefulRelFrozen &&
+        statefulAttributeNameFrozen &&
+        statefulAttributeValueFrozen &&
+        statefulNamespaceFrozen &&
+        statefulAttributeNodeFrozen &&
+        statefulRelListAddFrozen &&
+        statefulRelListToggleFrozen &&
+        statefulRelListReplaceFrozen &&
+        statefulRelListValueFrozen &&
+        statefulExecCommandFrozen
+          ? 'stateful-coercion-frozen'
+          : 'stateful-coercion-bypassed';
+
       fetch('${baseUrl}/saved-preview-network-check')
         .then(() => {
           document.getElementById('result').textContent = [
@@ -227,6 +557,9 @@ test('saved HTML artifact executes only inside the controller-served sandbox @ar
             storageState,
             unsafeParserState,
             unsafeSetterState,
+            dynamicNavigationState,
+            statefulCoercionState,
+            safeToggleRemovalState,
           ].join(' ');
         })
         .catch(() => {
@@ -237,6 +570,9 @@ test('saved HTML artifact executes only inside the controller-served sandbox @ar
             storageState,
             unsafeParserState,
             unsafeSetterState,
+            dynamicNavigationState,
+            statefulCoercionState,
+            safeToggleRemovalState,
           ].join(' ');
         });
 
@@ -271,7 +607,7 @@ test('saved HTML artifact executes only inside the controller-served sandbox @ar
   const previewResult = page.frameLocator('iframe[title="Artifact preview"]').locator('#result');
   await expect(previewResult).toBeAttached({ timeout: 20_000 });
   await expect(previewResult).toHaveText(
-    'parent-blocked network-blocked cookies-blocked storage-blocked unsafe-parser-blocked unsafe-setters-blocked',
+    'parent-blocked network-blocked cookies-blocked storage-blocked unsafe-parser-blocked unsafe-setters-blocked dynamic-navigation-markup-blocked stateful-coercion-frozen rel-toggle-removal-preserved',
     { timeout: 20_000 },
   );
   await expect(page.locator('body')).not.toHaveAttribute(
@@ -379,7 +715,18 @@ test('saved HTML artifact executes only inside the controller-served sandbox @ar
   });
   await page.waitForTimeout(1750);
   expect(navigationRequests).toBe(0);
+  expect(speculativeConnectionCount).toBe(0);
   expect(page.url()).toBe(parentPageUrl);
+  await new Promise<void>((resolve, reject) => {
+    speculativeProbe.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
 });
 
 test('historical HTML versions stay inside the artifact-origin sandbox @artifact-security', async ({

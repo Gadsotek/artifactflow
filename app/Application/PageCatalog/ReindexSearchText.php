@@ -18,7 +18,7 @@ final readonly class ReindexSearchText
 
     public function __construct(
         private ArtifactContentReader $contentReader,
-        private PageTextExtractor $textExtractor,
+        private PageContentPreparer $contentPreparer,
         private PageSearchVectorUpdater $searchVectors,
     ) {
     }
@@ -113,15 +113,18 @@ final readonly class ReindexSearchText
 
             foreach ($this->versionsFor($lockedPage, $allVersions) as $version) {
                 $versionsExamined++;
-                $content = $this->contentReader->read($version->content_storage_path);
+                $projection = $this->contentPreparer->textProjection(
+                    $lockedPage->type,
+                    fn (): ?string => $this->contentReader->read($version->content_storage_path),
+                );
 
-                if ($content === null) {
+                if ($projection === null) {
                     $versionsSkipped++;
 
                     continue;
                 }
 
-                $derivedText = $this->derivedText($lockedPage, $version, $content, $hasSourceText);
+                $derivedText = $this->derivedText($lockedPage, $version, $projection, $hasSourceText);
 
                 if (!$this->versionNeedsUpdate($version, $derivedText)) {
                     continue;
@@ -174,37 +177,46 @@ final readonly class ReindexSearchText
      * writer drops it when a newer version becomes current) so reindexing
      * must not resurrect full-length copies for old versions.
      *
-     * @return array{extracted_text: string|null, source_text?: string}
+     * @return array{extracted_text: string|null, source_text?: string|null}
      */
-    private function derivedText(Page $page, PageVersion $version, string $content, bool $hasSourceText): array
-    {
+    private function derivedText(
+        Page $page,
+        PageVersion $version,
+        PageContentTextProjection $projection,
+        bool $hasSourceText,
+    ): array {
         $isCurrentVersion = $page->current_version_uid === $version->uid;
         $derivedText = [
             // Cap the current version's extracted_text exactly like PageVersionWriter does.
             // An uncapped rewrite here bloats the row and makes versionNeedsUpdate() report a
             // phantom change on every oversized page (stored is capped, a fresh extraction is not).
             'extracted_text' => $isCurrentVersion
-                ? mb_substr(
-                    $this->textExtractor->extract($page->type, $content),
-                    0,
-                    PageSearchVectorUpdater::MAX_EXTRACTED_TEXT_SEARCH_CHARACTERS,
-                )
+                ? $this->cappedText($projection->extractedText)
                 : null,
         ];
 
         if ($hasSourceText) {
-            $derivedText['source_text'] = mb_substr(
-                $this->textExtractor->extractSource($page->type, $content),
-                0,
-                PageSearchVectorUpdater::MAX_EXTRACTED_TEXT_SEARCH_CHARACTERS,
-            );
+            $derivedText['source_text'] = $this->cappedText($projection->sourceText);
         }
 
         return $derivedText;
     }
 
+    private function cappedText(?string $text): ?string
+    {
+        if ($text === null) {
+            return null;
+        }
+
+        return mb_substr(
+            $text,
+            0,
+            PageSearchVectorUpdater::MAX_EXTRACTED_TEXT_SEARCH_CHARACTERS,
+        );
+    }
+
     /**
-     * @param array{extracted_text: string|null, source_text?: string} $derivedText
+     * @param array{extracted_text: string|null, source_text?: string|null} $derivedText
      */
     private function versionNeedsUpdate(PageVersion $version, array $derivedText): bool
     {

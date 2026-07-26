@@ -12,7 +12,7 @@ Project license: `AGPL-3.0-or-later` with a separate commercial licensing path d
 
 The long-term product direction is a durable system of record for AI-generated artifacts: preserve the authoritative source or original, every retained version, searchable content, ownership, permissions, safe previews or execution, and audit history. ArtifactFlow preserves the output, not the conversation. It is not agent memory, a vector database, a chat archive, an AI generation platform, or static hosting.
 
-The current MVP stays narrower and includes Markdown/wiki pages plus single-file HTML artifact pages: authenticated users can create Markdown pages with inline Mermaid diagrams, paste or upload single-file HTML artifacts into personal or shared workspaces, preview HTML safely from an isolated origin, tag/search/version pages, control access through workspace roles and page overrides, and share internal authenticated links. Approved AI clients can retrieve authoritative source and preserve new versions through MCP under the same authorization, scanning, concurrency, and audit rules as the web interface. Searchable PDF and Word document artifacts are the next product focus, but they remain roadmap work until their security boundaries and implementation are deliberately completed.
+The current MVP stays narrower and includes Markdown/wiki pages, single-file HTML artifact pages, and normalized PNG/JPEG image or screenshot artifacts: authenticated users can create Markdown pages with inline Mermaid diagrams, paste or upload single-file HTML artifacts, upload raster images whose metadata and non-pixel payloads are discarded by re-encoding, and manage them in personal or shared workspaces. HTML and scriptless image previews stay on the isolated artifact origin. Users can tag/search/version pages, control access through workspace roles and page overrides, and share internal authenticated links. Approved AI clients can retrieve authoritative source or normalized image content, update editable descriptions, and preserve new text/HTML versions through MCP under the same authorization, scanning, concurrency, and audit rules as the web interface. Searchable PDF and Word document artifacts are the next product focus, but they remain roadmap work until their security boundaries and implementation are deliberately completed.
 
 Do not drift the MVP into full Confluence parity, public marketplace, AI generation platform, ZIP uploader, approval workflow system, enterprise RBAC suite, non-Mermaid diagram rendering, or public sharing product unless the project direction and architecture are deliberately updated first.
 
@@ -64,11 +64,13 @@ Security is the first design constraint, not a final review step.
 
 - Treat uploaded or pasted artifact HTML as untrusted executable content.
 - Treat Markdown and Mermaid source as untrusted user content.
+- Treat uploaded raster images as untrusted binary parser input. Accept only bounded PNG/JPEG and perform native decoding only in the dedicated internal parser container; keep the production app image free of GD/EXIF. Authenticate requests and normalized responses, re-encode decoded pixels, discard the original upload, and serve only the normalized derivative from the artifact origin.
 - Untrusted artifact HTML must never execute in the main application origin or DOM.
 - Raw HTML or JavaScript inside Markdown must never execute in the main application origin or DOM.
 - Mermaid rendering must use strict security settings and must not require external network calls.
 - Preserve the separate app origin and artifact origin boundary in local, CI, and production.
 - Artifact preview must use strict iframe sandboxing, strict CSP, signed short-lived URLs, and no app cookies on the artifact host.
+- Image preview must remain scriptless (`sandbox=""` plus header CSP without script permission) and must never serve the original upload bytes.
 - Do not add `allow-same-origin`, top navigation, external script, external connect, form submission, or public unauthenticated artifact access without a written architecture decision and security tests.
 - Scanning is advisory. Isolation is the security boundary.
 - Never log secrets, signed URLs, session tokens, authorization headers, raw credentials, or private artifact content unless explicitly redacted.

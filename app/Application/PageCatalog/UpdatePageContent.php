@@ -39,7 +39,19 @@ final readonly class UpdatePageContent
         $prunedStoragePaths = [];
 
         try {
-            $version = DB::transaction(function () use ($actor, $actorUid, $command, &$prunedStoragePaths): PageVersion {
+            // Native image decoding and the parser network round trip must complete
+            // before a transaction owns a pooled DB connection or locks this page.
+            // Authority, status, concurrency, and quota are still re-checked below
+            // under the row lock before any prepared derivative is persisted.
+            $preparedAppend = $this->versions->prepare($actor, $page, $command->content, $command->source);
+
+            $version = DB::transaction(function () use (
+                $actor,
+                $actorUid,
+                $command,
+                &$prunedStoragePaths,
+                $preparedAppend,
+            ): PageVersion {
                 // Re-authorize under the page row lock with fresh authority. canEdit()
                 // above ran before the lock and against PageAccess's request-scoped
                 // cache, so a revocation that committed while this request waited for
@@ -47,11 +59,8 @@ final readonly class UpdatePageContent
                 // first and re-reading closes that window.
                 $lockedPage = $this->lockAndReauthorizeForEdit($actor, $command->pageUid);
 
-                $version = $this->versions->append(
-                    actor: $actor,
+                $version = $preparedAppend->append(
                     page: $lockedPage,
-                    content: $command->content,
-                    source: $command->source,
                     baseVersionUid: $command->baseVersionUid,
                 );
 

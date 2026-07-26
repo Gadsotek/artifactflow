@@ -64,6 +64,13 @@ final readonly class GrantPageAccess
                     return $existingGrant;
                 }
 
+                if (
+                    $existingGrant->role === WorkspaceRole::Admin
+                    && !$this->access->canHardDelete($actor, $page)
+                ) {
+                    throw new AuthorizationException('Editors cannot update page Admin access.');
+                }
+
                 $previousRole = $existingGrant->role;
                 $existingGrant->forceFill([
                     'role' => $command->role,

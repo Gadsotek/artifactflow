@@ -14,6 +14,10 @@ use App\Application\Mcp\McpAccessTokenAuthenticator;
 use App\Application\Mcp\McpEffectiveAuthority;
 use App\Application\Mcp\McpRequestContext;
 use App\Application\PageCatalog\PageAccess;
+use App\Application\PageCatalog\PageContentStrategy;
+use App\Application\PageCatalog\PageContentStrategyRegistry;
+use App\Application\PageCatalog\RasterImagePageContentStrategy;
+use App\Application\PageCatalog\TextPageContentStrategy;
 use App\Infrastructure\Security\ProductionSecurityConfiguration;
 use App\Models\McpAccessToken;
 use App\Models\Page;
@@ -46,6 +50,14 @@ final class AppServiceProvider extends ServiceProvider
         $this->app->scoped(McpEffectiveAuthority::class);
         $this->app->scoped(PageAccess::class);
         $this->app->singleton(InstallationReadiness::class);
+        $this->app->tag(
+            [TextPageContentStrategy::class, RasterImagePageContentStrategy::class],
+            PageContentStrategy::class,
+        );
+        $this->app
+            ->when(PageContentStrategyRegistry::class)
+            ->needs('$strategies')
+            ->giveTagged(PageContentStrategy::class);
 
         // The install wizard is the only consumer; it writes APP_ENV and any
         // production boot-gate values into the deployment .env at the project root.
@@ -162,6 +174,13 @@ final class AppServiceProvider extends ServiceProvider
                 Limit::perMinute($this->configuredRateLimit('rate_limits.two_factor_challenge_ip_per_minute', 20))
                     ->by('two-factor-ip:' . $ip),
             ];
+        });
+
+        RateLimiter::for('artifactflow-two-factor-management', function (Request $request): Limit {
+            return Limit::perMinute($this->configuredRateLimit(
+                'rate_limits.two_factor_management_per_minute',
+                5,
+            ))->by($this->rateLimitKey($request));
         });
 
         RateLimiter::for('artifactflow-markdown-previews', function (Request $request): Limit {

@@ -11,7 +11,6 @@ use App\Domain\Events\DomainEventType;
 use App\Domain\PageCatalog\InvalidPageStatusTransition;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageVersionSource;
-use App\Domain\PageCatalog\Security\BlockedPageContentException;
 use App\Domain\PageCatalog\StalePageVersionException;
 use App\Events\PageContentVersionChanged;
 use App\Models\Page;
@@ -23,8 +22,7 @@ use Throwable;
 final readonly class PageVersionAppender
 {
     public function __construct(
-        private PageContentScanner $scanner,
-        private PageContentRules $contentRules,
+        private PageContentPreparer $contentPreparer,
         private PageSecurityWarningRecorder $securityWarnings,
         private PageStatusChanger $statusChanger,
         private PageSearchVectorUpdater $searchVectors,
@@ -42,32 +40,65 @@ final readonly class PageVersionAppender
         ?string $baseVersionUid = null,
         ?string $expectedCurrentVersionUid = null,
     ): PageVersion {
-        $actorUid = ActorId::fromUser($actor);
+        return $this->prepare($actor, $page, $content, $source)->append(
+            page: $page,
+            baseVersionUid: $baseVersionUid,
+            expectedCurrentVersionUid: $expectedCurrentVersionUid,
+        );
+    }
+
+    public function prepare(
+        User $actor,
+        Page $page,
+        string $content,
+        PageVersionSource $source,
+    ): PreparedPageVersionAppend {
         $this->ensurePageAcceptsContentChanges($page);
-        $normalizedContent = $this->contentRules->normalize($page->type, $content);
-        $this->contentRules->ensureHtmlDocumentContent($page->type, $normalizedContent);
-        $this->contentRules->ensureFitsConfiguredLimit($page->type, $normalizedContent);
+        $actorUid = ActorId::fromUser($actor);
+        $prepared = $this->contentPreparer->prepare($page->type, $content, $actorUid, $source);
 
-        $scan = $this->scanner->scan($page->type, $normalizedContent);
+        return new PreparedPageVersionAppend(
+            fn (
+                Page $lockedPage,
+                ?string $baseVersionUid,
+                ?string $expectedCurrentVersionUid,
+            ): PageVersion => $this->appendPrepared(
+                actor: $actor,
+                page: $lockedPage,
+                prepared: $prepared,
+                source: $source,
+                baseVersionUid: $baseVersionUid,
+                expectedCurrentVersionUid: $expectedCurrentVersionUid,
+            ),
+        );
+    }
 
-        if ($scan->hasBlockedFindings()) {
-            throw new BlockedPageContentException($scan->blockedCodes());
-        }
-
+    private function appendPrepared(
+        User $actor,
+        Page $page,
+        PreparedPageContent $prepared,
+        PageVersionSource $source,
+        ?string $baseVersionUid = null,
+        ?string $expectedCurrentVersionUid = null,
+    ): PageVersion {
+        $actorUid = ActorId::fromUser($actor);
         $page = $this->lockPageForVersionAppend($page);
         $this->ensurePageAcceptsContentChanges($page);
         $this->ensureExpectedCurrentVersion($page, $expectedCurrentVersionUid);
         $this->ensureBaseVersionIsCurrent($page, $baseVersionUid, $source);
         $lockedWorkspace = $this->storageQuota->lockWorkspaceForStorageUpdate($page->workspace_uid);
-        $this->storageQuota->ensureWorkspaceAllowsNewBytesForVersionAppend($lockedWorkspace, $page->uid, strlen($normalizedContent));
-        $this->storageQuota->ensurePageAllowsNewBytes($page->uid, strlen($normalizedContent));
+        $this->storageQuota->ensureWorkspaceAllowsNewBytesForVersionAppend(
+            $lockedWorkspace,
+            $page->uid,
+            strlen($prepared->content),
+        );
+        $this->storageQuota->ensurePageAllowsNewBytes($page->uid, strlen($prepared->content));
 
         $version = null;
         try {
             $version = $this->versionWriter->appendVersion(
                 page: $page,
-                content: $normalizedContent,
-                scan: $scan,
+                prepared: $prepared,
                 source: $source,
                 actorUid: $actorUid,
             );
@@ -75,8 +106,8 @@ final readonly class PageVersionAppender
             $this->returnContentChangedPageToDraft($actor, $page);
             $this->searchVectors->refreshPage($page->uid);
 
-            if ($scan->hasWarningFindings()) {
-                $this->securityWarnings->record($page, $version, $actorUid, $scan);
+            if ($prepared->scan->hasWarningFindings()) {
+                $this->securityWarnings->record($page, $version, $actorUid, $prepared->scan);
             }
 
             if ($this->realtimeConfiguration->enabled()) {

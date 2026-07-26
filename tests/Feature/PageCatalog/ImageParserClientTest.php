@@ -1,0 +1,731 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\PageCatalog;
+
+use App\Application\Identity\CreateSharedWorkspace;
+use App\Application\PageCatalog\CreatePage;
+use App\Application\PageCatalog\CreatePageCommand;
+use App\Application\PageCatalog\ImageArtifactLimits;
+use App\Application\PageCatalog\ImageParserConfiguration;
+use App\Application\PageCatalog\RasterImageInspector;
+use App\Application\PageCatalog\RasterImageNormalizer;
+use App\Application\PageCatalog\UpdatePageContent;
+use App\Application\PageCatalog\UpdatePageContentCommand;
+use App\Domain\DomainRuleViolation;
+use App\Domain\PageCatalog\ImageNormalizationRejected;
+use App\Domain\PageCatalog\PageType;
+use App\Domain\PageCatalog\PageVersionSource;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use LogicException;
+use Tests\Support\RecordingLogger;
+use Tests\TestCase;
+
+final class ImageParserClientTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private const string SHARED_SECRET = 'test-image-parser-shared-secret-0001';
+
+    public function test_normalization_uses_a_signed_parser_request_and_accepts_only_its_signed_derivative(): void
+    {
+        $original = $this->png() . 'GPS=50.087,14.421;<script>alert(1)</script>';
+        $normalized = $this->png();
+
+        $this->configureParser();
+        Http::fake(function (Request $request) use ($normalized): \GuzzleHttp\Promise\PromiseInterface {
+            $this->assertSame('http://image-parser.test/v1/normalize', $request->url());
+            $this->assertSame('image/png', $request->header('Content-Type')[0] ?? null);
+
+            $timestamp = $request->header('X-ArtifactFlow-Parser-Timestamp')[0] ?? '';
+            $nonce = $request->header('X-ArtifactFlow-Parser-Nonce')[0] ?? '';
+            $signature = $request->header('X-ArtifactFlow-Parser-Signature')[0] ?? '';
+            $maxInputBytes = $request->header('X-ArtifactFlow-Parser-Max-Input-Bytes')[0] ?? '';
+            $maxOutputBytes = $request->header('X-ArtifactFlow-Parser-Max-Output-Bytes')[0] ?? '';
+            $maxPixels = $request->header('X-ArtifactFlow-Parser-Max-Pixels')[0] ?? '';
+            $maxDimension = $request->header('X-ArtifactFlow-Parser-Max-Dimension')[0] ?? '';
+            $this->assertIsString($timestamp);
+            $this->assertIsString($nonce);
+            $this->assertIsString($signature);
+            $this->assertIsString($maxInputBytes);
+            $this->assertIsString($maxOutputBytes);
+            $this->assertIsString($maxPixels);
+            $this->assertIsString($maxDimension);
+            $this->assertMatchesRegularExpression('/^\d{10}$/', $timestamp);
+            $this->assertMatchesRegularExpression('/^[a-f0-9]{32}$/', $nonce);
+            $this->assertSame('1048576', $maxInputBytes);
+            $this->assertSame('10485760', $maxOutputBytes);
+            $this->assertSame('100', $maxPixels);
+            $this->assertSame('100', $maxDimension);
+            $this->assertSame(
+                $this->requestSignature(
+                    $timestamp,
+                    $nonce,
+                    'image/png',
+                    $maxInputBytes,
+                    $maxOutputBytes,
+                    $maxPixels,
+                    $maxDimension,
+                    $request->body(),
+                ),
+                $signature,
+            );
+
+            return Http::response($normalized, 200, [
+                'Content-Type' => 'image/png',
+                'X-ArtifactFlow-Parser-Media-Type' => 'image/png',
+                'X-ArtifactFlow-Parser-Width' => '1',
+                'X-ArtifactFlow-Parser-Height' => '1',
+                'X-ArtifactFlow-Parser-Signature' => $this->responseSignature(
+                    $nonce,
+                    'image/png',
+                    1,
+                    1,
+                    $normalized,
+                ),
+            ]);
+        });
+
+        $result = app(RasterImageNormalizer::class)->normalize($original, 'actor-signed-response');
+
+        $this->assertSame($normalized, $result);
+        $this->assertStringNotContainsString('GPS=', $result);
+        $this->assertStringNotContainsString('<script>', $result);
+        Http::assertSentCount(1);
+    }
+
+    public function test_normalization_fails_closed_when_the_parser_is_unavailable(): void
+    {
+        $this->configureParser();
+        Http::fake(static function (): never {
+            throw new ConnectionException('private transport detail');
+        });
+
+        $this->expectException(DomainRuleViolation::class);
+        $this->expectExceptionMessage('Image normalization service is unavailable. Try again shortly.');
+
+        app(RasterImageNormalizer::class)->normalize($this->png(), 'actor-parser-unavailable');
+    }
+
+    public function test_parser_redirects_are_rejected_without_forwarding_the_signed_request(): void
+    {
+        $this->configureParser();
+        Http::fake(function (Request $request, array $options): \GuzzleHttp\Promise\PromiseInterface {
+            $this->assertSame('http://image-parser.test/v1/normalize', $request->url());
+            $this->assertFalse($options['allow_redirects'] ?? null);
+
+            return Http::response(status: 302, headers: [
+                'Location' => 'https://attacker.example/collect',
+            ]);
+        });
+
+        try {
+            app(RasterImageNormalizer::class)->normalize($this->png(), 'actor-parser-redirect');
+            $this->fail('Expected the parser redirect to fail closed.');
+        } catch (ImageNormalizationRejected $exception) {
+            $this->assertSame(
+                'Image normalization service is unavailable. Try again shortly.',
+                $exception->getMessage(),
+            );
+        }
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_transient_parser_failures_are_retryable_and_clock_skew_is_diagnosable(): void
+    {
+        $this->configureParser();
+        $logger = new RecordingLogger();
+        Log::swap($logger);
+        $normalizer = app(RasterImageNormalizer::class);
+        /** @var list<\Closure(): \GuzzleHttp\Promise\PromiseInterface> $responses */
+        $responses = [
+            static function (): never {
+                throw new ConnectionException('private transport detail');
+            },
+            static fn (): \GuzzleHttp\Promise\PromiseInterface => Http::response(
+                ['error' => 'service_unavailable'],
+                503,
+            ),
+            static fn (): \GuzzleHttp\Promise\PromiseInterface => Http::response(
+                ['error' => 'clock_skew'],
+                401,
+            ),
+        ];
+        Http::fake(static function () use (&$responses): \GuzzleHttp\Promise\PromiseInterface {
+            $response = array_shift($responses);
+
+            if (!$response instanceof \Closure) {
+                throw new LogicException('Unexpected parser request.');
+            }
+
+            return $response();
+        });
+
+        foreach (['connection failure', 'parser failure', 'clock skew'] as $case) {
+            try {
+                $normalizer->normalize($this->png(), 'actor-transient-parser-failure');
+                $this->fail(sprintf('Expected %s to be retryable.', $case));
+            } catch (ImageNormalizationRejected $exception) {
+                $this->assertSame('Image normalization service is unavailable. Try again shortly.', $exception->getMessage());
+                $this->assertSame(5, $exception->retryAfterSeconds);
+            }
+        }
+
+        $this->assertTrue(collect($logger->records)->contains(
+            static fn (array $record): bool => $record['level'] === 'error'
+                && $record['message'] === 'image_parser.request_failed'
+                && ($record['context']['reason'] ?? null) === 'clock_skew',
+        ));
+    }
+
+    public function test_normalization_slot_is_released_after_a_parser_failure(): void
+    {
+        $this->configureParser();
+        Http::fake(static function (): never {
+            throw new ConnectionException('private transport detail');
+        });
+        $normalizer = app(RasterImageNormalizer::class);
+
+        foreach (['actor-parser-failure-a', 'actor-parser-failure-b'] as $actorUid) {
+            try {
+                $normalizer->normalize($this->png(), $actorUid);
+                $this->fail('Expected the parser failure to reject normalization.');
+            } catch (DomainRuleViolation $exception) {
+                $this->assertSame(
+                    'Image normalization service is unavailable. Try again shortly.',
+                    $exception->getMessage(),
+                );
+            }
+        }
+    }
+
+    public function test_failed_parser_attempts_refund_actor_and_installation_pixel_budgets(): void
+    {
+        $this->configureParser();
+        config([
+            'pages.max_image_pixels' => 1,
+            'image_parser.user_pixel_budget_per_minute' => 1,
+            'image_parser.installation_pixel_budget_per_minute' => 1,
+        ]);
+        $normalized = $this->png();
+        /** @var list<\Closure(Request): \GuzzleHttp\Promise\PromiseInterface> $responses */
+        $responses = [
+            static function (Request $request): never {
+                throw new ConnectionException('private transport detail');
+            },
+            static fn (Request $request): \GuzzleHttp\Promise\PromiseInterface => Http::response(
+                ['error' => 'service_unavailable'],
+                503,
+            ),
+            static fn (Request $request): \GuzzleHttp\Promise\PromiseInterface => Http::response(
+                ['error' => 'clock_skew'],
+                401,
+            ),
+            static fn (Request $request): \GuzzleHttp\Promise\PromiseInterface => Http::response(
+                ['error' => 'image_rejected'],
+                422,
+            ),
+            function (Request $request) use ($normalized): \GuzzleHttp\Promise\PromiseInterface {
+                $nonce = $request->header('X-ArtifactFlow-Parser-Nonce')[0] ?? '';
+                $this->assertIsString($nonce);
+
+                return Http::response($normalized, 200, [
+                    'Content-Type' => 'image/png',
+                    'X-ArtifactFlow-Parser-Media-Type' => 'image/png',
+                    'X-ArtifactFlow-Parser-Width' => '1',
+                    'X-ArtifactFlow-Parser-Height' => '1',
+                    'X-ArtifactFlow-Parser-Signature' => $this->responseSignature(
+                        $nonce,
+                        'image/png',
+                        1,
+                        1,
+                        $normalized,
+                    ),
+                ]);
+            },
+        ];
+        $requestCount = 0;
+        Http::fake(static function (Request $request) use (&$requestCount, &$responses): \GuzzleHttp\Promise\PromiseInterface {
+            $requestCount++;
+            $response = array_shift($responses);
+
+            if (!$response instanceof \Closure) {
+                throw new LogicException('Unexpected parser request.');
+            }
+
+            return $response($request);
+        });
+        $normalizer = app(RasterImageNormalizer::class);
+
+        foreach (range(1, 4) as $attempt) {
+            try {
+                $normalizer->normalize($this->png(), 'actor-refunded-budget');
+                $this->fail(sprintf('Expected parser failure %d to reject normalization.', $attempt));
+            } catch (DomainRuleViolation) {
+                // Every failed dispatch must leave enough budget for the retry.
+            }
+        }
+
+        $this->assertSame($normalized, $normalizer->normalize($this->png(), 'actor-refunded-budget'));
+        $this->assertSame(5, $requestCount);
+    }
+
+    public function test_non_positive_parser_timeouts_are_rejected_instead_of_silently_changed(): void
+    {
+        $configuration = app(ImageParserConfiguration::class);
+
+        foreach ([
+            ['image_parser.connect_timeout_seconds', 0, 'connect timeout'],
+            ['image_parser.timeout_seconds', '0', 'request timeout'],
+            ['image_parser.timeout_seconds', -1, 'negative request timeout'],
+        ] as [$key, $value, $case]) {
+            config([$key => $value]);
+
+            try {
+                str_contains($key, 'connect_')
+                    ? $configuration->connectTimeoutSeconds()
+                    : $configuration->timeoutSeconds();
+                $this->fail(sprintf('Expected %s to be rejected.', $case));
+            } catch (LogicException $exception) {
+                $this->assertSame(
+                    sprintf('Image parser setting [%s] must be a positive integer.', $key),
+                    $exception->getMessage(),
+                );
+            }
+        }
+    }
+
+    public function test_invalid_admission_configuration_is_mapped_to_retryable_parser_unavailability(): void
+    {
+        $this->configureParser();
+        config(['image_parser.timeout_seconds' => 0]);
+        Http::fake();
+
+        try {
+            app(RasterImageNormalizer::class)->normalize($this->png(), 'actor-invalid-admission-config');
+            $this->fail('Expected invalid admission configuration to fail closed.');
+        } catch (ImageNormalizationRejected $exception) {
+            $this->assertSame(
+                'Image normalization service is unavailable. Try again shortly.',
+                $exception->getMessage(),
+            );
+            $this->assertSame(5, $exception->retryAfterSeconds);
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_normalization_rejects_unsigned_or_inconsistent_parser_output(): void
+    {
+        $this->configureParser();
+        $normalized = $this->png();
+
+        Http::fakeSequence()
+            ->push($normalized, 200, [
+                'Content-Type' => 'image/png',
+                'X-ArtifactFlow-Parser-Media-Type' => 'image/png',
+                'X-ArtifactFlow-Parser-Width' => '1',
+                'X-ArtifactFlow-Parser-Height' => '1',
+            ])
+            ->push($normalized, 200, [
+                'Content-Type' => 'image/jpeg',
+                'X-ArtifactFlow-Parser-Media-Type' => 'image/jpeg',
+                'X-ArtifactFlow-Parser-Width' => '1',
+                'X-ArtifactFlow-Parser-Height' => '1',
+                'X-ArtifactFlow-Parser-Signature' => str_repeat('0', 64),
+            ]);
+
+        foreach (['unsigned response', 'media mismatch'] as $case) {
+            try {
+                app(RasterImageNormalizer::class)->normalize($this->png(), 'actor-invalid-output');
+                $this->fail(sprintf('Expected %s to be rejected.', $case));
+            } catch (ImageNormalizationRejected $exception) {
+                $this->assertSame(
+                    'Image normalization service is unavailable. Try again shortly.',
+                    $exception->getMessage(),
+                );
+            }
+        }
+    }
+
+    public function test_normalization_rejects_a_response_signed_for_a_different_request_nonce(): void
+    {
+        $this->configureParser();
+        $normalized = $this->png();
+        Http::fake(function (Request $request) use ($normalized): \GuzzleHttp\Promise\PromiseInterface {
+            $requestNonce = $request->header('X-ArtifactFlow-Parser-Nonce')[0] ?? '';
+            $this->assertIsString($requestNonce);
+            $wrongNonce = ($requestNonce[0] === '0' ? '1' : '0') . substr($requestNonce, 1);
+
+            return Http::response($normalized, 200, [
+                'Content-Type' => 'image/png',
+                'X-ArtifactFlow-Parser-Media-Type' => 'image/png',
+                'X-ArtifactFlow-Parser-Width' => '1',
+                'X-ArtifactFlow-Parser-Height' => '1',
+                'X-ArtifactFlow-Parser-Signature' => $this->responseSignature(
+                    $wrongNonce,
+                    'image/png',
+                    1,
+                    1,
+                    $normalized,
+                ),
+            ]);
+        });
+
+        $this->expectException(ImageNormalizationRejected::class);
+        $this->expectExceptionMessage('Image normalization service is unavailable. Try again shortly.');
+
+        app(RasterImageNormalizer::class)->normalize($this->png(), 'actor-wrong-response-nonce');
+    }
+
+    public function test_normalization_reports_when_the_safe_derivative_exceeds_the_artifact_limit(): void
+    {
+        $this->configureParser();
+        Http::fake([
+            '*' => Http::response(['error' => 'normalized_image_too_large'], 422),
+        ]);
+
+        $this->expectException(DomainRuleViolation::class);
+        $this->expectExceptionMessage('Normalized image exceeds the configured artifact size limit.');
+
+        app(RasterImageNormalizer::class)->normalize($this->png(), 'actor-output-too-large');
+    }
+
+    public function test_jpeg_marker_floods_are_rejected_before_parser_dispatch(): void
+    {
+        $this->configureParser();
+        config(['pages.max_image_bytes' => 5 * 1024 * 1024]);
+        Http::fake();
+        $jpeg = $this->jpeg();
+        $markerFloodBytes = (5 * 1024 * 1024) - strlen($jpeg);
+        $payloads = [
+            'restart marker before scan data' => substr($jpeg, 0, 2) . "\xff\xd0" . substr($jpeg, 2),
+            'maximum-size standalone marker flood' => substr($jpeg, 0, 2)
+                . str_repeat("\xff\x01", intdiv($markerFloodBytes, 2))
+                . substr($jpeg, 2),
+        ];
+
+        foreach ($payloads as $case => $payload) {
+            try {
+                app(RasterImageNormalizer::class)->normalize($payload, 'actor-marker-flood');
+                $this->fail(sprintf('Expected %s to be rejected.', $case));
+            } catch (DomainRuleViolation $exception) {
+                $this->assertSame('Image header is invalid.', $exception->getMessage(), $case);
+            }
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_jpeg_start_of_frame_may_follow_a_large_but_bounded_metadata_envelope(): void
+    {
+        config(['pages.max_image_bytes' => 5 * 1024 * 1024]);
+        $appSegment = "\xff\xe1" . pack('n', 65535) . str_repeat('m', 65533);
+        $jpeg = $this->jpeg();
+        $lateStartOfFrame = substr($jpeg, 0, 2)
+            . str_repeat($appSegment, 17)
+            . substr($jpeg, 2);
+
+        $this->assertGreaterThan(1024 * 1024, strlen($lateStartOfFrame));
+        $info = app(RasterImageInspector::class)->inspectUpload($lateStartOfFrame);
+
+        $this->assertSame('image/jpeg', $info->mediaType);
+        $this->assertSame(1, $info->width);
+        $this->assertSame(1, $info->height);
+    }
+
+    public function test_upload_pixel_limit_can_be_16_megapixels_while_retained_images_keep_the_40_megapixel_envelope(): void
+    {
+        config(['pages.max_image_pixels' => 16 * 1024 * 1024]);
+
+        $this->assertSame(16 * 1024 * 1024, config('pages.max_image_pixels'));
+        $this->assertSame(40 * 1024 * 1024, ImageArtifactLimits::STORED_MAX_PIXELS);
+
+        $uploadEnvelope = $this->pngWithDeclaredDimensions(8192, 2048);
+        $storedEnvelope = $this->pngWithDeclaredDimensions(16384, 2560);
+        $inspector = app(RasterImageInspector::class);
+
+        $this->assertSame(16 * 1024 * 1024, $inspector->inspectUpload($uploadEnvelope)->pixels());
+        $this->assertSame(40 * 1024 * 1024, $inspector->inspectStored($storedEnvelope)->pixels());
+
+        try {
+            $inspector->inspectUpload($storedEnvelope);
+            $this->fail('Expected a retained 40-megapixel image to be rejected as a new upload.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame('Image pixel count exceeds the configured limit.', $exception->getMessage());
+        }
+    }
+
+    public function test_normalization_fails_fast_without_parser_dispatch_when_the_shared_slot_is_occupied(): void
+    {
+        $this->configureParser();
+        config([
+            'pages.max_image_pixels' => 1,
+            'image_parser.user_pixel_budget_per_minute' => 1,
+            'image_parser.installation_pixel_budget_per_minute' => 1,
+        ]);
+        $this->fakeSuccessfulParser();
+        $lock = Cache::lock('artifactflow:image-normalization:slot:v1', 30);
+        $this->assertTrue($lock->get());
+
+        try {
+            app(RasterImageNormalizer::class)->normalize($this->png(), 'actor-busy-slot');
+            $this->fail('Expected the occupied parser slot to reject immediately.');
+        } catch (ImageNormalizationRejected $exception) {
+            $this->assertSame('Image normalization is busy. Try again shortly.', $exception->getMessage());
+            $this->assertSame(8, $exception->retryAfterSeconds);
+        } finally {
+            $lock->release();
+        }
+
+        Http::assertNothingSent();
+
+        app(RasterImageNormalizer::class)->normalize($this->png(), 'actor-busy-slot');
+        Http::assertSentCount(1);
+    }
+
+    public function test_pixel_work_budget_is_weighted_per_actor_without_blocking_another_actor(): void
+    {
+        $this->configureParser();
+        config([
+            'pages.max_image_pixels' => 4,
+            'image_parser.user_pixel_budget_per_minute' => 4,
+            'image_parser.installation_pixel_budget_per_minute' => 100,
+        ]);
+        $this->fakeSuccessfulParser();
+        $normalizer = app(RasterImageNormalizer::class);
+
+        $normalizer->normalize($this->png(2, 2), 'actor-weighted-a');
+
+        try {
+            $normalizer->normalize($this->png(), 'actor-weighted-a');
+            $this->fail('Expected the actor pixel budget to reject the next normalization.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame('Image normalization limit reached. Try again shortly.', $exception->getMessage());
+        }
+
+        $normalizer->normalize($this->png(), 'actor-weighted-b');
+
+        Http::assertSentCount(2);
+    }
+
+    public function test_installation_pixel_work_budget_is_shared_across_actors(): void
+    {
+        $this->configureParser();
+        config([
+            'pages.max_image_pixels' => 4,
+            'image_parser.user_pixel_budget_per_minute' => 4,
+            'image_parser.installation_pixel_budget_per_minute' => 4,
+        ]);
+        $this->fakeSuccessfulParser();
+        $normalizer = app(RasterImageNormalizer::class);
+
+        $normalizer->normalize($this->png(2, 2), 'actor-global-a');
+
+        try {
+            $normalizer->normalize($this->png(), 'actor-global-b');
+            $this->fail('Expected the installation pixel budget to reject the next normalization.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame(
+                'Image normalization capacity is temporarily exhausted. Try again shortly.',
+                $exception->getMessage(),
+            );
+        }
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_image_replacement_completes_parser_io_before_opening_the_database_transaction(): void
+    {
+        Storage::fake('artifacts');
+        $this->configureParser();
+        $normalized = $this->png();
+        $transactionLevels = [];
+        $baselineTransactionLevel = DB::transactionLevel();
+
+        Http::fake(function (Request $request) use ($normalized, &$transactionLevels): \GuzzleHttp\Promise\PromiseInterface {
+            $transactionLevels[] = DB::transactionLevel();
+            $nonce = $request->header('X-ArtifactFlow-Parser-Nonce')[0] ?? '';
+            $this->assertIsString($nonce);
+
+            return Http::response($normalized, 200, [
+                'Content-Type' => 'image/png',
+                'X-ArtifactFlow-Parser-Media-Type' => 'image/png',
+                'X-ArtifactFlow-Parser-Width' => '1',
+                'X-ArtifactFlow-Parser-Height' => '1',
+                'X-ArtifactFlow-Parser-Signature' => $this->responseSignature(
+                    $nonce,
+                    'image/png',
+                    1,
+                    1,
+                    $normalized,
+                ),
+            ]);
+        });
+
+        $actor = User::query()->create([
+            'name' => 'Parser Transaction Editor',
+            'email' => 'parser-transaction@example.test',
+            'password' => Hash::make('password'),
+        ]);
+        $workspace = app(CreateSharedWorkspace::class)->handle($actor, 'Parser Transaction Team');
+        $page = app(CreatePage::class)->handle($actor, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Image,
+            title: 'Parser Transaction Screenshot',
+            description: null,
+            content: $this->png(),
+            source: PageVersionSource::Upload,
+        ));
+
+        app(UpdatePageContent::class)->handle($actor, new UpdatePageContentCommand(
+            pageUid: $page->uid,
+            content: $this->png(),
+            baseVersionUid: $page->current_version_uid,
+            source: PageVersionSource::Upload,
+        ));
+
+        $this->assertSame(
+            [$baselineTransactionLevel, $baselineTransactionLevel],
+            $transactionLevels,
+        );
+    }
+
+    private function configureParser(): void
+    {
+        config([
+            'image_parser.url' => 'http://image-parser.test',
+            'image_parser.shared_secret' => self::SHARED_SECRET,
+            'image_parser.connect_timeout_seconds' => 1,
+            'image_parser.timeout_seconds' => 3,
+            'image_parser.user_pixel_budget_per_minute' => 64 * 1024 * 1024,
+            'image_parser.installation_pixel_budget_per_minute' => 256 * 1024 * 1024,
+            'pages.max_image_bytes' => 1024 * 1024,
+            'pages.max_image_pixels' => 100,
+            'pages.max_image_dimension' => 100,
+        ]);
+    }
+
+    private function fakeSuccessfulParser(): void
+    {
+        $normalized = $this->png();
+
+        Http::fake(function (Request $request) use ($normalized): \GuzzleHttp\Promise\PromiseInterface {
+            $nonce = $request->header('X-ArtifactFlow-Parser-Nonce')[0] ?? '';
+            $this->assertIsString($nonce);
+
+            return Http::response($normalized, 200, [
+                'Content-Type' => 'image/png',
+                'X-ArtifactFlow-Parser-Media-Type' => 'image/png',
+                'X-ArtifactFlow-Parser-Width' => '1',
+                'X-ArtifactFlow-Parser-Height' => '1',
+                'X-ArtifactFlow-Parser-Signature' => $this->responseSignature(
+                    $nonce,
+                    'image/png',
+                    1,
+                    1,
+                    $normalized,
+                ),
+            ]);
+        });
+    }
+
+    private function requestSignature(
+        string $timestamp,
+        string $nonce,
+        string $mediaType,
+        string $maxInputBytes,
+        string $maxOutputBytes,
+        string $maxPixels,
+        string $maxDimension,
+        string $bytes,
+    ): string {
+        return hash_hmac('sha256', implode("\n", [
+            'artifactflow-image-parser-request-v3',
+            $timestamp,
+            $nonce,
+            $mediaType,
+            $maxInputBytes,
+            $maxOutputBytes,
+            $maxPixels,
+            $maxDimension,
+            hash('sha256', $bytes),
+        ]), self::SHARED_SECRET);
+    }
+
+    private function responseSignature(
+        string $nonce,
+        string $mediaType,
+        int $width,
+        int $height,
+        string $bytes,
+    ): string {
+        return hash_hmac('sha256', implode("\n", [
+            'artifactflow-image-parser-response-v1',
+            $nonce,
+            $mediaType,
+            (string) $width,
+            (string) $height,
+            hash('sha256', $bytes),
+        ]), self::SHARED_SECRET);
+    }
+
+    private function png(int $width = 1, int $height = 1): string
+    {
+        $scanlines = '';
+
+        for ($row = 0; $row < $height; $row++) {
+            $scanlines .= "\x00" . str_repeat("\x23\x78\xdd\xff", $width);
+        }
+
+        $compressed = gzcompress($scanlines);
+        $this->assertIsString($compressed);
+
+        return "\x89PNG\r\n\x1a\n"
+            . $this->pngChunk('IHDR', pack('NNCCCCC', $width, $height, 8, 6, 0, 0, 0))
+            . $this->pngChunk('IDAT', $compressed)
+            . $this->pngChunk('IEND', '');
+    }
+
+    private function pngWithDeclaredDimensions(int $width, int $height): string
+    {
+        $compressed = gzcompress("\x00\x23\x78\xdd\xff");
+        $this->assertIsString($compressed);
+
+        return "\x89PNG\r\n\x1a\n"
+            . $this->pngChunk('IHDR', pack('NNCCCCC', $width, $height, 8, 6, 0, 0, 0))
+            . $this->pngChunk('IDAT', $compressed)
+            . $this->pngChunk('IEND', '');
+    }
+
+    private function jpeg(): string
+    {
+        $image = imagecreatetruecolor(1, 1);
+        $this->assertInstanceOf(\GdImage::class, $image);
+        ob_start();
+        imagejpeg($image, null, 90);
+        $bytes = ob_get_clean();
+        imagedestroy($image);
+
+        return $bytes;
+    }
+
+    private function pngChunk(string $type, string $data): string
+    {
+        return pack('N', strlen($data))
+            . $type
+            . $data
+            . pack('N', crc32($type . $data));
+    }
+}

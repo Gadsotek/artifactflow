@@ -273,6 +273,39 @@ final class ReindexSearchCommandTest extends TestCase
         $this->assertSame($before, $this->artifactDiskSnapshot());
     }
 
+    public function test_reindex_clears_image_text_projection_without_reading_binary_content(): void
+    {
+        Storage::fake('artifacts');
+        $owner = $this->createUser('Image Reindex Owner', 'image-reindex-owner@example.test');
+        $page = Page::factory()->create([
+            'owner_user_uid' => $owner->uid,
+            'type' => PageType::Image,
+        ]);
+        $version = PageVersion::factory()
+            ->forPage($page)
+            ->withContent('normalized-image-bytes')
+            ->create([
+                'extracted_text' => 'stale image text',
+                'source_text' => 'stale image source',
+            ]);
+        Storage::disk('artifacts')->put($version->content_storage_path, 'normalized-image-bytes');
+        $page->forceFill(['current_version_uid' => $version->uid])->save();
+
+        /** @var \Illuminate\Filesystem\FilesystemAdapter&\Mockery\MockInterface $disk */
+        $disk = \Mockery::spy(Storage::disk('artifacts'));
+        Storage::set('artifacts', $disk);
+
+        $this->runConsoleCommand("artifactflow:reindex-search --page={$page->uid}")
+            ->expectsOutput('Search reindex complete: pages=1, versions=1, changed=1, skipped=0, dry_run=no.')
+            ->assertExitCode(0);
+
+        $version->refresh();
+        $this->assertNull($version->extracted_text);
+        $this->assertNull($version->source_text);
+        $disk->shouldNotHaveReceived('get');
+        $disk->shouldNotHaveReceived('readStream');
+    }
+
     public function test_page_option_requires_an_existing_page(): void
     {
         Storage::fake('artifacts');

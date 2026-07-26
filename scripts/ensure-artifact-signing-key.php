@@ -10,6 +10,12 @@ if (!is_string($envPath) || $envPath === '') {
     exit(1);
 }
 
+require_once __DIR__ . '/ensure-image-parser-shared-secret.php';
+
+if (ensureImageParserSharedSecret($envPath) !== 0) {
+    exit(1);
+}
+
 if (!is_file($envPath)) {
     fwrite(STDERR, "Environment file does not exist: {$envPath}\n");
     exit(1);

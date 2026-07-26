@@ -41,10 +41,20 @@ final readonly class PageVersionInspection
             abort(404);
         }
 
-        $selectedSource = $this->contentReader->read($version->content_storage_path);
-        $currentSource = $version->uid === $currentVersion->uid
-            ? $selectedSource
-            : $this->contentReader->read($currentVersion->content_storage_path);
+        $selectedSource = null;
+        $currentSource = null;
+        $selectedContentAvailable = $page->type === PageType::Image
+            ? $this->contentReader->isAvailable($version->content_storage_path)
+            : false;
+
+        if ($page->type !== PageType::Image) {
+            $selectedSource = $this->contentReader->read($version->content_storage_path);
+            $currentSource = $version->uid === $currentVersion->uid
+                ? $selectedSource
+                : $this->contentReader->read($currentVersion->content_storage_path);
+            $selectedContentAvailable = $selectedSource !== null;
+        }
+
         $renderedMarkdown = null;
         $artifactPreviewUrl = null;
 
@@ -52,7 +62,7 @@ final readonly class PageVersionInspection
             $renderedMarkdown = $this->markdownRenderer->renderForPage($actor, $page, $selectedSource);
         }
 
-        if ($selectedSource !== null && $page->type === PageType::HtmlArtifact) {
+        if ($selectedContentAvailable && $page->type->usesArtifactHostPreview()) {
             $artifactPreviewUrl = $this->artifactPreviewUrls->temporaryHistoryUrl($page, $version);
             Log::info('artifact_history_preview_url.issued', [
                 'actor_user_uid' => $actor->uid,
@@ -68,9 +78,11 @@ final readonly class PageVersionInspection
             newerVersion: $this->adjacentVersion($page, $version, newer: true),
             renderedMarkdown: $renderedMarkdown,
             artifactPreviewUrl: $artifactPreviewUrl,
-            contentUnavailable: $selectedSource === null,
-            comparisonUnavailable: $selectedSource === null || $currentSource === null,
-            diff: $selectedSource === null || $currentSource === null
+            contentUnavailable: !$selectedContentAvailable,
+            comparisonUnavailable: $page->type === PageType::Image
+                || $selectedSource === null
+                || $currentSource === null,
+            diff: $page->type === PageType::Image || $selectedSource === null || $currentSource === null
                 ? new PageVersionDiffResult([], 0, 0, false)
                 : $this->diff->compare($selectedSource, $currentSource),
             canRestore: $version->uid !== $currentVersion->uid

@@ -142,6 +142,32 @@ final class InstallCommandTest extends TestCase
         $this->assertSame(0, User::query()->where('email', 'install-admin@example.test')->count());
     }
 
+    public function test_local_install_generates_a_missing_image_parser_secret_independently(): void
+    {
+        Process::fake();
+        config([
+            'app.key' => $this->strongSecret('a'),
+            'app.artifact_url_signing_key' => $this->strongSecret('b'),
+            'image_parser.enabled' => true,
+            'image_parser.shared_secret' => '',
+        ]);
+
+        $this->runConsoleCommand('artifactflow:install', [
+            '--env' => 'local',
+            '--name' => 'Install Admin',
+            '--email' => 'install-admin@example.test',
+            '--password' => 'correct horse battery staple',
+        ])
+            ->expectsOutputToContain('- Generating image parser shared secret')
+            ->expectsConfirmation('Seed starter demo content?', 'no')
+            ->assertExitCode(0);
+
+        Process::assertRan(static function (PendingProcess $process): bool {
+            return is_array($process->command)
+                && str_contains(implode(' ', $process->command), 'ensure-image-parser-shared-secret.php');
+        });
+    }
+
     public function test_local_install_warns_when_demo_content_seeding_fails(): void
     {
         config([
@@ -605,6 +631,8 @@ final class InstallCommandTest extends TestCase
             'filesystems.disks.artifacts.visibility' => 'private',
             'hashing.bcrypt.rounds' => 12,
             'hashing.driver' => 'bcrypt',
+            'image_parser.url' => 'http://image-parser.internal:8080',
+            'image_parser.shared_secret' => $this->strongSecret('p'),
             'mail.default' => 'smtp',
             'queue.default' => 'database',
             'queue.connections.database.driver' => 'database',

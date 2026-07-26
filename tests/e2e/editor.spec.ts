@@ -1259,17 +1259,22 @@ test('upload creation mode swaps content for the file input but keeps the organi
           <select name="type">
             <option value="markdown" selected>Markdown</option>
             <option value="html_artifact">HTML artifact</option>
+            <option value="image">Image</option>
           </select>
           <select name="mode">
             <option value="markdown" selected>Markdown</option>
             <option value="html_paste">Paste HTML</option>
             <option value="html_upload">Upload HTML</option>
+            <option value="image_upload">Upload image</option>
           </select>
           <section data-create-page-essential-fields>Essential</section>
           <section data-create-page-optional-fields>Optional metadata</section>
           <section data-create-page-content-fields>Content editor</section>
           <section data-create-page-upload-fields hidden>
             <input name="html_file" type="file">
+          </section>
+          <section data-create-page-image-upload-fields hidden>
+            <input name="image_file" type="file">
           </section>
           <input name="title" type="text">
         </form>
@@ -1278,6 +1283,10 @@ test('upload creation mode swaps content for the file input but keeps the organi
     </html>
   `);
 
+  await expect(page.locator('[data-create-page-form]')).toHaveAttribute(
+    'data-create-page-mode-ready',
+    'true',
+  );
   await page.locator('select[name="type"]').selectOption('html_artifact');
   await page.locator('select[name="mode"]').selectOption('html_upload');
 
@@ -1294,6 +1303,21 @@ test('upload creation mode swaps content for the file input but keeps the organi
   });
 
   await expect(page.locator('input[name="title"]')).toHaveValue('Release dashboard');
+
+  await page.locator('select[name="mode"]').selectOption('image_upload');
+  await expect(page.locator('select[name="type"]')).toHaveValue('image');
+  await expect(page.locator('select[name="mode"]')).toHaveValue('image_upload');
+  await expect(page.locator('[data-create-page-content-fields]')).toBeHidden();
+  await expect(page.locator('[data-create-page-upload-fields]')).toBeHidden();
+  await expect(page.locator('[data-create-page-image-upload-fields]')).toBeVisible();
+
+  await page.locator('input[name="image_file"]').setInputFiles({
+    name: 'incident-screenshot.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('fixture'),
+  });
+
+  await expect(page.locator('input[name="title"]')).toHaveValue('Incident screenshot');
 });
 
 test('HTML paste mode does not redispatch an unchanged type selection', async ({ page }) => {
@@ -1847,6 +1871,19 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
       `<div ='><iframe data-breakout-context="leading-equals-single-quote-attribute-name" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>'></div>` +
       `<div ="><iframe data-breakout-context="leading-equals-double-quote-attribute-name" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>"></div>`;
     const unmatchedForeignEndBreakoutFrame = `<svg></math><title><iframe data-breakout-context="unmatched-foreign-end" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe></title></svg>`;
+    const foreignTextBreakoutContexts = [
+      'svg-style-div',
+      'math-style-div',
+      'math-script-div',
+      'svg-style-br',
+      'svg-style-p',
+    ];
+    const foreignTextBreakoutFrames =
+      `<svg><style><div><iframe data-breakout-context="svg-style-div" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe></div></style></svg>` +
+      `<math><style><div><iframe data-breakout-context="math-style-div" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe></div></style></math>` +
+      `<math><script><div><iframe data-breakout-context="math-script-div" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe></div></script></math>` +
+      `<svg><style><br><iframe data-breakout-context="svg-style-br" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe></style></svg>` +
+      `<svg><style><p><iframe data-breakout-context="svg-style-p" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe></p></style></svg>`;
     const dynamicNestedFrameBase64 = Buffer.from(recursivelyNestedRtc, 'utf8').toString('base64');
     const declarativeShadowOpenBase64 = Buffer.from(
       `<div data-declarative-shadow-host="open"><template shadowrootmode="open"><iframe srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe></template></div>`,
@@ -1869,6 +1906,7 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
               ${declarationBreakoutFrames}
               ${malformedAttributeNameQuoteBreakoutFrames}
               ${unmatchedForeignEndBreakoutFrame}
+              ${foreignTextBreakoutFrames}
               <script>
                 const nestedMarkup = atob('${dynamicNestedFrameBase64}');
                 const declarativeShadowOpenMarkup = atob('${declarativeShadowOpenBase64}');
@@ -2113,7 +2151,19 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
       ),
     );
 
+    const draftResponsePromise = page.waitForResponse(
+      (response) => response.url() === draftPreviewEndpoint,
+    );
     await openAuthenticatedDraftPreview(page);
+    const servedBody = await (await draftResponsePromise).text();
+
+    for (const context of foreignTextBreakoutContexts) {
+      expect(servedBody).not.toContain(`<iframe data-breakout-context="${context}"`);
+      expect(servedBody).toContain(
+        `<template data-artifactflow-blocked-browsing-context data-breakout-context="${context}"`,
+      );
+    }
+
     const preview = page.frameLocator('[data-html-draft-preview-frame]');
     await expect(preview.locator('#nested-result')).toHaveText('nested-contexts-blocked', {
       timeout: 20_000,

@@ -47,14 +47,16 @@ final readonly class SecretStrength
     private const array PUBLISHED_FIXTURE_SECRETS = [
         // docker-compose.yml E2E_APP_KEY default.
         'base64:YXJ0aWZhY3RmbG93LWUyZS1hcHAta2V5LTAwMDAwMDA=',
+        // docker-compose.yml local image-parser authentication default.
+        'artifactflow-local-parser-secret-not-for-production',
     ];
 
     /**
      * Repo-published signing-key fixtures. Unlike {@see PUBLISHED_FIXTURE_SECRETS}
      * these ARE used as live PHP-test signing values (tests/TestCase.php and the
      * docker-compose e2e services), so they must NOT feed isStrong() -- doing so
-     * would break HMAC signing across the suite. The production boot gate rejects
-     * them directly instead, and that gate never runs under APP_ENV=testing.
+     * would break HMAC signing across the suite. Production-only consumers use
+     * isProductionSafe(), which rejects these fixtures in every secret role.
      *
      * @var list<string>
      */
@@ -83,9 +85,8 @@ final readonly class SecretStrength
 
     /**
      * Whether the value is a signing key published in this repository's source
-     * tree. Consumed only by the production boot gate (never by isStrong), so a
-     * real deployment cannot reuse the public e2e signing key while the test
-     * suite keeps using it for live HMAC signing.
+     * tree. This deliberately does not feed isStrong(), so the test suite can
+     * keep using the fixture for live HMAC signing.
      */
     public static function isPublishedSigningKeyFixture(string $secret): bool
     {
@@ -147,5 +148,14 @@ final readonly class SecretStrength
         // Length floor, not an entropy measure: base64: secrets are counted after
         // decoding, everything else by raw string length (see the class docblock).
         return $normalized !== null && strlen($normalized) >= self::MINIMUM_SECRET_BYTES;
+    }
+
+    /**
+     * Production secret roles must reject every value published in the source
+     * tree, including fixtures that isStrong() intentionally permits in tests.
+     */
+    public static function isProductionSafe(string $secret): bool
+    {
+        return self::isStrong($secret) && !self::isPublishedSigningKeyFixture($secret);
     }
 }

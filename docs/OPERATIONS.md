@@ -1,6 +1,6 @@
 # ArtifactFlow Operations
 
-Last updated: 2026-07-17
+Last updated: 2026-07-23
 
 ## Local Runtime
 
@@ -10,6 +10,7 @@ The local stack follows the architecture document:
 | --- | --- |
 | `app` | Main Laravel HTTP origin. |
 | `artifact-host` | Same code image, separate stateless artifact-serving origin. |
+| `image-parser` | Minimal internal-only PNG/JPEG decoder and normalizer; no app source, database, artifact storage, or public port. |
 | `worker` | Queue worker (`queue:work`). Scans, projections, and audit side effects run synchronously inside the write transaction; the only queued work today is outbound mail. |
 | `scheduler` | Laravel scheduler loop (`schedule:work`): outbox dispatch and the nightly retention jobs. |
 | `db` | PostgreSQL 17 for app data, queues, search, and event outbox. |
@@ -20,6 +21,9 @@ Start the core stack:
 ```sh
 make up
 ```
+
+This idempotently provisions distinct local `ARTIFACT_URL_SIGNING_KEY` and
+`IMAGE_PARSER_SHARED_SECRET` values in `.env` before either consumer starts.
 
 Start the full local stack with Vite, Caddy edge routing, Adminer, and Mailpit:
 
@@ -174,7 +178,7 @@ The app checks its bundled migration-file manifest before MCP authentication. If
 
 Human users create their own MCP tokens from Security -> MCP tokens. Creation requires the account to have TOTP two-factor authentication enabled, then requires the current password and a fresh authenticator code in the create request. The plaintext token is shown once. Token list and revoke are scoped to the signed-in user's own account; revocation does not require the strong create step-up so rotation stays cheap. Workspace scope is an explicit choice: select one or more workspaces to bind the token to that smaller read/write ceiling, or check "All workspaces" to grant every workspace the account can reach now and any it joins in future. An empty selection with "All workspaces" unchecked is rejected, never silently minted as an all-workspaces token.
 
-Per-user token reach follows the user's live workspace memberships and the token's optional workspace scope. A workspace-scoped token cannot discover workspaces or taxonomy, search, read, create, update, or revert anything outside that scope, even if the principal has broader browser access. System Admin is installation/account authority only and never grants workspace or page content access. MCP further de-elevates workspace Admin to Editor, caps Admin page grants to Editor, and removes page-admin capabilities such as manage access, archive, hard delete, change access mode, and transfer ownership.
+Per-user token reach follows the user's live workspace memberships and the token's optional workspace scope. A workspace-scoped token cannot discover workspaces or taxonomy, search, read, create, update content or descriptions, or revert anything outside that scope, even if the principal has broader browser access. System Admin is installation/account authority only and never grants workspace or page content access. MCP further de-elevates workspace Admin to Editor, caps Admin page grants to Editor, and removes page-admin capabilities such as manage access, archive, hard delete, change access mode, and transfer ownership.
 
 To configure local clients with a token, run:
 
@@ -214,13 +218,13 @@ Mint and revoke actions are recorded in domain events and audit entries without 
 Available scopes:
 
 - `mcp:search` lists reachable workspaces and searchable taxonomy, and searches only pages the MCP principal can view within the token's workspace ceiling. `list_taxonomy` returns global tag UIDs visible through searchable pages and workspace-qualified category UIDs from reachable workspaces or individually granted pages; both it and search accept optional `workspace_uid` to narrow within that ceiling. Search snippets additionally require `mcp:read`. Note that `mcp:search` alone is not "harmless": it exposes page titles, taxonomy labels, types, statuses, and update times across everything the principal can reach — metadata that can itself be sensitive. Scope tokens to specific workspaces when the consumer only needs a subset.
-- `mcp:read` reads an in-scope page as an explicit untrusted data envelope. The server never treats read content as authorization for a later write.
+- `mcp:read` reads in-scope text content as an explicit untrusted data envelope. For an image page it returns normalized PNG/JPEG derivatives up to 5 MiB as a standard MCP image content block beside untrusted metadata; larger retained derivatives return `content_too_large` before the bytes are read or base64-expanded. The original upload no longer exists. The server never treats read content or image pixels as authorization for a later write.
 - `mcp:create` creates Markdown or single-file HTML pages through the normal page creation handler. It can attach tag names and either select a category by UID or create a workspace-local category by name in the same operation. The same scope powers `create_category` and `create_tag`; both require live Editor authority in the supplied in-scope workspace, and standalone tag creation remains installation-wide after that authority check.
-- `mcp:update` appends a new page version through the normal update handler, requires a fresh `base_version_uid`, and also powers one-action revert to the previous version.
+- `mcp:update` appends a new Markdown/HTML version through the normal update handler and requires a fresh `base_version_uid`; it powers one-action revert and `update_description`. Description updates require both the fresh `current_version_uid` and separate `metadata_revision` returned by read or search, pass the normal description scanner, refresh full-text search, and cannot change title, owner, hierarchy, category, or tags.
 
 Content scanning remains advisory except for explicit secret and credential patterns, which block writes. Inline script in an HTML artifact is expected; it is recorded as a warning finding and audit trail, not held for human acknowledgement. Descriptions are scanned for obvious secrets and prompt-injection role markers before save. MCP taxonomy names and slugs are user-authored data and are therefore returned inside the same explicit untrusted-data envelope as other user-authored text.
 
-Set `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` to tune the pre-authenticated source-IP ceiling, `MCP_RATE_LIMIT_PER_MINUTE` to tune the authenticated token ceiling, and `MCP_WRITE_RATE_LIMIT_PER_MINUTE` to tune per-token create/update/revert write throughput. Invalid or unauthenticated bearer attempts are bucketed by source IP before token lookup so random bearer rotation cannot create fresh unauthenticated buckets. Authenticated calls are also limited after token authentication. If many legitimate MCP clients share one NAT or proxy egress IP, size the pre-auth limit for the aggregate caller pool or route trusted clients through distinct egress identities. The official Laravel MCP transport negotiates the protocol during initialization and issues `MCP-Session-Id`; compliant clients return that non-secret identifier automatically, and ArtifactFlow records it in MCP-created version and restore audit metadata. Never place signed preview URLs, application session cookies, or raw authorization headers in MCP client prompts or logs.
+Set `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` to tune the pre-authenticated source-IP ceiling, `MCP_RATE_LIMIT_PER_MINUTE` to tune the authenticated token ceiling, and `MCP_WRITE_RATE_LIMIT_PER_MINUTE` to tune per-token create/update-description/update-content/revert write throughput. Invalid or unauthenticated bearer attempts are bucketed by source IP before token lookup so random bearer rotation cannot create fresh unauthenticated buckets. Authenticated calls are also limited after token authentication. If many legitimate MCP clients share one NAT or proxy egress IP, size the pre-auth limit for the aggregate caller pool or route trusted clients through distinct egress identities. The official Laravel MCP transport negotiates the protocol during initialization and issues `MCP-Session-Id`; compliant clients return that non-secret identifier automatically, and ArtifactFlow records it in MCP-created version, description update, and restore audit metadata. Never place signed preview URLs, application session cookies, or raw authorization headers in MCP client prompts or logs.
 
 ## Mail Delivery
 
@@ -243,10 +247,11 @@ Invitation creation is rate-limited with `WORKSPACE_INVITATIONS_PER_MINUTE`; inv
 
 ArtifactFlow supports production self-hosting through its production image and runtime contract. The repository does not ship a one-click production Compose stack: operators provide deployment-specific orchestration, TLS termination, PostgreSQL, secrets, and persistent volumes. The bundled `docker-compose.yml` remains local-only.
 
-The production image uses Caddy plus FrankenPHP:
+Production uses the Caddy/FrankenPHP application image plus the minimal image-parser target:
 
 ```sh
 make build-prod
+docker build --pull --target image-parser --tag artifactflow-image-parser:production .
 ```
 
 The same production image runs every role. `APP_RUNTIME_ROLE` selects the HTTP surface
@@ -264,6 +269,27 @@ both the env var and the command:
 | `artifact-host` | `artifact-host` | *(default entrypoint)* | `ARTIFACT_URL=https://artifacts.example.internal` |
 | `worker` | `worker` | `sh /var/www/html/docker/start-worker.sh` | none |
 | `scheduler` | `scheduler` | `sh /var/www/html/docker/start-scheduler.sh` | none |
+
+Run the separately built `image-parser` image as its own service. Give it only
+`IMAGE_PARSER_SHARED_SECRET` and `IMAGE_PARSER_MAX_CLOCK_SKEW_SECONDS`. Each authenticated request
+signs the app's input-byte, output-byte, pixel, and dimension limits; the parser validates them
+against fixed protocol ceilings before native decode. It therefore has no independent copy of
+the installation's `PAGE_IMAGE_*` settings. The parser needs no application env, database access,
+artifact-storage mount, or
+public ingress. Put it and every app replica that accepts writes on a private network with no
+external route, expose its port only on that network, and apply at least the restrictions used by
+local Compose: non-root, read-only root filesystem, all capabilities dropped,
+`no-new-privileges`, no-exec temporary storage, and CPU, memory, and PID limits. The application
+production image deliberately contains neither GD nor EXIF. Keep one normalization process per
+512 MiB parser cgroup: maximum-pixel decode, EXIF rotation, and re-encoding can approach that
+per-container memory budget, so prefork workers can OOM-kill only part of the pool while its health
+endpoint remains green. The parser entrypoint refuses `PHP_CLI_SERVER_WORKERS` values other than
+one. Every app replica uses the shared rate-limit cache for a single non-blocking normalization
+slot; a busy slot returns 503 immediately instead of queueing for the parser timeout. Successful
+admission consumes the image's exact pixel count from per-user and installation-wide one-minute
+budgets. Extra parser replicas may provide failover, but the shared slot intentionally keeps total
+normalization concurrency at one; do not increase it or enable unbounded autoscaling without a new
+adversarial memory/CPU benchmark and an updated admission design.
 
 The `app` and `artifact-host` containers must mount the **same persistent private artifact
 volume at the same `ARTIFACT_STORAGE_ROOT` path**. The app writes page-version bytes and the
@@ -290,7 +316,9 @@ config:cache` — which boots the fail-closed production security gate — befor
 request. Production configuration is supplied as **environment variables** (from your
 orchestrator or secret manager), not by editing a `.env` file inside the immutable image.
 Every value the gate requires (both artifact HTTPS origins, a dedicated
-`ARTIFACT_URL_SIGNING_KEY`, `APP_KEY`, `DB_SSLMODE=verify-full` + `DB_SSLROOTCERT`, a
+`ARTIFACT_URL_SIGNING_KEY`, `APP_KEY`, and, when `IMAGE_PARSER_ENABLED=true` on the `app` runtime
+role, a pure internal `IMAGE_PARSER_URL` plus separate strong `IMAGE_PARSER_SHARED_SECRET`,
+`DB_SSLMODE=verify-full` + `DB_SSLROOTCERT`, a
 deliverable `MAIL_MAILER`, a scoped `TRUSTED_PROXIES`, and secure session settings) must be
 present **before first boot**. If any are missing, the container exits and restarts rather
 than starting in an unsafe state; the log line names the failing check.
@@ -311,7 +339,16 @@ docker run --rm --env-file <your-production-env> <your-image> \
 On the immutable image the installer generates no keys and writes no `.env` — you provide
 keys as env vars — so its production job is to run migrations and create the first System
 Admin. Generate a signing key out of band with `php -r 'echo "base64:".base64_encode(random_bytes(32));'`
-(kept distinct from `APP_KEY`) and store it in your secret manager.
+(kept distinct from `APP_KEY`) and a separate parser secret with the same command. Store both in
+your secret manager; the parser and only app-role replicas that accept image writes receive the
+same parser secret. Artifact-host, worker, and scheduler roles must receive an empty parser secret;
+their production boot gate rejects a non-empty value.
+
+Parser requests and responses are HMAC authenticated and nonce-bound, but plain HTTP does not
+encrypt the private link. The default `http://image-parser:8080` is appropriate only inside one
+trusted, internal-only container network. For a cross-host parser, terminate mutually
+authenticated TLS on both ends and point `IMAGE_PARSER_URL` at that protected origin; never expose
+the bare parser listener to a shared or public network.
 
 PostgreSQL transport must verify the server identity in production. Set `DB_SSLMODE=verify-full` and mount a trusted CA bundle or database CA, then point `DB_SSLROOTCERT` at that file. The production boot guard rejects `disable`, `allow`, `prefer`, `require`, and `verify-ca` because those modes either permit cleartext fallback or skip hostname verification.
 
@@ -388,6 +425,7 @@ Rate limits:
 | `TWO_FACTOR_CHALLENGE_RATE_LIMIT_PER_MINUTE` | 5 | 2FA challenge attempts per session |
 | `TWO_FACTOR_CHALLENGE_ACCOUNT_RATE_LIMIT_PER_HOUR` | 30 | 2FA challenge attempts per account |
 | `TWO_FACTOR_CHALLENGE_IP_RATE_LIMIT_PER_MINUTE` | 20 | 2FA challenge attempts per IP |
+| `TWO_FACTOR_MANAGEMENT_RATE_LIMIT_PER_MINUTE` | 5 | Post-authentication 2FA disable/recovery-code attempts per user |
 
 Authentication freshness:
 
@@ -402,7 +440,16 @@ Content and storage limits:
 | --- | --- | --- |
 | `PAGE_MARKDOWN_MAX_BYTES` | 5 MiB | Markdown source size per version |
 | `PAGE_HTML_MAX_BYTES` | 5 MiB | HTML artifact size accepted on write |
-| `ARTIFACT_MAX_BYTES` | 10 MiB | HTML artifact size served on read (must be ≥ the write limit) |
+| `PAGE_IMAGE_MAX_BYTES` | 5 MiB | PNG/JPEG upload byte ceiling; lowering it affects new uploads, not retained normalized versions |
+| `PAGE_IMAGE_MAX_PIXELS` | 16 Mi pixels | New-upload decoded pixel ceiling; hard-capped at 16 Mi pixels while retained normalized versions remain readable up to 40 Mi pixels |
+| `PAGE_IMAGE_MAX_DIMENSION` | 16,384 px | Maximum width or height |
+| `IMAGE_PARSER_ENABLED` | `true` | Enables new image uploads. Set `false` to run without parser credentials; retained normalized images remain readable. |
+| `IMAGE_PARSER_CONNECT_TIMEOUT_SECONDS` | 2 seconds | App-to-parser connection timeout (hard-capped at 10 seconds) |
+| `IMAGE_PARSER_TIMEOUT_SECONDS` | 12 seconds | Whole normalization timeout (hard-capped at 30 seconds) |
+| `IMAGE_PARSER_MAX_CLOCK_SKEW_SECONDS` | 120 seconds | Parser request timestamp tolerance (hard-capped at 300 seconds). Keep host clocks synchronized; authenticated skew failures are recorded as `image_parser.request_failed` with reason `clock_skew`. |
+| `IMAGE_NORMALIZATION_USER_PIXEL_BUDGET_PER_MINUTE` | 64 Mi pixels | Per-user normalization work budget; must allow one maximum upload and cannot exceed 64 Mi pixels |
+| `IMAGE_NORMALIZATION_INSTALLATION_PIXEL_BUDGET_PER_MINUTE` | 256 Mi pixels | Shared installation work budget; must be at least the user budget and cannot exceed 256 Mi pixels |
+| `ARTIFACT_MAX_BYTES` | 10 MiB | Artifact size stored/served on read and signed normalized-image output budget (must be ≥ every Markdown/HTML/image upload limit in production; hard-capped at 64 MiB for image derivatives) |
 | `ARTIFACT_DRAFT_PREVIEW_MAX_BODY` | 6 MB | Edge request-body cap for the capability-protected draft-preview route; keep above `PAGE_HTML_MAX_BYTES` for multipart overhead |
 | `PAGE_WORKSPACE_MAX_STORAGE_BYTES` | 1 GiB | Total artifact storage per workspace |
 | `PAGE_MAX_PAGE_STORAGE_BYTES` | 100 MiB | Total artifact storage per page |
@@ -410,6 +457,13 @@ Content and storage limits:
 | `PAGE_MAX_TAGS_PER_PAGE` | 25 | Tags per page |
 | `WORKSPACE_INVITATION_TTL_DAYS` | 7 | Invitation validity |
 | `WORKSPACE_RENAME_COOLDOWN_SECONDS` | 60 | Cooldown between workspace renames |
+
+PNG normalization validates chunk CRCs, removes compressed text/profile metadata from the bytes
+passed to GD, and bounds IDAT inflation to the exact IHDR-derived scanline envelope before native
+decoding. Do not remove that preflight when changing image libraries: the pixel budgets assume
+compressed input cannot expand outside the charged raster dimensions.
+The parser health endpoint also performs a fixed one-pixel PNG decode/re-encode, so a healthy
+status proves the configured PNG codec path rather than only the HTTP listener.
 
 ## Quality Gates
 
@@ -485,8 +539,14 @@ Use non-sensitive test content and record the Safari/iOS versions and results:
    replay only during its short TTL.
 3. Attempt static and dynamic `iframe`/`frame`/`fencedframe`/`portal`, legacy
    `document.execCommand('insertHTML')`, `<object>`, `<embed>`, SVG `foreignObject`, worker, popup,
-   download, form, and external-network paths. No nested browsing
-   context, popup/download, form submission, worker, or outbound connection should succeed.
+   download, form, and external-network paths. Insert a benign `<link>` first and then mutate
+   `rel`/`href` through properties, `setAttribute`, `setAttributeNS`, and `relList` to
+   `dns-prefetch`, `preconnect`, `prefetch`, and `prerender`; repeat the ordering check with
+   `<meta http-equiv="refresh">`. Repeat the string arguments with stateful `toString()` objects
+   that return a safe value during guard inspection and a dangerous value on a second coercion,
+   including `document.execCommand` command names. The elements must be neutralized synchronously,
+   the response must carry `X-DNS-Prefetch-Control: off`, and no nested browsing context,
+   popup/download, form submission, worker, DNS lookup, or outbound connection should succeed.
 4. Attempt `requestFullscreen()` and `requestPointerLock()` from artifact code. They must be denied
    or unavailable; on iOS, absence of pointer-lock support is expected. Then use ArtifactFlow's
    Fullscreen control and confirm it only CSS-maximizes the existing sandboxed iframe and exits
@@ -522,9 +582,9 @@ A successful verification confirms the image was produced by this repository's r
 ArtifactFlow has two stateful data stores that must be captured together:
 
 - PostgreSQL stores users, workspaces, page metadata, page-version rows, permissions, audit entries, queues, and durable domain events.
-- The private artifacts disk stores the untrusted Markdown and single-file HTML bytes referenced by `page_versions.content_storage_path`.
+- The private artifacts disk stores untrusted Markdown and single-file HTML bytes plus normalized PNG/JPEG derivatives referenced by `page_versions.content_storage_path`. Original image uploads are not retained.
 
-Backups must also be paired with secret-manager custody for `APP_KEY` and `ARTIFACT_URL_SIGNING_KEY`. Those keys are not included in data backups and must not be copied into backup manifests. Losing `APP_KEY` makes encrypted application data, TOTP secrets, sessions, and trusted-device cookies unrecoverable. Rotating or losing `ARTIFACT_URL_SIGNING_KEY` invalidates outstanding signed artifact-preview URLs, which is acceptable for short-lived previews but must be expected during restore.
+Backups must also be paired with secret-manager custody for `APP_KEY`, `ARTIFACT_URL_SIGNING_KEY`, and `IMAGE_PARSER_SHARED_SECRET`. Those keys are not included in data backups and must not be copied into backup manifests. Losing `APP_KEY` makes encrypted application data, TOTP secrets, sessions, and trusted-device cookies unrecoverable. Rotating or losing `ARTIFACT_URL_SIGNING_KEY` invalidates outstanding signed artifact-preview URLs, which is acceptable for short-lived previews but must be expected during restore. The parser secret protects no data at rest; rotate it on both app and parser together or image writes fail closed until they match.
 
 Run a local Compose backup with:
 

@@ -101,13 +101,20 @@ ARG INSTALL_PCOV=0
 
 COPY docker/php/conf.d/95-pcov.ini /tmp/95-pcov.ini
 
-RUN if [ "${INSTALL_PCOV}" = "1" ]; then \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libjpeg62-turbo-dev \
+        libpng-dev \
+        libwebp-dev \
+    && docker-php-ext-configure gd --with-jpeg --with-webp \
+    && docker-php-ext-install -j"$(nproc)" exif gd \
+    && if [ "${INSTALL_PCOV}" = "1" ]; then \
       pecl install pcov \
       && docker-php-ext-enable pcov \
       && cp /tmp/95-pcov.ini /usr/local/etc/php/conf.d/95-pcov.ini; \
     fi \
     && rm -f /tmp/95-pcov.ini \
-    && rm -rf /tmp/pear ~/.pearrc
+    && rm -rf /tmp/pear ~/.pearrc /var/lib/apt/lists/*
 
 COPY --chown=app:app . /var/www/html
 
@@ -116,6 +123,45 @@ USER app
 EXPOSE 8000
 
 CMD ["sh", "/var/www/html/docker/start-local.sh"]
+
+# Native raster decoding lives in a separate minimal image. It receives no
+# application source, database client, credentials, or artifact storage.
+FROM php:8.5.8-cli-alpine3.24@sha256:8d7090ce03736b6ecfd739d87a46ab59b5d1d0d837f1ac7c5d2702f1d312f5a0 AS image-parser
+
+RUN apk add --no-cache --virtual .image-parser-build-deps \
+        $PHPIZE_DEPS \
+        libjpeg-turbo-dev \
+        libpng-dev \
+    && docker-php-ext-configure gd --with-jpeg \
+    && docker-php-ext-install -j"$(nproc)" exif gd \
+    && apk add --no-cache \
+        ca-certificates \
+        "c-ares>=1.34.8-r0" \
+        libjpeg-turbo \
+        libpng \
+    && apk del .image-parser-build-deps
+
+COPY image-parser /srv/image-parser
+
+RUN addgroup -S -g 10001 image-parser \
+    && adduser -S -D -H -u 10001 -G image-parser -s /sbin/nologin image-parser \
+    && chmod 0555 /srv/image-parser/start.sh
+
+WORKDIR /srv/image-parser
+
+USER image-parser
+
+EXPOSE 8080
+
+# Keep one normalization process inside the 512 MiB service cgroup. A prefork
+# pool multiplies native GD decode/rotate/encode memory, and a killed child can
+# leave the parent listener deceptively healthy. The healthcheck performs its
+# tiny decode/re-encode in a separate CLI process, so a long normalization cannot
+# starve it. Scale with separate parser containers and memory limits instead.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["php", "/srv/image-parser/healthcheck.php"]
+
+CMD ["/srv/image-parser/start.sh"]
 
 # FrankenPHP v1.12.6 still resolves vulnerable Go dependencies. Rebuild the
 # bundled binary with patched versions until upstream ships them or newer.

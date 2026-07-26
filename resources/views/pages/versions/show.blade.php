@@ -15,7 +15,9 @@
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <a class="af-secondary-button" href="#version-preview">Preview</a>
-                    <a class="af-secondary-button" href="#version-changes">Changes</a>
+                    @if ($page->type !== PageType::Image)
+                        <a class="af-secondary-button" href="#version-changes">Changes</a>
+                    @endif
                     <a class="af-primary-button" href="{{ route('pages.show', $page) }}">Back to current page</a>
                 </div>
             </div>
@@ -62,7 +64,7 @@
                     <div class="artifactflow-markdown rounded-md border border-zinc-200 bg-white p-6 text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100">
                         {!! $inspection->renderedMarkdown ?? '' !!}
                     </div>
-                @elseif ($inspection->artifactPreviewUrl !== null)
+                @elseif ($inspection->artifactPreviewUrl !== null && $page->type === PageType::HtmlArtifact)
                     <div
                         class="af-artifact-preview flex flex-col gap-2"
                         data-artifact-preview
@@ -74,9 +76,21 @@
                         </div>
                         <iframe class="af-artifact-iframe h-[calc(100vh-16rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts" allow="" src="{{ $inspection->artifactPreviewUrl }}" title="Historical artifact preview"></iframe>
                     </div>
+                @elseif ($inspection->artifactPreviewUrl !== null)
+                    <div
+                        class="af-artifact-preview flex flex-col gap-2"
+                        data-artifact-preview
+                        data-image-preview
+                    >
+                        <span class="text-xs text-zinc-500 dark:text-zinc-400">Historical image · normalized raster preview on the isolated artifact origin.</span>
+                        <iframe class="af-artifact-iframe h-[calc(100vh-16rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" sandbox="" allow="" src="{{ $inspection->artifactPreviewUrl }}" title="Historical image preview"></iframe>
+                    </div>
                 @endif
             </section>
 
+            @if ($page->type === PageType::Image)
+                <div class="af-callout">Binary image versions do not have a source diff.</div>
+            @else
             <section class="af-document-canvas scroll-mt-6" id="version-changes" data-version-diff>
                 <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
                     <div>
@@ -114,6 +128,7 @@
                     </div>
                 @endif
             </section>
+            @endif
         </main>
     </div>
 </x-layouts.app>

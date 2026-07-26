@@ -6,6 +6,7 @@ namespace App\Application\Mcp;
 
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\Security\BlockedPageContentException;
+use App\Domain\PageCatalog\StalePageMetadataException;
 use App\Domain\PageCatalog\StalePageVersionException;
 use Illuminate\Auth\Access\AuthorizationException;
 
@@ -22,10 +23,20 @@ final class McpToolErrorMapper
      *                                          exception message when a tool
      *                                          documents its own conflict text
      */
-    public function guard(callable $run, ?string $staleConflictMessage = null): McpToolResult
-    {
+    public function guard(
+        callable $run,
+        ?string $staleConflictMessage = null,
+        McpNotFoundResource $authorizationResource = McpNotFoundResource::Page,
+    ): McpToolResult {
         try {
             return $run();
+        } catch (StalePageMetadataException $exception) {
+            return McpToolResult::error([
+                'type' => 'conflict',
+                'message' => $exception->getMessage(),
+                'retryable' => true,
+                'current_metadata_revision' => $exception->currentRevision,
+            ]);
         } catch (StalePageVersionException $exception) {
             return McpToolResult::error([
                 'type' => 'conflict',
@@ -40,7 +51,7 @@ final class McpToolErrorMapper
                 'finding_codes' => $exception->findingCodes(),
             ]);
         } catch (AuthorizationException) {
-            return McpToolResult::notFound();
+            return McpToolResult::notFound($authorizationResource);
         } catch (DomainRuleViolation $exception) {
             return McpToolResult::error([
                 'type' => 'invalid_request',

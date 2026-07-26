@@ -81,8 +81,11 @@ final class PageVersionFactory extends Factory
         string $versionUid,
         PageType $type,
     ): string {
-        $extension = $type === PageType::HtmlArtifact ? 'html' : 'md';
-        $filename = $type === PageType::HtmlArtifact ? 'index' : 'source';
+        [$filename, $extension] = match ($type) {
+            PageType::Markdown => ['source', 'md'],
+            PageType::HtmlArtifact => ['index', 'html'],
+            PageType::Image => ['preview', 'png'],
+        };
 
         return sprintf(
             'pages/%s/versions/%d-%s/%s.%s',

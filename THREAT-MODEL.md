@@ -1,10 +1,11 @@
 # ArtifactFlow Threat Model: Rendering Untrusted Artifacts
 
-This document captures the security model for the one thing ArtifactFlow does that almost
-nothing else dares to: **execute arbitrary, attacker-controlled HTML + JavaScript** (the
-AI-generated artifacts) so a human can preview them, without that code stealing a session,
-reaching another tenant's data, using ordinary browser connection APIs to exfiltrate, hijacking
-the parent app, or persisting anything. Self-navigation remains an explicit, narrower residual.
+This document captures the security model for executing arbitrary, attacker-controlled HTML +
+JavaScript and for decoding uploaded raster images. HTML artifacts must not steal a session,
+reach another tenant's data, use ordinary browser connection APIs to exfiltrate, hijack the parent
+app, or persist anything. PNG/JPEG uploads must not retain metadata or appended payloads, bypass
+resource limits, or inherit application-origin authority. HTML self-navigation and image-decoder
+risk remain explicit, narrower residuals.
 
 It is deliberately opinionated about **what is a real boundary and what is theater**, because
 the most common way this class of feature gets broken is a well-meaning contributor relaxing a
@@ -37,7 +38,7 @@ There are exactly **three** load-bearing controls. Everything else is convenienc
 |---|---|---|
 | **Separate artifact origin** (distinct host from the app) | Browser same-origin policy | ✅ Yes: the foundation |
 | **iframe `sandbox="allow-scripts"`** (NO `allow-same-origin`) → opaque origin | Browser | ✅ Yes, but only while *embedded* |
-| **CSP via HTTP response header** (incl. `sandbox` directive, `default-src 'none'`, `connect-src 'none'`, `frame-src`, `fenced-frame-src`, and `child-src 'none'`, `form-action 'none'`, `frame-ancestors`; `webrtc 'block'` where supported) | Browser | ✅ Yes: the **only** thing that survives top-level/full-screen, except browser support for `webrtc` is not universal |
+| **CSP via HTTP response header** (incl. `sandbox` directive, `default-src 'none'`, `connect-src 'none'`, `frame-src`, `fenced-frame-src`, and `child-src 'none'`, `form-action 'none'`, `frame-ancestors`) | Browser | ✅ Yes: the **only** thing that survives top-level/full-screen for the directives browsers enforce. The emitted `webrtc 'block'` is not counted: Chromium and WebKit ignore it. |
 | Injected JS guard (`ArtifactPreviewDocumentGuard`) monkeypatching `fetch`/`console`/storage/`open`/etc. | In-page JS | ❌ **No: cosmetic / defense-in-depth only** |
 | The `csp=` attribute on `<iframe>` | (not reliably supported) | ❌ **No: do not rely on it** |
 
@@ -50,15 +51,40 @@ blanking, and it suppresses console noise. **It is never a security control. Nev
 sandbox or CSP because the guard "handles" something.**
 
 **Nested browsing contexts are unsupported.** Chromium can create an inline `srcdoc` or initial
-`about:blank` child realm even under `frame-src 'none'`; that fresh realm also bypasses every API
-patch installed in its parent. The response hardener therefore tokenizes and neutralizes static `iframe`, `frame`,
-`fencedframe`, and `portal` tags before parsing. The early guard additionally blocks dynamic
-element creation and the common HTML parsing/setter APIs, then removes any child context that still
-appears. This is regression-tested with fifteen recursive `srcdoc` levels and a real UDP STUN
-listener, including parser-differential attempts to close a neutralized iframe's inert `template`
-wrapper from its former raw-text interior. These measures close the maintained attack corpus but
-remain layered compatibility hardening, not a reason to trust in-page JavaScript or weaken the
-three load-bearing controls above.
+`about:blank` child realm under `frame-src 'none'` in every maintained browser; that fresh realm also
+bypasses every API patch installed in its parent. Chromium and WebKit ignore the non-standard
+`webrtc 'block'` directive, so such a child can emit WebRTC STUN unless it is removed before its
+script runs. The timing-independent response hardener therefore tokenizes and neutralizes static
+`iframe`, `frame`, `fencedframe`, and `portal` tags before parsing. The early guard additionally
+blocks dynamic element creation and the common HTML parsing/setter APIs; its MutationObserver
+removes residual contexts but is too late to count as the primary control. This is regression-tested
+with fifteen recursive `srcdoc` levels, foreign-content parser breakouts, response-body template
+assertions, and a real UDP STUN listener. These measures close the maintained attack corpus but
+remain layered compatibility hardening, not a reason to weaken the three load-bearing controls
+above.
+
+The measured foreign-content rewriter defect was not an isolation bypass. With both rewriting and
+the in-page guard deliberately absent, a synthetic `srcdoc` child sent four STUN binding requests
+in Chromium and WebKit; those packets disclosed that the test page was open at the collector-facing
+IP and time, but carried no artifact payload. The real stack created no surviving child and emitted
+zero TCP or UDP in every maintained engine. Origin isolation, opaque sandboxing, authorization, and
+signed-preview boundaries remained intact. There is no page-level policy that can reliably disable
+a data-channel-only peer connection in an unreachable child realm, so the application control is
+to prevent that realm from existing before parse, not to credit `webrtc 'block'`, Permissions
+Policy, or the iframe `allow` attribute with protection they do not provide. Deployment-level
+network egress policy is a separate operator choice.
+
+**Speculative resource hints are unsupported.** `prefetch`/`prerender` fetches are covered by the
+header CSP, but browser behavior for `dns-prefetch` and `preconnect` is not governed consistently
+by `connect-src`. The server rewriter removes static resource hints and refresh metas, every
+artifact response sends `X-DNS-Prefetch-Control: off`, and the early guard synchronously
+neutralizes later `rel`/`href` and `http-equiv`/`content` mutations through attribute methods,
+IDL accessors, attribute nodes, and `relList` before calling a native DOM sink. Guard wrappers
+coerce attacker-controlled WebIDL strings exactly once, validate that primitive, and pass only
+the primitive to the native sink; native code never receives the original coercible object. The
+mutation observer is only a residual fallback; it is too late to stop a mutation that itself
+initiates DNS or TCP work. Origin isolation remains the load-bearing limit on what the artifact
+can read.
 
 Implemented in: `app/Http/Support/ArtifactSandboxResponder.php` (shared header CSP + `securityHeaders()`),
 `app/Http/Controllers/ArtifactPreviewController.php` and `ArtifactDraftPreviewController.php` (delegate saved and draft responses to the shared responder),
@@ -224,9 +250,10 @@ reviewing the browser standards and deployment configuration when a boundary cha
 | Capability replay with whitespace, newline, Unicode-normalization, encoding, or same-length content changes | Exact `strlen` and SHA-256 bind the posted byte sequence; visually equivalent content is intentionally different content. | Replaying the **same exact draft** on the configured artifact origin during the TTL is allowed. A workspace revocation after issuance does not revoke that already-issued, non-persisting capability; exposure is bounded to those already-authorized bytes and at most 60 seconds. |
 | Capability moved to the app host, another artifact origin, or a proxy route that merges origins | The signed origin claim must equal configuration, and artifact runtime middleware requires the request's exact scheme/host/port to equal the configured artifact origin before routing. | A reverse proxy must preserve the real external scheme and host through the trusted-proxy configuration. Deployment doctor and origin-separation tests fail unsafe configurations. |
 | Top-level navigation, new tabs, downloads, fullscreen, and pointer lock | Explicit non-iframe destinations are refused; draft requests fail closed without `Sec-Fetch-Dest: iframe`. The iframe has no popup/download/navigation/pointer-lock sandbox tokens, and the header CSP `sandbox` remains the top-level fallback. Product fullscreen only CSS-maximizes the existing iframe. | Saved previews deliberately tolerate an absent fetch-destination header for legacy embedding. Real Safari/macOS/iOS behavior remains a manual release check; see `docs/OPERATIONS.md`. Self-navigation of the frame remains the accepted §2 residual. |
-| Static and dynamically created `iframe`, `frame`, `fencedframe`, or `portal`, including fifteen recursive `srcdoc` levels | Server hardening tokenizes actual tags into inert templates, escapes iframe raw text before moving it into a parsed template context, and preserves script/textarea bytes; CSP denies `frame-src`, `child-src`, and `fenced-frame-src`; the early guard blocks creation, insertion, parsing, markup-setter, streaming `document.write`, and XSLT materialization sinks, then observes residual contexts. The maintained E2E corpus attempts real UDP STUN transmission through recursive and raw-text-breakout constructions and receives no packet. | Chromium's ability to construct initial `about:blank`/`srcdoc` realms is why the layers exist. The in-page guard is still not load-bearing; never remove CSP, sandbox, or origin isolation because this regression passes. |
+| Static and dynamically created `iframe`, `frame`, `fencedframe`, or `portal`, including fifteen recursive `srcdoc` levels | Server hardening tokenizes actual tags into inert templates, escapes iframe raw text before moving it into a parsed template context, scans SVG/MathML text elements that browsers parse as markup, and preserves genuine SVG script data plus HTML script/textarea bytes. CSP denies URL-backed child loads but does not stop inline `srcdoc`; the early guard blocks creation, insertion, parsing, markup-setter, streaming `document.write`, and XSLT materialization sinks, then observes residual contexts. The maintained E2E corpus asserts foreign-content breakouts are templates in the served response and attempts real UDP STUN transmission through recursive and raw-text-breakout constructions. | Chromium and WebKit permit WebRTC from a fresh `srcdoc` realm despite the emitted `webrtc 'block'`. Static rewriting must happen before parse; the MutationObserver is a timing-dependent residual, not an acceptable first barrier. Never remove CSP, sandbox, or origin isolation because this regression passes. |
 | `<object>`, `<embed>`, SVG `foreignObject`, workers, and HTML parsing/setter variants | `object-src 'none'`, `worker-src 'none'`, `default-src 'none'`, and nested-context directives block new executable/resource contexts. The runtime guard covers `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `setHTMLUnsafe`, `DOMParser`, `Range`, shadow roots, document write/parse APIs, and legacy `execCommand('insertHTML')`; the latter is disabled synchronously so an iframe cannot exist until the observer's next microtask. | Inline SVG/`foreignObject` may render inside the same sealed document; it gains no app-origin authority. Browser-specific parser additions require new regression cases when adopted. |
-| Fetch/XHR/beacon/WebSocket/EventSource/WebTransport/WebRTC and fresh-realm network escape attempts | Header CSP denies ordinary connections and workers; the `webrtc 'block'` directive is sent where supported. Removing nested realms closes the maintained Chromium attack corpus around parent-realm API patches, and the E2E UDP listener verifies that those constructions emit no STUN packet. | `webrtc` support is not universal. Navigation requests cannot be comprehensively blocked by shipped CSP, so origin isolation ensures the artifact has no session or cross-tenant data to exfiltrate; user-entered artifact data remains a social-engineering risk. |
+| Static or dynamically mutated `dns-prefetch`, `preconnect`, `prefetch`, `prerender`, and meta refresh | The server rewriter removes dangerous static markup. The artifact response opts out of DNS prefetching, while the early guard rejects dangerous insertion, parsing, property, attribute, attribute-node, and `relList` mutations before native setters run. Inspected WebIDL strings are frozen before validation and native dispatch. Tests insert benign elements first, then mutate them with primitive and statefully coercible values, and require synchronous neutralization plus no real TCP connection across Chromium, Firefox, and WebKit. | CSP covers actual prefetch/prerender fetches but not every DNS/TCP hint consistently. The observer remains a cleanup backstop only; it must never be the first control for network-initiating mutations. Self-navigation remains the accepted §2 residual. |
+| Fetch/XHR/beacon/WebSocket/EventSource/WebTransport/WebRTC and fresh-realm network escape attempts | Header CSP denies ordinary connections and workers. The early guard stubs WebRTC in the top realm; response hardening removes static nested realms before their fresh constructors can run, and synchronous DOM-sink guards block dynamic construction. The E2E matrix includes a foreign-content nested-realm STUN payload, requires an inert template in the served response, and verifies zero UDP. | Chromium and WebKit ignore `webrtc 'block'`; it is retained only as best-effort hardening for engines that implement it. Navigation requests cannot be comprehensively blocked by shipped CSP, so origin isolation ensures the artifact has no session or cross-tenant data to exfiltrate; user-entered artifact data remains a social-engineering risk. |
 | Parent/meta CSP conflicts, CSP header merging, and iframe-within-iframe inheritance | Artifact policy is an authoritative HTTP response header on the artifact response. Parent/meta policies cannot relax it, and application/artifact middleware overwrites security-critical headers rather than trusting an upstream weak value. | Reverse proxies must not replace the application-generated artifact CSP. Header presence and values should be checked during deployment and real-browser smoke tests. |
 | Signed-URL expiry, grant/revoke/archive/workspace-move races, and revision replay | Saved preview signatures bind page, immutable version, expiry, artifact origin, and `preview_access_revision`; access-changing transactions increment the revision and the controller checks current state. Invalid/missing/stale targets share a 404. | An already-rendered document is not remotely erased when access changes. Renewal requires live access, and the short TTL plus revision closes future loads rather than pretending to revoke bytes already delivered to a browser. |
 | Cookies, storage, and origin confusion | E2E proves artifact requests carry no application cookies. `sandbox` without `allow-same-origin` gives the document an opaque origin, and app/artifact hosts must remain distinct. Storage APIs are unavailable/no-op under the sealed context. | Browser extensions, compromised endpoints, and the viewer's device are outside this web-origin model. Do not place secrets inside artifact HTML merely because rendering is isolated. |
@@ -301,13 +328,86 @@ Revoking a page grant removes that discovery path on the next authorized request
 revoke their own grant unless they independently have page-access management authority; merely being
 the grant subject, or a System Admin, does not confer that authority.
 
-## 10. MCP and prompt injection
+## 10. Raster image input and preview
+
+PNG and JPEG uploads are hostile binary parser input. ArtifactFlow does not retain or directly serve
+the uploaded container. The write boundary requires a valid upload, an extension matching the
+header-detected format, a supported PNG/JPEG envelope, bounded compressed bytes, a bounded maximum
+dimension, and a bounded total pixel count. The application performs only fixed-offset PNG header
+inspection or a JPEG walk capped at 256 pre-frame markers and 1 MiB of header bytes; restart
+markers before scan data are rejected. It does not invoke a native raster decoder.
+
+The original bytes are sent to a dedicated `image-parser` container over an internal-only network.
+Timestamped nonce-bearing requests and parser responses are HMAC authenticated with a dedicated
+secret. The parser has no app source, database client or credentials, artifact-storage mount, public
+port, or outbound network route. It runs as a non-root user with a read-only filesystem, no Linux
+capabilities, `no-new-privileges`, a no-exec temporary filesystem, and CPU, memory, and process
+limits. GD and EXIF exist in that image, not the production application image. The parser natively
+decodes and re-encodes the image in the same format; the application verifies the signed response,
+format, dimensions, limits, and envelope before storage. The upload cap bounds hostile input; a
+separately signed output budget, bounded by the installation artifact limit, allows a safe
+re-encoding to be larger than its compressed upload without letting app and parser limits drift.
+Only that normalized result becomes the
+immutable version payload; EXIF/GPS,
+comments, profiles, malformed trailing data, and bytes appended after the image are discarded.
+The shipped 512 MiB parser service deliberately uses one normalization process because a
+maximum-pixel decode, EXIF rotation, and re-encode can consume substantial native memory.
+Its startup script refuses `PHP_CLI_SERVER_WORKERS` values above one. New uploads have a fixed
+16 Mi-pixel hard ceiling while retained normalized versions remain readable up to the historical
+40 Mi-pixel envelope. Before dispatch, every app replica competes for one non-blocking lock in the
+shared rate-limit cache; contention returns a retryable 503 instead of queueing an app worker
+behind the serial parser. Admitted work consumes exact-pixel per-user and installation-wide
+one-minute budgets, returning 429 for the user budget or retryable 503 for shared capacity.
+Additional separately memory-bounded parser replicas therefore provide failover without silently
+multiplying admitted native work; raising installation concurrency requires a deliberate,
+benchmarked architecture change. If the sole parser process is killed, the container exits instead
+of leaving a degraded worker pool behind a healthy listener. Production boot and doctor checks
+reject a parser shared secret on artifact-host, worker, or scheduler roles. The parser image omits
+optional WebP support, its authenticated request envelope admits only PNG/JPEG, and its health
+endpoint performs a one-pixel PNG decode/re-encode rather than reporting listener liveness alone.
+
+PNG receives an additional pre-decode work boundary inside the parser. Before GD is called, the
+parser walks at most 4,096 CRC-valid chunks, requires one consecutive IDAT sequence, validates the
+IHDR color-depth and palette rules, strips `zTXt`, `iTXt`, and `iCCP` metadata from the
+bytes handed to GD, and inflates IDAT with an output ceiling of exactly the scanline bytes implied
+by width, height, color type, bit depth, and Adam7 passes. A pixel stream that expands even one byte
+beyond that envelope, ends early, or uses an invalid filter byte receives 422 before GD. The bounded
+walker is deliberately not a complete libpng implementation: final PNG conformance still belongs to
+GD/libpng, and malformed streams accepted by the advisory walk fail closed during native decode.
+Pixel-based admission therefore cannot be bypassed by declaring a tiny raster while hiding
+unbounded decompression work in either pixel rows or compressed metadata.
+
+Image display does not execute the retained bytes as a document. The signed artifact-host route
+validates the normalized raster again and places it in a fixed application-owned HTML shell as a
+`data:` image. The shell is served only for an iframe request with a header CSP containing an empty
+`sandbox`, `script-src 'none'`, `connect-src 'none'`, `object-src 'none'`, and
+`frame-ancestors <configured app origin>`. The app iframe also uses `sandbox=""`; image previews
+therefore receive no script capability, no app cookies, and no original-upload container. Because
+that child cannot emit the HTML preview ready signal, image frames load eagerly and are not wired
+to parent renewal. Expiry and access revisions close future loads without retransmitting an image
+that is already rendered; already-delivered bytes remain the accepted non-revocable residual.
+
+Current residual: `image-parser` is a long-running container rather than a fresh VM or process
+sandbox for every upload. Resource limits and the container boundary confine ordinary decoder
+failure and substantially reduce the blast radius of a native-code flaw, but they do not eliminate
+container-runtime or kernel escape risk. Keep GD and its image libraries patched. HMAC authenticates
+traffic on the private network but does not encrypt it; a cross-host deployment must add mutually
+authenticated encrypted transport rather than expose the parser endpoint. PDF/DOCX parsing still
+requires its own deliberately reviewed isolation and resource model before those formats ship.
+
+There is deliberately no OCR for image artifacts. Search indexes catalog metadata only. MCP
+`read` returns the normalized raster as a standard image content block beside an explicit
+untrusted-data envelope; visual prompt injection remains a client-model risk. Any later
+`update_description` still needs write scope, live Editor-capped authority, the observed current
+version UID, a fresh metadata revision, scanner success, and rate-limit budget.
+
+## 11. MCP and prompt injection
 
 MCP adds a different risk from browser execution: page content can contain text that looks like
 instructions to an AI client. The server response frames read content as untrusted data, but that
 framing is advisory. The actual enforcement rules are:
 
-- Read content never authorizes a write. A later `create`, `update`, or `revert` still needs an
+- Read content never authorizes a write. A later `create`, `update`, `update_description`, or `revert` still needs an
   authenticated token with write scope, live workspace/page access, a fresh version token where
   required, rate-limit budget, and normal scanner/validation success.
 - Token scopes are the hard ceiling. Tokens can be read-only or read-write, and can be bound to
@@ -330,7 +430,7 @@ in the client/operator workflow; the server prevents read content from becoming 
 
 ---
 
-## 11. Contributor rules (the don'ts that prevent regressions)
+## 12. Contributor rules (the don'ts that prevent regressions)
 
 1. **Never** add `allow-same-origin` to the artifact iframe (embedded or draft).
 2. **Never** weaken the CSP because the JS guard "covers" something. The guard is not a control.
@@ -363,7 +463,7 @@ don't merge, the security-critical directives) so an upstream weak directive can
 
 ---
 
-## 12. One-line mental model
+## 13. One-line mental model
 
 > Untrusted code runs **on a throwaway origin, in a browser-sandboxed box, behind a header CSP
 > that travels with it.** The browser enforces the box; the origin makes escaping the box

@@ -2,7 +2,7 @@
 
 ArtifactFlow is a self-hosted, versioned artifact vault for deliberate outputs created with AI. It preserves the artifact, its authoritative source or original, retained versions, searchable content, ownership, permissions, previews, and audit history. It is not agent memory, a chat archive, or an AI generation platform.
 
-The first open-source alpha has shipped, and the current alpha line remains feature-frozen while it gathers real team feedback. Alpha work should stay focused on security, correctness, release readiness, documentation, and small usability fixes to existing behavior. The active product-design focus is expanding the vault from Markdown and self-contained HTML into searchable PDF and Word document artifacts without weakening its authorization, version, storage, or preview boundaries.
+The first open-source alpha has shipped. Its current bounded formats are Markdown, self-contained HTML, and normalized PNG/JPEG screenshots or images. Alpha work should stay focused on security, correctness, release readiness, documentation, and deliberately scoped format slices. The active product-design focus is expanding the vault into searchable PDF and Word document artifacts without weakening its authorization, version, storage, or preview boundaries.
 
 This roadmap records direction, not a release promise. Every item still requires tests-first implementation and the security gates in `AGENTS.md`.
 
@@ -35,6 +35,19 @@ Current experience:
 - parent selection and workspace moves preserve the same-workspace hierarchy boundary.
 
 This remains presentation and navigation over the existing `parent_page_uid` model, not a second permission system. Further post-alpha hierarchy work may improve expansion and navigation ergonomics, but must preserve the same authorization rules.
+
+## Alpha: normalized screenshots and images
+
+Current image support deliberately stays small:
+
+- PNG and JPEG only; SVG, animated formats, and arbitrary image containers remain unsupported;
+- detected MIME, filename extension, compressed bytes, dimensions, and total pixels are bounded;
+- uploads are decoded and re-encoded, and only the normalized derivative is retained;
+- previews are fixed, scriptless documents served on the isolated artifact origin;
+- no OCR is performed, so full-text discovery comes from editable catalog metadata;
+- MCP may read the normalized image and update only its description under ordinary token, authorization, scan, concurrency, rate-limit, and audit rules.
+
+Raster decoding now runs in a separately resource-isolated, internal-only processing service. PDF/DOCX parsing must preserve or strengthen that boundary, with format-specific parser and renderer limits, before those formats ship.
 
 ## Post-alpha: expiring external share links
 

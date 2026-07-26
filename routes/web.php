@@ -231,8 +231,10 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
             Route::post('/settings/two-factor/confirm', [TwoFactorSettingsController::class, 'confirm'])
                 ->name('settings.two-factor.confirm');
             Route::post('/settings/two-factor/disable', [TwoFactorSettingsController::class, 'disable'])
+                ->middleware('throttle:artifactflow-two-factor-management')
                 ->name('settings.two-factor.disable');
             Route::post('/settings/two-factor/recovery-codes', [TwoFactorSettingsController::class, 'regenerateRecoveryCodes'])
+                ->middleware('throttle:artifactflow-two-factor-management')
                 ->name('settings.two-factor.recovery-codes');
             Route::delete(
                 '/settings/two-factor/trusted-devices',

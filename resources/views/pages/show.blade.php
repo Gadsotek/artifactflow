@@ -71,14 +71,14 @@
             @endif
 
             <div class="af-page-tools" data-page-tools aria-label="Page tools">
-                @if ($canMutateContent && $sourcePreview !== null)
+                @if ($canMutateContent && ($sourcePreview !== null || $page->type === PageType::Image))
                     <button
-                        data-open-editor-dialog="{{ $page->type === PageType::HtmlArtifact ? 'html-source-editor' : 'page-content-dialog' }}"
+                        data-open-editor-dialog="{{ $contentEditorDialogId }}"
                         type="button"
-                        title="{{ $page->type === PageType::HtmlArtifact ? 'Edit HTML source' : 'Edit Markdown' }}"
+                        title="{{ $contentEditorLabel }}"
                     >
                         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Zm9.5-12.5 3 3"/></svg>
-                        <span>{{ $page->type === PageType::HtmlArtifact ? 'Edit HTML source' : 'Edit Markdown' }}</span>
+                        <span>{{ $contentEditorLabel }}</span>
                     </button>
                 @endif
                 <button data-open-editor-dialog="page-metadata-dialog" type="button" title="Metadata">
@@ -150,7 +150,7 @@
                     <div class="artifactflow-markdown rounded-md border border-zinc-200 bg-white p-6 text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100">
                         {!! $renderedMarkdown ?? '' !!}
                     </div>
-                @else
+                @elseif ($page->type === PageType::HtmlArtifact)
                     <div class="space-y-4">
                         <div class="af-artifact-profile">
                             <div>
@@ -175,10 +175,37 @@
                             </div>
                         @endif
                     </div>
+                @else
+                    <div class="space-y-4">
+                        <div class="af-artifact-profile">
+                            <div>
+                                <p class="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Image artifact</p>
+                                <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Stored as normalized immutable version {{ $version?->version_number }}.</p>
+                                <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400"><span class="font-semibold">Sandbox profile:</span> Scriptless opaque frame · isolated artifact origin · no outbound network.</p>
+                            </div>
+                        </div>
+                        @if ($artifactPreviewUrl !== null)
+                            <div
+                                class="af-artifact-preview flex flex-col gap-2"
+                                data-artifact-preview
+                                data-image-preview
+                            >
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <span class="text-xs text-zinc-500 dark:text-zinc-400">The browser receives only the normalized raster image inside the isolated viewer.</span>
+                                    <button type="button" class="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800" data-artifact-fullscreen-toggle aria-expanded="false" hidden>
+                                        <span data-artifact-fullscreen-label>Fullscreen</span>
+                                    </button>
+                                </div>
+                                <iframe class="af-artifact-iframe h-[calc(100vh-13rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" sandbox="" allow="" src="{{ $artifactPreviewUrl }}" title="Image preview"></iframe>
+                            </div>
+                        @endif
+                    </div>
                 @endif
             </article>
 
-            @if ($canMutateContent && $sourcePreview !== null)
+            @if ($canMutateContent && $page->type === PageType::Image)
+                @include('pages.partials.image-content-dialog')
+            @elseif ($canMutateContent && $sourcePreview !== null)
                 @include('pages.partials.content-dialog')
             @endif
             @include('pages.partials.metadata-dialog')

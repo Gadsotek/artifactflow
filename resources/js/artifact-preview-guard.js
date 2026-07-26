@@ -110,19 +110,33 @@
     postMessage: noop,
   });
   const nestedBrowsingContextTags = new Set(['iframe', 'frame', 'fencedframe', 'portal']);
+  const resourceHintRels = new Set(['dns-prefetch', 'preconnect', 'prefetch', 'prerender']);
+  const attributeMapOwners = new WeakMap();
+  const blockedMutationElements = new WeakSet();
+  const relListOwners = new WeakMap();
   const nativeCreateElement = Document.prototype.createElement;
   const nativeCreateElementNS = Document.prototype.createElementNS;
   const nativeDocumentQuerySelectorAll = Document.prototype.querySelectorAll;
   const nativeElementQuerySelectorAll = Element.prototype.querySelectorAll;
   const nativeFragmentQuerySelectorAll = DocumentFragment.prototype.querySelectorAll;
   const nativeGetAttribute = Element.prototype.getAttribute;
+  const nativeSetAttribute = Element.prototype.setAttribute;
+  const nativeSetAttributeNS = Element.prototype.setAttributeNS;
+  const nativeSetAttributeNode = Element.prototype.setAttributeNode;
+  const nativeSetAttributeNodeNS = Element.prototype.setAttributeNodeNS;
   const nativeRemoveChild = Node.prototype.removeChild;
   const nativeInnerHTMLDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
   const nativeInnerHTMLGetter = nativeInnerHTMLDescriptor?.get;
   const nativeInnerHTMLSetter = nativeInnerHTMLDescriptor?.set;
-  const markupString = (markup) => (markup === null ? '' : `${markup}`);
+  // WebIDL converts DOM strings at the native boundary. Any wrapper that
+  // validates before forwarding must freeze that conversion exactly once:
+  // attacker-controlled coercion hooks may return a different value later.
+  const webIdlString = (value) => `${value}`;
+  const nullableWebIdlString = (value) =>
+    value === null || value === undefined ? null : webIdlString(value);
+  const markupString = (markup) => (markup === null ? '' : webIdlString(markup));
   const localTagName = (name) => {
-    const normalized = `${name}`.trim().toLowerCase();
+    const normalized = webIdlString(name).trim().toLowerCase();
     const separator = normalized.lastIndexOf(':');
 
     return separator === -1 ? normalized : normalized.slice(separator + 1);
@@ -130,6 +144,24 @@
   const isNestedBrowsingContextTag = (name) => nestedBrowsingContextTags.has(localTagName(name));
   const isNestedBrowsingContextElement = (node) =>
     node instanceof Element && nestedBrowsingContextTags.has(node.localName.toLowerCase());
+  const isRefreshMeta = (element) =>
+    element.localName.toLowerCase() === 'meta' &&
+    nativeGetAttribute.call(element, 'http-equiv')?.trim().toLowerCase() === 'refresh';
+  const isResourceHintLink = (element) => {
+    if (element.localName.toLowerCase() !== 'link') {
+      return false;
+    }
+
+    const rels = (nativeGetAttribute.call(element, 'rel') ?? '').trim().toLowerCase().split(/\s+/u);
+
+    return rels.some((rel) => resourceHintRels.has(rel));
+  };
+  const isBlockedElement = (node) =>
+    node instanceof Element &&
+    (blockedMutationElements.has(node) ||
+      isNestedBrowsingContextElement(node) ||
+      isRefreshMeta(node) ||
+      isResourceHintLink(node));
   const inertElement = (ownerDocument) => {
     const element = nativeCreateElement.call(ownerDocument, 'span');
     element.setAttribute('data-artifactflow-blocked-browsing-context', '');
@@ -158,15 +190,339 @@
       nativeRemoveChild.call(parent, element);
     }
   };
-  const removeNestedBrowsingContexts = (root) => {
-    if (isNestedBrowsingContextElement(root)) {
+  const hasResourceHintRel = (value) =>
+    webIdlString(value)
+      .trim()
+      .toLowerCase()
+      .split(/\s+/u)
+      .some((rel) => resourceHintRels.has(rel));
+  const blocksAttributeMutation = (element, name, value) => {
+    if (!(element instanceof Element)) {
+      return false;
+    }
+
+    const elementName = element.localName.toLowerCase();
+    const attributeName = localTagName(name);
+
+    if (elementName === 'link') {
+      return (
+        (attributeName === 'rel' && hasResourceHintRel(value)) ||
+        (attributeName === 'href' && isResourceHintLink(element))
+      );
+    }
+
+    if (elementName === 'meta') {
+      return (
+        (attributeName === 'http-equiv' &&
+          webIdlString(value).trim().toLowerCase() === 'refresh') ||
+        (attributeName === 'content' && isRefreshMeta(element))
+      );
+    }
+
+    return false;
+  };
+  const rejectBlockedAttributeMutation = (element, name, value) => {
+    if (!blocksAttributeMutation(element, name, value)) {
+      return false;
+    }
+
+    // The attribute mutation itself may synchronously initiate DNS, TCP, or
+    // navigation work. Detach before the native setter can observe the value,
+    // then drop the mutation. The observer remains only a residual backstop.
+    blockedMutationElements.add(element);
+    removeElement(element);
+
+    return true;
+  };
+  const hardenAttributeAccessor = (target, key, attributeName) => {
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(target, key);
+
+      if (typeof descriptor?.set !== 'function') {
+        return;
+      }
+
+      Object.defineProperty(target, key, {
+        configurable: false,
+        enumerable: descriptor.enumerable,
+        get: descriptor.get,
+        set(value) {
+          const normalizedValue = webIdlString(value);
+
+          if (rejectBlockedAttributeMutation(this, attributeName, normalizedValue)) {
+            return;
+          }
+
+          descriptor.set.call(this, normalizedValue);
+        },
+      });
+    } catch {
+      // The browser owns this attribute accessor already.
+    }
+  };
+  const hardenAttributeNodeValueAccessor = (target, key, nullable = false) => {
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(target, key);
+
+      if (typeof descriptor?.set !== 'function') {
+        return;
+      }
+
+      Object.defineProperty(target, key, {
+        configurable: false,
+        enumerable: descriptor.enumerable,
+        get: descriptor.get,
+        set(value) {
+          const owner = this instanceof Attr ? this.ownerElement : null;
+          const normalizedValue =
+            owner === null ? value : nullable ? nullableWebIdlString(value) : webIdlString(value);
+
+          if (
+            owner !== null &&
+            rejectBlockedAttributeMutation(owner, this.localName, normalizedValue)
+          ) {
+            return;
+          }
+
+          descriptor.set.call(this, normalizedValue);
+        },
+      });
+    } catch {
+      // The browser owns this attribute-value accessor already.
+    }
+  };
+  const hardenAttributeMap = () => {
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'attributes');
+
+      if (typeof descriptor?.get === 'function') {
+        Object.defineProperty(Element.prototype, 'attributes', {
+          configurable: false,
+          enumerable: descriptor.enumerable,
+          get() {
+            const attributes = descriptor.get.call(this);
+            attributeMapOwners.set(attributes, this);
+
+            return attributes;
+          },
+        });
+      }
+    } catch {
+      // The browser owns the attributes collection already.
+    }
+
+    const hardenNamedItem = (key) => {
+      const original = NamedNodeMap.prototype[key];
+
+      if (typeof original !== 'function') {
+        return;
+      }
+
+      defineValue(NamedNodeMap.prototype, key, function hardenedNamedItem(attribute) {
+        const owner = attributeMapOwners.get(this);
+
+        if (
+          owner instanceof Element &&
+          attribute instanceof Attr &&
+          rejectBlockedAttributeMutation(owner, attribute.localName, attribute.value)
+        ) {
+          return null;
+        }
+
+        return Reflect.apply(original, this, [attribute]);
+      });
+    };
+
+    hardenNamedItem('setNamedItem');
+    hardenNamedItem('setNamedItemNS');
+  };
+  const hardenRelList = () => {
+    if (typeof HTMLLinkElement !== 'function' || typeof DOMTokenList !== 'function') {
+      return;
+    }
+
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype, 'relList');
+
+      if (typeof descriptor?.get === 'function') {
+        Object.defineProperty(HTMLLinkElement.prototype, 'relList', {
+          configurable: false,
+          enumerable: descriptor.enumerable,
+          get() {
+            const list = descriptor.get.call(this);
+            relListOwners.set(list, this);
+
+            return list;
+          },
+        });
+      }
+    } catch {
+      // The browser owns the relList accessor already.
+    }
+
+    const nativeRelListContains = DOMTokenList.prototype.contains;
+    const hardenRelListMethod = (key, normalizeArgs, hintValue) => {
+      const original = DOMTokenList.prototype[key];
+
+      if (typeof original !== 'function') {
+        return;
+      }
+
+      defineValue(DOMTokenList.prototype, key, function hardenedRelListMethod(...args) {
+        const owner = relListOwners.get(this);
+        const normalizedArgs = normalizeArgs(args);
+        const normalizedHintValue = hintValue(normalizedArgs);
+        const mutationAddsHint =
+          key !== 'toggle' ||
+          ((normalizedArgs.length < 2 || Boolean(normalizedArgs[1])) &&
+            !Reflect.apply(nativeRelListContains, this, [normalizedArgs[0]]));
+
+        if (
+          owner instanceof Element &&
+          mutationAddsHint &&
+          hasResourceHintRel(normalizedHintValue) &&
+          rejectBlockedAttributeMutation(owner, 'rel', normalizedHintValue)
+        ) {
+          return key === 'toggle' ? false : undefined;
+        }
+
+        return Reflect.apply(original, this, normalizedArgs);
+      });
+    };
+
+    hardenRelListMethod(
+      'add',
+      (args) => args.map((token) => webIdlString(token)),
+      (args) => args.join(' '),
+    );
+    hardenRelListMethod(
+      'toggle',
+      (args) => (args.length === 0 ? args : [webIdlString(args[0]), ...args.slice(1)]),
+      (args) => args[0] ?? '',
+    );
+    hardenRelListMethod(
+      'replace',
+      (args) => {
+        const normalizedArgs = [...args];
+
+        if (normalizedArgs.length > 0) {
+          normalizedArgs[0] = webIdlString(normalizedArgs[0]);
+        }
+
+        if (normalizedArgs.length > 1) {
+          normalizedArgs[1] = webIdlString(normalizedArgs[1]);
+        }
+
+        return normalizedArgs;
+      },
+      (args) => args[1] ?? '',
+    );
+
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(DOMTokenList.prototype, 'value');
+
+      if (typeof descriptor?.set === 'function') {
+        Object.defineProperty(DOMTokenList.prototype, 'value', {
+          configurable: false,
+          enumerable: descriptor.enumerable,
+          get: descriptor.get,
+          set(value) {
+            const owner = relListOwners.get(this);
+            const normalizedValue = webIdlString(value);
+
+            if (
+              owner instanceof Element &&
+              hasResourceHintRel(normalizedValue) &&
+              rejectBlockedAttributeMutation(owner, 'rel', normalizedValue)
+            ) {
+              return;
+            }
+
+            descriptor.set.call(this, normalizedValue);
+          },
+        });
+      }
+    } catch {
+      // The browser owns the DOMTokenList value accessor already.
+    }
+  };
+  const hardenResourceHintAndRefreshMutations = () => {
+    defineValue(Element.prototype, 'setAttribute', function setAttribute(name, value) {
+      const normalizedName = webIdlString(name);
+      const normalizedValue = webIdlString(value);
+
+      if (rejectBlockedAttributeMutation(this, normalizedName, normalizedValue)) {
+        return;
+      }
+
+      return Reflect.apply(nativeSetAttribute, this, [normalizedName, normalizedValue]);
+    });
+    defineValue(
+      Element.prototype,
+      'setAttributeNS',
+      function setAttributeNS(namespace, qualifiedName, value) {
+        const normalizedNamespace =
+          namespace === null || namespace === undefined ? null : webIdlString(namespace);
+        const normalizedName = webIdlString(qualifiedName);
+        const normalizedValue = webIdlString(value);
+
+        if (rejectBlockedAttributeMutation(this, normalizedName, normalizedValue)) {
+          return;
+        }
+
+        return Reflect.apply(nativeSetAttributeNS, this, [
+          normalizedNamespace,
+          normalizedName,
+          normalizedValue,
+        ]);
+      },
+    );
+
+    const hardenAttributeNodeMethod = (key, original) => {
+      if (typeof original !== 'function') {
+        return;
+      }
+
+      defineValue(Element.prototype, key, function hardenedAttributeNodeMethod(attribute) {
+        if (
+          attribute instanceof Attr &&
+          rejectBlockedAttributeMutation(this, attribute.localName, attribute.value)
+        ) {
+          return null;
+        }
+
+        return Reflect.apply(original, this, [attribute]);
+      });
+    };
+
+    hardenAttributeNodeMethod('setAttributeNode', nativeSetAttributeNode);
+    hardenAttributeNodeMethod('setAttributeNodeNS', nativeSetAttributeNodeNS);
+
+    if (typeof HTMLLinkElement === 'function') {
+      hardenAttributeAccessor(HTMLLinkElement.prototype, 'rel', 'rel');
+      hardenAttributeAccessor(HTMLLinkElement.prototype, 'href', 'href');
+    }
+
+    if (typeof HTMLMetaElement === 'function') {
+      hardenAttributeAccessor(HTMLMetaElement.prototype, 'httpEquiv', 'http-equiv');
+      hardenAttributeAccessor(HTMLMetaElement.prototype, 'content', 'content');
+    }
+
+    hardenAttributeNodeValueAccessor(Attr.prototype, 'value');
+    hardenAttributeNodeValueAccessor(Node.prototype, 'nodeValue', true);
+    hardenAttributeNodeValueAccessor(Node.prototype, 'textContent', true);
+    hardenAttributeMap();
+    hardenRelList();
+  };
+  const removeBlockedElements = (root) => {
+    if (isBlockedElement(root)) {
       removeElement(root);
 
       return;
     }
 
     for (const element of elementsBelow(root)) {
-      if (isNestedBrowsingContextElement(element)) {
+      if (isBlockedElement(element)) {
         removeElement(element);
       }
     }
@@ -178,11 +534,11 @@
       return node;
     }
 
-    if (isNestedBrowsingContextElement(node)) {
+    if (isBlockedElement(node)) {
       return inertElement(ownerDocument);
     }
 
-    removeNestedBrowsingContexts(node);
+    removeBlockedElements(node);
 
     return node;
   };
@@ -198,7 +554,7 @@
 
     const template = nativeCreateElement.call(ownerDocument, 'template');
     nativeInnerHTMLSetter.call(template, source);
-    removeNestedBrowsingContexts(template.content);
+    removeBlockedElements(template.content);
 
     return nativeInnerHTMLGetter.call(template);
   };
@@ -305,7 +661,13 @@
     }
 
     defineValue(Document.prototype, 'execCommand', function execCommand(command, ...args) {
-      const normalizedCommand = `${command}`.trim().toLowerCase();
+      const commandString = webIdlString(command);
+      const normalizedCommand = commandString.trim().toLowerCase();
+      const normalizedArgs = [...args];
+
+      if (normalizedArgs.length > 1) {
+        normalizedArgs[1] = webIdlString(normalizedArgs[1]);
+      }
 
       // insertHTML enters the HTML parser without passing through innerHTML,
       // insertAdjacentHTML, Range, or the other synchronous sinks above. A
@@ -316,10 +678,11 @@
         return false;
       }
 
-      return Reflect.apply(nativeExecCommand, this, [command, ...args]);
+      return Reflect.apply(nativeExecCommand, this, [commandString, ...normalizedArgs]);
     });
   };
   const blockNestedBrowsingContextCreation = () => {
+    hardenResourceHintAndRefreshMutations();
     defineValue(Document.prototype, 'createElement', function createElement(name, options) {
       const normalizedName = `${name}`;
 
@@ -381,27 +744,8 @@
 
     return false;
   };
-  const isRefreshMeta = (element) =>
-    element.localName.toLowerCase() === 'meta' &&
-    nativeGetAttribute.call(element, 'http-equiv')?.trim().toLowerCase() === 'refresh';
-  const isResourceHintLink = (element) => {
-    if (element.localName.toLowerCase() !== 'link') {
-      return false;
-    }
-
-    const rels = (nativeGetAttribute.call(element, 'rel') ?? '').trim().toLowerCase().split(/\s+/u);
-
-    return rels.some(
-      (rel) =>
-        rel === 'dns-prefetch' || rel === 'preconnect' || rel === 'prefetch' || rel === 'prerender',
-    );
-  };
   const inspectElement = (element) => {
-    if (
-      isNestedBrowsingContextElement(element) ||
-      isRefreshMeta(element) ||
-      isResourceHintLink(element)
-    ) {
+    if (isBlockedElement(element)) {
       removeElement(element);
 
       return false;

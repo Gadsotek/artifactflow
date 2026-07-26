@@ -12,28 +12,46 @@ final class InstallationPlannerTest extends TestCase
 {
     public function test_local_plan_generates_secrets_and_adds_developer_conveniences(): void
     {
-        $plan = (new InstallationPlanner())->plan(env: 'local', needsAppKey: true, needsSigningKey: true);
+        $plan = (new InstallationPlanner())->plan(
+            env: 'local',
+            needsAppKey: true,
+            needsSigningKey: true,
+            needsImageParserSecret: true,
+        );
 
         $this->assertTrue($plan->local);
         $this->assertSame(
-            ['app_key', 'signing_key', 'migrate', 'admin', 'demo', 'dev_tools', 'login_url'],
+            ['app_key', 'signing_key', 'image_parser_secret', 'migrate', 'admin', 'demo', 'dev_tools', 'login_url'],
             $plan->stepIds(),
         );
     }
 
     public function test_local_plan_skips_secret_generation_when_already_present(): void
     {
-        $plan = (new InstallationPlanner())->plan(env: 'local', needsAppKey: false, needsSigningKey: false);
+        $plan = (new InstallationPlanner())->plan(
+            env: 'local',
+            needsAppKey: false,
+            needsSigningKey: false,
+            needsImageParserSecret: false,
+        );
 
         $this->assertSame(['migrate', 'admin', 'demo', 'dev_tools', 'login_url'], $plan->stepIds());
     }
 
     public function test_test_plan_is_local_semantics_without_demo_and_ends_on_doctor(): void
     {
-        $plan = (new InstallationPlanner())->plan(env: 'test', needsAppKey: true, needsSigningKey: true);
+        $plan = (new InstallationPlanner())->plan(
+            env: 'test',
+            needsAppKey: true,
+            needsSigningKey: true,
+            needsImageParserSecret: true,
+        );
 
         $this->assertTrue($plan->local);
-        $this->assertSame(['app_key', 'signing_key', 'migrate', 'admin', 'doctor', 'login_url'], $plan->stepIds());
+        $this->assertSame(
+            ['app_key', 'signing_key', 'image_parser_secret', 'migrate', 'admin', 'doctor', 'login_url'],
+            $plan->stepIds(),
+        );
         $this->assertFalse($plan->hasStep('demo'));
         $this->assertFalse($plan->hasStep('dev_tools'));
     }
@@ -44,6 +62,7 @@ final class InstallationPlannerTest extends TestCase
             env: 'local',
             needsAppKey: false,
             needsSigningKey: false,
+            needsImageParserSecret: false,
             wantsReverb: true,
         );
 
@@ -55,12 +74,18 @@ final class InstallationPlannerTest extends TestCase
 
     public function test_production_plan_never_generates_secrets_and_ends_on_doctor(): void
     {
-        $plan = (new InstallationPlanner())->plan(env: 'production', needsAppKey: true, needsSigningKey: true);
+        $plan = (new InstallationPlanner())->plan(
+            env: 'production',
+            needsAppKey: true,
+            needsSigningKey: true,
+            needsImageParserSecret: true,
+        );
 
         $this->assertFalse($plan->local);
         $this->assertSame(['migrate', 'admin', 'doctor', 'login_url'], $plan->stepIds());
         $this->assertFalse($plan->hasStep('app_key'));
         $this->assertFalse($plan->hasStep('signing_key'));
+        $this->assertFalse($plan->hasStep('image_parser_secret'));
         $this->assertFalse($plan->hasStep('demo'));
         $this->assertFalse($plan->hasStep('dev_tools'));
     }

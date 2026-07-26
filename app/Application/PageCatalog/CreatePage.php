@@ -26,7 +26,7 @@ final readonly class CreatePage
     public function __construct(
         private PageAccess $access,
         private PageContentScanner $scanner,
-        private PageContentRules $contentRules,
+        private PageContentPreparer $contentPreparer,
         private RecordBlockedPageContentScan $recordBlockedScan,
         private PageSecurityWarningRecorder $securityWarnings,
         private DomainEventRecorder $events,
@@ -51,30 +51,35 @@ final readonly class CreatePage
         $title = $this->metadataRules->normalizeTitle($command->title);
         $description = $this->metadataRules->normalizeDescription($command->description);
         $this->ensureDescriptionIsSafe($actor, $workspace, $command->type, $description);
-        $content = $this->contentRules->normalize($command->type, $command->content);
+        $this->contentPreparer->validateInput($command->type, $command->content);
         $ownerUserUid = $this->resolveOwnerUserUid($actorUid, $command);
         $this->metadataRules->ensureOwnerBelongsToWorkspace($ownerUserUid, $workspace->uid);
         $this->ensureStatusCanBeUsedForNewPage($command->status);
-        $this->ensureSourceFilenameIsAllowed($command->type, $command->sourceFilename);
-        $this->contentRules->ensureHtmlDocumentContent($command->type, $content);
-        $this->contentRules->ensureFitsConfiguredLimit($command->type, $content);
+        $this->contentPreparer->validateSourceFilename($command->type, $command->sourceFilename);
         $this->ensureCategoryInputIsUnambiguous($command);
         $this->metadataRules->ensureCategoryBelongsToWorkspace($command->categoryUid, $workspace->uid);
         $this->ensureParentPageIsAvailable($actor, $command->parentPageUid, $workspace->uid);
 
-        $scan = $this->scanner->scan($command->type, $content);
-
-        if ($scan->hasBlockedFindings()) {
+        try {
+            $prepared = $this->contentPreparer->prepare(
+                $command->type,
+                $command->content,
+                $actorUid,
+                $command->source,
+            );
+        } catch (BlockedPageContentException $exception) {
             $this->recordBlockedScan->forPageCreation(
                 actor: $actor,
                 workspace: $workspace,
                 pageType: $command->type,
-                findingCodes: $scan->blockedCodes(),
+                findingCodes: $exception->findingCodes(),
             );
 
-            throw new BlockedPageContentException($scan->blockedCodes());
+            throw $exception;
         }
 
+        $content = $prepared->content;
+        $scan = $prepared->scan;
         $storagePath = null;
         $closureCompleted = false;
 
@@ -86,6 +91,7 @@ final readonly class CreatePage
                 $content,
                 $description,
                 $ownerUserUid,
+                $prepared,
                 $scan,
                 &$storagePath,
                 &$closureCompleted,
@@ -161,8 +167,7 @@ final readonly class CreatePage
                 $this->recordPageCreated($page, $actorUid, count($command->tagNames));
                 $version = $this->versionWriter->writeInitialVersion(
                     page: $page,
-                    content: $content,
-                    scan: $scan,
+                    prepared: $prepared,
                     source: $command->source,
                     actorUid: $actorUid,
                 );
@@ -252,17 +257,6 @@ final readonly class CreatePage
     {
         if (!$status->canStartNewPage()) {
             throw new DomainRuleViolation('New pages must start as draft or approved.');
-        }
-    }
-
-    private function ensureSourceFilenameIsAllowed(PageType $type, ?string $sourceFilename): void
-    {
-        if ($type !== PageType::HtmlArtifact || $sourceFilename === null) {
-            return;
-        }
-
-        if (strtolower(pathinfo($sourceFilename, PATHINFO_EXTENSION)) !== 'html') {
-            throw new DomainRuleViolation('HTML artifact uploads must use a .html file.');
         }
     }
 

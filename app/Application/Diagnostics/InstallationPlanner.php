@@ -16,8 +16,13 @@ namespace App\Application\Diagnostics;
  */
 final readonly class InstallationPlanner
 {
-    public function plan(string $env, bool $needsAppKey, bool $needsSigningKey, bool $wantsReverb = false): InstallationPlan
-    {
+    public function plan(
+        string $env,
+        bool $needsAppKey,
+        bool $needsSigningKey,
+        bool $needsImageParserSecret,
+        bool $wantsReverb = false,
+    ): InstallationPlan {
         $local = $env !== 'production';
         $steps = [];
 
@@ -27,6 +32,10 @@ final readonly class InstallationPlanner
 
         if ($local && $needsSigningKey) {
             $steps[] = new InstallationStep('signing_key', 'Generate the dedicated artifact signing key');
+        }
+
+        if ($local && $needsImageParserSecret) {
+            $steps[] = new InstallationStep('image_parser_secret', 'Generate the image parser shared secret');
         }
 
         if ($local && $wantsReverb) {

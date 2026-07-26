@@ -771,6 +771,7 @@ final class PageCreationHttpTest extends TestCase
             ->assertHeader('Strict-Transport-Security')
             ->assertHeader('Referrer-Policy', 'no-referrer')
             ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertHeader('X-DNS-Prefetch-Control', 'off')
             ->assertHeader('Content-Security-Policy');
 
         $this->assertFalse($response->headers->has('Set-Cookie'));

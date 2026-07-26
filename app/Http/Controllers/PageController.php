@@ -22,12 +22,15 @@ use App\Application\PageCatalog\PageSearchFilters;
 use App\Application\PageCatalog\PageSearchSort;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\CategoryRuleViolation;
+use App\Domain\PageCatalog\ImageNormalizationRejected;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
 use App\Http\Requests\PageCatalog\StorePageRequest;
+use App\Http\Support\ImageNormalizationRejectionResponse;
 use App\Models\Page;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -127,7 +130,7 @@ final class PageController
     /**
      * @throws ValidationException
      */
-    public function store(StorePageRequest $request, CreatePage $createPage): RedirectResponse
+    public function store(StorePageRequest $request, CreatePage $createPage): RedirectResponse|Response
     {
         $user = $this->authenticatedUser($request);
 
@@ -147,13 +150,17 @@ final class PageController
                 source: $request->pageVersionSource(),
                 categoryName: $this->nullableString($request, 'category_name'),
             ));
+        } catch (ImageNormalizationRejected $exception) {
+            return ImageNormalizationRejectionResponse::make($exception);
         } catch (CategoryRuleViolation $exception) {
             throw ValidationException::withMessages([
                 'category_name' => $exception->getMessage(),
             ]);
         } catch (DomainRuleViolation $exception) {
+            $field = $request->pageType() === PageType::Image ? 'image_file' : 'content';
+
             throw ValidationException::withMessages([
-                'content' => $exception->getMessage(),
+                $field => $exception->getMessage(),
             ]);
         }
 

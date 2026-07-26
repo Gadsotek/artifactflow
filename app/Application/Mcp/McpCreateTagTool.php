@@ -31,6 +31,6 @@ final readonly class McpCreateTagTool
                 'name' => McpDataEnvelope::text($tag->name),
                 'slug' => McpDataEnvelope::text($tag->slug),
             ]);
-        });
+        }, authorizationResource: McpNotFoundResource::Workspace);
     }
 }

@@ -359,6 +359,66 @@ final class PageCreationTest extends TestCase
         }
     }
 
+    public function test_content_errors_keep_precedence_over_invalid_create_metadata(): void
+    {
+        Storage::fake('artifacts');
+
+        $editor = $this->createUser('Validation Order Editor', 'validation-order@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($editor, 'Validation Order Team');
+        $cases = [
+            'owner' => new CreatePageCommand(
+                workspaceUid: $workspace->uid,
+                type: PageType::Markdown,
+                title: 'Invalid Owner',
+                description: null,
+                content: '',
+                ownerUserUid: '01INVALIDOWNER0000000000000',
+            ),
+            'status' => new CreatePageCommand(
+                workspaceUid: $workspace->uid,
+                type: PageType::Markdown,
+                title: 'Invalid Status',
+                description: null,
+                content: '',
+                status: PageStatus::Archived,
+            ),
+            'source filename' => new CreatePageCommand(
+                workspaceUid: $workspace->uid,
+                type: PageType::HtmlArtifact,
+                title: 'Invalid Filename',
+                description: null,
+                content: '',
+                sourceFilename: 'artifact.txt',
+                source: PageVersionSource::Upload,
+            ),
+            'category' => new CreatePageCommand(
+                workspaceUid: $workspace->uid,
+                type: PageType::Markdown,
+                title: 'Invalid Category',
+                description: null,
+                content: '',
+                categoryUid: '01INVALIDCATEGORY00000000000',
+            ),
+            'parent' => new CreatePageCommand(
+                workspaceUid: $workspace->uid,
+                type: PageType::Markdown,
+                title: 'Invalid Parent',
+                description: null,
+                content: '',
+                parentPageUid: '01INVALIDPARENT000000000000',
+            ),
+        ];
+
+        foreach ($cases as $case => $command) {
+            try {
+                app(CreatePage::class)->handle($editor, $command);
+                $this->fail(sprintf('Expected blank content to win over invalid %s.', $case));
+            } catch (DomainRuleViolation $exception) {
+                $this->assertSame('Page content must not be blank.', $exception->getMessage(), $case);
+            }
+        }
+    }
+
     public function test_editor_cannot_use_a_restricted_page_they_cannot_view_as_parent(): void
     {
         Storage::fake('artifacts');

@@ -17,6 +17,7 @@ use Illuminate\Http\Request as HttpRequest;
 use JsonException;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
+use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Tool;
 
 /**
@@ -38,8 +39,12 @@ abstract class ArtifactFlowTool extends Tool
      * @throws AuthenticationException
      * @throws JsonException
      */
-    final protected function invoke(Request $request, string $scope, bool $rateLimited, Closure $run): Response
-    {
+    final protected function invoke(
+        Request $request,
+        string $scope,
+        bool $rateLimited,
+        Closure $run,
+    ): Response|ResponseFactory {
         $actor = $request->user('mcp');
         $token = $this->httpRequest->attributes->get('mcp_access_token');
 
@@ -89,13 +94,26 @@ abstract class ArtifactFlowTool extends Tool
     /**
      * @throws JsonException
      */
-    private function response(McpToolResult $result): Response
+    private function response(McpToolResult $result): Response|ResponseFactory
     {
         $json = json_encode(
             $result->payload,
             JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
         );
 
-        return $result->isError ? Response::error($json) : Response::text($json);
+        if ($result->isError) {
+            return Response::error($json);
+        }
+
+        $text = Response::text($json);
+
+        if ($result->image === null) {
+            return $text;
+        }
+
+        return Response::make([
+            $text,
+            Response::image($result->image->bytes, $result->image->mediaType),
+        ]);
     }
 }

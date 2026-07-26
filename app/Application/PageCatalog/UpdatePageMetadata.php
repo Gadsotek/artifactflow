@@ -7,6 +7,7 @@ namespace App\Application\PageCatalog;
 use App\Application\Audit\AuditLogger;
 use App\Application\Events\DomainEventRecorder;
 use App\Application\Identity\ActorId;
+use App\Application\Mcp\McpRequestContext;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\PageCatalog\Security\BlockedPageContentException;
@@ -31,6 +32,7 @@ final readonly class UpdatePageMetadata
         private PageAccessRevision $revisions,
         private PageOwnershipTransferRecorder $ownershipTransfers,
         private PageMetadataRules $metadataRules,
+        private McpRequestContext $mcpContext,
     ) {
     }
 
@@ -144,6 +146,7 @@ final readonly class UpdatePageMetadata
 
             sort($changedFields);
             $changedFieldList = implode(',', $changedFields);
+            $mcpMetadata = $this->mcpContext->auditMetadata();
             $event = $this->events->record(
                 eventType: DomainEventType::PageMetadataUpdated,
                 aggregateType: 'page',
@@ -154,7 +157,7 @@ final readonly class UpdatePageMetadata
                     'updated_by_user_uid' => $actorUid,
                     'changed_fields' => $changedFieldList,
                     'tag_count' => count($tagNames),
-                ],
+                ] + $mcpMetadata,
             );
 
             $this->audit->record(
@@ -168,7 +171,7 @@ final readonly class UpdatePageMetadata
                     'workspace_uid' => $page->workspace_uid,
                     'changed_fields' => $changedFieldList,
                     'tag_count' => count($tagNames),
-                ],
+                ] + $mcpMetadata,
             );
 
             return $page->refresh();

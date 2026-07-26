@@ -11,4 +11,5 @@ parameters:
     - database
     - routes
     - tests
+    - image-parser
   tmpDir: storage/phpstan

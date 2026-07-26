@@ -322,6 +322,74 @@ final class PageAccessGrantTest extends TestCase
         $this->assertSame(WorkspaceRole::Reader, $grant->role);
     }
 
+    public function test_editor_owner_cannot_downgrade_an_existing_admin_grant(): void
+    {
+        Storage::fake('artifacts');
+
+        $workspaceAdmin = app(CreateUser::class)->handle(
+            'Workspace Admin',
+            'admin-grant-workspace-admin@example.test',
+            'correct horse battery staple',
+        );
+        $owner = app(CreateUser::class)->handle(
+            'Owner User',
+            'admin-grant-owner@example.test',
+            'correct horse battery staple',
+        );
+        $target = app(CreateUser::class)->handle(
+            'Target User',
+            'admin-grant-target@example.test',
+            'correct horse battery staple',
+        );
+        $workspace = app(CreateSharedWorkspace::class)->handle($workspaceAdmin, 'Admin Grant Team');
+        $workspace->forceFill(['allow_editor_page_sharing' => true])->save();
+
+        foreach ([[$owner, WorkspaceRole::Editor], [$target, WorkspaceRole::Reader]] as [$member, $role]) {
+            WorkspaceMembership::query()->forceCreate([
+                'workspace_uid' => $workspace->uid,
+                'user_uid' => $member->uid,
+                'role' => $role,
+                'accepted_at' => now(),
+            ]);
+        }
+
+        $page = app(CreatePage::class)->handle($owner, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Admin Grant Boundary',
+            description: null,
+            content: '# Admin Grant Boundary',
+        ));
+        $grant = app(GrantPageAccess::class)->handle($workspaceAdmin, new GrantPageAccessCommand(
+            pageUid: $page->uid,
+            subjectType: PageAccessSubjectType::User,
+            subjectUid: $target->uid,
+            role: WorkspaceRole::Admin,
+        ));
+
+        try {
+            app(GrantPageAccess::class)->handle($owner, new GrantPageAccessCommand(
+                pageUid: $page->uid,
+                subjectType: PageAccessSubjectType::User,
+                subjectUid: $target->uid,
+                role: WorkspaceRole::Reader,
+            ));
+            $this->fail('Expected a workspace Editor to be unable to downgrade an Admin grant.');
+        } catch (AuthorizationException $exception) {
+            $this->assertSame('Editors cannot update page Admin access.', $exception->getMessage());
+        }
+
+        $this->assertSame(WorkspaceRole::Admin, $grant->refresh()->role);
+        $this->assertSame(
+            0,
+            DomainEvent::query()->where('event_type', 'page.access_grant.updated')->count(),
+        );
+        $this->assertSame(
+            0,
+            AuditEntry::query()->where('action', 'page.access_grant.updated')->count(),
+        );
+    }
+
     public function test_grant_subjects_must_exist(): void
     {
         Storage::fake('artifacts');

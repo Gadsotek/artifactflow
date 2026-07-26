@@ -6,7 +6,9 @@ namespace App\Application\Mcp;
 
 use App\Application\PageCatalog\CreatePage;
 use App\Application\PageCatalog\CreatePageCommand;
+use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\PageStatus;
+use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PageVersionSource;
 use App\Models\User;
 
@@ -26,9 +28,15 @@ final readonly class McpCreateTool
     public function handle(User $actor, McpToolArguments $arguments): McpToolResult
     {
         return $this->errors->guard(function () use ($actor, $arguments): McpToolResult {
+            $type = $arguments->requiredPageType('type');
+
+            if ($type === PageType::Image) {
+                throw new DomainRuleViolation('Image artifacts must be created through an authenticated PNG/JPEG upload.');
+            }
+
             $page = $this->createPage->handle($actor, new CreatePageCommand(
                 workspaceUid: $arguments->requiredString('workspace_uid'),
-                type: $arguments->requiredPageType('type'),
+                type: $type,
                 title: $arguments->requiredString('title'),
                 description: $arguments->nullableString('description'),
                 content: $arguments->requiredString('content'),
@@ -43,6 +51,6 @@ final readonly class McpCreateTool
             return McpToolResult::success($this->payload->forPage($page) + [
                 'current_version_uid' => $page->current_version_uid,
             ]);
-        });
+        }, authorizationResource: McpNotFoundResource::Workspace);
     }
 }

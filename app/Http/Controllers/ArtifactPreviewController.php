@@ -6,19 +6,22 @@ namespace App\Http\Controllers;
 
 use App\Application\PageCatalog\ArtifactContentReader;
 use App\Application\PageCatalog\ArtifactPreviewUrl;
+use App\Application\PageCatalog\RasterImageInspector;
+use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\ArtifactPreviewPurpose;
 use App\Domain\PageCatalog\PageType;
 use App\Http\Support\ArtifactSandboxResponder;
 use App\Models\Page;
 use App\Models\PageVersion;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\Response;
 
 final class ArtifactPreviewController
 {
     public function __construct(
         private ArtifactContentReader $contentReader,
+        private RasterImageInspector $imageInspector,
         private ArtifactSandboxResponder $responder,
     ) {
     }
@@ -61,7 +64,7 @@ final class ArtifactPreviewController
         }
 
         if (
-            $page->type !== PageType::HtmlArtifact
+            !$page->type->usesArtifactHostPreview()
             || $version->page_uid !== $page->uid
             || ($purpose === ArtifactPreviewPurpose::Current && $page->current_version_uid !== $version->uid)
         ) {
@@ -80,11 +83,19 @@ final class ArtifactPreviewController
             $this->rejectNotFound('missing_storage_content', $pageUid, $versionUid);
         }
 
-        Log::info('artifact_preview.served', [
-            'page_uid' => $page->uid,
-            'purpose' => $purpose->value,
-            'version_uid' => $version->uid,
-        ]);
+        if ($page->type === PageType::Image) {
+            try {
+                $image = $this->imageInspector->inspectStored($content);
+            } catch (DomainRuleViolation) {
+                $this->rejectNotFound('invalid_image_content', $pageUid, $versionUid);
+            }
+
+            $this->logServed($page->uid, $version->uid, $purpose);
+
+            return $this->responder->imageDocument($content, $image->mediaType);
+        }
+
+        $this->logServed($page->uid, $version->uid, $purpose);
 
         return $this->responder->document($content, recoveryEnabled: true);
     }
@@ -136,6 +147,18 @@ final class ArtifactPreviewController
             'reason' => $reason,
             'version_uid' => $versionUid,
             ...$context,
+        ]);
+    }
+
+    private function logServed(
+        string $pageUid,
+        string $versionUid,
+        ArtifactPreviewPurpose $purpose,
+    ): void {
+        Log::info('artifact_preview.served', [
+            'page_uid' => $pageUid,
+            'purpose' => $purpose->value,
+            'version_uid' => $versionUid,
         ]);
     }
 }

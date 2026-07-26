@@ -42,19 +42,6 @@ final class ArtifactPreviewDocumentGuard
         'title',
     ];
 
-    /**
-     * RAW_TEXT_TAGS whose content is raw text in the HTML namespace but is parsed
-     * as ordinary markup inside SVG/MathML foreign content (they are not foreign
-     * raw-text elements there). Inside such a subtree the guard must keep scanning
-     * their content so a nested browsing context is still recognized -- e.g.
-     * `<svg><title><iframe srcdoc=...>`, where SVG `<title>` is an HTML integration
-     * point and the browser makes the iframe live. `script`/`style` stay raw text in
-     * every namespace, so they are deliberately excluded.
-     *
-     * @var list<string>
-     */
-    private const array FOREIGN_PARSED_TEXT_TAGS = ['title', 'textarea', 'xmp', 'noembed', 'noframes'];
-
     private static ?string $guardBody = null;
 
     /**
@@ -240,20 +227,39 @@ final class ArtifactPreviewDocumentGuard
             // element (<svg/>) has no subtree, so it must not shift the depth.
             if (
                 ($tag['name'] === 'svg' || $tag['name'] === 'math')
-                && ($html[$tag['end'] - 1] ?? '') !== '/'
+                && !$tag['self_closing']
             ) {
                 $foreignRoots[] = $tag['name'];
             }
 
             if (
                 in_array($tag['name'], self::RAW_TEXT_TAGS, true)
-                && !($foreignRoots !== [] && in_array($tag['name'], self::FOREIGN_PARSED_TEXT_TAGS, true))
+                && $this->usesRawTextTokenizerState($tag['name'], $foreignRoots)
             ) {
                 $rawTextTag = $tag['name'];
             }
         }
 
         return $result;
+    }
+
+    /**
+     * HTML raw-text elements do not generally retain that tokenizer behavior in
+     * SVG/MathML foreign content. Treating their interior as opaque creates a
+     * parser differential: markup inside SVG/MathML style or MathML script can
+     * break back into HTML and create a live nested browsing context without
+     * passing through this scanner. SVG script is the one foreign-content case
+     * whose contents genuinely use the script-data tokenizer state.
+     *
+     * @param list<string> $foreignRoots
+     */
+    private function usesRawTextTokenizerState(string $tagName, array $foreignRoots): bool
+    {
+        if ($foreignRoots === []) {
+            return true;
+        }
+
+        return $tagName === 'script' && $foreignRoots[array_key_last($foreignRoots)] === 'svg';
     }
 
     /**
@@ -386,7 +392,7 @@ final class ArtifactPreviewDocumentGuard
      *
      * In foreign-content CDATA this conservative boundary can resume scanning
      * before `]]>` and neutralize inert text, but it cannot miss a live nested
-     * browsing context. Real start/end tags continue to use tagEnd().
+     * browsing context. Real start/end tags continue to use tagBoundary().
      */
     private function declarationEnd(string $html, int $tagOffset): ?int
     {
@@ -417,7 +423,14 @@ final class ArtifactPreviewDocumentGuard
     }
 
     /**
-     * @return array{end: int, name: string, name_end: int, name_start: int, closing: bool}|null
+     * @return array{
+     *     end: int,
+     *     name: string,
+     *     name_end: int,
+     *     name_start: int,
+     *     closing: bool,
+     *     self_closing: bool
+     * }|null
      */
     private function tagAt(string $html, int $tagOffset): ?array
     {
@@ -445,28 +458,33 @@ final class ArtifactPreviewDocumentGuard
             return null;
         }
 
-        $end = $this->tagEnd($html, $cursor);
+        $boundary = $this->tagBoundary($html, $cursor);
 
-        if ($end === null) {
+        if ($boundary === null) {
             return null;
         }
 
         return [
-            'end' => $end,
+            'end' => $boundary['end'],
             'name' => strtolower(substr($html, $nameStart, $cursor - $nameStart)),
             'name_end' => $cursor,
             'name_start' => $nameStart,
             'closing' => $closing,
+            'self_closing' => $boundary['self_closing'],
         ];
     }
 
     /**
-     * Locate the closing `>` using the browser's start-tag attribute states.
+     * Locate the closing `>` and self-closing flag using the browser's start-tag
+     * attribute states.
+     *
      * A quote starts a quoted attribute value only after `=`; quotes encountered
      * in malformed attribute names are ordinary name bytes and cannot protect a
      * later `>` from the browser tokenizer.
+     *
+     * @return array{end: int, self_closing: bool}|null
      */
-    private function tagEnd(string $html, int $attributesOffset): ?int
+    private function tagBoundary(string $html, int $attributesOffset): ?array
     {
         $length = strlen($html);
         $cursor = $attributesOffset;
@@ -483,7 +501,7 @@ final class ArtifactPreviewDocumentGuard
                     }
 
                     if ($character === '>') {
-                        return $cursor;
+                        return ['end' => $cursor, 'self_closing' => false];
                     }
 
                     if ($character === '/') {
@@ -525,7 +543,7 @@ final class ArtifactPreviewDocumentGuard
                     }
 
                     if ($character === '>') {
-                        return $cursor;
+                        return ['end' => $cursor, 'self_closing' => false];
                     }
 
                     ++$cursor;
@@ -550,7 +568,7 @@ final class ArtifactPreviewDocumentGuard
                     }
 
                     if ($character === '>') {
-                        return $cursor;
+                        return ['end' => $cursor, 'self_closing' => false];
                     }
 
                     $state = 'attribute_name';
@@ -575,7 +593,7 @@ final class ArtifactPreviewDocumentGuard
                     }
 
                     if ($character === '>') {
-                        return $cursor;
+                        return ['end' => $cursor, 'self_closing' => false];
                     }
 
                     $state = 'attribute_value_unquoted';
@@ -605,7 +623,7 @@ final class ArtifactPreviewDocumentGuard
                     }
 
                     if ($character === '>') {
-                        return $cursor;
+                        return ['end' => $cursor, 'self_closing' => false];
                     }
 
                     ++$cursor;
@@ -625,7 +643,7 @@ final class ArtifactPreviewDocumentGuard
                     }
 
                     if ($character === '>') {
-                        return $cursor;
+                        return ['end' => $cursor, 'self_closing' => false];
                     }
 
                     $state = 'before_attribute_name';
@@ -633,7 +651,7 @@ final class ArtifactPreviewDocumentGuard
 
                 case 'self_closing_start_tag':
                     if ($character === '>') {
-                        return $cursor;
+                        return ['end' => $cursor, 'self_closing' => true];
                     }
 
                     $state = 'before_attribute_name';
@@ -663,7 +681,14 @@ final class ArtifactPreviewDocumentGuard
     }
 
     /**
-     * @param array{end: int, name: string, name_end: int, name_start: int, closing: bool} $tag
+     * @param array{
+     *     end: int,
+     *     name: string,
+     *     name_end: int,
+     *     name_start: int,
+     *     closing: bool,
+     *     self_closing: bool
+     * } $tag
      */
     private function neutralizedOpeningTag(string $html, int $tagOffset, array $tag): string
     {
