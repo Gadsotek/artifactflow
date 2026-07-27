@@ -8,6 +8,7 @@ use App\Application\Mcp\McpAccessTokenIssuer;
 use App\Application\Mcp\McpToolArguments;
 use App\Application\Mcp\McpToolResult;
 use App\Application\Mcp\McpUpdateDescriptionTool as Handler;
+use App\Application\PageCatalog\PageMetadataRules;
 use App\Models\McpAccessToken;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -42,6 +43,7 @@ final class UpdateDescriptionTool extends ArtifactFlowTool
                 ->description('Must match metadata_revision returned by read or search.')
                 ->required(),
             'description' => $schema->string()
+                ->max(PageMetadataRules::MAX_DESCRIPTION_CHARACTERS)
                 ->description('New description. For image pages, describe only visible content using terms useful for search. Omit it to clear the description.'),
         ];
     }

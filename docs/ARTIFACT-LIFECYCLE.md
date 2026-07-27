@@ -74,7 +74,7 @@ The retained payload is a normalized PNG or JPEG containing decoded pixels, not 
 
 Current image artifacts have no OCR or extracted text. Their searchable content is catalog metadata: title, editable description, category, tags, owner, status, and type. Replacing an image appends an immutable version, and restoring a historical image copies the selected normalized bytes exactly without another lossy JPEG generation.
 
-Previews use a fixed scriptless viewer on the separate artifact origin. MCP `read` returns normalized rasters up to the 5 MiB MCP response cap as image content (`content_too_large` is returned before reading larger derivatives), and an authorized `update_description` call can revise only the page description when both the observed content-version UID and metadata revision remain current.
+Previews use a fixed scriptless viewer on the separate artifact origin. MCP `read` returns normalized rasters up to the configured `ARTIFACT_MAX_BYTES` read limit (10 MiB by default, hard-capped at 64 MiB; base64 framing expands the response by roughly a third) as image content (`content_too_large` is returned before reading a derivative above that limit), and an authorized `update_description` call can revise only the page description when both the observed content-version UID and metadata revision remain current.
 
 ## PDF and DOCX direction
 
