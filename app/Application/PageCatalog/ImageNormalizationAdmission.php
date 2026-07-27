@@ -35,7 +35,7 @@ final readonly class ImageNormalizationAdmission
     }
 
     /**
-     * @param Closure(): NormalizedRasterImage $normalize
+     * @param Closure(ImageNormalizationReservation): NormalizedRasterImage $normalize
      */
     public function run(string $actorUid, RasterImageInfo $input, Closure $normalize): NormalizedRasterImage
     {
@@ -56,18 +56,24 @@ final readonly class ImageNormalizationAdmission
             throw new ImageNormalizationBusy($lockExpirySeconds);
         }
 
+        $reservation = new ImageNormalizationReservation();
+
         try {
             $this->reservePixelBudget($actorUid, $input->pixels());
 
             try {
-                return $normalize();
+                return $normalize($reservation);
             } catch (Throwable $exception) {
-                $this->refundPixelBudget($actorUid, $input->pixels());
+                if (!$reservation->wasDispatched()) {
+                    $this->refundPixelBudget($actorUid, $input->pixels());
+                }
 
                 throw $exception;
             }
         } finally {
-            $lock->release();
+            if ($reservation->shouldReleaseLease()) {
+                $lock->release();
+            }
         }
     }
 

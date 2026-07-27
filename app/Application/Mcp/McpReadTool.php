@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\Mcp;
 
 use App\Application\PageCatalog\ArtifactContentReader;
+use App\Application\PageCatalog\ImageArtifactLimits;
 use App\Application\PageCatalog\RasterImageInspector;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\PageType;
@@ -24,6 +25,7 @@ final readonly class McpReadTool
         private McpPagePayload $payload,
         private McpPageHierarchy $hierarchy,
         private RasterImageInspector $images,
+        private ImageArtifactLimits $limits,
     ) {
     }
 
@@ -37,10 +39,16 @@ final readonly class McpReadTool
 
         $version = $page->currentVersion;
 
+        // Image reads share the installation's configured artifact byte limit
+        // with every other read path, so any derivative small enough to be
+        // stored is small enough to return. Base64 framing expands this by
+        // roughly one third; the operator bounds it through the same setting.
+        $imageReadLimit = $this->limits->maxStoredBytes();
+
         if (
             $page->type === PageType::Image
             && $version instanceof PageVersion
-            && $version->byte_size > McpImageContent::MAX_BYTES
+            && $version->byte_size > $imageReadLimit
         ) {
             return McpToolResult::error([
                 'type' => 'content_too_large',
@@ -51,7 +59,7 @@ final readonly class McpReadTool
         $content = $version instanceof PageVersion
             ? $this->contentReader->read(
                 $version->content_storage_path,
-                $page->type === PageType::Image ? McpImageContent::MAX_BYTES : null,
+                $page->type === PageType::Image ? $imageReadLimit : null,
             )
             : null;
 

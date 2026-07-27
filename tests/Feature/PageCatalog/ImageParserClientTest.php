@@ -18,6 +18,9 @@ use App\Domain\PageCatalog\ImageNormalizationRejected;
 use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PageVersionSource;
 use App\Models\User;
+use GuzzleHttp\Promise\Create;
+use GuzzleHttp\Psr7\PumpStream;
+use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
@@ -142,7 +145,7 @@ final class ImageParserClientTest extends TestCase
         Http::assertSentCount(1);
     }
 
-    public function test_transient_parser_failures_are_retryable_and_clock_skew_is_diagnosable(): void
+    public function test_completed_parser_http_failures_are_retryable_and_clock_skew_is_diagnosable(): void
     {
         $this->configureParser();
         $logger = new RecordingLogger();
@@ -150,9 +153,6 @@ final class ImageParserClientTest extends TestCase
         $normalizer = app(RasterImageNormalizer::class);
         /** @var list<\Closure(): \GuzzleHttp\Promise\PromiseInterface> $responses */
         $responses = [
-            static function (): never {
-                throw new ConnectionException('private transport detail');
-            },
             static fn (): \GuzzleHttp\Promise\PromiseInterface => Http::response(
                 ['error' => 'service_unavailable'],
                 503,
@@ -172,7 +172,7 @@ final class ImageParserClientTest extends TestCase
             return $response();
         });
 
-        foreach (['connection failure', 'parser failure', 'clock skew'] as $case) {
+        foreach (['parser failure', 'clock skew'] as $case) {
             try {
                 $normalizer->normalize($this->png(), 'actor-transient-parser-failure');
                 $this->fail(sprintf('Expected %s to be retryable.', $case));
@@ -189,28 +189,39 @@ final class ImageParserClientTest extends TestCase
         ));
     }
 
-    public function test_normalization_slot_is_released_after_a_parser_failure(): void
+    public function test_uncertain_transport_failure_retains_the_normalization_slot_until_its_lease_expires(): void
     {
         $this->configureParser();
-        Http::fake(static function (): never {
+        $dispatches = 0;
+        Http::fake(static function () use (&$dispatches): never {
+            $dispatches++;
+
             throw new ConnectionException('private transport detail');
         });
         $normalizer = app(RasterImageNormalizer::class);
 
-        foreach (['actor-parser-failure-a', 'actor-parser-failure-b'] as $actorUid) {
-            try {
-                $normalizer->normalize($this->png(), $actorUid);
-                $this->fail('Expected the parser failure to reject normalization.');
-            } catch (DomainRuleViolation $exception) {
-                $this->assertSame(
-                    'Image normalization service is unavailable. Try again shortly.',
-                    $exception->getMessage(),
-                );
-            }
+        try {
+            $normalizer->normalize($this->png(), 'actor-parser-failure-a');
+            $this->fail('Expected the uncertain parser failure to reject normalization.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame(
+                'Image normalization service is unavailable. Try again shortly.',
+                $exception->getMessage(),
+            );
         }
+
+        try {
+            $normalizer->normalize($this->png(), 'actor-parser-failure-b');
+            $this->fail('Expected the retained parser lease to reject another normalization.');
+        } catch (ImageNormalizationRejected $exception) {
+            $this->assertSame('Image normalization is busy. Try again shortly.', $exception->getMessage());
+            $this->assertSame(8, $exception->retryAfterSeconds);
+        }
+
+        $this->assertSame(1, $dispatches);
     }
 
-    public function test_failed_parser_attempts_refund_actor_and_installation_pixel_budgets(): void
+    public function test_dispatched_parser_failures_consume_actor_and_installation_pixel_budgets(): void
     {
         $this->configureParser();
         config([
@@ -218,67 +229,70 @@ final class ImageParserClientTest extends TestCase
             'image_parser.user_pixel_budget_per_minute' => 1,
             'image_parser.installation_pixel_budget_per_minute' => 1,
         ]);
-        $normalized = $this->png();
-        /** @var list<\Closure(Request): \GuzzleHttp\Promise\PromiseInterface> $responses */
-        $responses = [
-            static function (Request $request): never {
-                throw new ConnectionException('private transport detail');
-            },
-            static fn (Request $request): \GuzzleHttp\Promise\PromiseInterface => Http::response(
-                ['error' => 'service_unavailable'],
-                503,
-            ),
-            static fn (Request $request): \GuzzleHttp\Promise\PromiseInterface => Http::response(
-                ['error' => 'clock_skew'],
-                401,
-            ),
-            static fn (Request $request): \GuzzleHttp\Promise\PromiseInterface => Http::response(
+        Http::fake([
+            '*' => Http::response(
                 ['error' => 'image_rejected'],
                 422,
             ),
-            function (Request $request) use ($normalized): \GuzzleHttp\Promise\PromiseInterface {
-                $nonce = $request->header('X-ArtifactFlow-Parser-Nonce')[0] ?? '';
-                $this->assertIsString($nonce);
-
-                return Http::response($normalized, 200, [
-                    'Content-Type' => 'image/png',
-                    'X-ArtifactFlow-Parser-Media-Type' => 'image/png',
-                    'X-ArtifactFlow-Parser-Width' => '1',
-                    'X-ArtifactFlow-Parser-Height' => '1',
-                    'X-ArtifactFlow-Parser-Signature' => $this->responseSignature(
-                        $nonce,
-                        'image/png',
-                        1,
-                        1,
-                        $normalized,
-                    ),
-                ]);
-            },
-        ];
-        $requestCount = 0;
-        Http::fake(static function (Request $request) use (&$requestCount, &$responses): \GuzzleHttp\Promise\PromiseInterface {
-            $requestCount++;
-            $response = array_shift($responses);
-
-            if (!$response instanceof \Closure) {
-                throw new LogicException('Unexpected parser request.');
-            }
-
-            return $response($request);
-        });
+        ]);
         $normalizer = app(RasterImageNormalizer::class);
 
-        foreach (range(1, 4) as $attempt) {
-            try {
-                $normalizer->normalize($this->png(), 'actor-refunded-budget');
-                $this->fail(sprintf('Expected parser failure %d to reject normalization.', $attempt));
-            } catch (DomainRuleViolation) {
-                // Every failed dispatch must leave enough budget for the retry.
-            }
+        try {
+            $normalizer->normalize($this->png(), 'actor-charged-budget');
+            $this->fail('Expected the parser to reject the malformed image.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame('Image could not be decoded.', $exception->getMessage());
         }
 
-        $this->assertSame($normalized, $normalizer->normalize($this->png(), 'actor-refunded-budget'));
-        $this->assertSame(5, $requestCount);
+        try {
+            $normalizer->normalize($this->png(), 'actor-charged-budget');
+            $this->fail('Expected the dispatched parser work to consume the actor budget.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame('Image normalization limit reached. Try again shortly.', $exception->getMessage());
+        }
+
+        try {
+            $normalizer->normalize($this->png(), 'actor-installation-charged-budget');
+            $this->fail('Expected the dispatched parser work to consume the installation budget.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame(
+                'Image normalization capacity is temporarily exhausted. Try again shortly.',
+                $exception->getMessage(),
+            );
+        }
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_pre_dispatch_client_failure_refunds_pixel_budgets(): void
+    {
+        $this->configureParser();
+        config([
+            'pages.max_image_pixels' => 1,
+            'image_parser.user_pixel_budget_per_minute' => 1,
+            'image_parser.installation_pixel_budget_per_minute' => 1,
+            'image_parser.shared_secret' => 'short',
+        ]);
+        $this->fakeSuccessfulParser();
+        $normalizer = app(RasterImageNormalizer::class);
+
+        try {
+            $normalizer->normalize($this->png(), 'actor-pre-dispatch-failure');
+            $this->fail('Expected the invalid client configuration to reject normalization.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame(
+                'Image normalization service is unavailable. Try again shortly.',
+                $exception->getMessage(),
+            );
+        }
+
+        Http::assertNothingSent();
+        config(['image_parser.shared_secret' => self::SHARED_SECRET]);
+
+        $this->assertSame(
+            $this->png(),
+            $normalizer->normalize($this->png(), 'actor-pre-dispatch-failure'),
+        );
     }
 
     public function test_non_positive_parser_timeouts_are_rejected_instead_of_silently_changed(): void
@@ -357,6 +371,124 @@ final class ImageParserClientTest extends TestCase
                 );
             }
         }
+    }
+
+    public function test_parser_response_is_streamed_without_decompression_and_aborted_at_the_byte_limit(): void
+    {
+        $this->configureParser();
+        config([
+            'pages.artifact_max_bytes' => 1024,
+            'pages.max_html_bytes' => 1024,
+            'pages.max_markdown_bytes' => 1024,
+        ]);
+        $remaining = 2048;
+        $produced = 0;
+        $acceptEncoding = null;
+        /** @var array<string, mixed> $requestOptions */
+        $requestOptions = [];
+        $body = new PumpStream(static function (int $length) use (&$remaining, &$produced): ?string {
+            if ($remaining === 0) {
+                return null;
+            }
+
+            $bytes = str_repeat('x', min($length, $remaining));
+            $remaining -= strlen($bytes);
+            $produced += strlen($bytes);
+
+            return $bytes;
+        });
+
+        Http::fake(static function (Request $request, array $options) use (
+            $body,
+            &$acceptEncoding,
+            &$requestOptions,
+        ): \GuzzleHttp\Promise\PromiseInterface {
+            $requestOptions = $options;
+            $acceptEncoding = $request->header('Accept-Encoding')[0] ?? null;
+
+            return Create::promiseFor(new PsrResponse(200, [
+                'Content-Type' => 'image/png',
+                'X-ArtifactFlow-Parser-Media-Type' => 'image/png',
+                'X-ArtifactFlow-Parser-Width' => '1',
+                'X-ArtifactFlow-Parser-Height' => '1',
+                'X-ArtifactFlow-Parser-Signature' => str_repeat('0', 64),
+            ], $body));
+        });
+
+        try {
+            app(RasterImageNormalizer::class)->normalize($this->png(), 'actor-bounded-parser-response');
+            $this->fail('Expected the oversized parser response to fail closed.');
+        } catch (ImageNormalizationRejected $exception) {
+            $this->assertSame(
+                'Image normalization service is unavailable. Try again shortly.',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertTrue($requestOptions['stream'] ?? false);
+        $this->assertFalse($requestOptions['decode_content'] ?? true);
+        $this->assertSame('identity', $acceptEncoding);
+        $this->assertLessThanOrEqual(1025, $produced);
+
+        try {
+            app(RasterImageNormalizer::class)->normalize($this->png(), 'actor-bounded-parser-response-b');
+            $this->fail('Expected the uncertain response stream to retain the normalization slot.');
+        } catch (ImageNormalizationRejected $exception) {
+            $this->assertSame('Image normalization is busy. Try again shortly.', $exception->getMessage());
+        }
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_parser_response_rejects_non_identity_content_encoding(): void
+    {
+        $this->configureParser();
+        Http::fake([
+            '*' => Http::response('compressed bytes are never decoded', 200, [
+                'Content-Encoding' => 'gzip',
+            ]),
+        ]);
+
+        try {
+            app(RasterImageNormalizer::class)->normalize($this->png(), 'actor-encoded-parser-response');
+            $this->fail('Expected the encoded parser response to fail closed.');
+        } catch (ImageNormalizationRejected $exception) {
+            $this->assertSame(
+                'Image normalization service is unavailable. Try again shortly.',
+                $exception->getMessage(),
+            );
+        }
+    }
+
+    public function test_parser_response_rejects_oversized_declared_length_before_reading_the_stream(): void
+    {
+        $this->configureParser();
+        config([
+            'pages.artifact_max_bytes' => 1024,
+            'pages.max_html_bytes' => 1024,
+            'pages.max_markdown_bytes' => 1024,
+        ]);
+        $produced = 0;
+        $body = new PumpStream(static function (int $length) use (&$produced): string {
+            $produced += $length;
+
+            return str_repeat('x', $length);
+        });
+        Http::fake(static fn (): \GuzzleHttp\Promise\PromiseInterface => Create::promiseFor(
+            new PsrResponse(200, ['Content-Length' => '1025'], $body),
+        ));
+
+        try {
+            app(RasterImageNormalizer::class)->normalize($this->png(), 'actor-declared-parser-response');
+            $this->fail('Expected the declared oversized parser response to fail closed.');
+        } catch (ImageNormalizationRejected $exception) {
+            $this->assertSame(
+                'Image normalization service is unavailable. Try again shortly.',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertSame(0, $produced);
     }
 
     public function test_normalization_rejects_a_response_signed_for_a_different_request_nonce(): void

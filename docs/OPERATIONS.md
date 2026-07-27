@@ -218,7 +218,7 @@ Mint and revoke actions are recorded in domain events and audit entries without 
 Available scopes:
 
 - `mcp:search` lists reachable workspaces and searchable taxonomy, and searches only pages the MCP principal can view within the token's workspace ceiling. `list_taxonomy` returns global tag UIDs visible through searchable pages and workspace-qualified category UIDs from reachable workspaces or individually granted pages; both it and search accept optional `workspace_uid` to narrow within that ceiling. Search snippets additionally require `mcp:read`. Note that `mcp:search` alone is not "harmless": it exposes page titles, taxonomy labels, types, statuses, and update times across everything the principal can reach — metadata that can itself be sensitive. Scope tokens to specific workspaces when the consumer only needs a subset.
-- `mcp:read` reads in-scope text content as an explicit untrusted data envelope. For an image page it returns normalized PNG/JPEG derivatives up to 5 MiB as a standard MCP image content block beside untrusted metadata; larger retained derivatives return `content_too_large` before the bytes are read or base64-expanded. The original upload no longer exists. The server never treats read content or image pixels as authorization for a later write.
+- `mcp:read` reads in-scope text content as an explicit untrusted data envelope. For an image page it returns normalized PNG/JPEG derivatives up to the configured `ARTIFACT_MAX_BYTES` (10 MiB by default, hard-capped at 64 MiB — the same read limit as every other page type, expanded by roughly a third once base64-framed) as a standard MCP image content block beside untrusted metadata; a retained derivative above that limit returns `content_too_large` before the bytes are read or base64-expanded. The original upload no longer exists. The server never treats read content or image pixels as authorization for a later write.
 - `mcp:create` creates Markdown or single-file HTML pages through the normal page creation handler. It can attach tag names and either select a category by UID or create a workspace-local category by name in the same operation. The same scope powers `create_category` and `create_tag`; both require live Editor authority in the supplied in-scope workspace, and standalone tag creation remains installation-wide after that authority check.
 - `mcp:update` appends a new Markdown/HTML version through the normal update handler and requires a fresh `base_version_uid`; it powers one-action revert and `update_description`. Description updates require both the fresh `current_version_uid` and separate `metadata_revision` returned by read or search, pass the normal description scanner, refresh full-text search, and cannot change title, owner, hierarchy, category, or tags.
 
@@ -285,9 +285,16 @@ production image deliberately contains neither GD nor EXIF. Keep one normalizati
 per-container memory budget, so prefork workers can OOM-kill only part of the pool while its health
 endpoint remains green. The parser entrypoint refuses `PHP_CLI_SERVER_WORKERS` values other than
 one. Every app replica uses the shared rate-limit cache for a single non-blocking normalization
-slot; a busy slot returns 503 immediately instead of queueing for the parser timeout. Successful
-admission consumes the image's exact pixel count from per-user and installation-wide one-minute
-budgets. Extra parser replicas may provide failover, but the shared slot intentionally keeps total
+slot; a busy slot returns 503 immediately instead of queueing for the parser timeout. Every
+dispatch consumes the image's exact pixel count from per-user and installation-wide one-minute
+budgets, including completed parser rejections. Only failures proven to occur before dispatch are
+refunded. A connection, timeout, or response-stream failure with uncertain parser state retains the
+existing slot lease, whose total TTL is the parser timeout plus a fixed expiry margin. Monitor
+repeated busy responses alongside `image_parser.request_failed` rather than shortening that lease.
+App replicas request
+identity encoding and incrementally stop a parser response after the signed output-byte limit plus
+one sentinel byte, so proxies on the private path must not compress parser responses. Extra parser
+replicas may provide failover, but the shared slot intentionally keeps total
 normalization concurrency at one; do not increase it or enable unbounded autoscaling without a new
 adversarial memory/CPU benchmark and an updated admission design.
 

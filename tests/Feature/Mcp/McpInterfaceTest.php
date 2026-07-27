@@ -342,6 +342,13 @@ final class McpInterfaceTest extends TestCase
             'description_status' => 'missing',
             'recommended_tool' => 'update_description',
         ], $read['image_searchability'] ?? null);
+        // The image read shares hierarchy redaction with every other read: the
+        // restricted parent is hidden and its title never appears in the payload.
+        $this->assertNull($this->payloadArray($read, 'hierarchy')['parent']);
+        $this->assertStringNotContainsString(
+            $restrictedParent->title,
+            json_encode($read, JSON_THROW_ON_ERROR),
+        );
         $this->assertSame('invalid_request', $this->toolErrorPayload($this->callTool($token, 'update', [
             'page_uid' => $page->uid,
             'base_version_uid' => $page->current_version_uid,
@@ -419,12 +426,18 @@ final class McpInterfaceTest extends TestCase
         $this->assertNull($page->refresh()->description);
     }
 
-    public function test_image_read_rejects_a_derivative_that_would_exceed_the_mcp_response_budget(): void
+    public function test_image_read_rejects_a_stored_derivative_larger_than_the_configured_read_limit(): void
     {
         Storage::fake('artifacts');
+        // A read cap deliberately below the former hardcoded 5 MiB MCP cap: an
+        // over-cap derivative must be rejected because images now honour the
+        // installation setting. The write limits are lowered in step to keep the
+        // "read limit >= every write limit" installation invariant satisfied.
         config([
-            'pages.artifact_max_bytes' => 6 * 1024 * 1024,
-            'pages.max_image_bytes' => 1024 * 1024,
+            'pages.max_markdown_bytes' => 512 * 1024,
+            'pages.max_html_bytes' => 512 * 1024,
+            'pages.artifact_max_bytes' => 1024 * 1024,
+            'pages.max_image_bytes' => 512 * 1024,
             'pages.max_image_pixels' => 100,
         ]);
 
@@ -442,7 +455,11 @@ final class McpInterfaceTest extends TestCase
             source: PageVersionSource::Upload,
         ));
         $version = PageVersion::query()->whereKey($page->current_version_uid)->sole();
-        $oversized = str_pad($this->mcpTestPng(), (5 * 1024 * 1024) + 1, "\0");
+        // Just above the configured 1 MiB read limit -- e.g. the operator lowered
+        // ARTIFACT_MAX_BYTES after it was stored, or the bytes drifted. The old
+        // fixed 5 MiB cap would have streamed this; the setting-derived cap must
+        // reject it before any disk read.
+        $oversized = str_pad($this->mcpTestPng(), (1024 * 1024) + 1, "\0");
         Storage::disk('artifacts')->put($version->content_storage_path, $oversized);
         $version->forceFill(['byte_size' => strlen($oversized)])->save();
         $token = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_READ])->plainTextToken;
@@ -455,7 +472,89 @@ final class McpInterfaceTest extends TestCase
 
         $this->assertSame('content_too_large', $this->toolErrorPayload($response)['type']);
         $this->assertNull($response->json('result.content.1'));
-        $disk->shouldNotHaveReceived('get');
+        $disk->shouldNotHaveReceived('readStream');
+    }
+
+    public function test_image_read_returns_a_derivative_within_the_configured_read_limit(): void
+    {
+        Storage::fake('artifacts');
+        config([
+            'pages.max_markdown_bytes' => 512 * 1024,
+            'pages.max_html_bytes' => 512 * 1024,
+            'pages.artifact_max_bytes' => 2 * 1024 * 1024,
+            'pages.max_image_bytes' => 512 * 1024,
+            'pages.max_image_pixels' => 100,
+        ]);
+
+        $owner = $this->createUser('Readable Screenshot Owner', 'readable-mcp-screenshot-owner@example.test');
+        $service = $this->createServiceAccount('Readable Screenshot Agent', 'readable-mcp-screenshot-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Readable Screenshot Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Reader);
+        $page = app(CreatePage::class)->handle($owner, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Image,
+            title: 'Readable Screenshot',
+            description: null,
+            content: $this->mcpTestPng(),
+            status: PageStatus::Approved,
+            source: PageVersionSource::Upload,
+        ));
+        $version = PageVersion::query()->whereKey($page->current_version_uid)->sole();
+        // Above the write limits but within the 2 MiB read limit: the read cap
+        // tracks the installation setting rather than a fixed constant.
+        $storable = str_pad($this->mcpTestPng(), (3 * 512 * 1024), "\0");
+        Storage::disk('artifacts')->put($version->content_storage_path, $storable);
+        $version->forceFill(['byte_size' => strlen($storable)])->save();
+        $token = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_READ])->plainTextToken;
+
+        $response = $this->callTool($token, 'read', ['page_uid' => $page->uid]);
+
+        $image = $response->json('result.content.1');
+        $this->assertIsArray($image);
+        $this->assertSame('image', $image['type'] ?? null);
+        $this->assertSame('image/png', $image['mimeType'] ?? null);
+        $data = $image['data'] ?? null;
+        $this->assertIsString($data);
+        $decoded = base64_decode($data, true);
+        $this->assertIsString($decoded);
+        $this->assertSame(strlen($storable), strlen($decoded));
+        $this->assertStringStartsWith("\x89PNG\r\n\x1a\n", $decoded);
+    }
+
+    public function test_image_read_is_not_found_for_a_token_outside_the_workspace(): void
+    {
+        Storage::fake('artifacts');
+        config([
+            'pages.max_image_bytes' => 1024 * 1024,
+            'pages.max_image_pixels' => 100,
+        ]);
+
+        $owner = $this->createUser('Foreign Screenshot Owner', 'foreign-mcp-screenshot-owner@example.test');
+        $service = $this->createServiceAccount('Foreign Screenshot Agent', 'foreign-mcp-screenshot-agent@example.test');
+        $memberWorkspace = app(CreateSharedWorkspace::class)->handle($owner, 'Member Screenshot Team');
+        $this->addMember($memberWorkspace, $service, WorkspaceRole::Editor);
+        $foreignWorkspace = app(CreateSharedWorkspace::class)->handle($owner, 'Foreign Screenshot Team');
+        $foreignImage = app(CreatePage::class)->handle($owner, new CreatePageCommand(
+            workspaceUid: $foreignWorkspace->uid,
+            type: PageType::Image,
+            title: 'Foreign Screenshot',
+            description: null,
+            content: $this->mcpTestPng(),
+            status: PageStatus::Approved,
+            source: PageVersionSource::Upload,
+        ));
+        $token = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_READ])->plainTextToken;
+
+        // The binary image block is a new exfiltration channel, so pin that an
+        // out-of-workspace token gets the same not-found envelope as text reads
+        // and no image bytes leak in result.content.1.
+        $response = $this->callTool($token, 'read', ['page_uid' => $foreignImage->uid]);
+
+        $this->assertSame(
+            ['type' => 'not_found', 'message' => 'Page not found.'],
+            $this->toolErrorPayload($response),
+        );
+        $this->assertNull($response->json('result.content.1'));
     }
 
     public function test_image_description_conflicts_when_the_observed_pixels_were_replaced(): void

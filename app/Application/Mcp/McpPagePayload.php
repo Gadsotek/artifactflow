@@ -7,6 +7,7 @@ namespace App\Application\Mcp;
 use App\Domain\PageCatalog\PageType;
 use App\Models\Page;
 use App\Models\Tag;
+use LogicException;
 
 /**
  * Serializes a page into the MCP tool payload shape. All user-authored values
@@ -37,12 +38,17 @@ final readonly class McpPagePayload
         ];
     }
 
+    /**
+     * The text media type for a page rendered as an MCP text block. Image pages
+     * are returned as a binary image block with an inspector-derived concrete
+     * media type instead, so they never reach this method.
+     */
     public function mediaType(Page $page): string
     {
         return match ($page->type) {
             PageType::Markdown => 'text/markdown',
             PageType::HtmlArtifact => 'text/html',
-            PageType::Image => 'image/*',
+            PageType::Image => throw new LogicException('Image pages are served as a binary image block, not a text media type.'),
         };
     }
 }

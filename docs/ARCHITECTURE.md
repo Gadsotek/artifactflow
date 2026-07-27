@@ -197,9 +197,13 @@ multiply across prefork workers; its startup script rejects worker counts above 
 the shared rate-limit cache for a non-blocking installation-wide admission slot plus exact-pixel
 per-user and global work budgets. A busy slot fails immediately instead of queueing an app worker,
 and extra independently memory-bounded parser replicas provide failover without increasing admitted
-concurrency. The app accepts
-only a matching HMAC-signed normalized response and independently rechecks its format, dimensions,
-pixel/byte limits, and header envelope before making it an immutable version. New-upload limits
+concurrency. Every dispatched attempt consumes its reserved pixel budget; only failures proven to
+precede dispatch are refunded. An uncertain transport or response-stream failure retains the shared
+slot until its lease expires. The app disables response decompression, rejects encoded responses,
+and incrementally reads no more than the signed output-byte ceiling plus one sentinel byte. It
+accepts only a matching HMAC-signed normalized response and independently rechecks its format,
+dimensions, pixel/byte limits, and header envelope before making it an immutable version.
+New-upload limits
 bound parser input to 16 Mi pixels; immutable versions are read against the installation artifact
 limit and the historical 40 Mi-pixel raster ceiling so lowering a write cap cannot invalidate
 retained history.
