@@ -84,7 +84,7 @@ Current business tables include:
 | `workspace_memberships` | Accepted workspace roles by `workspace_uid` and `user_uid`. |
 | `workspace_invitations` | Pending invitations with lifecycle state. |
 | `pages` | Current page metadata, ownership, workspace, status, access mode, and current version pointer. |
-| `page_versions` | Immutable Markdown or HTML content versions (retention-capped: oldest pruned past `PAGE_MAX_PAGE_VERSIONS`). |
+| `page_versions` | Immutable Markdown, HTML, or normalized PNG/JPEG content versions (retention-capped: oldest pruned past `PAGE_MAX_PAGE_VERSIONS`). |
 | `page_access_grants` | Page-level user or workspace overrides. |
 | `categories`, `tags`, `page_tag` | Workspace-scoped categories, installation-wide tags, and page/tag relationships. |
 | `mcp_access_tokens` | Scoped, expiring MCP bearer tokens (stored as hashes; read/write scope and workspace binding). |
@@ -101,6 +101,7 @@ The product-facing rules for stable identity, immutable content versions, draft 
 
 - Markdown pages store portable Markdown source, render sanitized HTML in the app origin, and support strict Mermaid rendering.
 - HTML artifact pages store a single-file HTML version, never render that HTML in the app origin, and preview through the artifact-host origin.
+- Image pages accept only bounded PNG/JPEG uploads. A dedicated internal parser container performs native decoding and re-encoding; the app verifies its signed normalized response before storage, keeps no OCR text, and previews the derivative through a fixed scriptless artifact-host document.
 - Every content write creates an immutable version. Version *content* is never mutated; the only history that is removed is retention pruning — appending past `PAGE_MAX_PAGE_VERSIONS` deletes the oldest whole version(s) (each recorded as a `page.version.pruned` event) so a page never hits an uneditable version ceiling.
 - Version restore creates a new current version rather than mutating history.
 - Page metadata, access grants, lifecycle transitions, and content writes record audit entries and durable domain events where traceability matters.
@@ -137,15 +138,17 @@ confirmation (step-up), and minting an MCP token additionally requires a fresh T
 
 An MCP server (`app/Mcp`, backed by the official `laravel/mcp` package, with application
 behavior in `app/Application/Mcp`) is exposed at `POST /mcp` on the **app** runtime only. It lets approved
-AI clients call `list_workspaces` / `list_taxonomy` / `search` / `read` / `create` / `create_category` / `create_tag` / `update` / `revert`
+AI clients call `list_workspaces` / `list_taxonomy` / `search` / `read` / `create` / `create_category` / `create_tag` / `update` / `update_description` / `revert`
 through the *same* command handlers, policies, scanners, and optimistic-concurrency checks
 as humans. Authority flows through scoped, expiring bearer tokens (hashed at rest,
 read-only or read-write, bound to selected workspaces) whose reach is the intersection of
 the token scope and the acting user's live memberships. System Admin status never adds
 content authority in browser or MCP contexts. `McpEffectiveAuthority` additionally collapses
 workspace/page Admin to Editor while an MCP context is active, so a token can never exceed the Editor cap. Read
-content is framed as an untrusted-data envelope and never authorizes a write; every write
-still needs write scope, live access, and a matching base version.
+text content is framed as an untrusted-data envelope, while normalized image reads add a standard MCP image content block beside an untrusted metadata envelope. Neither authorizes a write; every write
+still needs write scope, live access, and the matching content-version or metadata-revision token required by that operation.
+
+`update_description` requires both the observed current-version UID and the page's separate optimistic metadata revision, then deliberately changes only the description. This prevents image-derived text from being attached after the pixels are replaced while preserving human-managed title, owner, parent, category, and tags and reusing the normal description scanner, search projection, audit event, and MCP token/session attribution.
 
 Laravel MCP owns protocol-version negotiation, standard session IDs, JSON-RPC framing,
 tool discovery/schema serialization, and lifecycle notifications. ArtifactFlow middleware
@@ -174,11 +177,43 @@ write throttling, live Editor authority, and token workspace ceiling.
 
 Untrusted artifact HTML is contained by isolation, not sanitization.
 
-1. The app origin authorizes the viewer and issues a short-lived signed preview URL. Current and historical previews are distinct signed purposes; adding `purpose=history` to a current URL cannot grant historical access. There is no expiry timer and the application document is never reloaded. A successfully served saved artifact emits a fixed ready signal; if a later self-reload reaches an expired URL and returns without that signal, the authenticated parent renews and restores only that iframe's `src`, preserving any unsaved editor state.
+1. The app origin authorizes the viewer and issues a short-lived signed preview URL. Current and historical previews are distinct signed purposes; adding `purpose=history` to a current URL cannot grant historical access. The application document is never reloaded. Script-capable HTML previews emit a fixed ready signal; if a later self-reload reaches an expired URL and returns without that signal, the authenticated parent renews and restores only that iframe's `src`, preserving any unsaved editor state. Scriptless image previews load eagerly once and do not renew on a timer; expiry closes future loads without retransmitting bytes that are already rendered.
 2. The artifact-host origin verifies the HMAC signature, expiry, runtime role, and target page/version.
 3. The artifact-host reads immutable content from private storage only after size and signature checks.
 4. The response uses strict headers and no app session middleware.
 5. The app embeds the preview in an iframe sandboxed with `allow-scripts` and without `allow-same-origin`.
+
+Normalized image previews reuse the signed artifact-origin route but not the executable HTML
+policy. The artifact host generates a fixed scriptless viewer, embeds only the re-encoded raster,
+and sends an empty CSP `sandbox` plus `script-src 'none'`; the app iframe uses `sandbox=""`.
+
+Native image parsing is a separate trust boundary. The app performs only bounded PNG/JPEG envelope
+inspection, then sends the original bytes in a timestamped, nonce-bound HMAC request to the private
+`image-parser` service. That minimal image has GD/EXIF but no application source, database access,
+artifact storage, public listener, or outbound route. It runs non-root with a read-only filesystem
+and explicit CPU, memory, PID, capability, and temporary-filesystem restrictions. The shipped
+512 MiB service uses one normalization process so maximum-pixel native image operations cannot
+multiply across prefork workers; its startup script rejects worker counts above one. The app uses
+the shared rate-limit cache for a non-blocking installation-wide admission slot plus exact-pixel
+per-user and global work budgets. A busy slot fails immediately instead of queueing an app worker,
+and extra independently memory-bounded parser replicas provide failover without increasing admitted
+concurrency. The app accepts
+only a matching HMAC-signed normalized response and independently rechecks its format, dimensions,
+pixel/byte limits, and header envelope before making it an immutable version. New-upload limits
+bound parser input to 16 Mi pixels; immutable versions are read against the installation artifact
+limit and the historical 40 Mi-pixel raster ceiling so lowering a write cap cannot invalidate
+retained history.
+
+Only app-role replicas may hold the parser shared secret; production boot and doctor checks reject
+it on artifact-host, worker, and scheduler roles. The parser image omits optional WebP support, its
+request envelope admits only PNG/JPEG, and `/health` proves a one-pixel PNG decode/re-encode rather
+than listener liveness alone.
+
+For PNG, the parser validates bounded chunk structure and CRCs, strips `zTXt`, `iTXt`,
+and `iCCP` metadata from the bytes passed to GD, then performs an output-limited zlib pass over
+IDAT. The decompressed pixel stream must contain exactly the scanlines implied by IHDR (including
+Adam7 passes), with no trailing expansion. Native decode therefore cannot inflate metadata that
+is unrelated to the dimensions charged by admission.
 
 Unsaved draft preview follows the same execution boundary without storing a version. The
 authenticated app origin authorizes page creation in the selected workspace and signs a capability
@@ -210,11 +245,17 @@ frame-ancestors <configured app origin>
 ```
 
 Nested browsing contexts are not part of the artifact feature: actual static `iframe`, `frame`,
-`fencedframe`, and `portal` tokens are converted to inert templates before the hostile document is parsed without rewriting matching bytes inside scripts or text controls, while the
-early guard blocks their dynamic creation and common markup-parsing sinks. This layers over CSP
-because browsers do not consistently apply `frame-src 'none'` to inline `srcdoc`/initial
-`about:blank` realms. The guard remains defense in depth rather than an authorization or isolation
-boundary.
+`fencedframe`, and `portal` tokens are converted to inert templates before the hostile document is
+parsed without rewriting matching bytes inside genuine HTML/SVG script-data or text-control
+contexts. SVG/MathML elements whose children browsers parse as markup stay visible to the scanner,
+including SVG/MathML `style` and MathML `script`. The early guard blocks dynamic creation and common
+markup-parsing sinks. This layers over CSP because `frame-src 'none'` does not stop inline `srcdoc`
+realms in the maintained engines. Chromium and WebKit also ignore `webrtc 'block'`; the directive
+is best-effort hardening, not a credited barrier. Static response rewriting must therefore happen
+before parse, while MutationObserver cleanup remains a timing-dependent residual. The guard remains
+defense in depth rather than an authorization or isolation boundary. The reviewed parser
+differential did not cross the opaque sandbox or artifact/app origin split, and the real stack
+emitted no network traffic in the maintained browser corpus.
 
 Do not add `allow-same-origin`, top navigation, forms, external scripts, outbound connections, public unauthenticated artifact access, or app-session middleware to the artifact surface without a written architecture decision and security tests.
 

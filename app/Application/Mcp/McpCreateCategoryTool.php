@@ -30,6 +30,6 @@ final readonly class McpCreateCategoryTool
                 'name' => McpDataEnvelope::text($category->name),
                 'slug' => McpDataEnvelope::text($category->slug),
             ]);
-        });
+        }, authorizationResource: McpNotFoundResource::Workspace);
     }
 }

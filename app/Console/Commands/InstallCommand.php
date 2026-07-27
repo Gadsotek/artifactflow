@@ -36,6 +36,8 @@ final class InstallCommand extends Command
         $local = $env !== 'production';
         $needsAppKey = InstallationSecret::isMissing($this->configString('app.key'));
         $needsSigningKey = InstallationSecret::isMissing($this->configString('app.artifact_url_signing_key'));
+        $needsImageParserSecret = $this->imageParserIsEnabled()
+            && InstallationSecret::isMissing($this->configString('image_parser.shared_secret'));
         $wantsReverb = (bool) $this->option('reverb');
         $targetAppEnv = $local ? 'local' : 'production';
 
@@ -47,7 +49,13 @@ final class InstallCommand extends Command
             return 1;
         }
 
-        $plan = $planner->plan($env, $needsAppKey, $needsSigningKey, $wantsReverb);
+        $plan = $planner->plan(
+            $env,
+            $needsAppKey,
+            $needsSigningKey,
+            $needsImageParserSecret,
+            $wantsReverb,
+        );
         $this->info(sprintf('Installing ArtifactFlow (%s mode).', $env));
 
         // artifactflow:install is deliberately allowed to boot when the ordinary
@@ -75,6 +83,16 @@ final class InstallCommand extends Command
 
             if (!$this->runGeneratorScript('scripts/ensure-artifact-signing-key.php')) {
                 $this->error('Could not generate the artifact signing key.');
+
+                return 1;
+            }
+        }
+
+        if ($plan->hasStep('image_parser_secret')) {
+            $this->line('- Generating image parser shared secret');
+
+            if (!$this->runGeneratorScript('scripts/ensure-image-parser-shared-secret.php')) {
+                $this->error('Could not generate the image parser shared secret.');
 
                 return 1;
             }
@@ -162,7 +180,11 @@ final class InstallCommand extends Command
         $this->newLine();
         $this->info(sprintf('Install complete. Sign in at %s', $loginUrl));
 
-        if ($local && ($plan->hasStep('app_key') || $plan->hasStep('signing_key'))) {
+        if ($local && (
+            $plan->hasStep('app_key')
+            || $plan->hasStep('signing_key')
+            || $plan->hasStep('image_parser_secret')
+        )) {
             $this->line('If a dev server is already running, restart it so the new keys take effect.');
         }
 
@@ -197,6 +219,11 @@ final class InstallCommand extends Command
         }
 
         return in_array($env, ['local', 'test', 'production'], true) ? $env : null;
+    }
+
+    private function imageParserIsEnabled(): bool
+    {
+        return config('image_parser.enabled', true) === true;
     }
 
     private function runGeneratorScript(string $relativePath): bool

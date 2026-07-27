@@ -166,7 +166,7 @@ final class AppSecurityHeadersTest extends TestCase
         $this->assertStringNotContainsString('ws://localhost:5181', $csp);
     }
 
-    public function test_artifact_host_fallback_csp_blocks_webrtc(): void
+    public function test_artifact_host_fallback_csp_retains_best_effort_webrtc_directive(): void
     {
         config(['app.runtime_role' => 'artifact-host']);
 
@@ -178,6 +178,8 @@ final class AppSecurityHeadersTest extends TestCase
 
         $this->assertStringContainsString("default-src 'none'", $csp);
         $this->assertStringContainsString("connect-src 'none'", $csp);
+        // Chromium and WebKit ignore this directive. Its presence is a header
+        // contract for engines that implement it, not proof of WebRTC blocking.
         $this->assertStringContainsString("webrtc 'block'", $csp);
         $this->assertStringContainsString('sandbox', $csp);
     }

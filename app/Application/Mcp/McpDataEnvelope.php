@@ -20,4 +20,17 @@ final readonly class McpDataEnvelope
             'data' => $text ?? '',
         ];
     }
+
+    /**
+     * @return array{prompt_read_first: string, kind: string, media_type: string, transport: string}
+     */
+    public static function image(string $mediaType): array
+    {
+        return [
+            'prompt_read_first' => self::PROMPT_READ_FIRST,
+            'kind' => 'artifactflow.untrusted_data',
+            'media_type' => $mediaType,
+            'transport' => 'mcp_image_content',
+        ];
+    }
 }

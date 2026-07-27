@@ -79,6 +79,17 @@ final class McpToolArguments
         return $value === '' ? null : $value;
     }
 
+    public function requiredNonNegativeInt(string $key): int
+    {
+        $value = $this->arguments[$key] ?? null;
+
+        if (!is_int($value) || $value < 0) {
+            throw new DomainRuleViolation(sprintf('Argument [%s] must be a non-negative integer.', $key));
+        }
+
+        return $value;
+    }
+
     public function bool(string $key, bool $default): bool
     {
         $value = $this->arguments[$key] ?? $default;

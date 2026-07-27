@@ -1,3 +1,5 @@
+import { creationModeForPageType, pageTypeForCreationMode } from './page-creation-selection';
+
 // The draft preview renders on the isolated artifact origin, exactly like a
 // saved artifact: we POST the unsaved HTML into the sandbox iframe (form target)
 // so the browser loads it as a document on the artifact host with that origin's
@@ -158,16 +160,12 @@ function initialiseHtmlDraftPreview(form) {
   };
 
   type.addEventListener('change', () => {
-    if (type.value === 'html_artifact' && mode.value === 'markdown') {
-      mode.value = 'html_paste';
-    } else if (type.value === 'markdown') {
-      mode.value = 'markdown';
-    }
+    mode.value = creationModeForPageType(type.value, mode.value);
 
     updateVisibility();
   });
   mode.addEventListener('change', () => {
-    const nextType = mode.value === 'markdown' ? 'markdown' : 'html_artifact';
+    const nextType = pageTypeForCreationMode(mode.value);
 
     if (type.value !== nextType) {
       type.value = nextType;

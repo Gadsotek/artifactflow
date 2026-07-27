@@ -28,6 +28,7 @@ final readonly class McpPagePayload
             'description' => McpDataEnvelope::text($page->description),
             'type' => $page->type->value,
             'status' => $page->status->value,
+            'metadata_revision' => $page->metadata_revision,
             'tags' => array_map(
                 static fn (Tag $tag): array => McpDataEnvelope::text($tag->name),
                 $page->tags->sortBy('name')->values()->all(),
@@ -38,6 +39,10 @@ final readonly class McpPagePayload
 
     public function mediaType(Page $page): string
     {
-        return $page->type === PageType::HtmlArtifact ? 'text/html' : 'text/markdown';
+        return match ($page->type) {
+            PageType::Markdown => 'text/markdown',
+            PageType::HtmlArtifact => 'text/html',
+            PageType::Image => 'image/*',
+        };
     }
 }

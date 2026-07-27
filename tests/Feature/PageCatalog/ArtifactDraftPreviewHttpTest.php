@@ -64,6 +64,7 @@ final class ArtifactDraftPreviewHttpTest extends TestCase
 
         $this->assertSame('no-store, private', $response->headers->get('Cache-Control'));
         $this->assertSame('nosniff', $response->headers->get('X-Content-Type-Options'));
+        $this->assertSame('off', $response->headers->get('X-DNS-Prefetch-Control'));
 
         $body = $response->getContent();
         $this->assertStringContainsString('data-artifactflow-preview-guard', (string) $body);

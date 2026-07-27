@@ -36,7 +36,10 @@ final class CreateTool extends ArtifactFlowTool
     {
         return [
             'workspace_uid' => $schema->string()->required(),
-            'type' => $schema->string()->enum(PageType::class)->required(),
+            'type' => $schema->string()->enum([
+                PageType::Markdown->value,
+                PageType::HtmlArtifact->value,
+            ])->required(),
             'title' => $schema->string()->required(),
             'content' => $schema->string()->required(),
             'description' => $schema->string(),
@@ -48,7 +51,7 @@ final class CreateTool extends ArtifactFlowTool
         ];
     }
 
-    public function handle(Request $request): Response
+    public function handle(Request $request): Response|\Laravel\Mcp\ResponseFactory
     {
         return $this->invoke(
             $request,

@@ -419,6 +419,31 @@ final class TwoFactorAuthenticationTest extends TestCase
         $this->assertFalse($user->refresh()->hasEnabledTwoFactor());
     }
 
+    public function test_two_factor_management_second_factor_attempts_have_a_dedicated_rate_limit(): void
+    {
+        config(['rate_limits.two_factor_management_per_minute' => 2]);
+
+        $user = $this->createUser('Limited Management User', 'limited-management@example.test');
+        $this->enableTwoFactor($user);
+        $confirmedSession = [RequireRecentPasswordConfirmation::SESSION_KEY => now()->getTimestamp()];
+
+        $this->actingAs($user)
+            ->withSession($confirmedSession)
+            ->post('/settings/two-factor/disable', ['code' => '000000'])
+            ->assertSessionHasErrors('code');
+        $this->actingAs($user)
+            ->withSession($confirmedSession)
+            ->post('/settings/two-factor/recovery-codes', ['code' => '000000'])
+            ->assertSessionHasErrors('code');
+
+        $this->actingAs($user)
+            ->withSession($confirmedSession)
+            ->post('/settings/two-factor/disable', ['code' => $this->currentOtp(self::SECRET)])
+            ->assertStatus(429);
+
+        $this->assertTrue($user->refresh()->hasEnabledTwoFactor());
+    }
+
     public function test_trusted_devices_can_be_revoked_after_step_up(): void
     {
         $user = $this->createUser('Device Management User', 'device-management@example.test');

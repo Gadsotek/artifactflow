@@ -41,7 +41,7 @@ final class ListTaxonomyTool extends ArtifactFlowTool
         ];
     }
 
-    public function handle(Request $request): Response
+    public function handle(Request $request): Response|\Laravel\Mcp\ResponseFactory
     {
         return $this->invoke(
             $request,

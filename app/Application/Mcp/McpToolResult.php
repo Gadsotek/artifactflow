@@ -16,15 +16,16 @@ final readonly class McpToolResult
     private function __construct(
         public array $payload,
         public bool $isError,
+        public ?McpImageContent $image = null,
     ) {
     }
 
     /**
      * @param array<string, mixed> $payload
      */
-    public static function success(array $payload): self
+    public static function success(array $payload, ?McpImageContent $image = null): self
     {
-        return new self($payload, false);
+        return new self($payload, false, $image);
     }
 
     /**
@@ -35,11 +36,11 @@ final readonly class McpToolResult
         return new self(['error' => $error], true);
     }
 
-    public static function notFound(): self
+    public static function notFound(McpNotFoundResource $resource = McpNotFoundResource::Page): self
     {
         return self::error([
             'type' => 'not_found',
-            'message' => 'Page not found.',
+            'message' => sprintf('%s not found.', $resource->value),
         ]);
     }
 }

@@ -29,6 +29,7 @@ final class SecurityInvariants
         'app_local_password',
         'postgres',
         'postgres_test_password',
+        'reverb-origin-smoke-secret',
     ];
 
     /**
@@ -195,12 +196,19 @@ final class SecurityInvariants
         string $applicationSecret,
         array $previousApplicationSecrets,
     ): bool {
-        if ($applicationSecret !== '' && hash_equals($applicationSecret, $signingSecret)) {
-            return true;
-        }
+        return self::secretReusesAny(
+            $signingSecret,
+            [$applicationSecret, ...$previousApplicationSecrets],
+        );
+    }
 
-        foreach ($previousApplicationSecrets as $previousSecret) {
-            if (hash_equals($previousSecret, $signingSecret)) {
+    /**
+     * @param list<string> $comparisonSecrets
+     */
+    public static function secretReusesAny(string $secret, array $comparisonSecrets): bool
+    {
+        foreach ($comparisonSecrets as $comparisonSecret) {
+            if ($comparisonSecret !== '' && hash_equals($comparisonSecret, $secret)) {
                 return true;
             }
         }

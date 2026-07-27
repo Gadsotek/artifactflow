@@ -5,6 +5,9 @@ declare(strict_types=1);
 return [
     'max_markdown_bytes' => (int) env('PAGE_MARKDOWN_MAX_BYTES', 5 * 1024 * 1024),
     'max_html_bytes' => (int) env('PAGE_HTML_MAX_BYTES', 5 * 1024 * 1024),
+    'max_image_bytes' => (int) env('PAGE_IMAGE_MAX_BYTES', 5 * 1024 * 1024),
+    'max_image_pixels' => (int) env('PAGE_IMAGE_MAX_PIXELS', 16 * 1024 * 1024),
+    'max_image_dimension' => (int) env('PAGE_IMAGE_MAX_DIMENSION', 16384),
     'artifact_max_bytes' => (int) env('ARTIFACT_MAX_BYTES', 10 * 1024 * 1024),
     'max_workspace_storage_bytes' => (int) env('PAGE_WORKSPACE_MAX_STORAGE_BYTES', 1024 * 1024 * 1024),
     'max_page_storage_bytes' => (int) env('PAGE_MAX_PAGE_STORAGE_BYTES', 100 * 1024 * 1024),

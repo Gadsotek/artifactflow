@@ -225,7 +225,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
 
     public function test_repo_published_database_password_is_rejected_in_production(): void
     {
-        foreach (['app_local_password', 'postgres', 'postgres_test_password'] as $published) {
+        foreach (['app_local_password', 'postgres', 'postgres_test_password', 'reverb-origin-smoke-secret'] as $published) {
             $this->configureSafeProductionValues();
             config(['database.connections.pgsql.password' => $published]);
 
@@ -477,6 +477,19 @@ final class ProductionSecurityConfigurationTest extends TestCase
         }
     }
 
+    public function test_reverb_secret_must_not_reuse_application_or_artifact_signing_keys(): void
+    {
+        foreach (['app.key', 'app.artifact_url_signing_key'] as $reusedKey) {
+            $this->configureSafeProductionValues();
+            config([
+                'broadcasting.default' => 'reverb',
+                'broadcasting.connections.reverb.secret' => config($reusedKey),
+            ]);
+
+            $this->assertUnsafeConfiguration('Reverb app secret must be dedicated.');
+        }
+    }
+
     public function test_reverb_public_origin_must_match_the_application_origin_in_production(): void
     {
         $this->configureSafeProductionValues();
@@ -704,6 +717,19 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->assertUnsafeConfiguration('Artifact read limit must be greater than or equal to every content write limit.');
     }
 
+    public function test_artifact_read_limit_must_cover_image_write_limit(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'pages.max_image_bytes' => 1024,
+            'pages.max_html_bytes' => 256,
+            'pages.max_markdown_bytes' => 256,
+            'pages.artifact_max_bytes' => 512,
+        ]);
+
+        $this->assertUnsafeConfiguration('Artifact read limit must be greater than or equal to every content write limit.');
+    }
+
     public function test_html_write_limit_must_fit_the_production_http_request_envelope(): void
     {
         $this->configureSafeProductionValues();
@@ -713,6 +739,157 @@ final class ProductionSecurityConfigurationTest extends TestCase
         ]);
 
         $this->assertUnsafeConfiguration('HTML write limit must not exceed the production HTTP request envelope.');
+    }
+
+    public function test_image_write_limit_must_fit_the_production_http_request_envelope(): void
+    {
+        $this->configureSafeProductionValues();
+        config(['pages.max_image_bytes' => 5 * 1024 * 1024 + 1]);
+
+        $this->assertUnsafeConfiguration('Image write limit must not exceed the production HTTP request envelope.');
+    }
+
+    public function test_image_parser_requires_a_pure_origin_and_a_strong_dedicated_secret(): void
+    {
+        foreach ([
+            ['image_parser.url' => 'http://image-parser.internal/path'],
+            ['image_parser.shared_secret' => 'too-short'],
+            ['image_parser.shared_secret' => 'artifact-preview-test-signing-key'],
+            ['image_parser.shared_secret' => 'base64:' . base64_encode('artifact-preview-test-signing-key')],
+            ['image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('a', 32))],
+            ['image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('b', 32))],
+            [
+                'app.previous_keys' => ['base64:' . base64_encode(str_repeat('p', 32))],
+                'image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('p', 32)),
+            ],
+        ] as $unsafe) {
+            $this->configureSafeProductionValues();
+            config($unsafe);
+
+            $this->assertUnsafeConfiguration(
+                array_key_exists('image_parser.url', $unsafe)
+                    ? 'Image parser URL must be a pure HTTP or HTTPS origin.'
+                    : 'Image parser shared secret must be strong and dedicated.',
+            );
+        }
+    }
+
+    public function test_image_normalization_budgets_must_cover_one_upload_without_exceeding_hard_ceilings(): void
+    {
+        foreach ([
+            ['image_parser.user_pixel_budget_per_minute' => 16 * 1024 * 1024 - 1],
+            ['image_parser.user_pixel_budget_per_minute' => 64 * 1024 * 1024 + 1],
+            ['image_parser.installation_pixel_budget_per_minute' => 64 * 1024 * 1024 - 1],
+            ['image_parser.installation_pixel_budget_per_minute' => 256 * 1024 * 1024 + 1],
+        ] as $unsafe) {
+            $this->configureSafeProductionValues();
+            config($unsafe);
+
+            $this->assertUnsafeConfiguration(
+                'Image normalization pixel budgets must allow one upload and remain within the supported per-minute ceilings.',
+            );
+        }
+    }
+
+    public function test_non_app_runtime_roles_do_not_require_image_parser_credentials(): void
+    {
+        foreach (['artifact-host', 'worker', 'scheduler'] as $role) {
+            $this->configureSafeProductionValues();
+            config([
+                'app.runtime_role' => $role,
+                'image_parser.url' => '',
+                'image_parser.shared_secret' => '',
+            ]);
+
+            app(ProductionSecurityConfiguration::class)->ensureSafe();
+            $this->addToAssertionCount(1);
+        }
+    }
+
+    public function test_app_runtime_can_disable_image_artifacts_without_parser_credentials(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'image_parser.enabled' => false,
+            'image_parser.url' => '',
+            'image_parser.shared_secret' => '',
+        ]);
+
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_disabled_image_artifacts_reject_an_unneeded_parser_secret(): void
+    {
+        $this->configureSafeProductionValues();
+        config(['image_parser.enabled' => false]);
+
+        $this->assertUnsafeConfiguration(
+            'Image parser shared secret must be absent when image artifacts are disabled.',
+        );
+    }
+
+    public function test_non_app_runtime_roles_reject_an_image_parser_secret(): void
+    {
+        foreach (['artifact-host', 'worker', 'scheduler'] as $role) {
+            $this->configureSafeProductionValues();
+            config(['app.runtime_role' => $role]);
+
+            $this->assertUnsafeConfiguration(
+                'Image parser shared secret must not be available to non-app runtime roles.',
+            );
+        }
+    }
+
+    public function test_malformed_previous_application_keys_are_rejected(): void
+    {
+        $this->configureSafeProductionValues();
+        config(['app.previous_keys' => ['base64:not-valid%%%']]);
+
+        $this->assertUnsafeConfiguration(
+            'Previous application keys must contain only non-placeholder 32-byte secrets.',
+        );
+    }
+
+    public function test_repo_published_signing_fixture_is_rejected_for_every_other_production_secret(): void
+    {
+        foreach ([
+            [
+                ['app.key' => 'artifact-preview-test-signing-key'],
+                'Application key must be a non-placeholder 32-byte secret.',
+            ],
+            [
+                ['app.previous_keys' => ['artifact-preview-test-signing-key']],
+                'Previous application keys must contain only non-placeholder 32-byte secrets.',
+            ],
+            [
+                [
+                    'broadcasting.default' => 'reverb',
+                    'broadcasting.connections.reverb.secret' => 'artifact-preview-test-signing-key',
+                ],
+                'Reverb app secret must be a non-placeholder 32-byte secret.',
+            ],
+        ] as [$unsafe, $message]) {
+            $this->configureSafeProductionValues();
+            config($unsafe);
+
+            $this->assertUnsafeConfiguration($message);
+        }
+    }
+
+    public function test_non_positive_image_parser_timeouts_are_rejected_at_boot(): void
+    {
+        foreach ([
+            ['image_parser.connect_timeout_seconds' => 0],
+            ['image_parser.timeout_seconds' => 0],
+        ] as $unsafe) {
+            $this->configureSafeProductionValues();
+            config($unsafe);
+
+            $this->assertUnsafeConfiguration(
+                'Image parser connect and request timeouts must be positive integers.',
+            );
+        }
     }
 
     private function configureSafeProductionValues(): void
@@ -748,7 +925,15 @@ final class ProductionSecurityConfigurationTest extends TestCase
             'database.connections.pgsql.sslrootcert' => '/etc/ssl/certs/ca-certificates.crt',
             'pages.artifact_max_bytes' => 1024 * 1024,
             'pages.max_html_bytes' => 1024 * 1024,
+            'pages.max_image_bytes' => 1024 * 1024,
+            'pages.max_image_pixels' => 16 * 1024 * 1024,
             'pages.max_markdown_bytes' => 1024 * 1024,
+            'image_parser.url' => 'http://image-parser.internal:8080',
+            'image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('p', 32)),
+            'image_parser.connect_timeout_seconds' => 2,
+            'image_parser.timeout_seconds' => 12,
+            'image_parser.user_pixel_budget_per_minute' => 64 * 1024 * 1024,
+            'image_parser.installation_pixel_budget_per_minute' => 256 * 1024 * 1024,
             'reverb.apps.apps.0.configured_allowed_origins' => ['https://app.example.test'],
             'reverb.apps.apps.0.allowed_origins' => ['app.example.test'],
             'reverb.apps.apps.0.max_connections' => 1000,
@@ -845,6 +1030,8 @@ final class ProductionSecurityConfigurationTest extends TestCase
                 'ARTIFACT_FRAME_ANCESTORS' => 'https://app.example.test',
                 'ARTIFACT_URL' => 'https://artifacts.example.test',
                 'ARTIFACT_URL_SIGNING_KEY' => 'base64:' . base64_encode(random_bytes(32)),
+                'IMAGE_PARSER_URL' => 'http://image-parser.internal:8080',
+                'IMAGE_PARSER_SHARED_SECRET' => 'base64:' . base64_encode(random_bytes(32)),
                 'ARTIFACTFLOW_ADMIN_PASSWORD' => '',
                 'ARTIFACTFLOW_CREATE_USER_PASSWORD' => '',
                 'ARTIFACTFLOW_RESET_PASSWORD' => '',

@@ -17,22 +17,57 @@ final readonly class ArtifactContentReader
     ) {
     }
 
-    public function read(string $storagePath): ?string
+    public function read(string $storagePath, ?int $maximumBytes = null): ?string
     {
         $disk = Storage::disk('artifacts');
-        $maxBytes = $this->configuredMaxBytes();
+        $maxBytes = $maximumBytes === null
+            ? $this->configuredMaxBytes()
+            : min($this->configuredMaxBytes(), $maximumBytes);
 
         try {
             if ($this->isOversized($disk, $storagePath, $maxBytes)) {
                 return null;
             }
 
-            $content = $disk->get($storagePath);
+            $stream = $disk->readStream($storagePath);
+
+            if (!is_resource($stream)) {
+                return null;
+            }
+
+            try {
+                $content = stream_get_contents($stream);
+            } finally {
+                fclose($stream);
+            }
         } catch (FilesystemException) {
             return null;
         }
 
         return is_string($content) ? $content : null;
+    }
+
+    public function isAvailable(string $storagePath): bool
+    {
+        $disk = Storage::disk('artifacts');
+
+        try {
+            if ($this->isOversized($disk, $storagePath, $this->configuredMaxBytes())) {
+                return false;
+            }
+
+            $stream = $disk->readStream($storagePath);
+
+            if (!is_resource($stream)) {
+                return false;
+            }
+
+            fclose($stream);
+
+            return true;
+        } catch (FilesystemException) {
+            return false;
+        }
     }
 
     private function isOversized(Filesystem $disk, string $storagePath, int $maxBytes): bool

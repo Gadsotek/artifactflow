@@ -6,6 +6,7 @@ namespace App\Application\PageCatalog;
 
 use App\Domain\PageCatalog\PageType;
 use DOMDocument;
+use LogicException;
 
 final class PageTextExtractor
 {
@@ -14,11 +15,14 @@ final class PageTextExtractor
         return match ($type) {
             PageType::Markdown => $this->extractMarkdownText($content),
             PageType::HtmlArtifact => $this->extractHtmlText($content),
+            default => throw new LogicException('Page type does not expose textual content.'),
         };
     }
 
     public function extractSource(PageType $type, string $content): string
     {
+        $this->ensureTextual($type);
+
         $sourceText = preg_replace('/[^\pL\pN_]+/u', ' ', $content) ?? $content;
 
         return $this->normalizeWhitespace($sourceText);
@@ -82,5 +86,12 @@ final class PageTextExtractor
         $normalized = preg_replace('/\s+/', ' ', $text) ?? $text;
 
         return trim($normalized);
+    }
+
+    private function ensureTextual(PageType $type): void
+    {
+        if (!in_array($type, [PageType::Markdown, PageType::HtmlArtifact], true)) {
+            throw new LogicException('Page type does not expose textual content.');
+        }
     }
 }

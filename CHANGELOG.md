@@ -6,6 +6,31 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+### Added
+
+- Added versioned PNG/JPEG image and screenshot artifacts. Uploads are format/extension checked, bounded by byte/dimension/pixel limits, decoded and re-encoded without metadata or appended payloads, and previewed through a fixed scriptless document on the isolated artifact origin.
+- Added MCP image content reads and an Editor-capped `update_description` tool with content-version plus metadata concurrency, scanning, search refresh, throttling, and token/session audit attribution. Image artifacts intentionally have no OCR; full-text discovery uses editable catalog metadata.
+- Local stack setup and the guided local/test installer now provision a dedicated image-parser shared secret alongside the application and artifact-signing keys; production continues to require externally managed secrets before install.
+
+### Fixed
+
+- MCP create tools now identify an inaccessible target as `Workspace not found.` while retaining the opaque `not_found` response used to prevent workspace disclosure.
+
+### Security
+
+- Prevented workspace Editors who own a page from downgrading an existing page-Admin grant; changing or revoking Admin authority now consistently requires hard-delete authority.
+- Closed an artifact-preview parser differential where SVG/MathML `style` and MathML `script` content could hide a live nested browsing context from the response rewriter. Foreign-content breakout variants are now neutralized before parsing while genuine SVG script data remains verbatim; the browser egress matrix pins the served template and verifies zero TCP/UDP across Chromium, Firefox, and WebKit.
+- Closed an artifact-preview tokenizer differential where a slash inside an unquoted SVG/MathML attribute value could be mistaken for the tokenizer's self-closing flag and suppress nested-context neutralization. Resource hints and meta refresh elements are now neutralized synchronously across insertion, markup-parsing, attribute/accessor, attribute-node, and `relList` mutation sinks instead of waiting for the mutation observer; every inspected WebIDL string is coerced once and only that primitive reaches the native sink, preventing stateful-coercion bypasses. Artifact responses additionally opt out of DNS prefetching through a server-delivered header.
+- Added a dedicated per-user rate limit for post-authentication 2FA disable and recovery-code regeneration attempts. Production Reverb secrets must now be distinct from application and artifact-signing keys, and every repository-published database credential fixture is rejected consistently by the boot gate and Deployment Doctor.
+- Original image upload containers are discarded after normalization. SVG and malformed or mismatched image uploads are rejected, and current/historical raster previews use an empty iframe/CSP sandbox without script capability.
+- Moved native PNG/JPEG decoding and EXIF handling out of the production application image into a non-root, read-only, resource-capped parser container on an internal-only network. Requests and normalized responses are nonce-bound and HMAC authenticated; the parser receives no app source, database credentials, artifact storage, public port, or outbound route.
+- Bounded application-side JPEG header inspection by marker count and header bytes, rejected restart markers before scan data, and constrained each 512 MiB parser container to one normalization process so hostile marker floods or concurrent maximum-pixel decodes cannot exhaust application/parser CPU and memory.
+- Reduced and hard-capped new image uploads at 16 Mi pixels while retaining the 40 Mi-pixel historical read envelope. Added a shared non-blocking parser admission slot, exact-pixel per-user and installation-wide work budgets, retryable 429/503 backpressure, production configuration checks, and a parser startup refusal for prefork worker counts above one.
+- Added parser-side PNG chunk, CRC, and bounded-IDAT validation before GD. The zlib stream must terminate at exactly the scanline bytes implied by IHDR, including Adam7 passes, so tiny declared dimensions cannot hide gigabytes of trailing decompression work behind a one-pixel budget charge.
+- Strip PNG text/profile metadata (`zTXt`, `iTXt`, and `iCCP`) before native decoding so high-ratio payloads cannot bypass pixel admission or OOM-kill the parser.
+- Image page and history rendering now checks binary availability without reading complete raster bodies on the app origin, and loaded scriptless previews no longer renew and re-download themselves on a TTL timer.
+- Made parser-secret isolation fail closed for every non-app production runtime role, removed unused WebP support from the parser image, and changed its health endpoint to exercise a real one-pixel PNG decode/re-encode. Deprecated no-op GD destruction calls were replaced with reference release.
+
 ## v0.0.5 — 2026-07-23
 
 Security and tooling release. It closes a declarative-shadow-DOM sandbox escape in the artifact preview, re-enables cross-engine end-to-end coverage on the artifact-security corpus, and refreshes dependencies.

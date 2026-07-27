@@ -65,6 +65,13 @@ final readonly class RestorePageVersion
         $closureCompleted = false;
 
         try {
+            $preparedAppend = $this->versions->prepare(
+                $actor,
+                $page,
+                $sourceContent,
+                PageVersionSource::Restore,
+            );
+
             $restored = DB::transaction(function () use (
                 $actor,
                 $actorUid,
@@ -73,7 +80,7 @@ final readonly class RestorePageVersion
                 &$prunedStoragePaths,
                 &$restoredVersion,
                 &$closureCompleted,
-                $sourceContent,
+                $preparedAppend,
                 $sourceVersion,
             ): PageVersion {
                 // Re-fetch under the page row lock and re-authorize against fresh authority.
@@ -87,11 +94,8 @@ final readonly class RestorePageVersion
                 });
 
                 $previousCurrentVersionUid = $page->current_version_uid;
-                $restoredVersion = $this->versions->append(
-                    actor: $actor,
+                $restoredVersion = $preparedAppend->append(
                     page: $page,
-                    content: $sourceContent,
-                    source: PageVersionSource::Restore,
                     expectedCurrentVersionUid: $command->expectedCurrentVersionUid,
                 );
 

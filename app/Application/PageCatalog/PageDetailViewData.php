@@ -6,6 +6,7 @@ namespace App\Application\PageCatalog;
 
 use App\Application\Administration\RealtimeConfiguration;
 use App\Domain\PageCatalog\PageStatus;
+use App\Domain\PageCatalog\PageType;
 use App\Models\Category;
 use App\Models\Page;
 use App\Models\PageVersion;
@@ -39,6 +40,8 @@ final readonly class PageDetailViewData
      *     canManageAccess: bool,
      *     category: Category|null,
      *     contentUnavailable: bool,
+     *     contentEditorDialogId: string,
+     *     contentEditorLabel: string,
      *     metadataCategories: list<Category>,
      *     metadataOwners: list<User>,
      *     metadataParentPages: list<Page>,
@@ -69,6 +72,7 @@ final readonly class PageDetailViewData
         $tags = array_values($page->tags()->orderBy('name')->get()->all());
         $canManageAccess = $this->access->canManageAccess($actor, $page);
         $pageMoveTargets = $this->moveOptions->forPage($actor, $page);
+        $contentEditorAction = $this->contentEditorAction($page->type);
 
         return [
             'artifactPreviewUrl' => $content->artifactPreviewUrl,
@@ -81,6 +85,8 @@ final readonly class PageDetailViewData
             'canManageAccess' => $canManageAccess,
             'category' => $page->category_uid === null ? null : Category::query()->find($page->category_uid),
             'contentUnavailable' => $content->contentUnavailable,
+            'contentEditorDialogId' => $contentEditorAction['dialog_id'],
+            'contentEditorLabel' => $contentEditorAction['label'],
             // The pickers only render inside the canEdit metadata form; skip their
             // queries entirely for viewers who cannot edit.
             'metadataCategories' => $canEdit ? $this->metadataOptions->categoriesFor([$page->workspace_uid]) : [],
@@ -154,5 +160,26 @@ final readonly class PageDetailViewData
             ->orderByDesc('version_number')
             ->get()
             ->all());
+    }
+
+    /**
+     * @return array{dialog_id: string, label: string}
+     */
+    private function contentEditorAction(PageType $type): array
+    {
+        return match ($type) {
+            PageType::HtmlArtifact => [
+                'dialog_id' => 'html-source-editor',
+                'label' => 'Edit HTML source',
+            ],
+            PageType::Image => [
+                'dialog_id' => 'image-version-dialog',
+                'label' => 'Replace image',
+            ],
+            PageType::Markdown => [
+                'dialog_id' => 'page-content-dialog',
+                'label' => 'Edit Markdown',
+            ],
+        };
     }
 }

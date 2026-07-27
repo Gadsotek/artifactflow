@@ -16,6 +16,8 @@ use Illuminate\Validation\Validator;
 
 final class StorePageVersionRequest extends AppFormRequest
 {
+    private ?string $validatedImageContent = null;
+
     /**
      * @return array<string, list<mixed>>
      */
@@ -33,6 +35,11 @@ final class StorePageVersionRequest extends AppFormRequest
                 'file',
                 'max:' . $this->htmlUploadRules()->maxUploadKilobytes($this->installationLimit('pages.max_html_bytes')),
             ],
+            'image_file' => [
+                'nullable',
+                'file',
+                'max:' . $this->imageUploadRules()->maxUploadKilobytes(),
+            ],
             'base_version_uid' => ['nullable', 'string', 'size:26'],
         ];
     }
@@ -47,6 +54,22 @@ final class StorePageVersionRequest extends AppFormRequest
             }
 
             $mode = $this->normalizedMode();
+
+            if ($page->type === PageType::Image) {
+                if ($mode !== PageVersionSource::Upload) {
+                    $validator->errors()->add('mode', 'Image artifacts can only be replaced by upload.');
+
+                    return;
+                }
+
+                $this->validatedImageContent = $this->imageUploadRules()->validateUpload(
+                    $validator,
+                    'image_file',
+                    $this->imageFile(),
+                );
+
+                return;
+            }
 
             if ($page->type === PageType::Markdown && $mode !== PageVersionSource::Editor) {
                 $validator->errors()->add('mode', 'Markdown pages must be edited as source text.');
@@ -67,7 +90,14 @@ final class StorePageVersionRequest extends AppFormRequest
     public function pageContent(): string
     {
         if ($this->normalizedMode() === PageVersionSource::Upload) {
-            $file = $this->htmlFile();
+            $page = $this->route('page');
+            $file = $page instanceof Page && $page->type === PageType::Image
+                ? $this->imageFile()
+                : $this->htmlFile();
+
+            if ($page instanceof Page && $page->type === PageType::Image) {
+                return $this->validatedImageContent ?? '';
+            }
 
             return $file instanceof UploadedFile ? $file->getContent() : '';
         }
@@ -158,6 +188,13 @@ final class StorePageVersionRequest extends AppFormRequest
         return $file instanceof UploadedFile ? $file : null;
     }
 
+    private function imageFile(): ?UploadedFile
+    {
+        $file = $this->file('image_file');
+
+        return $file instanceof UploadedFile ? $file : null;
+    }
+
     private function installationLimit(string $key): int
     {
         return app(InstallationLimitSettings::class)->integer($key);
@@ -166,5 +203,10 @@ final class StorePageVersionRequest extends AppFormRequest
     private function htmlUploadRules(): HtmlArtifactUploadRules
     {
         return app(HtmlArtifactUploadRules::class);
+    }
+
+    private function imageUploadRules(): RasterImageUploadRules
+    {
+        return app(RasterImageUploadRules::class);
     }
 }

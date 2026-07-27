@@ -50,18 +50,24 @@ final readonly class PageDetailContent
                 } else {
                     $contentUnavailable = true;
                 }
-            } elseif ($canMutateContent) {
+            } elseif ($page->type === PageType::HtmlArtifact && $canMutateContent) {
                 $htmlSource = $this->contentReader->read($version->content_storage_path);
 
-                if ($htmlSource !== null) {
-                    $sourcePreview = $htmlSource;
-                } else {
+                if ($htmlSource === null) {
                     $contentUnavailable = true;
+                } else {
+                    $sourcePreview = $htmlSource;
                 }
+            } else {
+                $contentUnavailable = !$this->contentReader->isAvailable($version->content_storage_path);
             }
         }
 
-        if ($version instanceof PageVersion && $page->type === PageType::HtmlArtifact) {
+        if (
+            $version instanceof PageVersion
+            && $page->type->usesArtifactHostPreview()
+            && !$contentUnavailable
+        ) {
             $artifactPreviewUrl = $this->artifactPreviewUrls->temporaryUrl($page, $version);
             Log::info('artifact_preview_url.issued', [
                 'actor_user_uid' => $actor->uid,

@@ -293,6 +293,70 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
     }
 
+    public function test_foreign_content_text_elements_cannot_hide_nested_browsing_contexts(): void
+    {
+        $cases = [
+            'svg-style-div' => ['<svg><style><div>', '</div></style></svg>'],
+            'svg-style-br' => ['<svg><style><br>', '</style></svg>'],
+            'svg-style-p' => ['<svg><style><p>', '</p></style></svg>'],
+            'svg-style-unterminated' => ['<svg><style><div>', ''],
+            'math-style-div' => ['<math><style><div>', '</div></style></math>'],
+            'math-style-br' => ['<math><style><br>', '</style></math>'],
+            'math-style-p' => ['<math><style><p>', '</p></style></math>'],
+            'math-style-unterminated' => ['<math><style><div>', ''],
+            'math-script-div' => ['<math><script><div>', '</div></script></math>'],
+            'math-script-br' => ['<math><script><br>', '</script></math>'],
+            'math-script-p' => ['<math><script><p>', '</p></script></math>'],
+            'math-script-unterminated' => ['<math><script><div>', ''],
+        ];
+
+        foreach ($cases as $iframeId => [$prefix, $suffix]) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $prefix
+                . '<iframe id="' . $iframeId . '" '
+                . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>'
+                . $suffix
+                . '<p id="safe-content">Safe artifact content</p>',
+            );
+
+            $this->assertStringNotContainsString('<iframe id="' . $iframeId . '"', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="' . $iframeId . '"',
+                $hardened,
+            );
+            $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+        }
+    }
+
+    public function test_svg_script_data_remains_verbatim_inside_foreign_content(): void
+    {
+        $script = '<script>window.literal = "<iframe id=not-markup>";</script>';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><svg>' . $script . '</svg>',
+        );
+
+        $this->assertStringContainsString('<svg>' . $script . '</svg>', $hardened);
+        $this->assertStringNotContainsString('data-artifactflow-blocked-browsing-context id=not-markup', $hardened);
+    }
+
+    public function test_slash_in_unquoted_svg_attribute_value_does_not_fake_a_self_closing_tag(): void
+    {
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><svg data-value=1/><title>'
+            . '<iframe id="unquoted-slash-breakout" '
+            . 'srcdoc="&lt;script&gt;window.top.ran=1&lt;/script&gt;"></iframe>'
+            . '</title></svg><p id="safe-content">Safe artifact content</p>',
+        );
+
+        $this->assertStringNotContainsString('<iframe id="unquoted-slash-breakout"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<svg data-value=1/><title><template data-artifactflow-blocked-browsing-context '
+            . 'id="unquoted-slash-breakout"',
+            $hardened,
+        );
+        $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+    }
+
     public function test_unmatched_foreign_end_tag_cannot_hide_nested_context_inside_svg_title(): void
     {
         $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(

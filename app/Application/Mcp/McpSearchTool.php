@@ -70,6 +70,8 @@ final readonly class McpSearchTool
                     'title' => McpDataEnvelope::text($page->title),
                     'type' => $page->type->value,
                     'status' => $page->status->value,
+                    'current_version_uid' => $page->current_version_uid,
+                    'metadata_revision' => $page->metadata_revision,
                     'tags' => array_map(
                         static fn (Tag $tag): array => McpDataEnvelope::text($tag->name),
                         array_values($page->tags->all()),

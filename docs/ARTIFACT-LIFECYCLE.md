@@ -52,7 +52,7 @@ ArtifactFlow also supports an unsaved draft preview for single-file HTML. That p
 
 ## Content versions and metadata
 
-**Current invariant:** a content version retains the authoritative payload. For current HTML artifacts, that payload is also the executable single-file result. For Markdown, the payload is Markdown source and the rendered view is derived from it.
+**Current invariant:** a content version retains the authoritative payload. For current HTML artifacts, that payload is also the executable single-file result. For Markdown, the payload is Markdown source and the rendered view is derived from it. For PNG/JPEG uploads, the retained authoritative payload is ArtifactFlow's normalized raster derivative; the untrusted original upload is intentionally discarded after pixel decoding and re-encoding.
 
 Catalog metadata such as title, description, category, parent, owner, and tags belongs to the stable artifact record. Metadata writes use a separate optimistic metadata revision and produce domain events and audit entries. A metadata revision is not a content-version snapshot, and content version history does not currently promise to restore historical catalog metadata.
 
@@ -67,6 +67,14 @@ The retained payload is the HTML source and executable result. Saved and unsaved
 ### Markdown and Mermaid
 
 The retained payload is Markdown source. The application derives the rendered view and processes Mermaid under the documented strict rendering boundary. Raw user HTML and JavaScript do not execute in the authenticated application DOM.
+
+### Images and screenshots
+
+The retained payload is a normalized PNG or JPEG containing decoded pixels, not the original file container. ArtifactFlow validates the format envelope, extension, compressed byte size, dimensions, and pixel count, then sends the original bytes to its isolated parser service. That service decodes and re-encodes the image; the app verifies its signed response before retaining it. This intentionally removes EXIF/GPS data, comments, color profiles, and bytes appended after the image.
+
+Current image artifacts have no OCR or extracted text. Their searchable content is catalog metadata: title, editable description, category, tags, owner, status, and type. Replacing an image appends an immutable version, and restoring a historical image copies the selected normalized bytes exactly without another lossy JPEG generation.
+
+Previews use a fixed scriptless viewer on the separate artifact origin. MCP `read` returns normalized rasters up to the 5 MiB MCP response cap as image content (`content_too_large` is returned before reading larger derivatives), and an authorized `update_description` call can revise only the page description when both the observed content-version UID and metadata revision remain current.
 
 ## PDF and DOCX direction
 

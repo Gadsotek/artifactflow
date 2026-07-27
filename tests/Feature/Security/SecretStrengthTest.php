@@ -24,13 +24,19 @@ it('rejects weak or placeholder secrets', function (string $secret): void {
 
 it('rejects secrets published in the repository fixtures', function (): void {
     $e2eAppKey = 'base64:YXJ0aWZhY3RmbG93LWUyZS1hcHAta2V5LTAwMDAwMDA=';
+    $publishedSigningKey = 'artifact-preview-test-signing-key';
 
     expect(SecretStrength::isPublishedFixtureSecret($e2eAppKey))->toBeTrue()
         ->and(SecretStrength::isStrong($e2eAppKey))->toBeFalse()
         // Matched by decoded bytes too, not only the exact base64 string.
         ->and(SecretStrength::isPublishedFixtureSecret('artifactflow-e2e-app-key-0000000'))->toBeTrue()
+        // Runtime test signing still needs isStrong(), but production consumers
+        // must reject both its raw and base64-equivalent representations.
+        ->and(SecretStrength::isStrong($publishedSigningKey))->toBeTrue()
+        ->and(SecretStrength::isProductionSafe($publishedSigningKey))->toBeFalse()
+        ->and(SecretStrength::isProductionSafe('base64:' . base64_encode($publishedSigningKey)))->toBeFalse()
         // A genuinely random 32-byte key is still accepted.
-        ->and(SecretStrength::isStrong('base64:' . base64_encode(random_bytes(32))))->toBeTrue();
+        ->and(SecretStrength::isProductionSafe('base64:' . base64_encode(random_bytes(32))))->toBeTrue();
 });
 
 it('normalizes base64 secrets to their raw bytes', function (): void {

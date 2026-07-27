@@ -9,10 +9,13 @@ use App\Application\PageCatalog\RestorePageVersionCommand;
 use App\Application\PageCatalog\UpdatePageContent;
 use App\Application\PageCatalog\UpdatePageContentCommand;
 use App\Domain\DomainRuleViolation;
+use App\Domain\PageCatalog\ImageNormalizationRejected;
 use App\Domain\PageCatalog\InvalidPageStatusTransition;
+use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\Security\BlockedPageContentException;
 use App\Domain\PageCatalog\StalePageVersionException;
 use App\Http\Requests\PageCatalog\StorePageVersionRequest;
+use App\Http\Support\ImageNormalizationRejectionResponse;
 use App\Models\Page;
 use App\Models\PageVersion;
 use Illuminate\Http\RedirectResponse;
@@ -41,6 +44,8 @@ final class PageVersionController
                 source: $request->versionSource(),
                 baseVersionUid: $request->baseVersionUid(),
             ));
+        } catch (ImageNormalizationRejected $exception) {
+            return ImageNormalizationRejectionResponse::make($exception);
         } catch (BlockedPageContentException $exception) {
             throw ValidationException::withMessages([
                 'content' => $exception->getMessage(),
@@ -52,8 +57,10 @@ final class PageVersionController
         } catch (StalePageVersionException $exception) {
             return response($exception->getMessage(), 409);
         } catch (DomainRuleViolation $exception) {
+            $field = $page->type === PageType::Image ? 'image_file' : 'content';
+
             throw ValidationException::withMessages([
-                'content' => $exception->getMessage(),
+                $field => $exception->getMessage(),
             ]);
         }
 

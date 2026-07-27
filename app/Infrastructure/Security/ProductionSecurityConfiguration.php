@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Infrastructure\Security;
 
 use App\Application\Administration\InstallationLimitCeilings;
+use App\Application\PageCatalog\ImageArtifactLimits;
+use App\Application\PageCatalog\ImageNormalizationConfiguration;
+use App\Application\PageCatalog\ImageParserTimeouts;
 use Illuminate\Contracts\Config\Repository;
 use RuntimeException;
 
@@ -48,6 +51,24 @@ final readonly class ProductionSecurityConfiguration
 
         $this->ensureApplicationKey();
         $this->ensureDedicatedSigningKey();
+
+        $runtimeRole = $this->string('app.runtime_role');
+
+        if ($runtimeRole === 'app') {
+            if ($this->imageArtifactsEnabled()) {
+                $this->ensureImageParserConfiguration();
+                $this->ensureImageNormalizationBudgets();
+            } elseif ($this->string('image_parser.shared_secret') !== '') {
+                throw new RuntimeException(
+                    'Image parser shared secret must be absent when image artifacts are disabled.',
+                );
+            }
+        } elseif ($this->string('image_parser.shared_secret') !== '') {
+            throw new RuntimeException(
+                'Image parser shared secret must not be available to non-app runtime roles.',
+            );
+        }
+
         $this->ensureArtifactReadLimitCanServeHtmlWrites();
         $this->ensureDatabaseDriver();
         $this->ensureDatabaseTls();
@@ -103,6 +124,8 @@ final readonly class ProductionSecurityConfiguration
             $this->string('app.key'),
             'Application key must be a non-placeholder 32-byte secret.',
         );
+
+        $this->previousApplicationKeys();
     }
 
     private function ensureRuntimeRole(): void
@@ -143,6 +166,68 @@ final readonly class ProductionSecurityConfiguration
         }
     }
 
+    private function ensureImageParserConfiguration(): void
+    {
+        if (OriginNormalizer::tryParsePureOrigin($this->string('image_parser.url')) === null) {
+            throw new RuntimeException('Image parser URL must be a pure HTTP or HTTPS origin.');
+        }
+
+        $configured = $this->string('image_parser.shared_secret');
+
+        if (!SecretStrength::isProductionSafe($configured)) {
+            throw new RuntimeException('Image parser shared secret must be strong and dedicated.');
+        }
+
+        $secret = SecretStrength::normalized($configured);
+        $applicationSecret = SecretStrength::normalized($this->string('app.key'));
+        $signingSecret = SecretStrength::normalized($this->string('app.artifact_url_signing_key'));
+        $comparisonSecrets = [
+            $applicationSecret ?? '',
+            ...$this->previousApplicationKeys(),
+        ];
+
+        if ($signingSecret !== null) {
+            $comparisonSecrets[] = $signingSecret;
+        }
+
+        if ($secret === null || SecurityInvariants::secretReusesAny($secret, $comparisonSecrets)) {
+            throw new RuntimeException('Image parser shared secret must be strong and dedicated.');
+        }
+
+        if (ImageParserTimeouts::tryFrom(
+            $this->config->get('image_parser.connect_timeout_seconds'),
+            $this->config->get('image_parser.timeout_seconds'),
+        ) === null) {
+            throw new RuntimeException(
+                'Image parser connect and request timeouts must be positive integers.',
+            );
+        }
+    }
+
+    private function ensureImageNormalizationBudgets(): void
+    {
+        if (!ImageNormalizationConfiguration::budgetsAreSafe(
+            min($this->positiveInt('pages.max_image_pixels'), ImageArtifactLimits::MAX_UPLOAD_PIXELS),
+            $this->positiveInt('image_parser.user_pixel_budget_per_minute'),
+            $this->positiveInt('image_parser.installation_pixel_budget_per_minute'),
+        )) {
+            throw new RuntimeException(
+                'Image normalization pixel budgets must allow one upload and remain within the supported per-minute ceilings.',
+            );
+        }
+    }
+
+    private function imageArtifactsEnabled(): bool
+    {
+        $enabled = $this->config->get('image_parser.enabled', true);
+
+        if (!is_bool($enabled)) {
+            throw new RuntimeException('IMAGE_PARSER_ENABLED must be true or false.');
+        }
+
+        return $enabled;
+    }
+
     private function ensureArtifactReadLimitCanServeHtmlWrites(): void
     {
         if ($this->positiveInt('pages.max_html_bytes') > InstallationLimitCeilings::CONTENT_BYTES) {
@@ -153,9 +238,14 @@ final readonly class ProductionSecurityConfiguration
             throw new RuntimeException('Markdown write limit must not exceed the HTTP request envelope.');
         }
 
+        if ($this->positiveInt('pages.max_image_bytes') > InstallationLimitCeilings::CONTENT_BYTES) {
+            throw new RuntimeException('Image write limit must not exceed the production HTTP request envelope.');
+        }
+
         if ($this->positiveInt('pages.artifact_max_bytes') < max(
             $this->positiveInt('pages.max_html_bytes'),
             $this->positiveInt('pages.max_markdown_bytes'),
+            $this->positiveInt('pages.max_image_bytes'),
         )) {
             throw new RuntimeException('Artifact read limit must be greater than or equal to every content write limit.');
         }
@@ -276,10 +366,25 @@ final readonly class ProductionSecurityConfiguration
             return;
         }
 
-        $this->validatedSecret(
+        $reverbSecret = $this->validatedSecret(
             $this->string('broadcasting.connections.reverb.secret'),
             'Reverb app secret must be a non-placeholder 32-byte secret.',
         );
+        $applicationSecret = $this->validatedSecret(
+            $this->string('app.key'),
+            'Application key must be a non-placeholder 32-byte secret.',
+        );
+        $signingSecret = $this->validatedSecret(
+            $this->string('app.artifact_url_signing_key'),
+            'Artifact preview signing key must be a non-placeholder 32-byte secret.',
+        );
+
+        if (SecurityInvariants::secretReusesAny(
+            $reverbSecret,
+            [$applicationSecret, $signingSecret, ...$this->previousApplicationKeys()],
+        )) {
+            throw new RuntimeException('Reverb app secret must be dedicated.');
+        }
 
         try {
             $reverbOrigin = $this->productionOrigin($this->string('app.reverb_url'));
@@ -514,26 +619,17 @@ final readonly class ProductionSecurityConfiguration
      */
     private function previousApplicationKeys(): array
     {
-        $keys = $this->config->get('app.previous_keys', []);
+        $keys = PreviousApplicationKeyConfiguration::normalizedKeys(
+            $this->config->get('app.previous_keys', []),
+        );
 
-        if (!is_array($keys)) {
-            return [];
-        }
-
-        $validatedKeys = [];
-
-        foreach ($keys as $key) {
-            if (!is_string($key) || trim($key) === '') {
-                continue;
-            }
-
-            $validatedKeys[] = $this->validatedSecret(
-                trim($key),
-                'Application key must be a non-placeholder 32-byte secret.',
+        if ($keys === null) {
+            throw new RuntimeException(
+                'Previous application keys must contain only non-placeholder 32-byte secrets.',
             );
         }
 
-        return $validatedKeys;
+        return $keys;
     }
 
     private function positiveInt(string $key): int
@@ -568,7 +664,7 @@ final readonly class ProductionSecurityConfiguration
 
     private function validatedSecret(string $secret, string $message): string
     {
-        if (!SecretStrength::isStrong($secret)) {
+        if (!SecretStrength::isProductionSafe($secret)) {
             throw new RuntimeException($message);
         }
 

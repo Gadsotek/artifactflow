@@ -22,4 +22,5 @@ return [
     'two_factor_challenge_per_minute' => (int) env('TWO_FACTOR_CHALLENGE_RATE_LIMIT_PER_MINUTE', 5),
     'two_factor_challenge_account_per_hour' => (int) env('TWO_FACTOR_CHALLENGE_ACCOUNT_RATE_LIMIT_PER_HOUR', 30),
     'two_factor_challenge_ip_per_minute' => (int) env('TWO_FACTOR_CHALLENGE_IP_RATE_LIMIT_PER_MINUTE', 20),
+    'two_factor_management_per_minute' => (int) env('TWO_FACTOR_MANAGEMENT_RATE_LIMIT_PER_MINUTE', 5),
 ];

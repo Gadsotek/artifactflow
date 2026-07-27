@@ -30,7 +30,7 @@ final class ListWorkspacesTool extends ArtifactFlowTool
         parent::__construct($mcpContext, $guard, $httpRequest);
     }
 
-    public function handle(Request $request): Response
+    public function handle(Request $request): Response|\Laravel\Mcp\ResponseFactory
     {
         return $this->invoke(
             $request,

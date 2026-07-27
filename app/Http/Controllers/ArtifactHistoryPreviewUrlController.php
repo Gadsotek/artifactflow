@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Application\PageCatalog\ArtifactPreviewUrl;
-use App\Domain\PageCatalog\PageType;
 use App\Models\Page;
 use App\Models\PageVersion;
 use Illuminate\Http\JsonResponse;
@@ -15,7 +14,7 @@ final class ArtifactHistoryPreviewUrlController
 {
     public function __invoke(Page $page, PageVersion $version, ArtifactPreviewUrl $previewUrl): JsonResponse
     {
-        if ($page->type !== PageType::HtmlArtifact || $version->page_uid !== $page->uid) {
+        if (!$page->type->usesArtifactHostPreview() || $version->page_uid !== $page->uid) {
             abort(404);
         }
 

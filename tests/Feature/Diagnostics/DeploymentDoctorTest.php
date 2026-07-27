@@ -65,6 +65,150 @@ final class DeploymentDoctorTest extends TestCase
         $this->assertTrue($report->passed(), $this->describeFailures($report->checks));
     }
 
+    public function test_production_fails_when_the_image_parser_origin_or_secret_is_not_isolated(): void
+    {
+        foreach ([
+            ['image_parser.url' => 'http://image-parser.internal:8080/path'],
+            ['image_parser.shared_secret' => 'artifact-preview-test-signing-key'],
+            ['image_parser.shared_secret' => 'base64:' . base64_encode('artifact-preview-test-signing-key')],
+            ['image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('a', 32))],
+            [
+                'app.previous_keys' => ['base64:' . base64_encode(str_repeat('p', 32))],
+                'image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('p', 32)),
+            ],
+        ] as $unsafe) {
+            $report = (new DeploymentDoctor($this->config('production', array_merge(
+                $this->hardenedProductionConfig(),
+                $unsafe,
+            ))))->run();
+
+            $this->assertSame(DoctorCheckStatus::Fail, $this->check($report->checks, 'image_parser')->status);
+        }
+    }
+
+    public function test_production_rejects_malformed_previous_application_keys_instead_of_discarding_them(): void
+    {
+        $report = (new DeploymentDoctor($this->config('production', array_merge(
+            $this->hardenedProductionConfig(),
+            ['app.previous_keys' => ['base64:not-valid%%%']],
+        ))))->run();
+
+        $this->assertFalse($report->passed());
+        $this->assertSame(DoctorCheckStatus::Fail, $this->check($report->checks, 'app_key')->status);
+        $this->assertStringContainsString(
+            'APP_PREVIOUS_KEYS',
+            $this->check($report->checks, 'app_key')->detail,
+        );
+    }
+
+    public function test_production_rejects_the_published_signing_fixture_in_other_secret_roles(): void
+    {
+        foreach ([
+            [['app.key' => 'artifact-preview-test-signing-key'], 'app_key'],
+            [['app.previous_keys' => ['artifact-preview-test-signing-key']], 'app_key'],
+            [[
+                'broadcasting.default' => 'reverb',
+                'broadcasting.connections.reverb.secret' => 'artifact-preview-test-signing-key',
+                'app.reverb_url' => 'https://app.example.test',
+                'reverb.apps.apps.0.allowed_origins' => ['app.example.test'],
+                'reverb.apps.apps.0.rate_limiting.enabled' => true,
+                'reverb.apps.apps.0.max_connections' => 1000,
+            ], 'reverb'],
+        ] as [$unsafe, $checkId]) {
+            $report = (new DeploymentDoctor($this->config('production', array_merge(
+                $this->hardenedProductionConfig(),
+                $unsafe,
+            ))))->run();
+
+            $this->assertSame(DoctorCheckStatus::Fail, $this->check($report->checks, $checkId)->status);
+        }
+    }
+
+    public function test_production_rejects_non_positive_image_parser_timeouts(): void
+    {
+        foreach ([
+            ['image_parser.connect_timeout_seconds' => 0],
+            ['image_parser.timeout_seconds' => 0],
+        ] as $unsafe) {
+            $report = (new DeploymentDoctor($this->config('production', array_merge(
+                $this->hardenedProductionConfig(),
+                $unsafe,
+            ))))->run();
+
+            $this->assertFalse($report->passed());
+            $this->assertSame(DoctorCheckStatus::Fail, $this->check($report->checks, 'image_parser')->status);
+        }
+    }
+
+    public function test_production_fails_when_image_normalization_work_budgets_are_unsafe(): void
+    {
+        foreach ([
+            ['image_parser.user_pixel_budget_per_minute' => 16 * 1024 * 1024 - 1],
+            ['image_parser.user_pixel_budget_per_minute' => 64 * 1024 * 1024 + 1],
+            ['image_parser.installation_pixel_budget_per_minute' => 64 * 1024 * 1024 - 1],
+            ['image_parser.installation_pixel_budget_per_minute' => 256 * 1024 * 1024 + 1],
+        ] as $unsafe) {
+            $report = (new DeploymentDoctor($this->config('production', array_merge(
+                $this->hardenedProductionConfig(),
+                $unsafe,
+            ))))->run();
+
+            $this->assertSame(DoctorCheckStatus::Fail, $this->check($report->checks, 'image_parser')->status);
+        }
+    }
+
+    public function test_non_app_runtime_roles_skip_image_parser_configuration(): void
+    {
+        foreach (['artifact-host', 'worker', 'scheduler'] as $runtimeRole) {
+            $report = (new DeploymentDoctor($this->config('production', array_merge(
+                $this->hardenedProductionConfig(),
+                [
+                    'app.runtime_role' => $runtimeRole,
+                    'image_parser.url' => '',
+                    'image_parser.shared_secret' => '',
+                ],
+            ))))->run();
+
+            $this->assertSame(
+                DoctorCheckStatus::Skipped,
+                $this->check($report->checks, 'image_parser')->status,
+                $runtimeRole,
+            );
+            $this->assertTrue($report->passed(), $this->describeFailures($report->checks));
+        }
+    }
+
+    public function test_app_runtime_can_disable_image_artifacts_without_parser_credentials(): void
+    {
+        $report = (new DeploymentDoctor($this->config('production', array_merge(
+            $this->hardenedProductionConfig(),
+            [
+                'image_parser.enabled' => false,
+                'image_parser.url' => '',
+                'image_parser.shared_secret' => '',
+            ],
+        ))))->run();
+
+        $this->assertSame(DoctorCheckStatus::Skipped, $this->check($report->checks, 'image_parser')->status);
+        $this->assertTrue($report->passed(), $this->describeFailures($report->checks));
+    }
+
+    public function test_non_app_runtime_roles_fail_when_the_parser_secret_is_present(): void
+    {
+        foreach (['artifact-host', 'worker', 'scheduler'] as $runtimeRole) {
+            $report = (new DeploymentDoctor($this->config('production', array_merge(
+                $this->hardenedProductionConfig(),
+                ['app.runtime_role' => $runtimeRole],
+            ))))->run();
+
+            $this->assertSame(
+                DoctorCheckStatus::Fail,
+                $this->check($report->checks, 'image_parser')->status,
+                $runtimeRole,
+            );
+        }
+    }
+
     public function test_production_fails_when_artifact_storage_is_inside_the_public_web_root(): void
     {
         $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
@@ -270,7 +414,7 @@ final class DeploymentDoctorTest extends TestCase
         // the compose/example defaults even though they are non-placeholder 32+ byte
         // strings; the doctor must fail them too, or it grades green on a config the
         // production boot then aborts on -- the exact drift SecurityInvariants forbids.
-        foreach (['postgres', 'app_local_password', 'postgres_test_password'] as $published) {
+        foreach (['postgres', 'app_local_password', 'postgres_test_password', 'reverb-origin-smoke-secret'] as $published) {
             $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
                 'database.connections.pgsql.password' => $published,
             ]))))->run();
@@ -366,6 +510,27 @@ final class DeploymentDoctorTest extends TestCase
         $this->assertTrue($hardenedReverb->passed(), $this->describeFailures($hardenedReverb->checks));
     }
 
+    public function test_production_reverb_secret_must_be_dedicated_from_application_signing_keys(): void
+    {
+        foreach ([
+            'base64:' . base64_encode(str_repeat('a', 32)),
+            'base64:' . base64_encode(str_repeat('b', 32)),
+        ] as $reusedSecret) {
+            $configuration = $this->hardenedProductionConfig();
+            $configuration = array_merge($configuration, [
+                'broadcasting.default' => 'reverb',
+                'broadcasting.connections.reverb.secret' => $reusedSecret,
+                'app.reverb_url' => 'https://app.example.test',
+                'reverb.apps.apps.0.allowed_origins' => ['app.example.test'],
+                'reverb.apps.apps.0.rate_limiting.enabled' => true,
+                'reverb.apps.apps.0.max_connections' => 1000,
+            ]);
+            $report = (new DeploymentDoctor($this->config('production', $configuration)))->run();
+
+            $this->assertSame(DoctorCheckStatus::Fail, $this->check($report->checks, 'reverb')->status);
+        }
+    }
+
     public function test_production_fails_when_the_signing_key_is_a_repository_published_fixture(): void
     {
         // The boot gate (ensureDedicatedSigningKey) rejects the published e2e signing
@@ -412,6 +577,17 @@ final class DeploymentDoctorTest extends TestCase
         $this->assertStringContainsString('production HTTP request envelope', $check->detail);
     }
 
+    public function test_doctor_fails_when_image_writes_exceed_the_production_http_request_envelope(): void
+    {
+        $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
+            'pages.max_image_bytes' => 5 * 1024 * 1024 + 1,
+        ]))))->run();
+
+        $check = $this->check($report->checks, 'artifact_limits');
+        $this->assertSame(DoctorCheckStatus::Fail, $check->status);
+        $this->assertStringContainsString('Image write limit', $check->detail);
+    }
+
     public function test_doctor_fails_when_artifact_reads_cannot_serve_markdown_writes(): void
     {
         $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
@@ -444,6 +620,8 @@ final class DeploymentDoctorTest extends TestCase
             'origins_pure',        // production origins must be bare origins
             'app_key',             // ensureApplicationKey
             'signing_key',         // ensureDedicatedSigningKey
+            'image_parser',        // ensureImageParserConfiguration
+            'image_parser',        // ensureImageNormalizationBudgets
             'frame_ancestors',     // ensureArtifactFrameAncestors
             'artifact_limits',     // ensureArtifactReadLimitCanServeHtmlWrites
             'https_origins',       // productionOrigin HTTPS requirement
@@ -493,6 +671,8 @@ final class DeploymentDoctorTest extends TestCase
                 'ensureDebugDisabled',
                 'ensureDedicatedSigningKey',
                 'ensureDummyPasswordHashCost',
+                'ensureImageNormalizationBudgets',
+                'ensureImageParserConfiguration',
                 'ensureMailTransportIsDeliverable',
                 'ensureReverbConfiguration',
                 'ensureReverbMaxConnectionsBounded',
@@ -639,7 +819,15 @@ final class DeploymentDoctorTest extends TestCase
             'queue.connections.database.after_commit' => false,
             'pages.artifact_max_bytes' => 2_000_000,
             'pages.max_html_bytes' => 1_000_000,
+            'pages.max_image_bytes' => 1_000_000,
+            'pages.max_image_pixels' => 16 * 1024 * 1024,
             'pages.max_markdown_bytes' => 1_000_000,
+            'image_parser.url' => 'http://image-parser:8080',
+            'image_parser.shared_secret' => 'artifactflow-local-parser-secret-not-for-production',
+            'image_parser.connect_timeout_seconds' => 2,
+            'image_parser.timeout_seconds' => 12,
+            'image_parser.user_pixel_budget_per_minute' => 64 * 1024 * 1024,
+            'image_parser.installation_pixel_budget_per_minute' => 256 * 1024 * 1024,
             'database.default' => 'pgsql',
             'database.connections.pgsql.sslmode' => 'prefer',
             'database.connections.pgsql.sslrootcert' => '',
@@ -674,6 +862,8 @@ final class DeploymentDoctorTest extends TestCase
             'database.connections.pgsql.password' => 'app-local-strong-password',
             'database.connections.pgsql.sslmode' => 'verify-full',
             'database.connections.pgsql.sslrootcert' => '/etc/ssl/certs/ca-certificates.crt',
+            'image_parser.url' => 'http://image-parser.internal:8080',
+            'image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('p', 32)),
             'session.driver' => 'database',
             'session.secure' => true,
             'session.encrypt' => true,

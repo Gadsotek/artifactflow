@@ -8,7 +8,7 @@
                 <div>
                     <p class="af-eyebrow">Compose</p>
                     <h1 class="text-xl font-semibold text-zinc-950 dark:text-zinc-50">Create page</h1>
-                    <p class="af-page-intro">Write portable knowledge, paste an artifact, or upload a complete HTML file.</p>
+                    <p class="af-page-intro">Write portable knowledge, paste an artifact, or upload HTML and images.</p>
                 </div>
                 <a class="af-secondary-button" href="{{ route('pages.index') }}">Cancel</a>
             </div>
@@ -65,6 +65,7 @@
                             <select class="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950" name="type" required>
                                 <option value="{{ PageType::Markdown->value }}" @selected(old('type', PageType::Markdown->value) === PageType::Markdown->value)>Markdown page</option>
                                 <option value="{{ PageType::HtmlArtifact->value }}" @selected(old('type') === PageType::HtmlArtifact->value)>HTML artifact</option>
+                                <option value="{{ PageType::Image->value }}" @selected(old('type') === PageType::Image->value)>Image / screenshot</option>
                             </select>
                         </label>
 
@@ -74,6 +75,7 @@
                                 <option value="{{ PageCreationMode::Markdown->value }}" @selected(old('mode', PageCreationMode::Markdown->value) === PageCreationMode::Markdown->value)>Write Markdown</option>
                                 <option value="{{ PageCreationMode::HtmlPaste->value }}" @selected(old('mode') === PageCreationMode::HtmlPaste->value)>Paste HTML</option>
                                 <option value="{{ PageCreationMode::HtmlUpload->value }}" @selected(old('mode') === PageCreationMode::HtmlUpload->value)>Upload HTML file</option>
+                                <option value="{{ PageCreationMode::ImageUpload->value }}" @selected(old('mode') === PageCreationMode::ImageUpload->value)>Upload image</option>
                             </select>
                         </label>
                     </div>
@@ -181,6 +183,22 @@
                         <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="html_file" type="file" accept=".html,text/html">
                     </label>
                     @include('pages.partials.artifact-self-contained-hint')
+                </section>
+
+                <section class="space-y-5" data-create-page-image-upload-fields hidden>
+                    <div class="af-create-section-heading">
+                        <span>03</span>
+                        <div>
+                            <h2>Upload image</h2>
+                            <p>The upload is decoded and re-encoded before it becomes the authoritative artifact.</p>
+                        </div>
+                    </div>
+
+                    <label class="af-file-drop block">
+                        <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">PNG or JPEG image</span>
+                        <span class="mt-1 block text-xs text-zinc-500">Metadata and non-pixel payloads are discarded. The normalized image is previewed only on the isolated artifact origin.</span>
+                        <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="image_file" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg">
+                    </label>
                 </section>
 
                 <section class="space-y-5" data-create-page-content-fields>

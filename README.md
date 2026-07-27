@@ -25,7 +25,7 @@ ArtifactFlow is **the missing artifact layer between AI chat and production**. I
 
 > **Preserves the output, not the conversation.** ArtifactFlow is not agent memory, a vector database, a chat archive, an AI generator, or a static site generator. Agents and people preserve artifacts in the vault; teams search, preview, run, update, and govern them.
 
-The current public alpha supports Markdown pages, Mermaid diagrams, and self-contained HTML artifacts. Searchable PDF and Word document artifacts are the next product focus; see the [roadmap](ROADMAP.md).
+The current public alpha supports Markdown pages, Mermaid diagrams, self-contained HTML artifacts, and normalized PNG/JPEG screenshots or images. Searchable PDF and Word document artifacts are the next product focus; see the [roadmap](ROADMAP.md).
 
 ![ArtifactFlow dashboard](site/assets/app-dashboard.jpg)
 
@@ -46,20 +46,21 @@ The artifact's JavaScript really *runs*, but in an opaque origin with no cookies
 
 **🔒 Safe artifact rendering**
 - Single‑file HTML artifacts execute only from the isolated, cookieless artifact origin behind sandboxed iframes; saved artifacts are reached through renewable signed short‑lived URLs, and pre‑save drafts through authenticated, content-bound short-lived capabilities. There is no expiry timer or parent-window reload: when a prototype self‑reload encounters an expired saved URL, the authenticated parent renews and restores only the iframe.
+- PNG/JPEG uploads are sent over an authenticated private network to a dedicated, resource-capped decoder container with no application source, database, artifact storage, or outbound network. It decodes under byte, dimension, and pixel limits and returns only a signed, re-encoded derivative, stripping EXIF/GPS, comments, profiles, and appended payloads. The original upload is discarded. The normalized pixels render from the artifact origin in a scriptless sandboxed iframe with a fixed application-owned viewer.
 - Paste‑or‑upload preview in an opaque, network-restricted sandbox *before* saving.
 - Artifacts must be a **single self‑contained HTML file**: CSP and defense-in-depth guards block ordinary external subresources and connection APIs, so CDN‑linked dependencies (React, Tailwind, Chart.js…) will not load. Script-initiated top-level navigation cannot be fully prevented, and WebRTC blocking is browser-dependent; the opaque origin still keeps app cookies and tenant data out of reach. Ask your AI to inline everything into one file. This is a deliberate boundary, not a limitation to work around; [the threat model documents the residuals and browser boundary](THREAT-MODEL.md).
 - Best‑effort secret‑blocking on save (credentials, private keys, JWTs, provider tokens) without persisting matched values; suspicious JS patterns are recorded as advisory findings. Scanning is advisory and bypassable by light obfuscation — a clean scan is not proof no secret was stored; isolation is the boundary.
 
 **📦 Versioned artifact vault**
-- Markdown/wiki pages with a rich editor over portable Markdown source, inline Mermaid diagrams (strict, no external calls), and authorization‑aware `[[Page Name]]` wiki links. Markdown and HTML are the current artifact types within the vault; neither format defines the product category. The rich editor is a convenience over the **authoritative portable Markdown source**; switch to source view for byte‑exact control.
+- Markdown/wiki pages with a rich editor over portable Markdown source, inline Mermaid diagrams (strict, no external calls), and authorization‑aware `[[Page Name]]` wiki links. Markdown, HTML, and normalized raster images are the current artifact types within the vault; none defines the product category. The rich editor is a convenience over the **authoritative portable Markdown source**; switch to source view for byte‑exact control.
 - Immutable, retention‑capped versioning (oldest pruned past a configurable limit) with historical previews, source diffs against the current version, restore, archive/unarchive, and Admin‑only hard delete. Historical HTML stays on the isolated artifact origin under the same opaque sandbox as the current preview.
-- Weighted PostgreSQL full‑text search across metadata, tags, and extracted content, including text inside artifact source.
+- Weighted PostgreSQL full‑text search across metadata, tags, and extracted content, including text inside Markdown/HTML source. Image pixels are deliberately not OCRed; image artifacts are found through title, description, category, tags, owner, status, and type.
 - Installation-wide tags stay consistent across workspaces; categories remain workspace-local, can be created while saving a page, and are qualified by workspace in cross-workspace filters. Moving a page reuses or creates its category in the target workspace, and the Library can create and open a new shared workspace directly.
 - Personal + shared workspaces, Reader/Editor/Admin roles, and per‑page permission overrides that never leak restricted titles or UIDs. System Admin is an installation/account role, not a content superuser: page and workspace access still requires normal membership or an explicit page grant.
 - An installation-wide coworker directory makes registered human users (including System Admins) discoverable by name, email, and UID to other authenticated humans. Those fields identify people but confer no authority: every page grant and workspace membership change is independently authorized server-side, and automation service accounts are excluded from human pickers. Explicit page Reader and Editor grants can be given without workspace membership; page Admin grants remain limited to members of the page workspace.
 
 **🤖 First-class MCP interface**
-- An [MCP](https://modelcontextprotocol.io) server using the official Laravel MCP transport (app‑origin only) lets approved AI clients `list_workspaces` / `list_taxonomy` / `search` / `read` / `create` / `create_category` / `create_tag` / `update` / `revert`, through the *same* handlers, policies, scanners, optimistic‑concurrency checks, and audit trail as humans. Page creation accepts category and tag names inline; standalone taxonomy writes require live Editor access in an in-scope workspace. Taxonomy discovery returns only searchable tags and workspace-qualified categories the token can reach, with all user-authored labels and slugs in explicit untrusted-data envelopes. Page search/read results include visibility-filtered parent, ancestor path, depth, and direct-child count metadata; inaccessible relatives remain undisclosed.
+- An [MCP](https://modelcontextprotocol.io) server using the official Laravel MCP transport (app‑origin only) lets approved AI clients `list_workspaces` / `list_taxonomy` / `search` / `read` / `create` / `create_category` / `create_tag` / `update` / `update_description` / `revert`, through the *same* handlers, policies, scanners, optimistic‑concurrency checks, and audit trail as humans. Image reads return normalized derivatives up to 5 MiB as a standard MCP image content block plus a machine-readable searchability hint; larger retained derivatives remain available through the browser preview but fail MCP read with `content_too_large` before their bytes are loaded or base64-expanded. Because pixels are not OCR-indexed, a missing description recommends `update_description`. The AI is instructed to describe only visible content, and the user can edit or clear that description without granting the AI authority to rewrite the title, owner, hierarchy, or taxonomy. Page creation accepts category and tag names inline; standalone taxonomy writes require live Editor access in an in-scope workspace. Taxonomy discovery returns only searchable tags and workspace-qualified categories the token can reach, with all user-authored labels and slugs in explicit untrusted-data envelopes. Page search/read results include visibility-filtered parent, ancestor path, depth, and direct-child count metadata; inaccessible relatives remain undisclosed.
 - MCP tokens can be read-only or read-write, scoped to selected workspaces, hard-capped to Editor authority (admin power stripped at code level), and receive content as explicit *untrusted-data envelopes*, never a shortcut around permissions.
 
 **🛡️ Account & operational security**
@@ -79,7 +80,7 @@ Targets **PHP 8.5, Laravel 13, PostgreSQL, Caddy, FrankenPHP**. Local dev runs t
 **Step 1 — bring the stack up.** This one is on you: the install wizard runs *inside* the app container and needs the database reachable, so it cannot start Docker for you. Running it against a stopped stack fails with a `could not translate host name "db"` error.
 
 ```sh
-make up            # boots the stack; scaffolds .env and a local signing key
+make up            # boots the stack; scaffolds .env and local signing/parser secrets
 # or: make up-local — same, plus edge proxy, Adminer, and Mailpit
 ```
 
@@ -92,7 +93,7 @@ make shell
 php artisan artifactflow:install
 ```
 
-The wizard asks which environment you're setting up; choose **local** for this stack. It generates any missing application and artifact signing keys, runs migrations, prompts for your first System Admin, and can add starter demo content (a Mermaid Markdown page plus an interactive HTML artifact). Then sign in at `http://localhost:18080/login`.
+The wizard asks which environment you're setting up; choose **local** for this stack. It generates any missing application key, artifact signing key, and image-parser shared secret, runs migrations, prompts for your first System Admin, and can add starter demo content (a Mermaid Markdown page plus an interactive HTML artifact). Then sign in at `http://localhost:18080/login`.
 
 For an existing installation whose keys and administrator are already provisioned, `make migrate` is the complete schema-upgrade step. A manually provisioned fresh database also needs a System Admin; use the password-safe `artifactflow:bootstrap-admin` procedure in the [operations guide](docs/OPERATIONS.md#first-user-setup). The setup response clears on the first request after every migration file is recorded.
 
@@ -132,7 +133,7 @@ The full topology, runtime-role, TLS, proxy, database, storage, mail, and backup
 
 Isolation is the execution boundary; everything else is defense in depth. Highlights:
 
-- Untrusted inputs: HTML, Markdown, Mermaid, filenames, metadata, and search queries.
+- Untrusted inputs: HTML, Markdown, Mermaid, raster image bytes, filenames, metadata, and search queries.
 - Artifacts render only from the isolated origin behind sandboxed iframes, strict CSP, and no app cookies; saved artifacts require signed short‑lived URLs, while draft previews require an authenticated Editor to obtain a short‑lived capability bound to the exact content before the cookieless artifact endpoint will render it.
 - Production boot fails closed on overlapping app/artifact origins, a missing/reused signing key, mismatched frame‑ancestors, public artifact storage, an absent admin‑bootstrap path, or a misconfigured realtime secret.
 - TOTP secrets are `APP_KEY`‑encrypted at rest; recovery codes are one‑way hashes; trusted‑device cookies carry only opaque tokens.

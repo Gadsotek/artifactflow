@@ -6,6 +6,8 @@ namespace App\Application\Mcp;
 
 use App\Application\PageCatalog\RevertToPreviousVersion;
 use App\Application\PageCatalog\RevertToPreviousVersionCommand;
+use App\Domain\DomainRuleViolation;
+use App\Domain\PageCatalog\PageType;
 use App\Models\Page;
 use App\Models\User;
 
@@ -33,6 +35,12 @@ final readonly class McpRevertTool
         }
 
         return $this->errors->guard(function () use ($actor, $arguments, $page): McpToolResult {
+            if ($page->type === PageType::Image) {
+                throw new DomainRuleViolation(
+                    'Image content must be replaced through an authenticated PNG/JPEG upload.',
+                );
+            }
+
             $result = $this->revertToPreviousVersion->handle($actor, new RevertToPreviousVersionCommand(
                 pageUid: $page->uid,
                 baseVersionUid: $arguments->requiredString('base_version_uid'),

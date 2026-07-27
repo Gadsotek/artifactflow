@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Infrastructure;
 
-use App\Infrastructure\Security\SecurityInvariants;
 use Tests\TestCase;
 
 final class E2eIsolationConfigurationTest extends TestCase
@@ -55,20 +54,23 @@ final class E2eIsolationConfigurationTest extends TestCase
     {
         $compose = $this->readProjectFile('docker-compose.yml');
 
-        // verify-reverb-origin boots the reverb worker with APP_ENV=production, so the
-        // audit boot gate rejects the app_local_password dev fixture the shared anchor
-        // feeds from .env. A dedicated variable (unset everywhere) keeps .env's DB_PASSWORD
-        // from shadowing the default; prove that default clears the gate's password checks.
-        $matched = preg_match(
-            '/DB_PASSWORD: \$\{REVERB_SMOKE_DB_PASSWORD:-(?<value>[^}]+)\}/',
+        $this->assertStringContainsString(
+            'DB_PASSWORD: ${REVERB_SMOKE_DB_PASSWORD:-${REVERB_APP_SECRET:-}}',
             $compose,
-            $matches,
         );
+        $this->assertStringNotContainsString('reverb-smoke-${REVERB_APP_SECRET}', $compose);
+        $this->assertStringNotContainsString('reverb-origin-smoke-secret', $compose);
+    }
 
-        $this->assertSame(1, $matched, 'Reverb service must set a dedicated smoke DB password.');
-        $password = $matches['value'];
-        $this->assertTrue(SecurityInvariants::databasePasswordIsAcceptable($password));
-        $this->assertFalse(SecurityInvariants::databasePasswordIsPublishedFixture($password));
+    public function test_reverb_worker_does_not_receive_image_parser_credentials(): void
+    {
+        $compose = $this->readProjectFile('docker-compose.yml');
+        $matched = preg_match('/\n  reverb:(?<block>.*?)\n  vite:/s', $compose, $matches);
+
+        $this->assertSame(1, $matched);
+        $reverb = $matches['block'];
+        $this->assertStringContainsString('IMAGE_PARSER_URL: ""', $reverb);
+        $this->assertStringContainsString('IMAGE_PARSER_SHARED_SECRET: ""', $reverb);
     }
 
     public function test_app_can_override_the_vite_hot_file_for_isolated_runtimes(): void

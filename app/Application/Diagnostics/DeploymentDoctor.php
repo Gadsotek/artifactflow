@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace App\Application\Diagnostics;
 
 use App\Application\Administration\InstallationLimitCeilings;
+use App\Application\PageCatalog\ImageArtifactLimits;
+use App\Application\PageCatalog\ImageNormalizationConfiguration;
+use App\Application\PageCatalog\ImageParserTimeouts;
 use App\Infrastructure\Security\OriginNormalizer;
+use App\Infrastructure\Security\PreviousApplicationKeyConfiguration;
 use App\Infrastructure\Security\ProductionSecurityConfiguration;
 use App\Infrastructure\Security\SecretStrength;
 use App\Infrastructure\Security\SecurityInvariants;
@@ -36,6 +40,7 @@ final readonly class DeploymentDoctor
             $this->hostPortsCheck($production),
             $this->applicationKeyCheck(),
             $this->dedicatedSigningKeyCheck(),
+            $this->imageParserCheck($production),
             $this->artifactFrameAncestorsCheck(),
             $this->artifactReadLimitCheck(),
             $this->httpsOriginsCheck($production),
@@ -86,6 +91,132 @@ final readonly class DeploymentDoctor
         }
 
         return $this->pass('cache_store', 'Cache store', sprintf("Rate limiter cache store is '%s'.", $label));
+    }
+
+    private function imageParserCheck(bool $production): DoctorCheck
+    {
+        $runtimeRole = $this->string('app.runtime_role');
+
+        if ($runtimeRole !== 'app') {
+            if ($production && $this->string('image_parser.shared_secret') !== '') {
+                return $this->fail(
+                    'image_parser',
+                    'Image parser isolation',
+                    'IMAGE_PARSER_SHARED_SECRET must not be available to non-app runtime roles.',
+                );
+            }
+
+            return $this->skipped(
+                'image_parser',
+                'Image parser isolation',
+                sprintf("Runtime role '%s' does not accept image writes and must not receive parser credentials.", $runtimeRole),
+            );
+        }
+
+        $enabled = $this->config->get('image_parser.enabled', true);
+
+        if (!is_bool($enabled)) {
+            return $this->fail(
+                'image_parser',
+                'Image parser isolation',
+                'IMAGE_PARSER_ENABLED must be true or false.',
+            );
+        }
+
+        if (!$enabled) {
+            return $this->string('image_parser.shared_secret') === ''
+                ? $this->skipped(
+                    'image_parser',
+                    'Image parser isolation',
+                    'Image artifacts are disabled and no parser credential is configured.',
+                )
+                : $this->fail(
+                    'image_parser',
+                    'Image parser isolation',
+                    'IMAGE_PARSER_SHARED_SECRET must be absent when image artifacts are disabled.',
+                );
+        }
+
+        $origin = OriginNormalizer::tryParsePureOrigin($this->string('image_parser.url'));
+        $configured = $this->string('image_parser.shared_secret');
+
+        if (!$production) {
+            return $origin === null
+                ? $this->warn('image_parser', 'Image parser isolation', 'IMAGE_PARSER_URL is not a pure HTTP or HTTPS origin.')
+                : $this->skipped('image_parser', 'Image parser isolation', 'Production additionally requires a strong dedicated shared secret.');
+        }
+
+        if ($origin === null) {
+            return $this->fail('image_parser', 'Image parser isolation', 'IMAGE_PARSER_URL must be a pure HTTP or HTTPS origin.');
+        }
+
+        $secret = SecretStrength::normalized($configured);
+        $applicationSecret = SecretStrength::normalized($this->string('app.key'));
+        $signingSecret = SecretStrength::normalized($this->string('app.artifact_url_signing_key'));
+        $previousApplicationSecrets = $this->previousApplicationSecrets();
+
+        if ($previousApplicationSecrets === null) {
+            return $this->fail(
+                'image_parser',
+                'Image parser isolation',
+                'APP_PREVIOUS_KEYS must be valid before parser secret isolation can be verified.',
+            );
+        }
+
+        $comparisonSecrets = [$applicationSecret ?? '', ...$previousApplicationSecrets];
+
+        if ($signingSecret !== null) {
+            $comparisonSecrets[] = $signingSecret;
+        }
+
+        $dedicated = $secret !== null
+            && !SecurityInvariants::secretReusesAny($secret, $comparisonSecrets);
+
+        if (!SecretStrength::isProductionSafe($configured) || !$dedicated) {
+            return $this->fail(
+                'image_parser',
+                'Image parser isolation',
+                'IMAGE_PARSER_SHARED_SECRET must be a strong dedicated secret.',
+            );
+        }
+
+        if (ImageParserTimeouts::tryFrom(
+            $this->config->get('image_parser.connect_timeout_seconds'),
+            $this->config->get('image_parser.timeout_seconds'),
+        ) === null) {
+            return $this->fail(
+                'image_parser',
+                'Image parser isolation',
+                'IMAGE_PARSER_CONNECT_TIMEOUT_SECONDS and IMAGE_PARSER_TIMEOUT_SECONDS must be positive integers.',
+            );
+        }
+
+        $maxUploadPixels = $this->positiveInt('pages.max_image_pixels');
+        $userBudget = $this->positiveInt('image_parser.user_pixel_budget_per_minute');
+        $installationBudget = $this->positiveInt('image_parser.installation_pixel_budget_per_minute');
+
+        if (
+            $maxUploadPixels === null
+            || $userBudget === null
+            || $installationBudget === null
+            || !ImageNormalizationConfiguration::budgetsAreSafe(
+                min($maxUploadPixels, ImageArtifactLimits::MAX_UPLOAD_PIXELS),
+                $userBudget,
+                $installationBudget,
+            )
+        ) {
+            return $this->fail(
+                'image_parser',
+                'Image parser isolation',
+                'Image normalization pixel budgets must allow one upload and remain within the supported per-minute ceilings.',
+            );
+        }
+
+        return $this->pass(
+            'image_parser',
+            'Image parser isolation',
+            sprintf('Parser origin is %s with dedicated authentication and bounded work budgets.', $origin->compact()),
+        );
     }
 
     /**
@@ -254,8 +385,30 @@ final readonly class DeploymentDoctor
             return $this->skipped('reverb', 'Reverb realtime', 'Local Reverb defaults apply; production requires a strong secret, matching origins, and rate limiting.');
         }
 
-        if (!SecretStrength::isStrong($this->string('broadcasting.connections.reverb.secret'))) {
+        $configuredSecret = $this->string('broadcasting.connections.reverb.secret');
+
+        if (!SecretStrength::isProductionSafe($configuredSecret)) {
             return $this->fail('reverb', 'Reverb realtime', 'Reverb app secret must be a strong, non-placeholder 32-byte secret.');
+        }
+
+        $reverbSecret = $this->normalizedSecret($configuredSecret);
+        $applicationSecret = $this->normalizedSecret($this->string('app.key'));
+        $signingSecret = $this->normalizedSecret($this->string('app.artifact_url_signing_key'));
+        $comparisonSecrets = $this->previousApplicationSecrets() ?? [];
+
+        if ($applicationSecret !== null) {
+            $comparisonSecrets[] = $applicationSecret;
+        }
+
+        if ($signingSecret !== null) {
+            $comparisonSecrets[] = $signingSecret;
+        }
+
+        if (
+            $reverbSecret !== null
+            && SecurityInvariants::secretReusesAny($reverbSecret, $comparisonSecrets)
+        ) {
+            return $this->fail('reverb', 'Reverb realtime', 'REVERB_APP_SECRET must be dedicated and different from application signing keys.');
         }
 
         $applicationOrigin = $this->origin($this->string('app.url'));
@@ -299,7 +452,7 @@ final readonly class DeploymentDoctor
             return $this->fail('reverb', 'Reverb realtime', 'Reverb max connections must be bounded in production.');
         }
 
-        return $this->pass('reverb', 'Reverb realtime', 'Reverb secret, origins, rate limiting, and connection bound are hardened.');
+        return $this->pass('reverb', 'Reverb realtime', 'Reverb dedicated secret, origins, rate limiting, and connection bound are hardened.');
     }
 
     private function bootstrapCommandCheck(bool $production): DoctorCheck
@@ -437,16 +590,32 @@ final readonly class DeploymentDoctor
 
     private function applicationKeyCheck(): DoctorCheck
     {
-        if ($this->isValidSecret($this->string('app.key'))) {
-            return $this->pass('app_key', 'Application key', 'APP_KEY is a strong, non-placeholder secret.');
+        if (!$this->isValidSecret($this->string('app.key'))) {
+            return $this->fail('app_key', 'Application key', 'Generate a strong APP_KEY (php artisan key:generate).');
         }
 
-        return $this->fail('app_key', 'Application key', 'Generate a strong APP_KEY (php artisan key:generate).');
+        if ($this->previousApplicationSecrets() === null) {
+            return $this->fail(
+                'app_key',
+                'Application key',
+                'APP_PREVIOUS_KEYS must contain only strong, non-placeholder application keys.',
+            );
+        }
+
+        return $this->pass('app_key', 'Application key', 'APP_KEY and APP_PREVIOUS_KEYS are valid secrets.');
     }
 
     private function dedicatedSigningKeyCheck(): DoctorCheck
     {
         $signingKey = $this->string('app.artifact_url_signing_key');
+
+        if (SecretStrength::isPublishedSigningKeyFixture($signingKey)) {
+            return $this->fail(
+                'signing_key',
+                'Artifact signing key',
+                'ARTIFACT_URL_SIGNING_KEY must not be a repository-published test key.',
+            );
+        }
 
         if (!$this->isValidSecret($signingKey)) {
             return $this->fail(
@@ -456,24 +625,22 @@ final readonly class DeploymentDoctor
             );
         }
 
-        // isStrong() blesses the repository's published e2e signing key (a valid
-        // 32-byte string), but the boot gate rejects it outright. Grade it as a
-        // failure too rather than pass on a key the production boot aborts on.
-        if (SecretStrength::isPublishedSigningKeyFixture($signingKey)) {
+        $appSecret = $this->normalizedSecret($this->string('app.key'));
+        $signingSecret = $this->normalizedSecret($signingKey);
+        $previousApplicationSecrets = $this->previousApplicationSecrets();
+
+        if ($previousApplicationSecrets === null) {
             return $this->fail(
                 'signing_key',
                 'Artifact signing key',
-                'ARTIFACT_URL_SIGNING_KEY must not be a repository-published test key.',
+                'APP_PREVIOUS_KEYS must be valid before signing-key dedication can be verified.',
             );
         }
-
-        $appSecret = $this->normalizedSecret($this->string('app.key'));
-        $signingSecret = $this->normalizedSecret($signingKey);
 
         if ($signingSecret !== null && SecurityInvariants::signingKeyReusesApplicationKey(
             $signingSecret,
             $appSecret ?? '',
-            $this->previousApplicationSecrets(),
+            $previousApplicationSecrets,
         )) {
             return $this->fail(
                 'signing_key',
@@ -490,31 +657,13 @@ final readonly class DeploymentDoctor
      * matches any of these is as compromised as one matching the live APP_KEY,
      * so the preflight grades them together with the boot gate.
      *
-     * @return list<string>
+     * @return list<string>|null
      */
-    private function previousApplicationSecrets(): array
+    private function previousApplicationSecrets(): ?array
     {
-        $keys = $this->config->get('app.previous_keys', []);
-
-        if (!is_array($keys)) {
-            return [];
-        }
-
-        $secrets = [];
-
-        foreach ($keys as $key) {
-            if (!is_string($key)) {
-                continue;
-            }
-
-            $normalized = $this->normalizedSecret(trim($key));
-
-            if ($normalized !== null && $normalized !== '') {
-                $secrets[] = $normalized;
-            }
-        }
-
-        return $secrets;
+        return PreviousApplicationKeyConfiguration::normalizedKeys(
+            $this->config->get('app.previous_keys', []),
+        );
     }
 
     private function artifactFrameAncestorsCheck(): DoctorCheck
@@ -539,9 +688,10 @@ final readonly class DeploymentDoctor
         $read = $this->positiveInt('pages.artifact_max_bytes');
         $write = $this->positiveInt('pages.max_html_bytes');
         $markdownWrite = $this->positiveInt('pages.max_markdown_bytes');
+        $imageWrite = $this->positiveInt('pages.max_image_bytes');
 
-        if ($read === null || $write === null || $markdownWrite === null) {
-            return $this->fail('artifact_limits', 'Artifact size limits', 'Artifact, HTML, and Markdown byte limits must be positive integers.');
+        if ($read === null || $write === null || $markdownWrite === null || $imageWrite === null) {
+            return $this->fail('artifact_limits', 'Artifact size limits', 'Artifact, HTML, Markdown, and image byte limits must be positive integers.');
         }
 
         if ($write > InstallationLimitCeilings::CONTENT_BYTES) {
@@ -560,7 +710,15 @@ final readonly class DeploymentDoctor
             );
         }
 
-        $largestWrite = max($write, $markdownWrite);
+        if ($imageWrite > InstallationLimitCeilings::CONTENT_BYTES) {
+            return $this->fail(
+                'artifact_limits',
+                'Artifact size limits',
+                'Image write limit must not exceed the production HTTP request envelope.',
+            );
+        }
+
+        $largestWrite = max($write, $markdownWrite, $imageWrite);
 
         if ($read < $largestWrite) {
             return $this->fail(
@@ -792,7 +950,7 @@ final readonly class DeploymentDoctor
 
     private function isValidSecret(string $secret): bool
     {
-        return SecretStrength::isStrong($secret);
+        return SecretStrength::isProductionSafe($secret);
     }
 
     private function normalizedSecret(string $secret): ?string

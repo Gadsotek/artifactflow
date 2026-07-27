@@ -8,6 +8,7 @@ use App\Application\PageCatalog\ArtifactPreviewDocumentGuard;
 use App\Infrastructure\Security\OriginNormalizer;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Canonical builder for the sandboxed artifact-host HTML response. Both the
@@ -32,8 +33,38 @@ final readonly class ArtifactSandboxResponder
         return response(
             $this->documentGuard->harden($html, $recoveryEnabled),
             200,
-            $this->securityHeaders(),
+            $this->securityHeaders($this->contentSecurityPolicy()),
         );
+    }
+
+    /**
+     * Fixed scriptless viewer for normalized raster images. The uploaded bytes
+     * are data, never markup: they are embedded only as a base64 data URL after
+     * the write path has decoded and re-encoded the image.
+     */
+    public function imageDocument(string $bytes, string $mediaType): StreamedResponse
+    {
+        return response()->stream(static function () use ($bytes, $mediaType): void {
+            echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+                . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+                . '<title>Image preview</title>'
+                . '<style>html,body{min-height:100%;margin:0;background:#fff}body{display:grid;place-items:center}'
+                . 'img{display:block;max-width:100%;height:auto;object-fit:contain}</style></head>'
+                . '<body><img data-artifactflow-image-preview src="data:'
+                . $mediaType
+                . ';base64,';
+
+            // Keep the chunk size divisible by three so each independently
+            // encoded segment can be concatenated into one valid data URL.
+            $chunkBytes = 12 * 1024;
+            $byteLength = strlen($bytes);
+
+            for ($offset = 0; $offset < $byteLength; $offset += $chunkBytes) {
+                echo base64_encode(substr($bytes, $offset, $chunkBytes));
+            }
+
+            echo '" alt=""></body></html>';
+        }, 200, $this->securityHeaders($this->imageContentSecurityPolicy()));
     }
 
     /**
@@ -78,17 +109,18 @@ final readonly class ArtifactSandboxResponder
             'Referrer-Policy' => 'no-referrer',
             'Vary' => 'Sec-Fetch-Dest',
             'X-Content-Type-Options' => 'nosniff',
+            'X-DNS-Prefetch-Control' => 'off',
         ]);
     }
 
     /**
      * @return array<string, string>
      */
-    private function securityHeaders(): array
+    private function securityHeaders(string $contentSecurityPolicy): array
     {
         return [
             'Cache-Control' => 'no-store, private',
-            'Content-Security-Policy' => $this->contentSecurityPolicy(),
+            'Content-Security-Policy' => $contentSecurityPolicy,
             'Content-Type' => 'text/html; charset=UTF-8',
             'Permissions-Policy' => 'camera=(), microphone=(), geolocation=(), payment=()',
             'Referrer-Policy' => 'no-referrer',
@@ -98,19 +130,45 @@ final readonly class ArtifactSandboxResponder
             'Strict-Transport-Security' => 'max-age=63072000',
             'Vary' => 'Sec-Fetch-Dest',
             'X-Content-Type-Options' => 'nosniff',
+            // CSP does not reliably govern dns-prefetch/preconnect across engines.
+            // This response policy is an independent layer over the synchronous
+            // dynamic-DOM sink hardening in the injected preview guard.
+            'X-DNS-Prefetch-Control' => 'off',
         ];
+    }
+
+    private function imageContentSecurityPolicy(): string
+    {
+        return implode('; ', $this->contentSecurityPolicyDirectives([
+            'sandbox',
+            "script-src 'none'",
+            "style-src 'unsafe-inline'",
+            'img-src data:',
+        ]));
     }
 
     private function contentSecurityPolicy(): string
     {
-        return implode('; ', [
-            "default-src 'none'",
+        return implode('; ', $this->contentSecurityPolicyDirectives([
             'sandbox allow-scripts',
             "script-src 'unsafe-inline'",
             "style-src 'unsafe-inline'",
             'img-src data: blob:',
             'font-src data:',
             'media-src data: blob:',
+        ]));
+    }
+
+    /**
+     * @param list<string> $artifactDirectives
+     *
+     * @return list<string>
+     */
+    private function contentSecurityPolicyDirectives(array $artifactDirectives): array
+    {
+        return [
+            "default-src 'none'",
+            ...$artifactDirectives,
             "connect-src 'none'",
             "object-src 'none'",
             "base-uri 'none'",
@@ -119,9 +177,12 @@ final readonly class ArtifactSandboxResponder
             "fenced-frame-src 'none'",
             "child-src 'none'",
             "worker-src 'none'",
+            // Best-effort for Firefox only. Chromium and WebKit ignore this
+            // directive, so it must never be credited as a cross-engine barrier;
+            // response rewriting prevents an unpatched nested realm from existing.
             "webrtc 'block'",
             'frame-ancestors ' . $this->frameAncestors(),
-        ]);
+        ];
     }
 
     private function frameAncestors(): string

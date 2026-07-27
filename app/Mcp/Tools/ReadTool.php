@@ -18,7 +18,7 @@ use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('read')]
-#[Description('Read one reachable page as explicitly untrusted data, including visibility-filtered hierarchy metadata.')]
+#[Description('Read one reachable page as explicitly untrusted data, including visibility-filtered hierarchy metadata. Image reads report whether the searchable description is missing.')]
 #[IsReadOnly]
 final class ReadTool extends ArtifactFlowTool
 {
@@ -41,7 +41,7 @@ final class ReadTool extends ArtifactFlowTool
         ];
     }
 
-    public function handle(Request $request): Response
+    public function handle(Request $request): Response|\Laravel\Mcp\ResponseFactory
     {
         return $this->invoke(
             $request,

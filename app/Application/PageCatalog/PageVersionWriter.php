@@ -11,19 +11,18 @@ use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\PageCatalog\PageContentEncoding;
 use App\Domain\PageCatalog\PageSecurityScanStatus;
-use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PageVersionSource;
 use App\Models\Page;
 use App\Models\PageVersion;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use LogicException;
 use RuntimeException;
 use Throwable;
 
 final readonly class PageVersionWriter
 {
     public function __construct(
-        private PageTextExtractor $textExtractor,
         private DomainEventRecorder $events,
         private AuditLogger $audit,
         private McpRequestContext $mcpContext,
@@ -33,15 +32,13 @@ final readonly class PageVersionWriter
 
     public function writeInitialVersion(
         Page $page,
-        string $content,
-        ContentSecurityScan $scan,
+        PreparedPageContent $prepared,
         PageVersionSource $source,
         string $actorUid,
     ): PageVersion {
         return $this->write(
             page: $page,
-            content: $content,
-            scan: $scan,
+            prepared: $prepared,
             source: $source,
             actorUid: $actorUid,
             versionNumber: 1,
@@ -51,15 +48,13 @@ final readonly class PageVersionWriter
 
     public function appendVersion(
         Page $page,
-        string $content,
-        ContentSecurityScan $scan,
+        PreparedPageContent $prepared,
         PageVersionSource $source,
         string $actorUid,
     ): PageVersion {
         return $this->write(
             page: $page,
-            content: $content,
-            scan: $scan,
+            prepared: $prepared,
             source: $source,
             actorUid: $actorUid,
             versionNumber: $this->nextVersionNumber($page),
@@ -69,24 +64,30 @@ final readonly class PageVersionWriter
 
     private function write(
         Page $page,
-        string $content,
-        ContentSecurityScan $scan,
+        PreparedPageContent $prepared,
         PageVersionSource $source,
         string $actorUid,
         int $versionNumber,
         string $failureMessage,
     ): PageVersion {
+        $content = $prepared->content;
+        $scan = $prepared->scan;
         // Last-line guard shared by every write path (editor, upload, MCP): the
         // derived source_text/extracted_text columns are PostgreSQL text and
         // cannot hold a NUL byte or malformed UTF-8. HTTP requests are screened
         // earlier for a field-level 422; this backstop keeps the MCP path and any
         // future caller from turning bad bytes into a 500 mid-transaction.
-        if (!PageContentEncoding::isStorable($content)) {
+        if ($prepared->textProjection->sourceText !== null && !PageContentEncoding::isStorable($content)) {
             throw new DomainRuleViolation('Page content must be valid UTF-8 text without control characters.');
         }
 
         $versionUid = (string) Str::ulid();
-        $storagePath = $this->storagePath($page, $page->type, $versionNumber, $versionUid);
+        $storagePath = $this->storagePath(
+            $page,
+            $versionNumber,
+            $versionUid,
+            $prepared->storageFilename,
+        );
 
         if (Storage::disk('artifacts')->put($storagePath, $content) === false) {
             Storage::disk('artifacts')->delete($storagePath);
@@ -111,16 +112,8 @@ final readonly class PageVersionWriter
                 // Cap at write like source_text: search only indexes and snippets the
                 // first MAX_EXTRACTED_TEXT_SEARCH_CHARACTERS, so persisting more is dead
                 // weight that TOAST-bloats the row.
-                'extracted_text' => mb_substr(
-                    $this->textExtractor->extract($page->type, $content),
-                    0,
-                    PageSearchVectorUpdater::MAX_EXTRACTED_TEXT_SEARCH_CHARACTERS,
-                ),
-                'source_text' => mb_substr(
-                    $this->textExtractor->extractSource($page->type, $content),
-                    0,
-                    PageSearchVectorUpdater::MAX_EXTRACTED_TEXT_SEARCH_CHARACTERS,
-                ),
+                'extracted_text' => $this->cappedText($prepared->textProjection->extractedText),
+                'source_text' => $this->cappedText($prepared->textProjection->sourceText),
             ]);
 
             $this->storageQuota->recordBytesStored($page->workspace_uid, strlen($content));
@@ -169,18 +162,38 @@ final readonly class PageVersionWriter
         return 1;
     }
 
-    private function storagePath(Page $page, PageType $type, int $versionNumber, string $versionUid): string
-    {
-        $extension = $type === PageType::HtmlArtifact ? 'html' : 'md';
-        $filename = $type === PageType::HtmlArtifact ? 'index' : 'source';
+    private function storagePath(
+        Page $page,
+        int $versionNumber,
+        string $versionUid,
+        string $storageFilename,
+    ): string {
+        if (
+            preg_match('/\A[a-z0-9][a-z0-9._-]*\z/', $storageFilename) !== 1
+            || str_contains($storageFilename, '..')
+        ) {
+            throw new LogicException('Prepared page content has an invalid storage filename.');
+        }
 
         return sprintf(
-            'pages/%s/versions/%d-%s/%s.%s',
+            'pages/%s/versions/%d-%s/%s',
             $page->uid,
             $versionNumber,
             $versionUid,
-            $filename,
-            $extension,
+            $storageFilename,
+        );
+    }
+
+    private function cappedText(?string $text): ?string
+    {
+        if ($text === null) {
+            return null;
+        }
+
+        return mb_substr(
+            $text,
+            0,
+            PageSearchVectorUpdater::MAX_EXTRACTED_TEXT_SEARCH_CHARACTERS,
         );
     }
 

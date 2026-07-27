@@ -102,6 +102,7 @@ final class DoctorCommandTest extends TestCase
             'pages.artifact_max_bytes' => 2_000_000,
             'pages.max_markdown_bytes' => 1_000_000,
             'pages.max_html_bytes' => 1_000_000,
+            'pages.max_image_bytes' => 1_000_000,
             'filesystems.disks.artifacts.visibility' => 'private',
         ]);
     }
