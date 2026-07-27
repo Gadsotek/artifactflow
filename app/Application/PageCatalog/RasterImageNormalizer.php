@@ -20,6 +20,7 @@ final readonly class RasterImageNormalizer
         private ImageArtifactLimits $limits,
         private ImageParserConfiguration $configuration,
         private ImageNormalizationAdmission $admission,
+        private ImageParserResponseReader $responseReader,
     ) {
     }
 
@@ -36,7 +37,11 @@ final readonly class RasterImageNormalizer
             return $this->admission->run(
                 $actorUid,
                 $input,
-                fn (): NormalizedRasterImage => $this->normalizeUnderAdmission($untrustedBytes, $input),
+                fn (ImageNormalizationReservation $reservation): NormalizedRasterImage => $this->normalizeUnderAdmission(
+                    $untrustedBytes,
+                    $input,
+                    $reservation,
+                ),
             );
         } catch (LogicException $exception) {
             if ($exception instanceof DomainRuleViolation) {
@@ -47,8 +52,11 @@ final readonly class RasterImageNormalizer
         }
     }
 
-    private function normalizeUnderAdmission(string $untrustedBytes, RasterImageInfo $input): NormalizedRasterImage
-    {
+    private function normalizeUnderAdmission(
+        string $untrustedBytes,
+        RasterImageInfo $input,
+        ImageNormalizationReservation $reservation,
+    ): NormalizedRasterImage {
         $timestamp = (string) time();
         $nonce = bin2hex(random_bytes(16));
         $maxInputBytes = $this->limits->maxUploadBytes();
@@ -58,11 +66,17 @@ final readonly class RasterImageNormalizer
 
         try {
             $secret = $this->configuration->sharedSecret();
-            $response = Http::connectTimeout($this->configuration->connectTimeoutSeconds())
+            $endpoint = $this->configuration->origin() . '/v1/normalize';
+            $request = Http::connectTimeout($this->configuration->connectTimeoutSeconds())
                 ->timeout($this->configuration->timeoutSeconds())
                 ->withoutRedirecting()
+                ->withOptions([
+                    'stream' => true,
+                    'decode_content' => false,
+                ])
                 ->withHeaders([
                     'Accept' => 'application/octet-stream',
+                    'Accept-Encoding' => 'identity',
                     'X-ArtifactFlow-Parser-Timestamp' => $timestamp,
                     'X-ArtifactFlow-Parser-Nonce' => $nonce,
                     'X-ArtifactFlow-Parser-Max-Input-Bytes' => (string) $maxInputBytes,
@@ -81,16 +95,32 @@ final readonly class RasterImageNormalizer
                         $secret,
                     ),
                 ])
-                ->withBody($untrustedBytes, $input->mediaType)
-                ->post($this->configuration->origin() . '/v1/normalize');
-        } catch (ConnectionException) {
-            $this->unavailable('connection_failure');
+                ->withBody($untrustedBytes, $input->mediaType);
         } catch (LogicException) {
             $this->unavailable('invalid_client_configuration');
         }
 
+        $reservation->markDispatched();
+
+        try {
+            $response = $request->post($endpoint);
+        } catch (ConnectionException) {
+            $reservation->retainLeaseUntilExpiry();
+            $this->unavailable('connection_failure');
+        } catch (Throwable) {
+            $reservation->retainLeaseUntilExpiry();
+            $this->unavailable('transport_failure');
+        }
+
+        try {
+            $bytes = $this->responseReader->read($response, $maxOutputBytes);
+        } catch (ImageParserResponseReadFailure) {
+            $reservation->retainLeaseUntilExpiry();
+            $this->unavailable('invalid_response', $response->status());
+        }
+
         if ($response->status() === 422) {
-            if ($response->json('error') === 'normalized_image_too_large') {
+            if ($this->errorCode($bytes) === 'normalized_image_too_large') {
                 throw new DomainRuleViolation('Normalized image exceeds the configured artifact size limit.');
             }
 
@@ -98,7 +128,7 @@ final readonly class RasterImageNormalizer
         }
 
         if (!$response->successful()) {
-            $reason = $response->status() === 401 && $response->json('error') === 'clock_skew'
+            $reason = $response->status() === 401 && $this->errorCode($bytes) === 'clock_skew'
                 ? 'clock_skew'
                 : match (true) {
                     $response->status() === 401 => 'authentication_failure',
@@ -109,17 +139,17 @@ final readonly class RasterImageNormalizer
             $this->unavailable($reason, $response->status());
         }
 
-        return $this->verifiedDerivative($response, $input, $nonce, $secret);
+        return $this->verifiedDerivative($response, $bytes, $input, $nonce, $secret);
     }
 
     private function verifiedDerivative(
         Response $response,
+        string $bytes,
         RasterImageInfo $input,
         string $nonce,
         string $secret,
     ): NormalizedRasterImage {
         try {
-            $bytes = $response->body();
             $mediaType = $response->header('X-ArtifactFlow-Parser-Media-Type');
             $width = $this->positiveHeaderInteger($response, 'X-ArtifactFlow-Parser-Width');
             $height = $this->positiveHeaderInteger($response, 'X-ArtifactFlow-Parser-Height');
@@ -151,6 +181,23 @@ final readonly class RasterImageNormalizer
         } catch (Throwable) {
             $this->unavailable('invalid_response', $response->status());
         }
+    }
+
+    private function errorCode(string $bytes): ?string
+    {
+        try {
+            $decoded = json_decode($bytes, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        if (!is_array($decoded)) {
+            return null;
+        }
+
+        $error = $decoded['error'] ?? null;
+
+        return is_string($error) ? $error : null;
     }
 
     private function positiveHeaderInteger(Response $response, string $name): int

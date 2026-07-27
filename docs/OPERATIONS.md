@@ -285,9 +285,16 @@ production image deliberately contains neither GD nor EXIF. Keep one normalizati
 per-container memory budget, so prefork workers can OOM-kill only part of the pool while its health
 endpoint remains green. The parser entrypoint refuses `PHP_CLI_SERVER_WORKERS` values other than
 one. Every app replica uses the shared rate-limit cache for a single non-blocking normalization
-slot; a busy slot returns 503 immediately instead of queueing for the parser timeout. Successful
-admission consumes the image's exact pixel count from per-user and installation-wide one-minute
-budgets. Extra parser replicas may provide failover, but the shared slot intentionally keeps total
+slot; a busy slot returns 503 immediately instead of queueing for the parser timeout. Every
+dispatch consumes the image's exact pixel count from per-user and installation-wide one-minute
+budgets, including completed parser rejections. Only failures proven to occur before dispatch are
+refunded. A connection, timeout, or response-stream failure with uncertain parser state retains the
+existing slot lease, whose total TTL is the parser timeout plus a fixed expiry margin. Monitor
+repeated busy responses alongside `image_parser.request_failed` rather than shortening that lease.
+App replicas request
+identity encoding and incrementally stop a parser response after the signed output-byte limit plus
+one sentinel byte, so proxies on the private path must not compress parser responses. Extra parser
+replicas may provide failover, but the shared slot intentionally keeps total
 normalization concurrency at one; do not increase it or enable unbounded autoscaling without a new
 adversarial memory/CPU benchmark and an updated admission design.
 
