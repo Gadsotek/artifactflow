@@ -222,6 +222,63 @@ Available scopes:
 - `mcp:create` creates Markdown or single-file HTML pages through the normal page creation handler. It can attach tag names and either select a category by UID or create a workspace-local category by name in the same operation. The same scope powers `create_category` and `create_tag`; both require live Editor authority in the supplied in-scope workspace, and standalone tag creation remains installation-wide after that authority check.
 - `mcp:update` appends a new Markdown/HTML version through the normal update handler and requires a fresh `base_version_uid`; it powers one-action revert and `update_description`. Description updates require both the fresh `current_version_uid` and separate `metadata_revision` returned by read or search, pass the normal description scanner, refresh full-text search, and cannot change title, owner, hierarchy, category, or tags.
 
+### MCP provenance
+
+`create` and `update` may include provenance when the caller actually knows the producer. Do not
+make the object mandatory in client wrappers, and do not fill it by guessing from the MCP client
+name. `clientInfo.name=claude-code`, for example, is unverified caller-reported protocol metadata:
+it does not prove which implementation submitted the request, nor that Claude, a particular Opus
+release, or even an AI model authored the content.
+
+ArtifactFlow rejects non-string nested `clientInfo` fields during initialization and retains only
+the newest 64 client-reported transport sessions per MCP access token. Initialization serializes this
+per-token pruning so concurrent clients cannot bypass the cap. Evicting an older observation removes
+only client-name/version attribution for that transport session; it does not revoke the access token
+or turn the transport session identifier into authority.
+
+An AI declaration requires both `provider` and the exact provider-defined `model_id`:
+
+```json
+{
+  "provenance": {
+    "producers": [{
+      "kind": "ai",
+      "provider": "anthropic",
+      "model_id": "claude-opus-5-2-20260715",
+      "model_label": "Claude Opus 5.2",
+      "model_version": "20260715",
+      "generated_at": "2026-08-01T13:42:00.123Z",
+      "references": [{
+        "kind": "conversation",
+        "ref": "abc123",
+        "url": "https://claude.ai/chat/abc123"
+      }]
+    }]
+  }
+}
+```
+
+MCP claims are stored as `self_reported`; the caller cannot select stronger evidence. Every retained
+provenance string is scanned for the same obvious credential patterns that block artifact writes.
+External references are optional, HTTPS-only, never fetched, and should not contain signed URLs,
+prompt content, or personal data that does not belong in the page's authorization boundary. They
+are returned only to principals who can read the page and are excluded from logs, events, audit
+metadata, and search. Producer identifiers are also excluded from event and audit metadata.
+
+Authorized searches accept `ai_provider`, `ai_model_query`, and `provenance_scope`:
+
+- `page_origin` matches version one;
+- `current_version` matches only the current version's direct producer;
+- `any_version` also matches historical and content-pruned version provenance.
+
+The page full-text vector includes at most 256 deterministic, deduplicated provider/model-label
+pairs so retained history cannot exceed PostgreSQL's `tsvector` limit. The structured filters above
+remain exhaustive across all retained ingests.
+
+The `read` result distinguishes the current ingest actor/client from direct content producers and
+effective byte origin. A restore therefore identifies who performed the restore without relabeling
+that person/client as the model that produced the restored bytes.
+
 Content scanning remains advisory except for explicit secret and credential patterns, which block writes. Inline script in an HTML artifact is expected; it is recorded as a warning finding and audit trail, not held for human acknowledgement. Descriptions are scanned for obvious secrets and prompt-injection role markers before save. MCP taxonomy names and slugs are user-authored data and are therefore returned inside the same explicit untrusted-data envelope as other user-authored text.
 
 Set `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` to tune the pre-authenticated source-IP ceiling, `MCP_RATE_LIMIT_PER_MINUTE` to tune the authenticated token ceiling, and `MCP_WRITE_RATE_LIMIT_PER_MINUTE` to tune per-token create/update-description/update-content/revert write throughput. Invalid or unauthenticated bearer attempts are bucketed by source IP before token lookup so random bearer rotation cannot create fresh unauthenticated buckets. Authenticated calls are also limited after token authentication. If many legitimate MCP clients share one NAT or proxy egress IP, size the pre-auth limit for the aggregate caller pool or route trusted clients through distinct egress identities. The official Laravel MCP transport negotiates the protocol during initialization and issues `MCP-Session-Id`; compliant clients return that non-secret identifier automatically, and ArtifactFlow records it in MCP-created version, description update, and restore audit metadata. Never place signed preview URLs, application session cookies, or raw authorization headers in MCP client prompts or logs.
@@ -588,7 +645,7 @@ A successful verification confirms the image was produced by this repository's r
 
 ArtifactFlow has two stateful data stores that must be captured together:
 
-- PostgreSQL stores users, workspaces, page metadata, page-version rows, permissions, audit entries, queues, and durable domain events.
+- PostgreSQL stores users, workspaces, page metadata, page-version rows, provenance ingests/assertions/external references, permissions, audit entries, queues, and durable domain events.
 - The private artifacts disk stores untrusted Markdown and single-file HTML bytes plus normalized PNG/JPEG derivatives referenced by `page_versions.content_storage_path`. Original image uploads are not retained.
 
 Backups must also be paired with secret-manager custody for `APP_KEY`, `ARTIFACT_URL_SIGNING_KEY`, and `IMAGE_PARSER_SHARED_SECRET`. Those keys are not included in data backups and must not be copied into backup manifests. Losing `APP_KEY` makes encrypted application data, TOTP secrets, sessions, and trusted-device cookies unrecoverable. Rotating or losing `ARTIFACT_URL_SIGNING_KEY` invalidates outstanding signed artifact-preview URLs, which is acceptable for short-lived previews but must be expected during restore. The parser secret protects no data at rest; rotate it on both app and parser together or image writes fail closed until they match.
@@ -642,3 +699,10 @@ make backup-verify
 Also run `artifactflow:diagnose-2fa` after restore drills. It verifies encrypted 2FA secret readability and reports only aggregate counts so operators can decide whether users should rely on recovery codes or console break-glass.
 
 Retention should match the deployment's recovery objective. A practical self-hosted default is daily encrypted backups with at least 14 restore points, stored away from the application host and access-restricted like production artifact storage. Test a restore regularly, record the backup timestamp and verification counts, and rotate storage credentials separately from application signing keys.
+
+Version-content pruning intentionally retains provenance ingests, assertions, and external
+references in PostgreSQL. Page hard deletion removes them. The first provenance slice has no
+automatic external-reference expiry/redaction job, so operators must treat database backups as
+containing those sensitive references for the full backup-retention period. A future audited
+redaction cannot erase older immutable backup copies; recovery and legal-retention policy must
+account for that.

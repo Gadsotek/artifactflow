@@ -1,7 +1,7 @@
 # ArtifactFlow Threat Model: Rendering Untrusted Artifacts
 
 This document captures the security model for executing arbitrary, attacker-controlled HTML +
-JavaScript and for decoding uploaded raster images. HTML artifacts must not steal a session,
+JavaScript, decoding uploaded raster images, and retaining declared AI provenance. HTML artifacts must not steal a session,
 reach another tenant's data, use ordinary browser connection APIs to exfiltrate, hijack the parent
 app, or persist anything. PNG/JPEG uploads must not retain metadata or appended payloads, bypass
 resource limits, or inherit application-origin authority. HTML self-navigation and image-decoder
@@ -441,7 +441,32 @@ in the client/operator workflow; the server prevents read content from becoming 
 
 ---
 
-## 12. Contributor rules (the don'ts that prevent regressions)
+## 12. AI provenance claims and external references
+
+Provenance introduces sensitive metadata and integrity risks, not a new authorization capability.
+The attacker may be an MCP caller that falsely names a provider/model, supplies a misleading
+external URL, tries to place credentials into a URL, or probes provenance search for pages it
+cannot otherwise discover.
+
+| Threat | Control | Residual |
+| --- | --- | --- |
+| Forged provider/model authorship | MCP declarations are always labelled `self_reported`; unverified client-reported metadata is stored separately; no model is inferred from client name, token, URL host, or model-shaped text. | A self-reported claim can be false. Users must not treat it as provider attestation. |
+| Authorization side channel through provider/model search | Provenance is an `EXISTS` filter inside the normal visibility-scoped page query, followed by exact `PageAccess` filtering. Reads use the owning page's authorization. | Authorized readers learn the declared provenance of pages they can already read. |
+| Credential or script injection through provenance | Every retained provenance string is bounded, storable text and scanned for the same obvious credential patterns that block artifact writes; URLs additionally require HTTPS, a host, and no authority credentials. ArtifactFlow never fetches them. UI output is escaped and opens with `noopener noreferrer`. | Scanning is best-effort and obfuscation can bypass it. A valid HTTPS destination may still be malicious, expired, or track clicks. Opening it is an explicit user action outside ArtifactFlow's trust boundary. |
+| Reference leakage through telemetry/search | URLs and opaque references are excluded from logs, errors, domain events, audit metadata, realtime events, and search vectors. Tests inspect event/audit payloads. | Database administrators and backups can read retained references; they are sensitive data at rest. |
+| False confidence from “complete” provenance | Completeness only describes whether active claims identify their producer fields; evidence strength is a separate axis shown beside it. | Users can still misunderstand labels. UI and docs state that declarations are not verification. |
+| History loss during version pruning | Ingest rows copy version number/hash and soft-reference the version UID, so ordinary content pruning keeps provenance. Hard page deletion cascades it deliberately. | External references remain until page deletion or a later audited redaction/retention feature; backups retain historical copies. |
+| Restore misattributed to restoring actor | Restore records `derived_from_version_uid` and, for matching retained hashes, `content_equivalent_to_version_uid`; each ingest also stores its resolved root `content_origin_version_uid`, so reads resolve the effective content origin in constant database work separately from ingest actor/client. | SHA-256 equivalence proves retained-byte equality, not truth of the original producer claim. |
+| Client-session storage amplification, spoofing, or malformed metadata | Nested `clientInfo` values must be strings; initialization rejects malformed values. A token-row lock serializes insertion and keeps only the newest 64 client reports per token; token deletion cascades them. UI/API/docs explicitly identify these values as unverified MCP-reported metadata. | Evicted sessions continue to work but lose reported client-name/version attribution on later writes. A caller may report any syntactically valid identity. |
+| Historical-provenance search amplification | The denormalized full-text vector indexes a deterministic, deduplicated maximum of 256 provider/model-label pairs. Exhaustive structured provider/model filters remain relational and authorization-scoped. | Full-text queries may omit labels beyond that bounded representative set; structured provenance filters remain the exhaustive path. |
+
+The retained hash is over ArtifactFlow's exact authoritative bytes. For images that means the
+normalized derivative, never the discarded upload container. Neither a matching hash nor
+MCP-reported client metadata upgrades a declared claim to attested evidence.
+
+---
+
+## 13. Contributor rules (the don'ts that prevent regressions)
 
 1. **Never** add `allow-same-origin` to the artifact iframe (embedded or draft).
 2. **Never** weaken the CSP because the JS guard "covers" something. The guard is not a control.
@@ -461,6 +486,10 @@ in the client/operator workflow; the server prevents read content from becoming 
 11. Never treat an internal user's UID, name, or email as an authorization secret. Directory
     discoverability is intentional; object-level policy and write-boundary reauthorization remain
     mandatory for every action that consumes an identifier.
+12. Never infer an AI model from MCP `clientInfo`, a token owner, URL host, or free-form content.
+    Keep observed ingest facts, declared producers, and future attestations separate.
+13. Never put external provenance URLs/references into logs, events, audit metadata, search
+    vectors, queue payloads, or realtime events.
 
 ### Main-application CSP (resolved)
 The **main application origin** now ships a real restrictive CSP: `default-src 'self'`,
@@ -474,7 +503,7 @@ don't merge, the security-critical directives) so an upstream weak directive can
 
 ---
 
-## 13. One-line mental model
+## 14. One-line mental model
 
 > Untrusted code runs **on a throwaway origin, in a browser-sandboxed box, behind a header CSP
 > that travels with it.** The browser enforces the box; the origin makes escaping the box

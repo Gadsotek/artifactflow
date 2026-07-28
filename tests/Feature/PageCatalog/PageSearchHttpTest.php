@@ -10,10 +10,13 @@ use App\Application\PageCatalog\CreatePageCommand;
 use App\Application\PageCatalog\GrantPageAccess;
 use App\Application\PageCatalog\GrantPageAccessCommand;
 use App\Application\PageCatalog\PageSearchVectorUpdater;
+use App\Application\Provenance\ProducerAssertionInput;
+use App\Application\Provenance\VersionProvenanceInput;
 use App\Domain\Identity\WorkspaceRole;
 use App\Domain\PageCatalog\PageAccessSubjectType;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
+use App\Domain\Provenance\ProducerKind;
 use App\Models\Category;
 use App\Models\Tag;
 use App\Models\User;
@@ -28,6 +31,16 @@ use Tests\TestCase;
 final class PageSearchHttpTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_array_valued_provenance_scope_is_rejected_as_invalid_input(): void
+    {
+        $editor = $this->createUser('Malformed Search User', 'malformed-search@example.test');
+        app(CreateSharedWorkspace::class)->handle($editor, 'Malformed Search Team');
+
+        $this->actingAs($editor)
+            ->get('/pages?provenance_scope[]=any_version')
+            ->assertUnprocessable();
+    }
 
     public function test_page_list_ranks_title_matches_ahead_of_tag_and_body_matches(): void
     {
@@ -445,6 +458,75 @@ final class PageSearchHttpTest extends TestCase
 
         $response->assertSee(sprintf('value="%s" selected', $releaseTag->uid), false);
         $response->assertSee(sprintf('value="%s" selected', $securityTag->uid), false);
+    }
+
+    public function test_page_list_filters_ai_provenance_without_disclosing_inaccessible_pages(): void
+    {
+        Storage::fake('artifacts');
+
+        $editor = $this->createUser('Provenance Searcher', 'provenance-searcher@example.test');
+        $otherOwner = $this->createUser('Other Provenance Owner', 'other-provenance-owner@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($editor, 'Visible Provenance Team');
+        $otherWorkspace = app(CreateSharedWorkspace::class)->handle($otherOwner, 'Hidden Provenance Team');
+        $provenance = new VersionProvenanceInput([
+            new ProducerAssertionInput(
+                kind: ProducerKind::Ai,
+                producerName: null,
+                producerVersion: null,
+                providerKey: 'anthropic',
+                modelId: 'claude-opus-5-2-20260715',
+                modelLabel: 'Claude Opus 5.2',
+                modelVersion: '20260715',
+                generatedAt: null,
+                references: [],
+            ),
+        ]);
+
+        app(CreatePage::class)->handle($editor, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Visible Opus Artifact',
+            description: null,
+            content: '# Visible',
+            provenance: $provenance,
+        ));
+        app(CreatePage::class)->handle($editor, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Visible Human Artifact',
+            description: null,
+            content: '# Human',
+        ));
+        app(CreatePage::class)->handle($otherOwner, new CreatePageCommand(
+            workspaceUid: $otherWorkspace->uid,
+            type: PageType::Markdown,
+            title: 'Hidden Opus Artifact',
+            description: null,
+            content: '# Hidden',
+            provenance: $provenance,
+        ));
+
+        $this->actingAs($editor)
+            ->get('/pages?workspace_uid=all&ai_provider=Anthropic&ai_model_query=opus&provenance_scope=page_origin')
+            ->assertOk()
+            ->assertSee('Visible Opus Artifact')
+            ->assertDontSee('Visible Human Artifact')
+            ->assertDontSee('Hidden Opus Artifact')
+            ->assertSee('name="ai_provider"', false)
+            ->assertSee('name="ai_model_query"', false)
+            ->assertSee('name="provenance_scope"', false);
+
+        $this->actingAs($editor)
+            ->get('/pages?workspace_uid=all&q=Opus')
+            ->assertOk()
+            ->assertSee('Visible Opus Artifact')
+            ->assertDontSee('Visible Human Artifact')
+            ->assertDontSee('Hidden Opus Artifact');
+
+        $this->actingAs($editor)
+            ->get('/pages?workspace_uid=all&q=20260715')
+            ->assertOk()
+            ->assertDontSee('Visible Opus Artifact');
     }
 
     public function test_cross_workspace_filters_use_global_tags_and_qualified_authorized_categories(): void

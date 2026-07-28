@@ -22,6 +22,7 @@ final readonly class McpUpdateTool
         private McpPageResolver $pages,
         private UpdatePageContent $updatePageContent,
         private McpToolErrorMapper $errors,
+        private McpProvenanceArguments $provenance,
     ) {
     }
 
@@ -43,6 +44,7 @@ final readonly class McpUpdateTool
                 content: $arguments->requiredString('content'),
                 source: PageVersionSource::Mcp,
                 baseVersionUid: $arguments->nullableString('base_version_uid'),
+                provenance: $this->provenance->fromArguments($arguments),
             ));
 
             return McpToolResult::success([

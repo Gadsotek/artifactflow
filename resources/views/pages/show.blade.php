@@ -99,6 +99,10 @@
                     <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.5M4 4v4.5h4.5M12 7v5l3 2"/></svg>
                     <span>Versions</span>
                 </button>
+                <button data-open-editor-dialog="page-provenance-dialog" type="button" title="Provenance">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 12h8M12 8v8M5 5h14v14H5z"/></svg>
+                    <span>Provenance</span>
+                </button>
                 <button data-open-editor-dialog="page-activity-dialog" type="button" title="Page activity">
                     <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 18V9m5 9V5m6 13v-7m5 7V3"/></svg>
                     <span>Activity</span>
@@ -214,6 +218,7 @@
             @endif
             @include('pages.partials.structure-dialog')
             @include('pages.partials.versions-dialog')
+            @include('pages.partials.provenance-dialog')
             @include('pages.partials.activity-dialog')
             @include('pages.partials.access-dialog')
             @include('pages.partials.lifecycle-dialog')

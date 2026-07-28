@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Application\PageCatalog;
 
 use App\Application\Administration\RealtimeConfiguration;
+use App\Application\Provenance\PageVersionProvenanceView;
+use App\Application\Provenance\ProvenanceReadModel;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
 use App\Models\Category;
@@ -25,6 +27,7 @@ final readonly class PageDetailViewData
         private PageDetailAccessOptions $accessOptions,
         private PageWorkspaceMoveOptions $moveOptions,
         private RealtimeConfiguration $realtimeConfiguration,
+        private ProvenanceReadModel $provenance,
     ) {
     }
 
@@ -55,6 +58,7 @@ final readonly class PageDetailViewData
      *     pagePresenceActorName: string,
      *     pagePresenceActorUid: string,
      *     pagePresenceEnabled: bool,
+     *     pageProvenance: PageVersionProvenanceView|null,
      *     renderedEditorMarkdown: string|null,
      *     renderedMarkdown: string|null,
      *     sourcePreview: string|null,
@@ -105,6 +109,9 @@ final readonly class PageDetailViewData
             'pagePresenceActorName' => $actor->name,
             'pagePresenceActorUid' => $actor->uid,
             'pagePresenceEnabled' => $this->realtimeConfiguration->enabled(),
+            'pageProvenance' => $content->version instanceof PageVersion
+                ? $this->provenance->forVersion($content->version)
+                : null,
             'renderedEditorMarkdown' => $content->renderedEditorMarkdown,
             'renderedMarkdown' => $content->renderedMarkdown,
             'sourcePreview' => $content->sourcePreview,

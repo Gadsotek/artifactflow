@@ -13,17 +13,6 @@ final class SourceLinkTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_welcome_page_renders_the_configured_source_url(): void
-    {
-        config(['app.source_url' => 'https://example.test/fork']);
-
-        $this->get('/')
-            ->assertOk()
-            ->assertSee('View source')
-            ->assertSee('href="https://example.test/fork"', false)
-            ->assertDontSee('href="https://github.com/Gadsotek/artifactflow"', false);
-    }
-
     public function test_authenticated_layout_shows_the_configured_source_link(): void
     {
         config(['app.source_url' => 'https://example.test/authenticated-fork']);

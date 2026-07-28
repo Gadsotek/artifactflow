@@ -21,6 +21,7 @@ Two self-contained SVGs (open in any browser; embeddable in the main README):
 - **Application** (`app/Application`): where the logic lives, as `command → handler` use-cases:
   - `Identity/`: users, workspaces (Personal/Shared), memberships (Admin/Editor/Reader), invitations.
   - `PageCatalog/` ★ (the core): pages (Markdown | HtmlArtifact), immutable versions, access grants, categories/tags, search, rendering, the artifact-preview signing/serving.
+  - `Provenance/`: observed version ingests, declared producers, external origin references, and restore lineage.
   - `Administration/`: installation-wide limit settings (newest, cleanest code).
   - `Events/` (transactional outbox) + `Audit/` (append-only trail): cross-cutting.
   - `PageAccess`: the central authorization service: `canView` / `canEdit` (content) / `canManageAccess` + `canChangeAccessMode` + `canArchive` + `canHardDelete` + `canTransferOwnership` (admin-class). Thin Laravel Policies (`app/Policies`) delegate to it so routes can use `can:` middleware as a defense-in-depth backstop (see `docs/ARCHITECTURE.md`).
@@ -43,6 +44,7 @@ See `workflows.svg` for the full create-page write pipeline, the cross-origin pr
 - The page write pipeline is factored through explicit collaborators such as `PageVersionWriter`, `WorkspaceStorageQuota`, `TagSynchronizer`, `ActorId`, and `SlugGenerator`.
 - Authorization is enforced by the shared `PageAccess` application service and handler-level checks, with route-level `can:` middleware backed by thin Policies as a second layer.
 - **MCP ships today**: `POST /mcp` uses the official Laravel MCP transport (`app/Mcp/`) over scoped ArtifactFlow bearer-token and tool behavior (`app/Application/Mcp/`). Reverb-backed realtime presence/locking (`pages.presence.update`, broadcast auth via `PageAccess`) is also part of the runtime surface.
+- **AI provenance ships today**: optional MCP declarations capture exact provider/model IDs while unverified MCP-reported client metadata and observed ingest facts remain separate. The implemented public contract is summarized here and in the artifact-lifecycle guide; detailed product and decision records remain internal.
 
 ## Genuinely future surfaces
 

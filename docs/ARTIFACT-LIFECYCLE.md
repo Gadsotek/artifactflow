@@ -58,6 +58,30 @@ Catalog metadata such as title, description, category, parent, owner, and tags b
 
 This distinction keeps content concurrency and metadata concurrency explicit without claiming a complete snapshot of the whole artifact record for every content version.
 
+## Version provenance and lineage
+
+**Current invariant:** every stored content version has one ArtifactFlow-observed ingest record. It
+copies the version UID/number, exact retained-byte SHA-256, operation, ingest method, ArtifactFlow
+actor, timestamp, and MCP submitter metadata when present. These are observed facts, not claims
+about who generated the content.
+
+A version may additionally have declared AI, human, or software producer assertions. MCP AI
+assertions require a provider and exact provider-defined model ID, are labelled self-reported, and
+remain distinct from unverified MCP-reported client name/version metadata. Obvious credential
+patterns are rejected in every retained provenance string. Missing provenance creates no invented
+“unknown model” row.
+
+A restore creates a new version and records the selected source as derivation lineage. When the
+retained bytes match, the write also resolves and stores the root content-origin version so reads
+remain constant-cost even after a long equivalence chain. The user who restored content is
+therefore not mislabeled as its producer.
+Ordinary retention pruning may delete an old `page_versions` row and artifact blob, but keeps its
+ingest/provenance record; page hard deletion removes both.
+
+External artifact, conversation, session, and source references are optional sensitive metadata.
+They inherit page authorization, are never fetched by ArtifactFlow, and are excluded from audit
+payloads, logs, and full-text search.
+
 ## Current format behavior
 
 ### Single-file HTML
@@ -107,5 +131,6 @@ For generated DOCX, preserving an optional generator source such as Markdown or 
 ## Related boundaries
 
 - [Architecture](ARCHITECTURE.md) documents application handlers, storage, preview flows, and runtime roles.
+- AI provenance records observed ingestion separately from declared producers, unverified MCP-reported client metadata, evidence, lineage, sensitive references, search, and retention. Detailed product and decision records remain internal.
 - [Roadmap](../ROADMAP.md) is authoritative for PDF and DOCX candidate scope and required proof.
 - [Threat model](../THREAT-MODEL.md) documents executable HTML isolation and residual risks.

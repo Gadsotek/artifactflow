@@ -90,7 +90,7 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
         Illuminate\View\Middleware\ShareErrorsFromSession::class,
     ]);
 
-    Route::view('/', 'welcome')->name('home');
+    Route::redirect('/', '/login')->name('home');
 
     Route::middleware('guest')->group(function (): void {
         Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');

@@ -11,8 +11,13 @@ use App\Application\PageCatalog\CreatePage;
 use App\Application\PageCatalog\CreatePageCommand;
 use App\Application\PageCatalog\UpdatePageContent;
 use App\Application\PageCatalog\UpdatePageContentCommand;
+use App\Application\Provenance\ExternalOriginReferenceInput;
+use App\Application\Provenance\ProducerAssertionInput;
+use App\Application\Provenance\VersionProvenanceInput;
 use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PageVersionSource;
+use App\Domain\Provenance\ExternalReferenceKind;
+use App\Domain\Provenance\ProducerKind;
 use App\Models\DomainEvent;
 use App\Models\PageVersion;
 use App\Models\User;
@@ -97,6 +102,99 @@ final class PageVersioningHttpTest extends TestCase
         $this->assertInstanceOf(PageVersion::class, $restoredVersion);
         $this->assertSame(4, $restoredVersion->version_number);
         $this->assertSame('# Version One', Storage::disk('artifacts')->get($restoredVersion->content_storage_path));
+    }
+
+    public function test_page_and_version_inspector_show_authorized_ai_provenance_as_declared_metadata(): void
+    {
+        Storage::fake('artifacts');
+
+        $editor = $this->createUser('Provenance Editor', 'provenance-editor@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($editor, 'Provenance Team');
+        $page = app(CreatePage::class)->handle($editor, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Invoice Dashboard',
+            description: null,
+            content: '# Invoice Dashboard',
+            provenance: new VersionProvenanceInput([
+                new ProducerAssertionInput(
+                    kind: ProducerKind::Ai,
+                    producerName: null,
+                    producerVersion: null,
+                    providerKey: 'anthropic',
+                    modelId: 'claude-opus-5-2-20260715',
+                    modelLabel: 'Claude Opus 5.2',
+                    modelVersion: '20260715',
+                    generatedAt: null,
+                    references: [
+                        new ExternalOriginReferenceInput(
+                            kind: ExternalReferenceKind::Conversation,
+                            externalRef: 'conversation-abc123',
+                            url: 'https://claude.ai/chat/abc123',
+                        ),
+                    ],
+                ),
+            ]),
+        ));
+        $version = PageVersion::query()->where('page_uid', $page->uid)->sole();
+
+        $this->actingAs($editor)
+            ->get("/pages/{$page->uid}")
+            ->assertOk()
+            ->assertSee('Provenance')
+            ->assertSee('Declared producer metadata')
+            ->assertSee('ArtifactFlow actor')
+            ->assertSee('Claude Opus 5.2')
+            ->assertSee('claude-opus-5-2-20260715')
+            ->assertSee('Self reported')
+            ->assertSee('https://claude.ai/chat/abc123', false)
+            ->assertSee('rel="noopener noreferrer"', false);
+
+        $this->actingAs($editor)
+            ->get("/pages/{$page->uid}/versions/{$version->uid}")
+            ->assertOk()
+            ->assertSee('Version provenance')
+            ->assertSee('Claude Opus 5.2')
+            ->assertSee('conversation-abc123');
+    }
+
+    public function test_anonymous_human_producer_has_a_non_empty_heading(): void
+    {
+        Storage::fake('artifacts');
+
+        $editor = $this->createUser('Human Provenance Editor', 'human-provenance-editor@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($editor, 'Human Provenance Team');
+        $page = app(CreatePage::class)->handle($editor, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Anonymous Human Artifact',
+            description: null,
+            content: '# Anonymous Human Artifact',
+            provenance: new VersionProvenanceInput([
+                new ProducerAssertionInput(
+                    kind: ProducerKind::Human,
+                    producerName: null,
+                    producerVersion: null,
+                    providerKey: null,
+                    modelId: null,
+                    modelLabel: null,
+                    modelVersion: null,
+                    generatedAt: null,
+                    references: [],
+                ),
+            ]),
+        ));
+        $version = PageVersion::query()->where('page_uid', $page->uid)->sole();
+
+        $this->actingAs($editor)
+            ->get("/pages/{$page->uid}")
+            ->assertOk()
+            ->assertSee('Anonymous human');
+
+        $this->actingAs($editor)
+            ->get("/pages/{$page->uid}/versions/{$version->uid}")
+            ->assertOk()
+            ->assertSee('Anonymous human');
     }
 
     public function test_page_detail_handles_missing_current_markdown_content_without_a_server_error(): void

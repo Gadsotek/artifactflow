@@ -8,10 +8,12 @@ use App\Application\Audit\AuditLogger;
 use App\Application\Events\DomainEventRecorder;
 use App\Application\Identity\ActorId;
 use App\Application\Mcp\McpRequestContext;
+use App\Application\Provenance\VersionLineage;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\PageCatalog\PageVersionSource;
 use App\Domain\PageCatalog\Security\BlockedPageContentException;
+use App\Domain\Provenance\VersionOperation;
 use App\Models\Page;
 use App\Models\PageVersion;
 use App\Models\User;
@@ -70,6 +72,11 @@ final readonly class RestorePageVersion
                 $page,
                 $sourceContent,
                 PageVersionSource::Restore,
+                operation: VersionOperation::Restore,
+                lineage: new VersionLineage(
+                    sourceVersionUid: $sourceVersion->uid,
+                    sourceContentHash: $sourceVersion->content_hash,
+                ),
             );
 
             $restored = DB::transaction(function () use (

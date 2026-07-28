@@ -43,14 +43,4 @@ final class HealthCheckTest extends TestCase
         $this->get('/login')->assertNotFound();
         $this->get('/up')->assertNotFound();
     }
-
-    public function test_it_renders_the_infrastructure_landing_page(): void
-    {
-        $this->get('/')
-            ->assertOk()
-            ->assertSee('artifactflow')
-            ->assertSee('data-brand-mark', false)
-            ->assertSee('href="/favicon.svg"', false)
-            ->assertSee('FrankenPHP');
-    }
 }

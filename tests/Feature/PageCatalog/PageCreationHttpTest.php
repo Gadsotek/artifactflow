@@ -82,6 +82,16 @@ final class PageCreationHttpTest extends TestCase
             ->assertSee('Rich Markdown', false);
     }
 
+    public function test_create_page_rejects_an_array_valued_parent_page_query(): void
+    {
+        $editor = $this->createUser('Malformed Parent User', 'malformed-parent@example.test');
+        app(CreateSharedWorkspace::class)->handle($editor, 'Malformed Parent Team');
+
+        $this->actingAs($editor)
+            ->get('/pages/create?parent_page_uid[]=1')
+            ->assertUnprocessable();
+    }
+
     public function test_browser_create_ignores_forged_owner_assignment(): void
     {
         Storage::fake('artifacts');

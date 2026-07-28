@@ -27,6 +27,7 @@ final class CreateTool extends ArtifactFlowTool
         \App\Application\Mcp\McpToolGuard $guard,
         \Illuminate\Http\Request $httpRequest,
         private readonly Handler $handler,
+        private readonly McpProvenanceSchema $provenanceSchema,
     ) {
         parent::__construct($mcpContext, $guard, $httpRequest);
     }
@@ -48,6 +49,7 @@ final class CreateTool extends ArtifactFlowTool
             'category_name' => $schema->string()->description('Create a target-workspace category atomically.'),
             'tags' => $schema->array()->items($schema->string()),
             'source_filename' => $schema->string(),
+            'provenance' => $this->provenanceSchema->make($schema),
         ];
     }
 

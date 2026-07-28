@@ -10,11 +10,15 @@ use App\Domain\PageCatalog\PageSecurityScanStatus;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PageVersionSource;
+use App\Models\ExternalOriginReference;
 use App\Models\InstallationSettings;
 use App\Models\McpAccessToken;
+use App\Models\McpClientSession;
 use App\Models\Page;
 use App\Models\PageAccessGrant;
 use App\Models\PageVersion;
+use App\Models\PageVersionIngest;
+use App\Models\ProducerAssertion;
 use App\Models\TrustedDevice;
 use App\Models\User;
 use App\Models\Workspace;
@@ -92,6 +96,44 @@ final class DomainModelMassAssignmentGuardTest extends TestCase
             'created_by_user_uid' => 'attacker-user-uid',
             'extracted_text' => 'forged private text',
             'source_text' => 'forged source text',
+        ]);
+    }
+
+    public function test_page_version_ingest_observed_facts_cannot_be_mass_assigned(): void
+    {
+        $this->expectException(MassAssignmentException::class);
+
+        new PageVersionIngest([
+            'page_uid' => 'page-uid',
+            'page_version_uid' => 'version-uid',
+            'content_hash' => hash('sha256', 'forged'),
+            'actor_user_uid' => 'attacker-user-uid',
+        ]);
+    }
+
+    public function test_producer_assertions_and_references_cannot_be_mass_assigned(): void
+    {
+        foreach ([
+            new ProducerAssertion(),
+            new ExternalOriginReference(),
+        ] as $model) {
+            try {
+                $model->fill(['uid' => 'forged-uid']);
+                $this->fail('Expected provenance persistence records to reject mass assignment.');
+            } catch (MassAssignmentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    public function test_mcp_client_report_metadata_cannot_be_mass_assigned(): void
+    {
+        $this->expectException(MassAssignmentException::class);
+
+        new McpClientSession([
+            'session_id_hash' => hash('sha256', 'forged-session'),
+            'mcp_access_token_uid' => 'forged-token-uid',
+            'client_reported_name' => 'forged-client',
         ]);
     }
 

@@ -1,7 +1,7 @@
 # ArtifactFlow Architecture
 
 Status: MVP alpha architecture
-Last updated: 2026-07-17
+Last updated: 2026-07-27
 Primary audience: operators, engineering teams, security reviewers, maintainers, and OSS contributors
 
 > Looking for the diagrams? See the [architecture one-pager](architecture/README.md) (`overview.svg` + `workflows.svg`). **This** document is the full written architecture; that one is just the diagram index.
@@ -59,6 +59,7 @@ The codebase keeps Laravel conventions but separates business behavior into appl
 | --- | --- |
 | `Application/Identity` | Users, personal/shared workspaces, workspace roles, invitations, membership changes, two-factor auth (TOTP, recovery codes, trusted devices), theme preferences, and current workspace context. |
 | `Application/PageCatalog` | Page creation, metadata, content versions, Markdown rendering, artifact preview signing/reading, search, tags, categories, access grants, lifecycle changes, and deletion. |
+| `Application/Provenance` | Immutable per-version ingest records, typed producer assertions, external origin references, restore lineage, and authorized provenance read models. |
 | `Application/Mcp` | MCP application behavior: scoped bearer-token issuance/verification, transport-neutral tool results, tool handlers, and the Editor-capped effective-authority de-elevation shared with `PageAccess`. |
 | `Mcp` | Official Laravel MCP server and tool adapters: protocol negotiation, JSON-RPC transport, tool schemas, and delegation into `Application/Mcp`. |
 | `Application/Administration` | System Admin installation usage and runtime limit settings. |
@@ -85,9 +86,13 @@ Current business tables include:
 | `workspace_invitations` | Pending invitations with lifecycle state. |
 | `pages` | Current page metadata, ownership, workspace, status, access mode, and current version pointer. |
 | `page_versions` | Immutable Markdown, HTML, or normalized PNG/JPEG content versions (retention-capped: oldest pruned past `PAGE_MAX_PAGE_VERSIONS`). |
+| `page_version_ingests` | Durable ArtifactFlow-observed ingest facts, immediate lineage, and resolved root content origin for each version; retained after ordinary version-content pruning. |
+| `producer_assertions` | Append-only AI, human, or software producer claims with explicit evidence type and supersession lineage. |
+| `external_origin_references` | Sensitive, separately redactable artifact/conversation/session/source references attached to assertions. |
 | `page_access_grants` | Page-level user or workspace overrides. |
 | `categories`, `tags`, `page_tag` | Workspace-scoped categories, installation-wide tags, and page/tag relationships. |
 | `mcp_access_tokens` | Scoped, expiring MCP bearer tokens (stored as hashes; read/write scope and workspace binding). |
+| `mcp_client_sessions` | Bounded, unverified MCP-reported `clientInfo` metadata, capped at the newest 64 transport sessions per access token and deleted with that token. |
 | `trusted_devices` | Opaque hashed trusted-device tokens for the two-factor challenge. |
 | `installation_settings` | System Admin runtime limits and two-factor enforcement flags. |
 | `audit_entries` | User-facing append-only traceability. |
@@ -103,6 +108,7 @@ The product-facing rules for stable identity, immutable content versions, draft 
 - HTML artifact pages store a single-file HTML version, never render that HTML in the app origin, and preview through the artifact-host origin.
 - Image pages accept only bounded PNG/JPEG uploads. A dedicated internal parser container performs native decoding and re-encoding; the app verifies its signed normalized response before storage, keeps no OCR text, and previews the derivative through a fixed scriptless artifact-host document.
 - Every content write creates an immutable version. Version *content* is never mutated; the only history that is removed is retention pruning — appending past `PAGE_MAX_PAGE_VERSIONS` deletes the oldest whole version(s) (each recorded as a `page.version.pruned` event) so a page never hits an uneditable version ceiling.
+- Every content write also creates an immutable ingest record in the same transaction. Observed actor/client/method/hash facts are separate from zero or more declared producer assertions; detailed product and architecture decision records remain internal.
 - Version restore creates a new current version rather than mutating history.
 - Page metadata, access grants, lifecycle transitions, and content writes record audit entries and durable domain events where traceability matters.
 - Archived pages are hidden from default discovery. Hard deletion is irreversible and Admin-only.
@@ -172,6 +178,17 @@ Every user-authored taxonomy label and slug is returned inside an `artifactflow.
 envelope. `create` can attach tag names and either select or create a category atomically with
 the page; standalone taxonomy creation uses the same category/tag handlers, `mcp:create` scope,
 write throttling, live Editor authority, and token workspace ceiling.
+
+`create` and `update` accept optional producer provenance. An AI assertion requires a normalized
+provider key and exact provider-defined model ID. MCP-supplied assertions are always
+`self_reported`; callers cannot select stronger evidence. The client name/version reported during
+MCP initialization is stored as unverified submitter metadata and never interpreted as a
+provider/model or attested implementation identity. Every retained provenance string is checked
+for the same obvious credential patterns that block artifact writes.
+`read` returns ingest facts, page-origin producers, direct-version producers, and effective
+byte-origin lineage. Restore writes resolve the root content-origin UID so reads need at most one
+origin lookup regardless of lineage depth. All declared strings use the existing untrusted-data
+envelope.
 
 ## Artifact Security Boundary
 
@@ -277,7 +294,9 @@ Markdown and Mermaid source are untrusted user content.
 
 Page discovery uses PostgreSQL full-text search with explicit filters and authorization.
 
-Search inputs are untrusted. The search layer uses bounded parsing and PostgreSQL query APIs rather than interpolating raw query text. Search combines metadata, workspace/owner context, tags, and current-version extracted text. Source text is included at lower weight so generated artifacts remain discoverable by technical terms without turning search into a content disclosure channel.
+Search inputs are untrusted. The search layer uses bounded parsing and PostgreSQL query APIs rather than interpolating raw query text. Search combines metadata, workspace/owner context, tags, current-version extracted text, and a deterministic, deduplicated maximum of 256 non-sensitive provider/model labels. Source text is included at lower weight so generated artifacts remain discoverable by technical terms without turning search into a content disclosure channel or exceeding PostgreSQL's `tsvector` size. Structured provenance filters remain exhaustive: they match normalized provider plus model ID/label across page origin, current version, or any retained ingest record; the outer page-visibility query remains the authorization boundary.
+
+External provenance URLs and opaque conversation/session references never enter the search vector.
 
 Tags are a single installation-wide vocabulary keyed by slug. Categories remain workspace-scoped because a workspace acts as the top-level project boundary; cross-workspace category filters therefore display `Category — Workspace`, while a single-workspace filter uses the category name alone. Members may discover all categories in their reachable workspaces, while page-only grants reveal only the category and global tags attached to pages the actor may actually view; private-only tag labels and unrelated foreign-workspace categories remain hidden. A workspace move preserves global tag relations and translates the page category by slug, reusing the target category or creating it transactionally when it does not exist.
 
@@ -298,6 +317,7 @@ Examples of traceable actions:
 - user login and user creation;
 - workspace creation, invitation, membership changes, and settings updates;
 - page creation, content version creation, version restore, metadata updates, workspace moves, access grant changes, lifecycle changes, and hard deletion;
+- producer assertion creation (`page.version.producer_asserted`) without user-controlled provider/model strings, external URLs, or opaque references;
 - installation limit changes.
 
 ## Installation Limits

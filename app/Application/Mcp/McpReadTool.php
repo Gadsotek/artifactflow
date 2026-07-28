@@ -7,6 +7,7 @@ namespace App\Application\Mcp;
 use App\Application\PageCatalog\ArtifactContentReader;
 use App\Application\PageCatalog\ImageArtifactLimits;
 use App\Application\PageCatalog\RasterImageInspector;
+use App\Application\Provenance\ProvenanceReadModel;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\PageType;
 use App\Models\Page;
@@ -26,6 +27,8 @@ final readonly class McpReadTool
         private McpPageHierarchy $hierarchy,
         private RasterImageInspector $images,
         private ImageArtifactLimits $limits,
+        private ProvenanceReadModel $provenance,
+        private McpProvenancePayload $provenancePayload,
     ) {
     }
 
@@ -74,6 +77,9 @@ final readonly class McpReadTool
         $payload = $this->payload->forPage($page) + [
             'current_version_uid' => $version?->uid,
             'hierarchy' => $hierarchy[$page->uid],
+            'provenance' => $version instanceof PageVersion
+                ? $this->provenancePayload->make($this->provenance->forVersion($version))
+                : null,
         ];
 
         if ($page->type === PageType::Image) {

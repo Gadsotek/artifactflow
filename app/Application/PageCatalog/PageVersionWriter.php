@@ -7,11 +7,16 @@ namespace App\Application\PageCatalog;
 use App\Application\Audit\AuditLogger;
 use App\Application\Events\DomainEventRecorder;
 use App\Application\Mcp\McpRequestContext;
+use App\Application\Provenance\RecordPageVersionProvenance;
+use App\Application\Provenance\VersionLineage;
+use App\Application\Provenance\VersionProvenanceInput;
+use App\Application\Provenance\VersionProvenanceRules;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\PageCatalog\PageContentEncoding;
 use App\Domain\PageCatalog\PageSecurityScanStatus;
 use App\Domain\PageCatalog\PageVersionSource;
+use App\Domain\Provenance\VersionOperation;
 use App\Models\Page;
 use App\Models\PageVersion;
 use Illuminate\Support\Facades\Storage;
@@ -27,6 +32,8 @@ final readonly class PageVersionWriter
         private AuditLogger $audit,
         private McpRequestContext $mcpContext,
         private WorkspaceStorageQuota $storageQuota,
+        private RecordPageVersionProvenance $provenanceRecorder,
+        private VersionProvenanceRules $provenanceRules,
     ) {
     }
 
@@ -35,6 +42,7 @@ final readonly class PageVersionWriter
         PreparedPageContent $prepared,
         PageVersionSource $source,
         string $actorUid,
+        ?VersionProvenanceInput $provenance = null,
     ): PageVersion {
         return $this->write(
             page: $page,
@@ -43,6 +51,9 @@ final readonly class PageVersionWriter
             actorUid: $actorUid,
             versionNumber: 1,
             failureMessage: 'Failed to store page content.',
+            operation: VersionOperation::Create,
+            provenance: $provenance,
+            lineage: null,
         );
     }
 
@@ -51,6 +62,9 @@ final readonly class PageVersionWriter
         PreparedPageContent $prepared,
         PageVersionSource $source,
         string $actorUid,
+        ?VersionProvenanceInput $provenance = null,
+        VersionOperation $operation = VersionOperation::Update,
+        ?VersionLineage $lineage = null,
     ): PageVersion {
         return $this->write(
             page: $page,
@@ -59,6 +73,9 @@ final readonly class PageVersionWriter
             actorUid: $actorUid,
             versionNumber: $this->nextVersionNumber($page),
             failureMessage: 'Failed to store page version content.',
+            operation: $operation,
+            provenance: $provenance,
+            lineage: $lineage,
         );
     }
 
@@ -69,7 +86,12 @@ final readonly class PageVersionWriter
         string $actorUid,
         int $versionNumber,
         string $failureMessage,
+        VersionOperation $operation,
+        ?VersionProvenanceInput $provenance,
+        ?VersionLineage $lineage,
     ): PageVersion {
+        $this->provenanceRules->ensureValid($provenance);
+
         $content = $prepared->content;
         $scan = $prepared->scan;
         // Last-line guard shared by every write path (editor, upload, MCP): the
@@ -118,7 +140,21 @@ final readonly class PageVersionWriter
 
             $this->storageQuota->recordBytesStored($page->workspace_uid, strlen($content));
             $this->clearPreviousCurrentVersionExtractedText($page);
-            $this->recordPageVersionCreated($page, $version, $actorUid);
+            $this->recordPageVersionCreated(
+                $page,
+                $version,
+                $actorUid,
+                $provenance?->wasSupplied() ?? false,
+            );
+            $this->provenanceRecorder->record(
+                page: $page,
+                version: $version,
+                actorUid: $actorUid,
+                source: $source,
+                operation: $operation,
+                declared: $provenance,
+                lineage: $lineage,
+            );
 
             return $version;
         } catch (Throwable $exception) {
@@ -197,8 +233,12 @@ final readonly class PageVersionWriter
         );
     }
 
-    private function recordPageVersionCreated(Page $page, PageVersion $version, string $actorUid): void
-    {
+    private function recordPageVersionCreated(
+        Page $page,
+        PageVersion $version,
+        string $actorUid,
+        bool $provenanceSuppliedAtIngest,
+    ): void {
         $mcpMetadata = $this->mcpContext->auditMetadata();
         $event = $this->events->record(
             eventType: DomainEventType::PageVersionCreated,
@@ -213,6 +253,7 @@ final readonly class PageVersionWriter
                 'byte_size' => $version->byte_size,
                 'scan_status' => $version->scan_status->value,
                 'source' => $version->source->value,
+                'provenance_supplied_at_ingest' => $provenanceSuppliedAtIngest,
             ] + $mcpMetadata,
         );
 
@@ -229,6 +270,7 @@ final readonly class PageVersionWriter
                 'byte_size' => $version->byte_size,
                 'scan_status' => $version->scan_status->value,
                 'source' => $version->source->value,
+                'provenance_supplied_at_ingest' => $provenanceSuppliedAtIngest,
             ] + $mcpMetadata,
         );
     }

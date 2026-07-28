@@ -170,6 +170,7 @@ final readonly class CreatePage
                     prepared: $prepared,
                     source: $command->source,
                     actorUid: $actorUid,
+                    provenance: $command->provenance,
                 );
                 $storagePath = $version->content_storage_path;
                 $page->forceFill(['current_version_uid' => $version->uid])->save();

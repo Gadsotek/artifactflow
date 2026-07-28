@@ -86,6 +86,17 @@
           <p>Creation stores immutable version one. A content update appends another immutable version and advances the current pointer. Retained versions remain in history, while links, access, ownership, hierarchy, taxonomy, and audit attach to the stable artifact. When the configured per-artifact limit is exceeded, ArtifactFlow prunes the oldest whole versions and records that pruning.</p>
         </section>
 
+        <section id="provenance">
+          <p class="kicker">Current invariant</p>
+          <h2>Who submitted a version and who produced its content are different facts.</h2>
+          <p>Every version has an ArtifactFlow-observed ingest record: actor, mechanism, retained-byte hash, and timestamp, plus unverified MCP-reported client metadata when applicable. A version may also carry declared AI, human, or software producer assertions. AI declarations identify the provider and exact model ID, but remain self-reported unless a future provider attestation proves more.</p>
+          <p>Restoring content creates a new version and records where the bytes came from, so the restoring user or client is not mislabeled as the content producer. Provenance survives ordinary version-content pruning, remains protected by the page's permissions, and can be searched by provider/model across page origin, current version, or any historical version.</p>
+          <div class="callout">
+            <strong>No guessing</strong>
+            <p>An MCP client name such as Claude Code is caller-reported metadata that proves neither the submitting implementation nor the model that authored the content. If the caller does not know the model, ArtifactFlow preserves that uncertainty.</p>
+          </div>
+        </section>
+
         <section id="same-or-new">
           <p class="kicker">Product guidance</p>
           <h2>Keep the identity when the artifact still does the same job.</h2>
@@ -149,6 +160,7 @@
         <strong>On this page</strong>
         <a href="#labels">Statement labels</a>
         <a href="#identity">Artifact identity</a>
+        <a href="#provenance">Version provenance</a>
         <a href="#same-or-new">Same or new artifact</a>
         <a href="#drafts">Drafts</a>
         <a href="#metadata">Content and metadata</a>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\PageCatalog;
 
+use App\Application\Provenance\VersionProvenanceInput;
 use App\Domain\PageCatalog\PageVersionSource;
 
 final readonly class UpdatePageContentCommand
@@ -13,6 +14,7 @@ final readonly class UpdatePageContentCommand
         public string $content,
         public PageVersionSource $source = PageVersionSource::Editor,
         public ?string $baseVersionUid = null,
+        public ?VersionProvenanceInput $provenance = null,
     ) {
     }
 }
