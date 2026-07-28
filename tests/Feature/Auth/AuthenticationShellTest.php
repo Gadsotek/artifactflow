@@ -18,6 +18,12 @@ final class AuthenticationShellTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_root_redirects_guests_to_login(): void
+    {
+        $this->get('/')
+            ->assertRedirect('/login');
+    }
+
     public function test_guests_are_redirected_to_login_from_the_dashboard(): void
     {
         $this->get('/dashboard')

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\PageCatalog;
 
+use App\Application\Provenance\VersionProvenanceInput;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PageVersionSource;
@@ -27,6 +28,7 @@ final readonly class CreatePageCommand
         public ?string $sourceFilename = null,
         public PageVersionSource $source = PageVersionSource::Editor,
         public ?string $categoryName = null,
+        public ?VersionProvenanceInput $provenance = null,
     ) {
     }
 }

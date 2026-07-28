@@ -22,6 +22,19 @@ The alpha keeps the current model:
 
 No nested-workspace schema or effective-membership behavior should be introduced into the current alpha line; that work remains deferred to the beta candidate below.
 
+## Alpha: AI artifact provenance
+
+Current provenance records immutable ArtifactFlow-observed ingest facts for every version and
+optional AI, human, or software producer assertions. MCP create/update accepts exact provider/model
+claims without making them mandatory or pretending they are verified. Authorized web and MCP reads
+show the distinction, restore lineage resolves byte-equivalent content to its earlier producer, and
+search filters page origin, current version, or any historical ingest by provider/model. Provenance
+survives version-content pruning and is deleted with the owning page.
+
+The accepted internal product requirements and architecture decision keep later work explicit:
+assertion amendment UI, external-reference redaction/retention controls, browser-side provenance
+entry, and genuine provider attestations are not part of this first slice.
+
 ## Alpha: visible page hierarchy
 
 The page model and current Library expose parent/child relationships without changing page authorization.

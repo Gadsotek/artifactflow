@@ -11,6 +11,7 @@ use App\Application\Mcp\McpToolResult;
 use App\Application\PageCatalog\PageSearchSort;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
+use App\Domain\Provenance\ProvenanceSearchScope;
 use App\Models\McpAccessToken;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -47,6 +48,13 @@ final class SearchTool extends ArtifactFlowTool
             'category_uid' => $schema->string(),
             'tag_uids' => $schema->array()->items($schema->string()),
             'owner_user_uid' => $schema->string(),
+            'ai_provider' => $schema->string()
+                ->description('Exact normalized producer provider key, such as anthropic or openai.'),
+            'ai_model_query' => $schema->string()
+                ->description('Case-insensitive substring of a declared model ID or model label.'),
+            'provenance_scope' => $schema->string()
+                ->enum(ProvenanceSearchScope::class)
+                ->default(ProvenanceSearchScope::AnyVersion->value),
             'include_archived' => $schema->boolean()->default(false),
             'include_snippet' => $schema->boolean()
                 ->description('Include a content snippet; requires the mcp:read scope.')

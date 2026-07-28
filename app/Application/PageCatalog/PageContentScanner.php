@@ -39,6 +39,14 @@ final class PageContentScanner
         );
     }
 
+    public function scanSensitiveMetadata(string $metadata): ContentSecurityScan
+    {
+        return new ContentSecurityScan(
+            blockedFindings: $this->evaluate($this->blockedRules(), $this->scanContent($metadata), null),
+            warningFindings: [],
+        );
+    }
+
     /**
      * @param list<ContentScanRule> $rules
      *

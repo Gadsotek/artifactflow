@@ -6,6 +6,7 @@ namespace App\Application\PageCatalog;
 
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
+use App\Domain\Provenance\ProvenanceSearchScope;
 
 final readonly class PageSearchFilters
 {
@@ -24,6 +25,9 @@ final readonly class PageSearchFilters
         public ?string $ownerUserUid,
         public bool $includeArchived,
         public PageSearchSort $sort,
+        public ?string $aiProvider = null,
+        public ?string $aiModelQuery = null,
+        public ProvenanceSearchScope $provenanceScope = ProvenanceSearchScope::AnyVersion,
     ) {
     }
 

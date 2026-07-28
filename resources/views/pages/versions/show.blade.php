@@ -48,6 +48,14 @@
                 </nav>
             </section>
 
+            <section class="af-document-canvas">
+                <div class="mb-5">
+                    <p class="af-eyebrow">Lineage</p>
+                    <h2 class="text-lg font-semibold text-zinc-950 dark:text-zinc-50">Version provenance</h2>
+                </div>
+                @include('pages.partials.provenance-summary', ['provenance' => $inspection->provenance])
+            </section>
+
             @if ($inspection->contentUnavailable)
                 <div class="border-l-4 border-red-600 bg-red-50 px-4 py-3 text-sm text-red-950 dark:bg-red-950 dark:text-red-100">
                     Stored version content is unavailable.
@@ -74,7 +82,7 @@
                             @include('pages.partials.artifact-sensitive-data-warning')
                             <span class="text-xs text-zinc-500 dark:text-zinc-400">Historical HTML runs only on the isolated artifact origin.</span>
                         </div>
-                        <iframe class="af-artifact-iframe h-[calc(100vh-16rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts" allow="" src="{{ $inspection->artifactPreviewUrl }}" title="Historical artifact preview"></iframe>
+                        <iframe class="af-artifact-iframe h-[calc(100vh-16rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" sandbox="allow-scripts" allow="" src="{{ $inspection->artifactPreviewUrl }}" title="Historical artifact preview"></iframe>
                     </div>
                 @elseif ($inspection->artifactPreviewUrl !== null)
                     <div

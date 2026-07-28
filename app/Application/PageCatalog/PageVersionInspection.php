@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\PageCatalog;
 
+use App\Application\Provenance\ProvenanceReadModel;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
 use App\Models\Page;
@@ -19,6 +20,7 @@ final readonly class PageVersionInspection
         private MarkdownPageRenderer $markdownRenderer,
         private PageAccess $access,
         private PageVersionDiff $diff,
+        private ProvenanceReadModel $provenance,
     ) {
     }
 
@@ -88,6 +90,7 @@ final readonly class PageVersionInspection
             canRestore: $version->uid !== $currentVersion->uid
                 && $page->status !== PageStatus::Archived
                 && $this->access->canEdit($actor, $page),
+            provenance: $this->provenance->forVersion($version),
         );
     }
 

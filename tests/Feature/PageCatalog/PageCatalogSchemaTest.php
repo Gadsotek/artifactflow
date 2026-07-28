@@ -160,6 +160,125 @@ final class PageCatalogSchemaTest extends TestCase
         );
     }
 
+    public function test_provenance_schema_uses_uids_and_pins_its_shape_constraints(): void
+    {
+        foreach ([
+            'mcp_client_sessions',
+            'page_version_ingests',
+            'producer_assertions',
+            'external_origin_references',
+        ] as $table) {
+            $this->assertTrue(Schema::hasColumn($table, 'uid'));
+            $this->assertFalse(Schema::hasColumn($table, 'id'));
+        }
+
+        $this->assertTrue(Schema::hasColumn('mcp_client_sessions', 'client_reported_name'));
+        $this->assertTrue(Schema::hasColumn('mcp_client_sessions', 'client_reported_version'));
+        $this->assertFalse(Schema::hasColumn('mcp_client_sessions', 'client_name'));
+        $this->assertFalse(Schema::hasColumn('mcp_client_sessions', 'client_version'));
+        $this->assertTrue(Schema::hasColumn('page_version_ingests', 'mcp_client_reported_name'));
+        $this->assertTrue(Schema::hasColumn('page_version_ingests', 'mcp_client_reported_version'));
+        $this->assertTrue(Schema::hasColumn('page_version_ingests', 'content_origin_version_uid'));
+        $this->assertFalse(Schema::hasColumn('page_version_ingests', 'mcp_client_name'));
+        $this->assertFalse(Schema::hasColumn('page_version_ingests', 'mcp_client_version'));
+
+        foreach ([
+            ['page_version_ingests', 'page_version_ingests_page_version_uid_unique'],
+            ['page_version_ingests', 'page_version_ingests_page_uid_version_number_unique'],
+            ['producer_assertions', 'producer_assertions_supersedes_assertion_uid_unique'],
+            ['producer_assertions', 'producer_assertions_provider_key_model_id_index'],
+            ['external_origin_references', 'external_origin_refs_assertion_kind_idx'],
+        ] as [$table, $index]) {
+            $this->assertTrue(Schema::hasIndex($table, $index), "Missing expected index {$index}.");
+        }
+
+        foreach ([
+            'page_version_ingests_number_positive_check',
+            'page_version_ingests_operation_check',
+            'page_version_ingests_method_check',
+            'page_version_ingests_hash_check',
+            'producer_assertions_kind_check',
+            'producer_assertions_evidence_check',
+            'producer_assertions_shape_check',
+            'producer_assertions_provider_key_check',
+            'external_origin_references_kind_check',
+            'external_origin_references_retention_check',
+            'external_origin_references_value_check',
+            'external_origin_references_url_length_check',
+        ] as $constraint) {
+            $this->assertTrue(
+                DB::table('pg_constraint')->where('conname', $constraint)->exists(),
+                "Missing expected constraint {$constraint}.",
+            );
+        }
+    }
+
+    public function test_provenance_migration_backfills_observed_version_facts_without_inventing_producers(): void
+    {
+        $owner = $this->createUser('Backfill Owner', 'provenance-backfill@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Backfill Team');
+        $pageUid = $this->insertRawPage(
+            workspaceUid: $workspace->uid,
+            ownerUserUid: $owner->uid,
+            title: 'Existing Artifact',
+            slug: 'existing-artifact',
+        );
+        $firstVersionUid = (string) Str::ulid();
+        $restoredVersionUid = (string) Str::ulid();
+
+        foreach ([
+            [$firstVersionUid, 1, PageVersionSource::Editor, '# First'],
+            [$restoredVersionUid, 2, PageVersionSource::Restore, '# First'],
+        ] as [$versionUid, $versionNumber, $source, $content]) {
+            DB::table('page_versions')->insert([
+                'uid' => $versionUid,
+                'page_uid' => $pageUid,
+                'version_number' => $versionNumber,
+                'content_storage_path' => "pages/{$pageUid}/versions/{$versionNumber}/source.md",
+                'content_hash' => hash('sha256', $content),
+                'byte_size' => strlen($content),
+                'scan_status' => 'clean',
+                'scan_findings' => null,
+                'source' => $source->value,
+                'created_by_user_uid' => $owner->uid,
+                'extracted_text' => $content,
+                'source_text' => $content,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        DB::table('pages')->where('uid', $pageUid)->update(['current_version_uid' => $restoredVersionUid]);
+
+        $migration = require base_path(
+            'database/migrations/2026_07_27_000001_create_page_version_provenance_tables.php',
+        );
+        $this->assertIsObject($migration);
+
+        (new ReflectionMethod($migration, 'down'))->invoke($migration);
+        (new ReflectionMethod($migration, 'up'))->invoke($migration);
+
+        $this->assertDatabaseHas('page_version_ingests', [
+            'page_uid' => $pageUid,
+            'page_version_uid' => $firstVersionUid,
+            'version_number' => 1,
+            'operation' => 'create',
+            'ingest_method' => 'editor',
+            'provenance_supplied_at_ingest' => false,
+            'content_origin_version_uid' => $firstVersionUid,
+        ]);
+        $this->assertDatabaseHas('page_version_ingests', [
+            'page_uid' => $pageUid,
+            'page_version_uid' => $restoredVersionUid,
+            'version_number' => 2,
+            'operation' => 'restore',
+            'ingest_method' => 'restore',
+            'provenance_supplied_at_ingest' => false,
+            'content_origin_version_uid' => $restoredVersionUid,
+        ]);
+        $this->assertDatabaseCount('producer_assertions', 0);
+        $this->assertDatabaseCount('external_origin_references', 0);
+    }
+
     public function test_global_tag_migration_merges_workspace_duplicates_without_losing_page_links(): void
     {
         $owner = $this->createUser('Migration Owner', 'tag-migration@example.test');

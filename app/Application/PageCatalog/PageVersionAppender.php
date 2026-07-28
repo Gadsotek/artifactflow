@@ -6,12 +6,15 @@ namespace App\Application\PageCatalog;
 
 use App\Application\Administration\RealtimeConfiguration;
 use App\Application\Identity\ActorId;
+use App\Application\Provenance\VersionLineage;
+use App\Application\Provenance\VersionProvenanceInput;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\PageCatalog\InvalidPageStatusTransition;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageVersionSource;
 use App\Domain\PageCatalog\StalePageVersionException;
+use App\Domain\Provenance\VersionOperation;
 use App\Events\PageContentVersionChanged;
 use App\Models\Page;
 use App\Models\PageVersion;
@@ -39,8 +42,11 @@ final readonly class PageVersionAppender
         PageVersionSource $source,
         ?string $baseVersionUid = null,
         ?string $expectedCurrentVersionUid = null,
+        ?VersionProvenanceInput $provenance = null,
+        VersionOperation $operation = VersionOperation::Update,
+        ?VersionLineage $lineage = null,
     ): PageVersion {
-        return $this->prepare($actor, $page, $content, $source)->append(
+        return $this->prepare($actor, $page, $content, $source, $provenance, $operation, $lineage)->append(
             page: $page,
             baseVersionUid: $baseVersionUid,
             expectedCurrentVersionUid: $expectedCurrentVersionUid,
@@ -52,6 +58,9 @@ final readonly class PageVersionAppender
         Page $page,
         string $content,
         PageVersionSource $source,
+        ?VersionProvenanceInput $provenance = null,
+        VersionOperation $operation = VersionOperation::Update,
+        ?VersionLineage $lineage = null,
     ): PreparedPageVersionAppend {
         $this->ensurePageAcceptsContentChanges($page);
         $actorUid = ActorId::fromUser($actor);
@@ -69,6 +78,9 @@ final readonly class PageVersionAppender
                 source: $source,
                 baseVersionUid: $baseVersionUid,
                 expectedCurrentVersionUid: $expectedCurrentVersionUid,
+                provenance: $provenance,
+                operation: $operation,
+                lineage: $lineage,
             ),
         );
     }
@@ -80,6 +92,9 @@ final readonly class PageVersionAppender
         PageVersionSource $source,
         ?string $baseVersionUid = null,
         ?string $expectedCurrentVersionUid = null,
+        ?VersionProvenanceInput $provenance = null,
+        VersionOperation $operation = VersionOperation::Update,
+        ?VersionLineage $lineage = null,
     ): PageVersion {
         $actorUid = ActorId::fromUser($actor);
         $page = $this->lockPageForVersionAppend($page);
@@ -101,6 +116,9 @@ final readonly class PageVersionAppender
                 prepared: $prepared,
                 source: $source,
                 actorUid: $actorUid,
+                provenance: $provenance,
+                operation: $operation,
+                lineage: $lineage,
             );
             $page->forceFill(['current_version_uid' => $version->uid])->save();
             $this->returnContentChangedPageToDraft($actor, $page);

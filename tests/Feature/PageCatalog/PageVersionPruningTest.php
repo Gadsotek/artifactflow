@@ -18,6 +18,7 @@ use App\Domain\PageCatalog\PageVersionSource;
 use App\Models\DomainEvent;
 use App\Models\Page;
 use App\Models\PageVersion;
+use App\Models\PageVersionIngest;
 use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -55,6 +56,13 @@ final class PageVersionPruningTest extends TestCase
         $this->assertSame(3, $this->versionCount($page));
         $this->assertSame([2, 3, 4], $this->survivingVersionNumbers($page));
         $this->assertDatabaseMissing('page_versions', ['uid' => $firstVersion->uid]);
+        $this->assertDatabaseHas('page_version_ingests', [
+            'page_uid' => $page->uid,
+            'page_version_uid' => $firstVersion->uid,
+            'version_number' => 1,
+            'content_hash' => $firstVersion->content_hash,
+        ]);
+        $this->assertSame(4, PageVersionIngest::query()->where('page_uid', $page->uid)->count());
         Storage::disk('artifacts')->assertMissing($firstBlobPath);
         Storage::disk('artifacts')->assertExists($third->content_storage_path);
         Storage::disk('artifacts')->assertExists($fourth->content_storage_path);

@@ -35,6 +35,7 @@ enum DomainEventType: string
     case PageSecurityWarningsRecorded = 'page.security_warnings.recorded';
     case PageUnarchived = 'page.unarchived';
     case PageVersionCreated = 'page.version.created';
+    case PageVersionProducerAsserted = 'page.version.producer_asserted';
     case PageVersionPruned = 'page.version.pruned';
     case PageVersionRestored = 'page.version.restored';
     case PageWorkspaceMoved = 'page.workspace.moved';

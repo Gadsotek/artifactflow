@@ -43,7 +43,13 @@ final readonly class UpdatePageContent
             // before a transaction owns a pooled DB connection or locks this page.
             // Authority, status, concurrency, and quota are still re-checked below
             // under the row lock before any prepared derivative is persisted.
-            $preparedAppend = $this->versions->prepare($actor, $page, $command->content, $command->source);
+            $preparedAppend = $this->versions->prepare(
+                actor: $actor,
+                page: $page,
+                content: $command->content,
+                source: $command->source,
+                provenance: $command->provenance,
+            );
 
             $version = DB::transaction(function () use (
                 $actor,

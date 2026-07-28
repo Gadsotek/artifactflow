@@ -22,6 +22,7 @@ final readonly class McpCreateTool
         private CreatePage $createPage,
         private McpPagePayload $payload,
         private McpToolErrorMapper $errors,
+        private McpProvenanceArguments $provenance,
     ) {
     }
 
@@ -46,6 +47,7 @@ final readonly class McpCreateTool
                 sourceFilename: $arguments->nullableString('source_filename'),
                 source: PageVersionSource::Mcp,
                 categoryName: $arguments->nullableString('category_name'),
+                provenance: $this->provenance->fromArguments($arguments),
             ));
 
             return McpToolResult::success($this->payload->forPage($page) + [

@@ -8,6 +8,8 @@ use App\Application\PageCatalog\PageSearch;
 use App\Application\PageCatalog\PageSearchFilters;
 use App\Application\PageCatalog\PageSearchResult;
 use App\Application\PageCatalog\PageSearchSort;
+use App\Domain\DomainRuleViolation;
+use App\Domain\Provenance\ProvenanceSearchScope;
 use App\Models\McpAccessToken;
 use App\Models\Page;
 use App\Models\Tag;
@@ -37,6 +39,16 @@ final readonly class McpSearchTool
             ]);
         }
 
+        $provenanceScopeValue = $arguments->string(
+            'provenance_scope',
+            ProvenanceSearchScope::AnyVersion->value,
+        );
+        $provenanceScope = ProvenanceSearchScope::tryFrom($provenanceScopeValue);
+
+        if (!$provenanceScope instanceof ProvenanceSearchScope) {
+            throw new DomainRuleViolation('Argument [provenance_scope] has an unsupported value.');
+        }
+
         $filters = new PageSearchFilters(
             query: $arguments->nullableString('query'),
             workspaceUid: $arguments->nullableString('workspace_uid'),
@@ -48,6 +60,9 @@ final readonly class McpSearchTool
             includeArchived: $arguments->bool('include_archived', false),
             sort: PageSearchSort::tryFrom($arguments->string('sort', PageSearchSort::Relevance->value))
                 ?? PageSearchSort::Relevance,
+            aiProvider: $arguments->nullableString('ai_provider'),
+            aiModelQuery: $arguments->nullableString('ai_model_query'),
+            provenanceScope: $provenanceScope,
         );
         $results = $this->pageSearch->search(
             actor: $actor,

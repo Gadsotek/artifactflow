@@ -15,6 +15,9 @@ use App\Application\PageCatalog\RestorePageVersion;
 use App\Application\PageCatalog\RestorePageVersionCommand;
 use App\Application\PageCatalog\UpdatePageContent;
 use App\Application\PageCatalog\UpdatePageContentCommand;
+use App\Application\Provenance\ProducerAssertionInput;
+use App\Application\Provenance\ProvenanceReadModel;
+use App\Application\Provenance\VersionProvenanceInput;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Identity\WorkspaceRole;
 use App\Domain\PageCatalog\InvalidPageStatusTransition;
@@ -23,12 +26,16 @@ use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PageVersionSource;
 use App\Domain\PageCatalog\Security\BlockedPageContentException;
 use App\Domain\PageCatalog\StalePageVersionException;
+use App\Domain\Provenance\ProducerKind;
 use App\Models\AuditEntry;
 use App\Models\DomainEvent;
+use App\Models\Page;
 use App\Models\PageVersion;
+use App\Models\PageVersionIngest;
 use App\Models\User;
 use App\Models\WorkspaceMembership;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -42,6 +49,46 @@ use Throwable;
 final class PageVersioningTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_invalid_application_provenance_is_rejected_before_page_persistence(): void
+    {
+        Storage::fake('artifacts');
+
+        $editor = $this->createUser('Provenance Editor', 'invalid-provenance@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($editor, 'Provenance Team');
+
+        try {
+            app(CreatePage::class)->handle($editor, new CreatePageCommand(
+                workspaceUid: $workspace->uid,
+                type: PageType::Markdown,
+                title: 'Invalid provenance',
+                description: null,
+                content: '# Must not persist',
+                provenance: new VersionProvenanceInput([
+                    new ProducerAssertionInput(
+                        kind: ProducerKind::Ai,
+                        producerName: null,
+                        producerVersion: null,
+                        providerKey: null,
+                        modelId: null,
+                        modelLabel: 'Guessed model',
+                        modelVersion: null,
+                        generatedAt: null,
+                        references: [],
+                    ),
+                ]),
+            ));
+            $this->fail('Expected invalid provenance to be rejected.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame(
+                'AI provenance requires a normalized provider key and exact model ID.',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertSame(0, Page::query()->where('workspace_uid', $workspace->uid)->count());
+        $this->assertSame([], Storage::disk('artifacts')->allFiles());
+    }
 
     public function test_editor_can_append_a_new_markdown_version_with_traceability(): void
     {
@@ -161,6 +208,7 @@ final class PageVersioningTest extends TestCase
 
         $this->assertSame($firstVersion->uid, $page->refresh()->current_version_uid);
         $this->assertSame(1, PageVersion::query()->where('page_uid', $page->uid)->count());
+        $this->assertSame(1, PageVersionIngest::query()->where('page_uid', $page->uid)->count());
         $this->assertSame([$firstVersion->content_storage_path], Storage::disk('artifacts')->allFiles());
     }
 
@@ -274,6 +322,83 @@ final class PageVersioningTest extends TestCase
 
         $this->assertSame($restoredEvent->uid, $auditEntry->event_uid);
         $this->assertSame($restoredVersion->uid, $auditEntry->metadata['page_version_uid']);
+
+        $restoredIngest = PageVersionIngest::query()
+            ->where('page_version_uid', $restoredVersion->uid)
+            ->sole();
+        $this->assertSame('restore', $restoredIngest->operation->value);
+        $this->assertSame($firstVersion->uid, $restoredIngest->derived_from_version_uid);
+        $this->assertSame($firstVersion->uid, $restoredIngest->content_equivalent_to_version_uid);
+        $this->assertSame($firstVersion->uid, $restoredIngest->content_origin_version_uid);
+    }
+
+    public function test_effective_content_origin_read_cost_stays_constant_after_pruned_restore_chains(): void
+    {
+        config(['pages.max_page_versions' => 2]);
+        Storage::fake('artifacts');
+
+        $editor = $this->createUser('Lineage Editor', 'lineage-editor@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($editor, 'Lineage Team');
+        $page = app(CreatePage::class)->handle($editor, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Compressed Restore Lineage',
+            description: null,
+            content: '# Root content',
+            provenance: new VersionProvenanceInput([
+                new ProducerAssertionInput(
+                    kind: ProducerKind::Ai,
+                    producerName: null,
+                    producerVersion: null,
+                    providerKey: 'anthropic',
+                    modelId: 'claude-opus-root',
+                    modelLabel: 'Claude Opus Root',
+                    modelVersion: null,
+                    generatedAt: null,
+                    references: [],
+                ),
+            ]),
+        ));
+        $rootVersion = PageVersion::query()->where('page_uid', $page->uid)->sole();
+        $restoreSource = $rootVersion;
+
+        for ($cycle = 1; $cycle <= 5; ++$cycle) {
+            $detour = app(UpdatePageContent::class)->handle($editor, new UpdatePageContentCommand(
+                pageUid: $page->uid,
+                content: '# Detour ' . $cycle,
+                baseVersionUid: $page->refresh()->current_version_uid,
+            ));
+            $this->assertSame($detour->uid, $page->refresh()->current_version_uid);
+
+            $restoreSource = app(RestorePageVersion::class)->handle($editor, new RestorePageVersionCommand(
+                pageUid: $page->uid,
+                versionUid: $restoreSource->uid,
+            ));
+        }
+
+        $this->assertSame(2, PageVersion::query()->where('page_uid', $page->uid)->count());
+        $currentIngest = PageVersionIngest::query()
+            ->where('page_version_uid', $restoreSource->uid)
+            ->sole();
+        $this->assertSame($rootVersion->uid, $currentIngest->content_origin_version_uid);
+
+        $queryCounter = new class() {
+            public bool $enabled = false;
+
+            public int $ingestQueries = 0;
+        };
+        DB::listen(static function (QueryExecuted $query) use ($queryCounter): void {
+            if ($queryCounter->enabled && str_contains($query->sql, 'page_version_ingests')) {
+                ++$queryCounter->ingestQueries;
+            }
+        });
+
+        $queryCounter->enabled = true;
+        $provenance = app(ProvenanceReadModel::class)->forVersion($restoreSource);
+        $queryCounter->enabled = false;
+
+        $this->assertSame($rootVersion->uid, $provenance->effectiveContentOrigin?->versionUid);
+        $this->assertLessThanOrEqual(3, $queryCounter->ingestQueries);
     }
 
     public function test_content_changes_return_approved_and_deprecated_pages_to_draft_with_traceability(): void
@@ -565,6 +690,7 @@ final class PageVersioningTest extends TestCase
 
         $this->assertSame($firstVersion->uid, $page->refresh()->current_version_uid);
         $this->assertSame(1, PageVersion::query()->where('page_uid', $page->uid)->count());
+        $this->assertSame(1, PageVersionIngest::query()->where('page_uid', $page->uid)->count());
         $this->assertSame([$firstVersion->content_storage_path], Storage::disk('artifacts')->allFiles());
     }
 
@@ -725,6 +851,7 @@ final class PageVersioningTest extends TestCase
 
         $this->assertSame($secondVersion->uid, $page->refresh()->current_version_uid);
         $this->assertSame(2, PageVersion::query()->where('page_uid', $page->uid)->count());
+        $this->assertSame(2, PageVersionIngest::query()->where('page_uid', $page->uid)->count());
         $this->assertSame([
             $firstVersion->content_storage_path,
             $secondVersion->content_storage_path,

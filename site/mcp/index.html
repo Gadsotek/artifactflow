@@ -58,7 +58,7 @@
     <div class="shell">
       <p class="eyebrow">Model Context Protocol</p>
       <h1>Let agents retrieve the source and preserve the next version.</h1>
-      <p class="lede">MCP is the agent interface to ArtifactFlow's versioned artifact vault. Approved clients can find, read, create, update, and revert Markdown pages and single-file HTML artifacts through scoped tokens, normal application policies, immutable versions, and attributable audit history.</p>
+      <p class="lede">MCP is the agent interface to ArtifactFlow's versioned artifact vault. Approved clients can find, read, create, update, and revert artifacts through scoped tokens, normal application policies, immutable versions, attributable audit history, and optional version-level AI provenance.</p>
       <div class="detail-actions">
         <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md#mcp-access">MCP operations guide ↗</a>
         <a class="button" href="https://github.com/Gadsotek/artifactflow">Get the source ↗</a>
@@ -164,15 +164,38 @@
 
         <section id="tools">
           <p class="kicker">Current tools</p>
-          <h2>Nine operations cover discovery and versioned content changes.</h2>
+          <h2>Ten operations cover discovery and versioned content changes.</h2>
           <ul class="detail-list">
             <li><strong><code>list_workspaces</code></strong>Lists only workspaces reachable within the token's live scope.</li>
             <li><strong><code>list_taxonomy</code></strong>Returns searchable global tags and workspace-qualified categories visible through reachable content.</li>
             <li><strong><code>search</code> and <code>read</code></strong>Find authorized pages and read one page inside an explicit untrusted-data envelope.</li>
             <li><strong><code>create</code></strong>Creates Markdown or single-file HTML through the normal page creation handler, including optional category and tag names.</li>
             <li><strong><code>create_category</code> and <code>create_tag</code></strong>Create taxonomy only with live Editor authority in the supplied in-scope workspace.</li>
-            <li><strong><code>update</code> and <code>revert</code></strong>Append a version from a fresh base version or revert to the previous version without overwriting history.</li>
+            <li><strong><code>update</code>, <code>update_description</code>, and <code>revert</code></strong>Append a version from a fresh base, revise only searchable description metadata, or revert without overwriting history.</li>
           </ul>
+        </section>
+
+        <section id="provenance">
+          <p class="kicker">Explicit provenance</p>
+          <h2>Record the exact model when known. Omit it when it is not.</h2>
+          <p><code>create</code> and <code>update</code> accept optional producer metadata. An AI claim requires a provider and exact provider-defined model ID. ArtifactFlow stores that declaration as self-reported, separately from the unverified client name/version the caller reported during transport initialization.</p>
+          <pre aria-label="Simplified ArtifactFlow provenance input"><code>{
+  "provenance": {
+    "producers": [{
+      "kind": "ai",
+      "provider": "anthropic",
+      "model_id": "claude-opus-5-2-20260715",
+      "model_label": "Claude Opus 5.2",
+      "references": [{
+        "kind": "conversation",
+        "ref": "abc123",
+        "url": "https://claude.ai/chat/abc123"
+      }]
+    }]
+  }
+}</code></pre>
+          <p>The client report proves neither the submitting implementation nor the model: “Claude Code” is an unverified protocol value, not attestation that Opus, Sonnet, a human, or another process produced the bytes. Missing provenance stays explicitly unknown rather than becoming a guessed assertion.</p>
+          <p>Authorized search supports provider/model filters over page origin, current version, or any historical version. Reads distinguish the direct producer, observed ingest actor, MCP-reported client, and effective origin of restored byte-equivalent content. External references inherit page access, are never fetched, and stay out of logs, audit/event payloads, and full-text search.</p>
         </section>
 
         <section id="tokens">
@@ -240,6 +263,7 @@ export MCP_TOKEN="&lt;token-shown-once&gt;"
         <a href="#role">What the server does</a>
         <a href="#session">Real MCP session</a>
         <a href="#tools">Current tools</a>
+        <a href="#provenance">AI provenance</a>
         <a href="#tokens">Scopes and authority</a>
         <a href="#untrusted-data">Untrusted-data envelopes</a>
         <a href="#writes">Write safeguards</a>

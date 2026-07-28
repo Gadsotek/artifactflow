@@ -1,4 +1,5 @@
 @use('App\Application\PageCatalog\PageSearchSort')
+@use('App\Domain\Provenance\ProvenanceSearchScope')
 <x-layouts.app title="Pages">
     <div class="af-app-surface min-h-screen bg-zinc-50 dark:bg-zinc-950">
         <header class="af-page-header border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
@@ -110,6 +111,25 @@
                             @foreach ($owners as $owner)
                                 <option value="{{ $owner->uid }}" @selected($filters->ownerUserUid === $owner->uid)>{{ $owner->name }}</option>
                             @endforeach
+                        </select>
+                    </label>
+
+                    <label class="space-y-1 text-sm">
+                        <span class="font-medium text-zinc-700 dark:text-zinc-300">AI provider</span>
+                        <input class="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" name="ai_provider" value="{{ $filters->aiProvider }}" placeholder="anthropic" type="search">
+                    </label>
+
+                    <label class="space-y-1 text-sm">
+                        <span class="font-medium text-zinc-700 dark:text-zinc-300">AI model</span>
+                        <input class="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" name="ai_model_query" value="{{ $filters->aiModelQuery }}" placeholder="opus" type="search">
+                    </label>
+
+                    <label class="space-y-1 text-sm">
+                        <span class="font-medium text-zinc-700 dark:text-zinc-300">Provenance scope</span>
+                        <select class="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" name="provenance_scope">
+                            <option value="{{ ProvenanceSearchScope::AnyVersion->value }}" @selected($filters->provenanceScope === ProvenanceSearchScope::AnyVersion)>Any retained provenance</option>
+                            <option value="{{ ProvenanceSearchScope::CurrentVersion->value }}" @selected($filters->provenanceScope === ProvenanceSearchScope::CurrentVersion)>Current version</option>
+                            <option value="{{ ProvenanceSearchScope::PageOrigin->value }}" @selected($filters->provenanceScope === ProvenanceSearchScope::PageOrigin)>Page origin</option>
                         </select>
                     </label>
 

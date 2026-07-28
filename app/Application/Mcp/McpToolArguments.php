@@ -109,6 +109,45 @@ final class McpToolArguments
         throw new DomainRuleViolation(sprintf('Argument [%s] must be a boolean.', $key));
     }
 
+    public function nullableObject(string $key): ?self
+    {
+        $value = $this->arguments[$key] ?? null;
+
+        if ($value === null) {
+            return null;
+        }
+
+        return new self(self::stringKeyed($value, $key));
+    }
+
+    /**
+     * @return list<self>
+     */
+    public function objectList(string $key, int $maximum): array
+    {
+        $value = $this->arguments[$key] ?? [];
+
+        if (!is_array($value) || !array_is_list($value)) {
+            throw new DomainRuleViolation(sprintf('Argument [%s] must be a list of objects.', $key));
+        }
+
+        if (count($value) > $maximum) {
+            throw new DomainRuleViolation(sprintf(
+                'Argument [%s] must contain at most %d objects.',
+                $key,
+                $maximum,
+            ));
+        }
+
+        $objects = [];
+
+        foreach ($value as $item) {
+            $objects[] = new self(self::stringKeyed($item, $key));
+        }
+
+        return $objects;
+    }
+
     /**
      * @return list<string>
      */

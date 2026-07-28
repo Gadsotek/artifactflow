@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\PageCatalog;
 
+use App\Application\Provenance\PageVersionProvenanceView;
 use App\Models\PageVersion;
 
 final readonly class PageVersionInspectionData
@@ -19,6 +20,7 @@ final readonly class PageVersionInspectionData
         public bool $comparisonUnavailable,
         public PageVersionDiffResult $diff,
         public bool $canRestore,
+        public PageVersionProvenanceView $provenance,
     ) {
     }
 }

@@ -27,9 +27,11 @@ use App\Models\AuditEntry;
 use App\Models\Category;
 use App\Models\DomainEvent;
 use App\Models\McpAccessToken;
+use App\Models\McpClientSession;
 use App\Models\Page;
 use App\Models\PageAccessGrant;
 use App\Models\PageVersion;
+use App\Models\ProducerAssertion;
 use App\Models\Tag;
 use App\Models\User;
 use App\Models\Workspace;
@@ -1084,6 +1086,79 @@ final class McpInterfaceTest extends TestCase
         $this->assertSame('2099-01-01', $unsupportedData['requested'] ?? null);
     }
 
+    public function test_initialize_rejects_malformed_nested_client_metadata_without_recording_a_session(): void
+    {
+        $service = $this->createServiceAccount('Malformed Client Agent', 'malformed-client-agent@example.test');
+        $token = $this->issueToken($service, ['mcp:search'])->plainTextToken;
+
+        foreach ([
+            ['name' => ['not-a-string'], 'version' => '1.0.0'],
+            ['name' => 'artifactflow-tests', 'version' => 100],
+            ['name' => 'artifactflow-tests', 'version' => '1.0.0', 'title' => false],
+            ['not-an-object'],
+        ] as $index => $clientInfo) {
+            $error = $this->jsonRpcErrorPayload($this->postMcp($token, [
+                'jsonrpc' => '2.0',
+                'id' => 'malformed-client-' . $index,
+                'method' => 'initialize',
+                'params' => [
+                    'protocolVersion' => '2025-11-25',
+                    'capabilities' => [],
+                    'clientInfo' => $clientInfo,
+                ],
+            ]));
+
+            $this->assertSame(-32602, $error['code']);
+            $this->assertSame('Invalid client information', $error['message']);
+        }
+
+        $this->assertDatabaseCount('mcp_client_sessions', 0);
+    }
+
+    public function test_initialize_caps_client_report_sessions_per_access_token(): void
+    {
+        config([
+            'rate_limits.mcp_pre_auth_per_minute' => 1_000,
+            'rate_limits.mcp_per_minute' => 1_000,
+        ]);
+
+        $service = $this->createServiceAccount('Session Retention Agent', 'session-retention-agent@example.test');
+        $token = $this->issueToken($service, ['mcp:search'])->plainTextToken;
+        $sessionIds = [];
+
+        foreach (range(1, 65) as $index) {
+            $response = $this->postMcp($token, [
+                'jsonrpc' => '2.0',
+                'id' => 'retention-init-' . $index,
+                'method' => 'initialize',
+                'params' => [
+                    'protocolVersion' => '2025-11-25',
+                    'capabilities' => [],
+                    'clientInfo' => [
+                        'name' => 'retention-client-' . $index,
+                        'version' => '1.0.0',
+                    ],
+                ],
+            ])->assertOk();
+            $sessionId = $response->headers->get('MCP-Session-Id');
+            $this->assertIsString($sessionId);
+            $sessionIds[] = $sessionId;
+        }
+
+        $accessToken = McpAccessToken::query()->where('principal_user_uid', $service->uid)->sole();
+        $this->assertSame(
+            64,
+            McpClientSession::query()->where('mcp_access_token_uid', $accessToken->uid)->count(),
+        );
+        $this->assertDatabaseMissing('mcp_client_sessions', [
+            'session_id_hash' => hash('sha256', $sessionIds[0]),
+        ]);
+        $this->assertDatabaseHas('mcp_client_sessions', [
+            'session_id_hash' => hash('sha256', $sessionIds[64]),
+            'client_reported_name' => 'retention-client-65',
+        ]);
+    }
+
     public function test_protocol_and_tool_argument_errors_are_reported_without_server_errors(): void
     {
         $service = $this->createServiceAccount('Protocol Agent', 'protocol-agent@example.test');
@@ -2106,6 +2181,386 @@ final class McpInterfaceTest extends TestCase
         $this->assertSame('invalid_request', $foreignBase['type']);
         $this->assertSame('The submitted base_version_uid is not a version of this page.', $foreignBase['message']);
         $this->assertSame(2, PageVersion::query()->where('page_uid', $page->uid)->count());
+    }
+
+    public function test_mcp_create_records_declared_producers_reported_client_and_safe_external_references(): void
+    {
+        Storage::fake('artifacts');
+
+        $owner = $this->createUser('Provenance Owner', 'provenance-owner@example.test');
+        $service = $this->createServiceAccount('Provenance Agent', 'provenance-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Provenance Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $token = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+            McpAccessTokenIssuer::SCOPE_READ,
+            McpAccessTokenIssuer::SCOPE_SEARCH,
+        ])->plainTextToken;
+
+        $initialize = $this->postMcp($token, [
+            'jsonrpc' => '2.0',
+            'id' => 'provenance-init',
+            'method' => 'initialize',
+            'params' => [
+                'protocolVersion' => '2025-11-25',
+                'capabilities' => [],
+                'clientInfo' => [
+                    'name' => 'claude-code',
+                    'version' => '3.1.0',
+                ],
+            ],
+        ])->assertOk();
+        $sessionId = $initialize->headers->get('MCP-Session-Id');
+        $this->assertIsString($sessionId);
+        $this->assertNotSame('', $sessionId);
+
+        $created = $this->successfulToolPayload($this->callTool($token, 'create', [
+            'workspace_uid' => $workspace->uid,
+            'type' => PageType::Markdown->value,
+            'title' => 'Invoice Dashboard',
+            'content' => '# Invoice dashboard',
+            'provenance' => [
+                'producers' => [[
+                    'kind' => 'ai',
+                    'provider' => 'Anthropic',
+                    'model_id' => 'claude-opus-5-2-20260715',
+                    'model_label' => 'Claude Opus 5.2',
+                    'model_version' => '20260715',
+                    'generated_at' => '2026-08-01T13:42:00.123Z',
+                    'references' => [[
+                        'kind' => 'conversation',
+                        'ref' => 'abc123',
+                        'url' => 'https://claude.ai/chat/abc123',
+                    ]],
+                ]],
+            ],
+        ], $sessionId));
+        $pageUid = $this->payloadString($created, 'uid');
+        $versionUid = $this->payloadString($created, 'current_version_uid');
+
+        $this->assertDatabaseHas('page_version_ingests', [
+            'page_uid' => $pageUid,
+            'page_version_uid' => $versionUid,
+            'version_number' => 1,
+            'operation' => 'create',
+            'ingest_method' => 'mcp',
+            'actor_user_uid' => $service->uid,
+            'mcp_client_reported_name' => 'claude-code',
+            'mcp_client_reported_version' => '3.1.0',
+            'provenance_supplied_at_ingest' => true,
+        ]);
+        $this->assertDatabaseHas('producer_assertions', [
+            'producer_kind' => 'ai',
+            'provider_key' => 'anthropic',
+            'model_id' => 'claude-opus-5-2-20260715',
+            'model_label' => 'Claude Opus 5.2',
+            'model_version' => '20260715',
+            'evidence_type' => 'self_reported',
+            'asserted_by_user_uid' => $service->uid,
+        ]);
+        $storedProducer = ProducerAssertion::query()
+            ->where('model_id', 'claude-opus-5-2-20260715')
+            ->sole();
+        $this->assertSame(
+            '2026-08-01T13:42:00.123000+00:00',
+            $storedProducer->generated_at?->utc()->format('Y-m-d\TH:i:s.uP'),
+        );
+        $this->assertDatabaseHas('external_origin_references', [
+            'reference_kind' => 'conversation',
+            'external_ref' => 'abc123',
+            'url' => 'https://claude.ai/chat/abc123',
+            'retention_class' => 'sensitive',
+        ]);
+
+        $read = $this->successfulToolPayload($this->callTool($token, 'read', [
+            'page_uid' => $pageUid,
+        ], $sessionId));
+        $provenance = $this->payloadArray($read, 'provenance');
+        $ingest = $this->payloadArray($provenance, 'version_ingest');
+        $directProducers = $this->payloadList($provenance, 'direct_version_producers');
+        $producer = $directProducers[0];
+        $provider = $this->payloadArray($producer, 'provider');
+        $model = $this->payloadArray($producer, 'model_id');
+        $references = $this->payloadList($producer, 'references');
+        $reference = $references[0];
+
+        $this->assertSame('complete', $provenance['provenance_completeness']);
+        $this->assertSame('self_reported', $provenance['strongest_evidence']);
+        $this->assertSame('mcp', $ingest['ingest_method']);
+        $this->assertSame('claude-code', $this->payloadString(
+            $this->payloadArray($ingest, 'mcp_reported_client_name'),
+            'data',
+        ));
+        $this->assertSame('anthropic', $this->payloadString($provider, 'data'));
+        $this->assertSame('claude-opus-5-2-20260715', $this->payloadString($model, 'data'));
+        $this->assertSame('abc123', $this->payloadString(
+            $this->payloadArray($reference, 'ref'),
+            'data',
+        ));
+        $this->assertSame('https://claude.ai/chat/abc123', $this->payloadString(
+            $this->payloadArray($reference, 'url'),
+            'data',
+        ));
+
+        $search = $this->successfulToolPayload($this->callTool($token, 'search', [
+            'ai_provider' => 'anthropic',
+            'ai_model_query' => 'opus',
+            'provenance_scope' => 'any_version',
+        ], $sessionId));
+        $this->assertSame([$pageUid], array_column($this->payloadList($search, 'results'), 'uid'));
+
+        $event = DomainEvent::query()->where('event_type', 'page.version.producer_asserted')->sole();
+        $audit = AuditEntry::query()->where('action', 'page.version.producer_asserted')->sole();
+        $recordedTrace = json_encode([$event->payload, $audit->metadata], JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('abc123', $recordedTrace);
+        $this->assertStringNotContainsString('claude.ai', $recordedTrace);
+        $this->assertArrayNotHasKey('provider_key', $event->payload);
+        $this->assertArrayNotHasKey('model_id', $event->payload);
+        $this->assertArrayNotHasKey('provider_key', $audit->metadata);
+        $this->assertArrayNotHasKey('model_id', $audit->metadata);
+
+        $this->actingAs($owner)
+            ->get("/pages/{$pageUid}")
+            ->assertOk()
+            ->assertSee('MCP-reported client')
+            ->assertDontSee('Observed MCP client');
+    }
+
+    public function test_mcp_update_records_exact_model_and_search_respects_provenance_scope(): void
+    {
+        Storage::fake('artifacts');
+
+        $owner = $this->createUser('Scoped Provenance Owner', 'scoped-provenance-owner@example.test');
+        $service = $this->createServiceAccount('Scoped Provenance Agent', 'scoped-provenance-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Scoped Provenance Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $token = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+            McpAccessTokenIssuer::SCOPE_UPDATE,
+            McpAccessTokenIssuer::SCOPE_READ,
+            McpAccessTokenIssuer::SCOPE_SEARCH,
+        ])->plainTextToken;
+
+        $created = $this->successfulToolPayload($this->callTool($token, 'create', [
+            'workspace_uid' => $workspace->uid,
+            'type' => PageType::Markdown->value,
+            'title' => 'Model Scope Dashboard',
+            'content' => '# Initial human draft',
+        ]));
+        $pageUid = $this->payloadString($created, 'uid');
+        $firstVersionUid = $this->payloadString($created, 'current_version_uid');
+
+        $updated = $this->successfulToolPayload($this->callTool($token, 'update', [
+            'page_uid' => $pageUid,
+            'content' => '# Opus revision',
+            'base_version_uid' => $firstVersionUid,
+            'provenance' => [
+                'producers' => [[
+                    'kind' => 'ai',
+                    'provider' => 'anthropic',
+                    'model_id' => 'claude-opus-5-2-20260715',
+                    'model_label' => 'Claude Opus 5.2',
+                ]],
+            ],
+        ]));
+        $secondVersionUid = $this->payloadString($updated, 'version_uid');
+
+        $read = $this->successfulToolPayload($this->callTool($token, 'read', [
+            'page_uid' => $pageUid,
+        ]));
+        $provenance = $this->payloadArray($read, 'provenance');
+        $ingest = $this->payloadArray($provenance, 'version_ingest');
+        $producer = $this->payloadList($provenance, 'direct_version_producers')[0];
+
+        $this->assertSame($secondVersionUid, $ingest['page_version_uid']);
+        $this->assertSame('update', $ingest['operation']);
+        $this->assertSame('claude-opus-5-2-20260715', $this->payloadString(
+            $this->payloadArray($producer, 'model_id'),
+            'data',
+        ));
+
+        foreach ([
+            'page_origin' => [],
+            'current_version' => [$pageUid],
+            'any_version' => [$pageUid],
+        ] as $scope => $expectedPageUids) {
+            $search = $this->successfulToolPayload($this->callTool($token, 'search', [
+                'ai_provider' => 'Anthropic',
+                'ai_model_query' => 'opus 5.2',
+                'provenance_scope' => $scope,
+            ]));
+            $this->assertSame(
+                $expectedPageUids,
+                array_column($this->payloadList($search, 'results'), 'uid'),
+            );
+        }
+
+        $third = $this->successfulToolPayload($this->callTool($token, 'update', [
+            'page_uid' => $pageUid,
+            'content' => '# Later unclaimed revision',
+            'base_version_uid' => $secondVersionUid,
+        ]));
+        $this->assertNotSame($secondVersionUid, $this->payloadString($third, 'version_uid'));
+
+        $currentSearch = $this->successfulToolPayload($this->callTool($token, 'search', [
+            'ai_provider' => 'anthropic',
+            'ai_model_query' => 'claude-opus-5-2-20260715',
+            'provenance_scope' => 'current_version',
+        ]));
+        $anyVersionSearch = $this->successfulToolPayload($this->callTool($token, 'search', [
+            'ai_provider' => 'anthropic',
+            'ai_model_query' => 'claude-opus-5-2-20260715',
+            'provenance_scope' => 'any_version',
+        ]));
+
+        $this->assertSame([], $this->payloadList($currentSearch, 'results'));
+        $this->assertSame([$pageUid], array_column($this->payloadList($anyVersionSearch, 'results'), 'uid'));
+    }
+
+    public function test_mcp_provenance_is_optional_and_invalid_claims_fail_before_page_creation(): void
+    {
+        Storage::fake('artifacts');
+
+        $owner = $this->createUser('Optional Provenance Owner', 'optional-provenance-owner@example.test');
+        $service = $this->createServiceAccount('Optional Provenance Agent', 'optional-provenance-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Optional Provenance Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $token = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+            McpAccessTokenIssuer::SCOPE_READ,
+        ])->plainTextToken;
+
+        $created = $this->successfulToolPayload($this->callTool($token, 'create', [
+            'workspace_uid' => $workspace->uid,
+            'type' => PageType::Markdown->value,
+            'title' => 'Unknown Producer',
+            'content' => '# Unknown producer',
+        ]));
+        $pageUid = $this->payloadString($created, 'uid');
+        $read = $this->successfulToolPayload($this->callTool($token, 'read', [
+            'page_uid' => $pageUid,
+        ]));
+        $provenance = $this->payloadArray($read, 'provenance');
+
+        $this->assertSame('none', $provenance['provenance_completeness']);
+        $this->assertSame('none', $provenance['strongest_evidence']);
+        $this->assertSame([], $provenance['direct_version_producers']);
+        $this->assertDatabaseHas('page_version_ingests', [
+            'page_uid' => $pageUid,
+            'provenance_supplied_at_ingest' => false,
+        ]);
+        $this->assertDatabaseCount('producer_assertions', 0);
+
+        foreach ([
+            [
+                'kind' => 'ai',
+                'provider' => 'anthropic',
+            ],
+            [
+                'kind' => 'ai',
+                'provider' => 'anthropic',
+                'model_id' => 'claude-opus',
+                'references' => [[
+                    'kind' => 'conversation',
+                    'url' => 'https://user:secret@claude.ai/chat/credential-leak',
+                ]],
+            ],
+            [
+                'kind' => 'mixed',
+            ],
+            [
+                'kind' => 'ai',
+                'provider' => 'anthropic',
+                'model_id' => 'claude-opus',
+                'generated_at' => 'not-a-timestamp',
+            ],
+            [
+                'kind' => 'ai',
+                'provider' => 'anthropic',
+                'model_id' => 'claude-opus',
+                'generated_at' => '2026-02-30T10:00:00+00:00',
+            ],
+            [
+                'kind' => 'ai',
+                'provider' => 'anthropic',
+                'model_id' => 'claude-opus',
+                'name' => 'A name AI provenance must not accept',
+            ],
+            [
+                'kind' => 'ai',
+                'provider' => 'anthropic',
+                'model_id' => 'claude-opus',
+                'version' => 'A software version AI provenance must not accept',
+            ],
+            [
+                'kind' => 'software',
+                'name' => 'Artifact exporter',
+                'provider' => 'anthropic',
+                'model_id' => 'claude-opus',
+            ],
+            [
+                'kind' => 'human',
+                'version' => 'A software version human provenance must not accept',
+                'provider' => 'anthropic',
+                'model_id' => 'claude-opus',
+            ],
+        ] as $index => $producer) {
+            $error = $this->toolErrorPayload($this->callTool($token, 'create', [
+                'workspace_uid' => $workspace->uid,
+                'type' => PageType::Markdown->value,
+                'title' => 'Invalid Provenance ' . $index,
+                'content' => '# Invalid provenance',
+                'provenance' => [
+                    'producers' => [$producer],
+                ],
+            ]));
+
+            $this->assertSame('invalid_request', $error['type']);
+        }
+
+        $this->assertSame(0, Page::query()->where('title', 'like', 'Invalid Provenance%')->count());
+        $this->assertDatabaseCount('producer_assertions', 0);
+        $this->assertDatabaseCount('external_origin_references', 0);
+    }
+
+    public function test_mcp_rejects_credential_patterns_in_provenance_without_persisting_trace_data(): void
+    {
+        Storage::fake('artifacts');
+
+        $owner = $this->createUser('Secret Provenance Owner', 'secret-provenance-owner@example.test');
+        $service = $this->createServiceAccount('Secret Provenance Agent', 'secret-provenance-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Secret Provenance Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $token = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+        ])->plainTextToken;
+        $secret = 'ghp_' . str_repeat('a', 30);
+
+        $error = $this->toolErrorPayload($this->callTool($token, 'create', [
+            'workspace_uid' => $workspace->uid,
+            'type' => PageType::Markdown->value,
+            'title' => 'Rejected Secret Provenance',
+            'content' => '# Safe content',
+            'provenance' => [
+                'producers' => [[
+                    'kind' => 'ai',
+                    'provider' => 'anthropic',
+                    'model_id' => $secret,
+                ]],
+            ],
+        ]));
+
+        $this->assertSame('blocked_content', $error['type']);
+        $this->assertSame(['github_token'], $error['finding_codes']);
+        $this->assertDatabaseMissing('pages', ['title' => 'Rejected Secret Provenance']);
+        $this->assertDatabaseCount('producer_assertions', 0);
+        $this->assertDatabaseMissing('domain_events', [
+            'event_type' => 'page.version.producer_asserted',
+        ]);
+        $this->assertDatabaseMissing('audit_entries', [
+            'action' => 'page.version.producer_asserted',
+        ]);
+        $this->assertSame([], Storage::disk('artifacts')->allFiles());
     }
 
     private function createUser(string $name, string $email, bool $isSystemAdmin = false): User

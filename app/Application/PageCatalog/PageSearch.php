@@ -6,10 +6,13 @@ namespace App\Application\PageCatalog;
 
 use App\Application\Mcp\McpEffectiveAuthority;
 use App\Domain\PageCatalog\PageStatus;
+use App\Domain\Provenance\ProvenanceSearchScope;
 use App\Models\Page;
 use App\Models\PageVersion;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Str;
 
 final class PageSearch
 {
@@ -120,6 +123,71 @@ final class PageSearch
                 $query->where('tags.uid', $tagUid);
             });
         }
+
+        $this->applyProvenanceFilters($query, $filters);
+    }
+
+    /**
+     * @param Builder<Page> $query
+     */
+    private function applyProvenanceFilters(Builder $query, PageSearchFilters $filters): void
+    {
+        $provider = $filters->aiProvider === null ? null : Str::slug($filters->aiProvider);
+        $modelQuery = $this->normalizedSearch($filters->aiModelQuery);
+
+        if ($provider === null && $modelQuery === null) {
+            return;
+        }
+
+        $query->whereExists(static function (QueryBuilder $provenance) use (
+            $filters,
+            $modelQuery,
+            $provider,
+        ): void {
+            $provenance
+                ->selectRaw('1')
+                ->from('producer_assertions as matching_assertions')
+                ->join(
+                    'page_version_ingests as matching_ingests',
+                    'matching_ingests.uid',
+                    '=',
+                    'matching_assertions.page_version_ingest_uid',
+                )
+                ->whereColumn('matching_ingests.page_uid', 'pages.uid')
+                ->whereNotExists(static function (QueryBuilder $superseding): void {
+                    $superseding
+                        ->selectRaw('1')
+                        ->from('producer_assertions as superseding_assertions')
+                        ->whereColumn(
+                            'superseding_assertions.supersedes_assertion_uid',
+                            'matching_assertions.uid',
+                        );
+                });
+
+            if ($filters->provenanceScope === ProvenanceSearchScope::PageOrigin) {
+                $provenance->where('matching_ingests.version_number', 1);
+            } elseif ($filters->provenanceScope === ProvenanceSearchScope::CurrentVersion) {
+                $provenance->whereColumn('matching_ingests.page_version_uid', 'pages.current_version_uid');
+            }
+
+            if ($provider !== null) {
+                $provenance->where('matching_assertions.provider_key', $provider);
+            }
+
+            if ($modelQuery !== null) {
+                $provenance->where(static function (QueryBuilder $models) use ($modelQuery): void {
+                    $models
+                        ->whereRaw(
+                            "strpos(lower(coalesce(matching_assertions.model_id, '')), ?) > 0",
+                            [$modelQuery],
+                        )
+                        ->orWhereRaw(
+                            "strpos(lower(coalesce(matching_assertions.model_label, '')), ?) > 0",
+                            [$modelQuery],
+                        );
+                });
+            }
+        });
     }
 
     /**

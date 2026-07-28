@@ -25,6 +25,7 @@ use App\Domain\PageCatalog\CategoryRuleViolation;
 use App\Domain\PageCatalog\ImageNormalizationRejected;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
+use App\Domain\Provenance\ProvenanceSearchScope;
 use App\Http\Requests\PageCatalog\StorePageRequest;
 use App\Http\Support\ImageNormalizationRejectionResponse;
 use App\Models\Page;
@@ -33,6 +34,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 final class PageController
 {
@@ -179,6 +181,9 @@ final class PageController
     {
         $type = $this->nullableString($request, 'type');
         $status = $this->nullableString($request, 'status');
+        $provenanceScope = ProvenanceSearchScope::tryFrom(
+            $this->nullableString($request, 'provenance_scope') ?? ProvenanceSearchScope::AnyVersion->value,
+        ) ?? ProvenanceSearchScope::AnyVersion;
 
         return new PageSearchFilters(
             query: $this->nullableString($request, 'q'),
@@ -189,8 +194,11 @@ final class PageController
             tagUids: $this->tagUidsFrom($request),
             ownerUserUid: $this->nullableString($request, 'owner_user_uid'),
             includeArchived: $request->boolean('include_archived'),
-            sort: PageSearchSort::tryFrom($request->string('sort')->toString())
+            sort: PageSearchSort::tryFrom($this->nullableString($request, 'sort') ?? '')
                 ?? PageSearchSort::Relevance,
+            aiProvider: $this->nullableString($request, 'ai_provider'),
+            aiModelQuery: $this->nullableString($request, 'ai_model_query'),
+            provenanceScope: $provenanceScope,
         );
     }
 
@@ -250,7 +258,20 @@ final class PageController
 
     private function nullableString(Request $request, string $field): ?string
     {
-        $value = trim($request->string($field)->toString());
+        $value = $request->input($field);
+
+        if ($value === null) {
+            return null;
+        }
+
+        if (!is_string($value)) {
+            throw new UnprocessableEntityHttpException(sprintf(
+                'Query parameter [%s] must be a string.',
+                $field,
+            ));
+        }
+
+        $value = trim($value);
 
         return $value === '' ? null : $value;
     }
@@ -266,7 +287,7 @@ final class PageController
         $oldParentPageUid = $request->old('parent_page_uid');
         $requestedParentPageUid = is_string($oldParentPageUid)
             ? trim($oldParentPageUid)
-            : trim($request->string('parent_page_uid')->toString());
+            : $this->nullableString($request, 'parent_page_uid') ?? '';
 
         if ($requestedParentPageUid === '' || $selectedWorkspaceUid === null) {
             return null;

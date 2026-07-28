@@ -133,6 +133,17 @@
           </ul>
         </section>
 
+        <section id="provenance-trust">
+          <p class="kicker">Provenance trust</p>
+          <h2>A declared model is useful metadata, not a cryptographic proof.</h2>
+          <p>ArtifactFlow separates facts it observed, including version, retained-byte hash, ingest actor, mechanism, and MCP client, from producer metadata supplied by a caller. MCP model claims are labelled self-reported. A client named Claude Code does not prove that Claude or any particular Opus release authored the content.</p>
+          <p>Provider/model search remains inside normal page authorization. External artifact or conversation links are HTTPS-only, never fetched by ArtifactFlow, excluded from logs, events, audit metadata, and search, and opened only after an authorized user chooses the escaped link. A valid destination can still be malicious or track the click.</p>
+          <div class="callout">
+            <strong>Evidence and completeness are separate</strong>
+            <p>A complete set of declared producer fields can still be self-reported and false. Hash equality proves only equality of the retained ArtifactFlow bytes, not the truth of the producer claim.</p>
+          </div>
+        </section>
+
         <section id="residuals">
           <p class="kicker">Honest residuals</p>
           <h2>Isolation narrows risk; it does not make hostile code benevolent.</h2>
@@ -163,6 +174,7 @@
         <a href="#browser-policy">Iframe and CSP</a>
         <a href="#preview-flows">Preview flows</a>
         <a href="#defense-in-depth">Defense in depth</a>
+        <a href="#provenance-trust">Provenance trust</a>
         <a href="#residuals">Residual risks</a>
       </aside>
     </div>

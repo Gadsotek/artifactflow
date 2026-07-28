@@ -33,6 +33,7 @@ use App\Models\DomainEvent;
 use App\Models\Page;
 use App\Models\PageAccessGrant;
 use App\Models\PageVersion;
+use App\Models\PageVersionIngest;
 use App\Models\User;
 use App\Models\WorkspaceMembership;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -479,6 +480,7 @@ final class PageLifecycleTest extends TestCase
 
         $this->assertSame(0, Page::query()->where('uid', $page->uid)->count());
         $this->assertSame(0, PageVersion::query()->where('page_uid', $page->uid)->count());
+        $this->assertSame(0, PageVersionIngest::query()->where('page_uid', $page->uid)->count());
         $this->assertSame(0, PageAccessGrant::query()->where('page_uid', $page->uid)->count());
         Storage::disk('artifacts')->assertMissing($version->content_storage_path);
 
@@ -1025,6 +1027,7 @@ final class PageLifecycleTest extends TestCase
 
         $this->assertSame(1, Page::query()->where('uid', $page->uid)->count());
         $this->assertSame(1, PageVersion::query()->where('uid', $version->uid)->count());
+        $this->assertSame(1, PageVersionIngest::query()->where('page_uid', $page->uid)->count());
         Storage::disk('artifacts')->assertExists($version->content_storage_path);
         $this->assertSame(0, DomainEvent::query()->where('event_type', 'page.hard_deleted')->count());
         $this->assertSame(0, AuditEntry::query()->where('action', 'page.hard_deleted')->count());

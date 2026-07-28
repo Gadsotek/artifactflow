@@ -25,6 +25,7 @@ final class UpdateTool extends ArtifactFlowTool
         \App\Application\Mcp\McpToolGuard $guard,
         \Illuminate\Http\Request $httpRequest,
         private readonly Handler $handler,
+        private readonly McpProvenanceSchema $provenanceSchema,
     ) {
         parent::__construct($mcpContext, $guard, $httpRequest);
     }
@@ -38,6 +39,7 @@ final class UpdateTool extends ArtifactFlowTool
             'base_version_uid' => $schema->string()
                 ->description('Must match the current version UID.')
                 ->required(),
+            'provenance' => $this->provenanceSchema->make($schema),
         ];
     }
 
