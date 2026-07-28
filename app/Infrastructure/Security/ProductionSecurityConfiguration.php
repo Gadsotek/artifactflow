@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Infrastructure\Security;
 
 use App\Application\Administration\InstallationLimitCeilings;
+use App\Application\Identity\TurnstileConfiguration;
 use App\Application\PageCatalog\ImageArtifactLimits;
 use App\Application\PageCatalog\ImageNormalizationConfiguration;
 use App\Application\PageCatalog\ImageParserTimeouts;
@@ -78,6 +79,7 @@ final readonly class ProductionSecurityConfiguration
         $this->ensureSessionDomainDoesNotCoverArtifactHost($artifactOrigin);
         $this->ensureTrustedProxies();
         $this->ensureArtifactFrameAncestors($applicationOrigin);
+        $this->ensureTurnstileConfiguration($applicationOrigin);
         $this->ensureReverbConfiguration($applicationOrigin);
         $this->ensureMailTransportIsDeliverable();
         $this->ensureTransactionalInvitationQueue();
@@ -447,6 +449,46 @@ final readonly class ProductionSecurityConfiguration
         }
 
         $this->ensureReverbMaxConnectionsBounded();
+    }
+
+    private function ensureTurnstileConfiguration(string $applicationOrigin): void
+    {
+        $turnstile = new TurnstileConfiguration($this->config);
+
+        if (!$turnstile->hasAnyCredentials()) {
+            return;
+        }
+
+        $turnstile->enabled();
+
+        if ($this->string('app.runtime_role') !== 'app') {
+            throw new RuntimeException(
+                'Cloudflare Turnstile credentials must not be available to non-app runtime roles.',
+            );
+        }
+
+        if ($turnstile->usesOfficialTestCredentials()) {
+            throw new RuntimeException(
+                'Cloudflare Turnstile test credentials must not be used in production.',
+            );
+        }
+
+        try {
+            $expectedHostname = $turnstile->expectedHostname();
+        } catch (RuntimeException) {
+            throw new RuntimeException(
+                'TURNSTILE_EXPECTED_HOSTNAME must match the APP_URL host.',
+            );
+        }
+
+        if ($expectedHostname !== $this->host($applicationOrigin)) {
+            throw new RuntimeException(
+                'TURNSTILE_EXPECTED_HOSTNAME must match the APP_URL host.',
+            );
+        }
+
+        $turnstile->connectTimeoutSeconds();
+        $turnstile->requestTimeoutSeconds();
     }
 
     private function ensureDatabaseDriver(): void

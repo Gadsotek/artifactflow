@@ -20,6 +20,99 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_turnstile_is_optional_but_enabled_configuration_must_be_complete_and_production_safe(): void
+    {
+        $this->configureSafeProductionValues();
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+        $this->addToAssertionCount(1);
+
+        $this->configureSafeProductionValues();
+        config([
+            'turnstile.site_key' => 'production-site-key',
+            'turnstile.secret_key' => 'production-secret-key',
+            'turnstile.expected_hostname' => 'app.example.test',
+            'turnstile.connect_timeout_seconds' => 2,
+            'turnstile.timeout_seconds' => 5,
+        ]);
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+        $this->addToAssertionCount(1);
+
+        foreach ([
+            [
+                ['turnstile.site_key' => 'production-site-key'],
+                'TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY must be configured together.',
+            ],
+            [
+                ['turnstile.secret_key' => 'production-secret-key'],
+                'TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY must be configured together.',
+            ],
+            [
+                [
+                    'turnstile.site_key' => '1x00000000000000000000AA',
+                    'turnstile.secret_key' => '1x0000000000000000000000000000000AA',
+                    'turnstile.expected_hostname' => 'app.example.test',
+                ],
+                'Cloudflare Turnstile test credentials must not be used in production.',
+            ],
+            [
+                [
+                    'turnstile.site_key' => '2x00000000000000000000BB',
+                    'turnstile.secret_key' => 'production-secret-key',
+                    'turnstile.expected_hostname' => 'app.example.test',
+                ],
+                'Cloudflare Turnstile test credentials must not be used in production.',
+            ],
+            [
+                [
+                    'turnstile.site_key' => 'production-site-key',
+                    'turnstile.secret_key' => '3x0000000000000000000000000000000AA',
+                    'turnstile.expected_hostname' => 'app.example.test',
+                ],
+                'Cloudflare Turnstile test credentials must not be used in production.',
+            ],
+            [
+                [
+                    'turnstile.site_key' => 'production-site-key',
+                    'turnstile.secret_key' => 'production-secret-key',
+                    'turnstile.expected_hostname' => 'other.example.test',
+                ],
+                'TURNSTILE_EXPECTED_HOSTNAME must match the APP_URL host.',
+            ],
+            [
+                [
+                    'turnstile.site_key' => 'production-site-key',
+                    'turnstile.secret_key' => 'production-secret-key',
+                    'turnstile.expected_hostname' => 'https://app.example.test',
+                ],
+                'TURNSTILE_EXPECTED_HOSTNAME must match the APP_URL host.',
+            ],
+            [
+                [
+                    'turnstile.site_key' => 'production-site-key',
+                    'turnstile.secret_key' => 'production-secret-key',
+                    'turnstile.expected_hostname' => 'app.example.test',
+                    'turnstile.timeout_seconds' => 0,
+                ],
+                'Turnstile connect and request timeouts must be positive integers.',
+            ],
+            [
+                [
+                    'app.runtime_role' => 'worker',
+                    'image_parser.shared_secret' => '',
+                    'turnstile.site_key' => 'production-site-key',
+                    'turnstile.secret_key' => 'production-secret-key',
+                    'turnstile.expected_hostname' => 'app.example.test',
+                ],
+                'Cloudflare Turnstile credentials must not be available to non-app runtime roles.',
+            ],
+        ] as [$unsafe, $message]) {
+            $this->configureSafeProductionValues();
+            config($unsafe);
+
+            $this->assertUnsafeConfiguration($message);
+        }
+    }
+
     public function test_same_application_and_artifact_origin_is_rejected(): void
     {
         $this->configureSafeProductionValues();
@@ -947,6 +1040,11 @@ final class ProductionSecurityConfigurationTest extends TestCase
             'session.http_only' => true,
             'session.same_site' => 'lax',
             'session.secure' => true,
+            'turnstile.site_key' => null,
+            'turnstile.secret_key' => null,
+            'turnstile.expected_hostname' => 'app.example.test',
+            'turnstile.connect_timeout_seconds' => 2,
+            'turnstile.timeout_seconds' => 5,
             'trustedproxy.raw' => 'REMOTE_ADDR',
             'trustedproxy.proxies' => 'REMOTE_ADDR',
         ]);

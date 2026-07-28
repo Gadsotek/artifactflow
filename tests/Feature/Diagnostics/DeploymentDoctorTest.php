@@ -7,6 +7,7 @@ namespace Tests\Feature\Diagnostics;
 use App\Application\Diagnostics\DeploymentDoctor;
 use App\Application\Diagnostics\DoctorCheck;
 use App\Application\Diagnostics\DoctorCheckStatus;
+use App\Application\Identity\TurnstileConfiguration;
 use App\Infrastructure\Security\ProductionSecurityConfiguration;
 use Illuminate\Config\Repository;
 use Illuminate\Support\Arr;
@@ -63,6 +64,60 @@ final class DeploymentDoctorTest extends TestCase
         $report = (new DeploymentDoctor($this->config('production', $this->hardenedProductionConfig())))->run();
 
         $this->assertTrue($report->passed(), $this->describeFailures($report->checks));
+    }
+
+    public function test_doctor_reports_optional_and_hardened_turnstile_configuration(): void
+    {
+        $disabledConfig = $this->config(
+            'production',
+            $this->hardenedProductionConfig(),
+        );
+        $disabled = (new DeploymentDoctor($disabledConfig))->run();
+        $this->assertSame(
+            DoctorCheckStatus::Skipped,
+            $this->check($disabled->checks, 'turnstile')->status,
+        );
+
+        $enabledConfig = $this->config('production', array_merge(
+            $this->hardenedProductionConfig(),
+            [
+                'turnstile.site_key' => 'production-site-key',
+                'turnstile.secret_key' => 'production-secret-key',
+                'turnstile.expected_hostname' => 'app.example.test',
+                'turnstile.connect_timeout_seconds' => 2,
+                'turnstile.timeout_seconds' => 5,
+            ],
+        ));
+        $enabled = (new DeploymentDoctor($enabledConfig))->run();
+        $this->assertSame(
+            DoctorCheckStatus::Pass,
+            $this->check($enabled->checks, 'turnstile')->status,
+        );
+
+        foreach ([
+            ['turnstile.site_key' => 'production-site-key'],
+            [
+                'turnstile.site_key' => TurnstileConfiguration::TEST_SITE_KEY,
+                'turnstile.secret_key' => TurnstileConfiguration::TEST_SECRET_KEY,
+                'turnstile.expected_hostname' => 'app.example.test',
+            ],
+            [
+                'turnstile.site_key' => 'production-site-key',
+                'turnstile.secret_key' => 'production-secret-key',
+                'turnstile.expected_hostname' => 'other.example.test',
+            ],
+        ] as $unsafe) {
+            $unsafeConfig = $this->config('production', array_merge(
+                $this->hardenedProductionConfig(),
+                $unsafe,
+            ));
+            $report = (new DeploymentDoctor($unsafeConfig))->run();
+
+            $this->assertSame(
+                DoctorCheckStatus::Fail,
+                $this->check($report->checks, 'turnstile')->status,
+            );
+        }
     }
 
     public function test_production_fails_when_the_image_parser_origin_or_secret_is_not_isolated(): void
@@ -638,6 +693,7 @@ final class DeploymentDoctorTest extends TestCase
             'debug_disabled',      // ensureDebugDisabled
             'dummy_password_hash', // ensureDummyPasswordHashCost
             'session_domain',      // ensureSessionDomainDoesNotCoverArtifactHost
+            'turnstile',           // ensureTurnstileConfiguration
             'reverb',              // ensureReverbConfiguration
             'bootstrap_command',   // bootstrap admin path required
         ];
@@ -682,6 +738,7 @@ final class DeploymentDoctorTest extends TestCase
                 'ensureSharedRateLimiterCacheStore',
                 'ensureTransactionalInvitationQueue',
                 'ensureTrustedProxies',
+                'ensureTurnstileConfiguration',
             ],
             $ensureMethods,
             'ProductionSecurityConfiguration gained or lost an ensure* invariant. Add or remove the matching DeploymentDoctor check and update both lists so doctor/boot-gate parity stays enforced.',

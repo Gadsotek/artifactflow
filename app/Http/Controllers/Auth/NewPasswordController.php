@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Auth;
 
 use App\Application\Identity\ResetPasswordWithToken;
+use App\Application\Identity\TurnstileConfiguration;
+use App\Application\Identity\TurnstileVerifier;
 use App\Http\Requests\Auth\NewPasswordRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,16 +17,27 @@ final class NewPasswordController
 {
     private const string RESET_FAILED_MESSAGE = 'Password reset link is invalid or has expired.';
 
+    public function __construct(
+        private readonly TurnstileConfiguration $turnstileConfiguration,
+        private readonly TurnstileVerifier $turnstileVerifier,
+    ) {
+    }
+
     public function create(Request $request, string $token): View
     {
         return view('auth.reset-password', [
             'email' => $request->query('email', ''),
             'token' => $token,
+            'turnstileSiteKey' => $this->turnstileConfiguration->publicSiteKey(),
+            'turnstileScriptUrl' => $this->turnstileConfiguration->enabled()
+                ? TurnstileConfiguration::SCRIPT_URL
+                : null,
         ]);
     }
 
     public function store(NewPasswordRequest $request, ResetPasswordWithToken $resetPassword): RedirectResponse
     {
+        $request->ensureTurnstileIsValid($this->turnstileVerifier);
         $credentials = $request->credentials();
         $status = $resetPassword->handle(
             email: $credentials['email'],

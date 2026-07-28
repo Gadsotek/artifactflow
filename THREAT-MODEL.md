@@ -466,7 +466,53 @@ MCP-reported client metadata upgrades a declared claim to attested evidence.
 
 ---
 
-## 13. Contributor rules (the don'ts that prevent regressions)
+## 13. Optional Turnstile and authentication abuse
+
+Password login always has three server-side rate-limit dimensions: email+IP per minute, source IP
+per minute, and an IP-independent account bucket per hour. These remain the credential-stuffing
+boundary. Password recovery is separately bounded by an email/IP hourly limit. Cloudflare
+Turnstile is optional defense in depth for internet-facing deployments, not a replacement for
+those controls. With both keys absent, no widget is rendered, no Cloudflare CSP source is allowed,
+and no Cloudflare request occurs.
+
+When an operator supplies both keys, only the login, reset-link-request, and new-password GET
+responses permit `https://challenges.cloudflare.com` in their script and frame CSP sources. The
+external script element carries the response's CSP nonce; the frame is authorized by `frame-src`.
+The app sends the returned token and derived client IP to Cloudflare Siteverify before password
+hash work, reset-notification dispatch, or reset-token consumption. It requires `success=true`, an
+exact configured hostname, and the action bound to that form: `login`,
+`password_reset_request`, or `password_reset`. Tokens are bounded to Cloudflare's 2,048-character
+limit. Missing, structured, oversized, rejected, replayed, malformed, wrong-action,
+wrong-hostname, non-2xx, timeout, and transport-failure cases all fail closed with one generic
+error. Failed login challenges consume the email+IP and source-IP budgets but not the
+account-global password-guess budget because no credential was tested; password-recovery
+challenge failures consume the existing email/IP reset-route budget.
+
+Siteverify failures emit a bounded operator warning containing a stable failure reason, an HTTP
+status when relevant, and only syntax-restricted Cloudflare error codes. Tokens, keys, visitor IPs,
+configured hostnames, and response hostnames are never logged. Authentication route limits bound
+repeated failure logging. In non-production environments a partial key pair or malformed enabled
+hostname/timeout configuration returns explicit operator guidance with `503`; production still
+rejects those states during boot.
+
+This opt-in creates two explicit residuals:
+
+- **Privacy / third-party processing:** the visitor's browser interacts with Cloudflare and the app
+  submits the challenge token plus the visitor IP. Cloudflare documents browser-side signals
+  including client IP, TLS fingerprint, User-Agent, site key, and associated origin. The deployment
+  operator is responsible for deciding that this data flow is acceptable and for the relevant
+  privacy notice or processing agreement.
+- **Availability:** Cloudflare or outbound Siteverify failure blocks login and password recovery
+  while Turnstile is configured. Removing both keys and redeploying restores the independent
+  rate-limit-only path.
+
+Production rejects partial key pairs, Cloudflare's published test credentials, hostname drift from
+`APP_URL`, invalid timeouts, and credentials exposed to non-app runtime roles. The secret is never
+rendered and must be scoped to app-role replicas only.
+
+---
+
+## 14. Contributor rules (the don'ts that prevent regressions)
 
 1. **Never** add `allow-same-origin` to the artifact iframe (embedded or draft).
 2. **Never** weaken the CSP because the JS guard "covers" something. The guard is not a control.
@@ -497,13 +543,16 @@ The **main application origin** now ships a real restrictive CSP: `default-src '
 `unsafe-inline`), `object-src 'none'`, `base-uri 'none'`, `form-action 'self' <artifact origin>`, `frame-src`
 limited to the artifact origin, `frame-ancestors 'none'`, plus `X-Frame-Options: DENY`, HSTS,
 and `X-Content-Type-Options: nosniff` (`app/Http/Middleware/AddSecurityHeaders.php`).
+When Turnstile is configured, only the GET login, reset-link-request, and new-password responses
+additionally allow `https://challenges.cloudflare.com` in `script-src` and `frame-src`; other app
+responses retain the normal policy.
 So even a future HTML-injection on the main origin (e.g. via the `{!! $renderedMarkdown !!}` sink)
 is CSP-contained, not just sandbox-contained. Keep the main-app CSP **authoritative** (overwrite,
 don't merge, the security-critical directives) so an upstream weak directive can never win.
 
 ---
 
-## 14. One-line mental model
+## 15. One-line mental model
 
 > Untrusted code runs **on a throwaway origin, in a browser-sandboxed box, behind a header CSP
 > that travels with it.** The browser enforces the box; the origin makes escaping the box

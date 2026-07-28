@@ -1,4 +1,4 @@
-<x-layouts.app title="Set password">
+<x-layouts.app title="Set password" :turnstile-script-url="$turnstileScriptUrl">
     <section class="af-auth-shell" data-auth-shell>
         <div class="af-auth-story">
             <a class="af-auth-brand" href="{{ route('home') }}">
@@ -74,6 +74,21 @@
                             class="af-input mt-2 block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-base text-zinc-950 shadow-sm outline-none transition"
                         >
                     </div>
+
+                    @if ($turnstileSiteKey !== null)
+                        <div>
+                            <div
+                                class="cf-turnstile"
+                                data-sitekey="{{ $turnstileSiteKey }}"
+                                data-action="password_reset"
+                                data-theme="auto"
+                                data-size="flexible"
+                            ></div>
+                            @error('cf-turnstile-response')
+                                <p class="mt-2 text-sm text-red-700">{{ $message }}</p>
+                            @enderror
+                        </div>
+                    @endif
 
                     <button class="af-auth-submit w-full px-4 py-2.5 text-sm font-semibold text-white transition" type="submit">
                         Reset password

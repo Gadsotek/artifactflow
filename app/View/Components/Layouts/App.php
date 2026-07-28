@@ -49,6 +49,7 @@ final class App extends Component
         UrlGenerator $url,
         Vite $vite,
         public ?string $title = null,
+        public ?string $turnstileScriptUrl = null,
     ) {
         $user = $auth->guard()->user();
         $this->authenticatedUser = $user instanceof User ? $user : null;
