@@ -198,6 +198,29 @@ def main() -> int:
     )
     assert_finding("git push origin main", "git_push", "ask")
     assert_finding("cd /tmp\ngit push origin main", "git_push", "ask")
+    assert_finding(
+        "gh api --method DELETE repos/octo-org/widget-vault/git/refs/heads/feature/example",
+        "github_ref_delete",
+        "ask",
+    )
+    assert_finding(
+        "gh api -X DELETE /repos/example/other-project/git/refs/heads/feature/example",
+        "github_ref_delete",
+        "ask",
+    )
+    assert_finding(
+        "gh api repos/acme/tools/git/refs/heads/feature/example --method=delete",
+        "github_ref_delete",
+        "ask",
+    )
+    assert_finding(
+        "gh api -XDELETE "
+        "https://github.example/api/v3/repos/example/reusable-hooks/git/refs/tags/v1.0.0",
+        "github_ref_delete",
+        "ask",
+    )
+    assert_no_command_finding("gh api repos/octo-org/widget-vault/git/refs/heads/main")
+    assert_no_command_finding("gh api --method DELETE repos/example/other-project/issues/1")
     assert_finding("git reset --hard", "git_reset_hard", "ask")
     assert_finding("cat .env", "secret_file_read", "deny")
     assert_finding("echo ok\ncat .env", "secret_file_read", "deny")
@@ -375,6 +398,40 @@ def main() -> int:
     output = claude_result["hookSpecificOutput"]
     assert isinstance(output, dict)
     assert output["permissionDecision"] == "ask"
+
+    codex_github_ref_payload = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": (
+                "gh api --method DELETE "
+                "repos/octo-org/widget-vault/git/refs/heads/feature/example"
+            ),
+        },
+    }
+    codex_github_ref_result = assert_json_stdout(
+        run_hook("guard_command.py", codex_github_ref_payload, "--agent", "codex")
+    )
+    github_ref_output = codex_github_ref_result["hookSpecificOutput"]
+    assert isinstance(github_ref_output, dict)
+    assert github_ref_output["permissionDecision"] == "ask"
+
+    claude_github_ref_payload = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": (
+                "gh api -X DELETE "
+                "/repos/example/other-project/git/refs/heads/feature/example"
+            ),
+        },
+    }
+    claude_github_ref_result = assert_json_stdout(
+        run_hook("guard_command.py", claude_github_ref_payload, "--agent", "claude")
+    )
+    claude_github_ref_output = claude_github_ref_result["hookSpecificOutput"]
+    assert isinstance(claude_github_ref_output, dict)
+    assert claude_github_ref_output["permissionDecision"] == "ask"
 
     codex_payload = {
         "hook_event_name": "PreToolUse",

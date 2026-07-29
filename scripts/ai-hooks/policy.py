@@ -721,6 +721,44 @@ def find_git_risk(segment: list[str]) -> Finding | None:
     return None
 
 
+def find_github_api_risk(segment: list[str]) -> Finding | None:
+    parsed = segment_command(segment)
+    if parsed is None:
+        return None
+
+    command, arguments = parsed
+    if command != "gh" or not arguments or arguments[0] != "api":
+        return None
+
+    api_arguments = arguments[1:]
+    delete_method = False
+
+    for index, argument in enumerate(api_arguments):
+        normalized = normalize_path_token(argument)
+        if normalized in {"--method", "-X"} and index + 1 < len(api_arguments):
+            delete_method = normalize_path_token(api_arguments[index + 1]).upper() == "DELETE"
+        elif normalized.startswith("--method="):
+            delete_method = normalized.split("=", 1)[1].upper() == "DELETE"
+        elif normalized.startswith("-X") and normalized != "-X":
+            delete_method = normalized[2:].upper() == "DELETE"
+
+        if delete_method:
+            break
+
+    deletes_git_ref = any(
+        re.search(r"(?:^|/)git/refs(?:/|$)", normalize_path_token(argument), re.IGNORECASE)
+        for argument in api_arguments
+    )
+    if not delete_method or not deletes_git_ref:
+        return None
+
+    return Finding(
+        code="github_ref_delete",
+        action="ask",
+        reason="Deleting GitHub Git refs requires explicit user approval for this exact API request.",
+    )
+
+
 def find_secret_read(segment: list[str]) -> Finding | None:
     if not segment:
         return None
@@ -1331,6 +1369,7 @@ def scan_command(command: str) -> list[Finding]:
                 find_dynamic_command_execution,
                 find_recursive_rm,
                 find_git_risk,
+                find_github_api_risk,
                 find_secret_read,
                 find_file_write_risk,
                 find_file_deletion_or_dispatch,

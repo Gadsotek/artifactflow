@@ -19,7 +19,7 @@ The guards are intentionally conservative:
   intercept nested operations that the desktop/tool bridge does not expose to
   project hooks. Nested calls are not inferred by parsing JavaScript; agents
   must use native hook-visible tools instead.
-- `git push` always asks first.
+- `git push` and GitHub API deletion of Git refs in any repository always ask first.
 - File deletion through `rm`, `unlink`, or `shred`, command dispatch through
   `xargs`, and `find -delete`/`find -exec` variants are denied.
 - Dangerous recursive deletion targets such as `/`, `.`, `..`, `~`, or `$HOME` are denied.
