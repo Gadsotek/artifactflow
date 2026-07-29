@@ -38,6 +38,7 @@ final class ArtifactPreviewDocumentGuard
         'iframe',
         'noembed',
         'noframes',
+        'noscript',
         'textarea',
         'title',
     ];
@@ -200,6 +201,10 @@ final class ArtifactPreviewDocumentGuard
                 continue;
             }
 
+            if ($tag['name'] === 'template') {
+                $tagText = $this->neutralizeDeclarativeShadowRoot($tagText);
+            }
+
             if (in_array($tag['name'], self::NESTED_BROWSING_CONTEXT_TAGS, true)) {
                 // Keep attributes and fallback bytes inspectable, but make the
                 // element inert before the browser sees it. A template neither
@@ -219,7 +224,7 @@ final class ArtifactPreviewDocumentGuard
 
             $result .= $tagText;
 
-            if ($tag['name'] === 'plaintext') {
+            if ($tag['name'] === 'plaintext' && $foreignRoots === []) {
                 return $result . substr($html, $offset);
             }
 
@@ -234,7 +239,7 @@ final class ArtifactPreviewDocumentGuard
 
             if (
                 in_array($tag['name'], self::RAW_TEXT_TAGS, true)
-                && $this->usesRawTextTokenizerState($tag['name'], $foreignRoots)
+                && $this->usesRawTextTokenizerState($foreignRoots)
             ) {
                 $rawTextTag = $tag['name'];
             }
@@ -246,20 +251,16 @@ final class ArtifactPreviewDocumentGuard
     /**
      * HTML raw-text elements do not generally retain that tokenizer behavior in
      * SVG/MathML foreign content. Treating their interior as opaque creates a
-     * parser differential: markup inside SVG/MathML style or MathML script can
-     * break back into HTML and create a live nested browsing context without
-     * passing through this scanner. SVG script is the one foreign-content case
-     * whose contents genuinely use the script-data tokenizer state.
+     * parser differential: a browser can process a breakout token, return to
+     * HTML, and create a live nested browsing context without passing through
+     * this scanner. This includes SVG script: unlike an HTML script element, its
+     * start tag does not switch the tokenizer into the script-data state.
      *
      * @param list<string> $foreignRoots
      */
-    private function usesRawTextTokenizerState(string $tagName, array $foreignRoots): bool
+    private function usesRawTextTokenizerState(array $foreignRoots): bool
     {
-        if ($foreignRoots === []) {
-            return true;
-        }
-
-        return $tagName === 'script' && $foreignRoots[array_key_last($foreignRoots)] === 'svg';
+        return $foreignRoots === [];
     }
 
     /**
@@ -694,8 +695,232 @@ final class ArtifactPreviewDocumentGuard
     {
         $beforeName = substr($html, $tagOffset, $tag['name_start'] - $tagOffset);
         $afterName = substr($html, $tag['name_end'], $tag['end'] - $tag['name_end'] + 1);
+        $neutralizedTag = $beforeName
+            . 'template data-artifactflow-blocked-browsing-context'
+            . $afterName;
 
-        return $beforeName . 'template data-artifactflow-blocked-browsing-context' . $afterName;
+        return $this->neutralizeDeclarativeShadowRoot($neutralizedTag);
+    }
+
+    /**
+     * Declarative Shadow DOM materializes template contents during parsing and
+     * hides closed roots from the residual DOM sweep. Rename every actual
+     * shadowrootmode attribute before the browser parses the document, while
+     * preserving identical text inside quoted values or malformed attribute
+     * names.
+     */
+    private function neutralizeDeclarativeShadowRoot(string $tag): string
+    {
+        $length = strlen($tag);
+        $cursor = 1;
+
+        while (
+            $cursor < $length
+            && !$this->isAsciiWhitespace($tag[$cursor])
+            && $tag[$cursor] !== '/'
+            && $tag[$cursor] !== '>'
+        ) {
+            ++$cursor;
+        }
+
+        $state = 'before_attribute_name';
+        $attributeNameStart = null;
+        /** @var list<array{length: int, start: int}> $ranges */
+        $ranges = [];
+
+        while ($cursor < $length) {
+            $character = $tag[$cursor];
+
+            switch ($state) {
+                case 'before_attribute_name':
+                    if ($this->isAsciiWhitespace($character)) {
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        break 2;
+                    }
+
+                    if ($character === '/') {
+                        $state = 'self_closing_start_tag';
+                        ++$cursor;
+                        break;
+                    }
+
+                    $attributeNameStart = $cursor;
+                    $state = 'attribute_name';
+                    ++$cursor;
+                    break;
+
+                case 'attribute_name':
+                    if (
+                        $this->isAsciiWhitespace($character)
+                        || $character === '/'
+                        || $character === '='
+                        || $character === '>'
+                    ) {
+                        if (
+                            is_int($attributeNameStart)
+                            && strtolower(substr($tag, $attributeNameStart, $cursor - $attributeNameStart))
+                                === 'shadowrootmode'
+                        ) {
+                            $ranges[] = [
+                                'length' => $cursor - $attributeNameStart,
+                                'start' => $attributeNameStart,
+                            ];
+                        }
+
+                        $attributeNameStart = null;
+
+                        if ($this->isAsciiWhitespace($character)) {
+                            $state = 'after_attribute_name';
+                            ++$cursor;
+                            break;
+                        }
+
+                        if ($character === '/') {
+                            $state = 'self_closing_start_tag';
+                            ++$cursor;
+                            break;
+                        }
+
+                        if ($character === '=') {
+                            $state = 'before_attribute_value';
+                            ++$cursor;
+                            break;
+                        }
+
+                        break 2;
+                    }
+
+                    ++$cursor;
+                    break;
+
+                case 'after_attribute_name':
+                    if ($this->isAsciiWhitespace($character)) {
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '/') {
+                        $state = 'self_closing_start_tag';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '=') {
+                        $state = 'before_attribute_value';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        break 2;
+                    }
+
+                    $attributeNameStart = $cursor;
+                    $state = 'attribute_name';
+                    ++$cursor;
+                    break;
+
+                case 'before_attribute_value':
+                    if ($this->isAsciiWhitespace($character)) {
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '"') {
+                        $state = 'attribute_value_double_quoted';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === "'") {
+                        $state = 'attribute_value_single_quoted';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        break 2;
+                    }
+
+                    $state = 'attribute_value_unquoted';
+                    ++$cursor;
+                    break;
+
+                case 'attribute_value_double_quoted':
+                    if ($character === '"') {
+                        $state = 'after_attribute_value_quoted';
+                    }
+
+                    ++$cursor;
+                    break;
+
+                case 'attribute_value_single_quoted':
+                    if ($character === "'") {
+                        $state = 'after_attribute_value_quoted';
+                    }
+
+                    ++$cursor;
+                    break;
+
+                case 'attribute_value_unquoted':
+                    if ($this->isAsciiWhitespace($character)) {
+                        $state = 'before_attribute_name';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        break 2;
+                    }
+
+                    ++$cursor;
+                    break;
+
+                case 'after_attribute_value_quoted':
+                    if ($this->isAsciiWhitespace($character)) {
+                        $state = 'before_attribute_name';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '/') {
+                        $state = 'self_closing_start_tag';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        break 2;
+                    }
+
+                    $state = 'before_attribute_name';
+                    break;
+
+                case 'self_closing_start_tag':
+                    if ($character === '>') {
+                        break 2;
+                    }
+
+                    $state = 'before_attribute_name';
+                    break;
+            }
+        }
+
+        for ($rangeIndex = count($ranges) - 1; $rangeIndex >= 0; --$rangeIndex) {
+            $range = $ranges[$rangeIndex];
+            $tag = substr_replace(
+                $tag,
+                'data-artifactflow-blocked-shadow-root',
+                $range['start'],
+                $range['length'],
+            );
+        }
+
+        return $tag;
     }
 
     private function isAsciiWhitespace(string $character): bool
