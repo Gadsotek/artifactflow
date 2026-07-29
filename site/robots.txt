@@ -10,4 +10,10 @@ Allow: /
 User-agent: Claude-User
 Allow: /
 
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
 Sitemap: https://artifactflow.app/sitemap.xml

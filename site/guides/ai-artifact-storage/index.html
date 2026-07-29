@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Artifact Storage: Chat, Git, Hosting, or Vault? | ArtifactFlow</title>
+<meta name="description" content="Compare AI chat, shared files, Git repositories, static hosting, and artifact vaults for preserving generated tools and documents after the task ends.">
+<link rel="canonical" href="https://artifactflow.app/guides/ai-artifact-storage/">
+<meta property="og:title" content="AI Artifact Storage: Chat, Git, Hosting, or Vault? | ArtifactFlow">
+<meta property="og:description" content="Choose the right durable home for an AI-generated document, diagram, screenshot, dashboard, or one-file tool.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://artifactflow.app/guides/ai-artifact-storage/">
+<meta property="og:site_name" content="ArtifactFlow">
+<meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="AI Artifact Storage: Chat, Git, Hosting, or Vault? | ArtifactFlow">
+<meta name="twitter:description" content="The strengths and limits of chat, shared files, Git, static hosting, and a managed artifact vault.">
+<meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
+<meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#0d0f13" media="(prefers-color-scheme: dark)" data-theme-color="dark">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script src="/assets/theme.js?v=20260722-2" data-theme-bootstrap></script>
+    <link rel="stylesheet" href="/assets/site.css?v=20260723-3">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "Where should AI-generated artifacts live?",
+  "description": "A practical comparison of AI chat, shared files, Git repositories, static hosting, and managed artifact vaults.",
+  "url": "https://artifactflow.app/guides/ai-artifact-storage/",
+  "isPartOf": { "@id": "https://artifactflow.app/#website" }
+}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="shell nav">
+    <a class="brand" href="/" aria-label="ArtifactFlow home"><img class="brand-mark brand-mark-on-light" src="/assets/artifactflow-mark.svg" alt="" aria-hidden="true" width="512" height="512"><img class="brand-mark brand-mark-on-dark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512">Artifact<span class="brand-flow">Flow</span></a>
+    <nav class="nav-links" aria-label="Main navigation">
+      <a href="/#product">Product</a>
+      <a href="/workflow/">Workflow</a>
+      <a href="/engineering-harness/">Harness</a>
+      <a href="/security/">Safety</a>
+      <a href="/mcp/">MCP</a>
+      <a href="/self-hosting/">Self-host</a>
+      <a href="/roadmap/">Roadmap</a>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="3.5"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path></svg></span><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><path d="M20.4 15.3A8.5 8.5 0 0 1 8.7 3.6a8.5 8.5 0 1 0 11.7 11.7Z"></path></svg></span></button>
+      <a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <header class="detail-hero">
+    <div class="shell">
+      <p class="eyebrow">Guide · Choosing a durable home</p>
+      <h1>Where should AI-generated artifacts live?</h1>
+      <p class="lede">Keep working context in AI chat, production software in Git, public delivery on a hosting platform, and deliberate reusable outputs in a managed artifact vault when they need stable identity, versions, search, ownership, permissions, and audit without becoming another software project.</p>
+      <div class="detail-actions">
+        <a class="button button-primary" href="/guides/ai-artifact-vault/">Define the artifact-vault layer →</a>
+        <a class="button" href="/self-hosting/">Evaluate ArtifactFlow locally →</a>
+      </div>
+    </div>
+  </header>
+
+  <article class="section">
+    <div class="article-shell article-grid">
+      <div class="article-content">
+        <section id="decision">
+          <p class="kicker">The deciding question</p>
+          <h2>What job must the storage surface do after generation?</h2>
+          <p>The same HTML dashboard can be temporary chat output, an attachment in a shared folder, the first file in a maintained application, a public web page, or a governed internal artifact. The format alone does not select the right home. Purpose, audience, expected lifetime, change process, and trust boundary do.</p>
+        </section>
+
+        <section id="chat">
+          <p class="kicker">AI chat</p>
+          <h2>Best for generation context and short-lived iteration.</h2>
+          <div class="split-cards">
+            <article class="split-card">
+              <h3>Strengths</h3>
+              <p>Prompts, reasoning, alternatives, revisions, and immediate feedback stay together while the work is being produced.</p>
+            </article>
+            <article class="split-card">
+              <h3>Limits</h3>
+              <p>The durable result is tied to one thread and provider. Ownership, authoritative version, access, taxonomy, and team-wide retrieval are usually unclear.</p>
+            </article>
+          </div>
+          <p>Keep the conversation when the conversation itself matters. Preserve the selected output elsewhere when people will rely on it after the thread fades.</p>
+        </section>
+
+        <section id="shared-files">
+          <p class="kicker">Downloads and shared drives</p>
+          <h2>Best for familiar file exchange and broad document compatibility.</h2>
+          <p>A shared drive handles ordinary files well and may provide folder permissions, comments, and office-document collaboration. It is often the simplest place for a binary that people already know how to open.</p>
+          <p>Generated tools can accumulate as ambiguous copies such as <code>final-v3-really-final.html</code>. Executable preview isolation, content-aware search, artifact identity, machine-safe writes, and a consistent audit model are not automatically present.</p>
+        </section>
+
+        <section id="git">
+          <p class="kicker">Git repository</p>
+          <h2>Best when the artifact has become maintained software.</h2>
+          <div class="split-cards">
+            <article class="split-card">
+              <h3>Strengths</h3>
+              <p>Git provides precise source history, branching, code review, automation, dependency management, tests, releases, and collaboration for technical teams.</p>
+            </article>
+            <article class="split-card">
+              <h3>Limits</h3>
+              <p>A repository, build, deployment, and release process is substantial overhead for every small calculator, runbook, briefing, diagram, or screenshot.</p>
+            </article>
+          </div>
+          <p>Move an artifact to Git when multiple files, dependencies, production operation, review workflows, or continuous delivery have become part of its real shape.</p>
+        </section>
+
+        <section id="hosting">
+          <p class="kicker">Static hosting</p>
+          <h2>Best when the primary requirement is delivering a public web page.</h2>
+          <p>Static hosting is excellent for inexpensive, cacheable public delivery. It is not automatically a searchable source-of-truth system with private workspaces, artifact-level permissions, retained source versions, ownership, lifecycle state, and audit.</p>
+          <p>Serving generated HTML from the same origin as an authenticated control plane also creates a security decision that ordinary hosting does not solve merely by making deployment easy.</p>
+        </section>
+
+        <section id="vault">
+          <p class="kicker">Managed artifact vault</p>
+          <h2>Best for reusable internal outputs that deserve governance without a new project.</h2>
+          <p>An artifact vault gives the result a stable record, authoritative payload, retained versions, search, ownership, permissions, safe preview, and audit. People and approved agents can retrieve and improve the same asset through one authority model.</p>
+          <p>ArtifactFlow occupies this layer for current Markdown, Mermaid, single-file HTML, and normalized image artifacts. It is self-hosted and built for authenticated internal teams.</p>
+          <div class="callout">
+            <strong>No public sharing or marketplace</strong>
+            <p>ArtifactFlow's current alpha does not turn private team artifacts into public links, host a public catalog, generate content, or replace a production software delivery platform.</p>
+          </div>
+        </section>
+
+        <section id="rules">
+          <p class="kicker">Practical routing rules</p>
+          <h2>Choose the smallest system that honestly matches the artifact's job.</h2>
+          <ul class="detail-list">
+            <li><strong>Keep it in AI chat</strong>when it is still disposable working material or its conversational context is the important record.</li>
+            <li><strong>Use a shared file surface</strong>when ordinary document collaboration and compatibility matter more than executable preview or artifact-specific governance.</li>
+            <li><strong>Use Git</strong>when the output is maintained software with dependencies, review, testing, releases, and operational ownership.</li>
+            <li><strong>Use static hosting</strong>when public delivery is the primary product and the source-of-truth workflow lives elsewhere.</li>
+            <li><strong>Use an artifact vault</strong>when a deliberate internal output must stay findable, versioned, permissioned, safely usable, and available to people and approved agents.</li>
+          </ul>
+          <div class="page-links">
+            <a class="page-link" href="/guides/ai-artifact-vault/"><strong>What is an AI artifact vault?</strong><span>The category definition, essential properties, and current ArtifactFlow scope.</span></a>
+            <a class="page-link" href="/workflow/"><strong>Artifact identity and versions</strong><span>How one stable record accumulates retained immutable content revisions.</span></a>
+            <a class="page-link" href="/guides/safe-ai-generated-html/"><strong>Safe generated HTML</strong><span>What a preview boundary must do when the retained artifact is executable.</span></a>
+            <a class="page-link" href="/mcp/"><strong>MCP for approved agents</strong><span>Scoped search, reads, creates, updates, descriptions, and reverts through the same rules.</span></a>
+          </div>
+        </section>
+      </div>
+
+      <aside class="detail-aside" aria-label="On this page">
+        <strong>On this page</strong>
+        <a href="#decision">Deciding question</a>
+        <a href="#chat">AI chat</a>
+        <a href="#shared-files">Shared files</a>
+        <a href="#git">Git repository</a>
+        <a href="#hosting">Static hosting</a>
+        <a href="#vault">Artifact vault</a>
+        <a href="#rules">Routing rules</a>
+      </aside>
+    </div>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <div class="footer-grid">
+      <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">A self-hosted, versioned artifact vault for tools and documents created with AI.</p></div>
+      <div class="footer-column"><strong>Explore</strong><a href="/">Home</a><a href="/workflow/">Artifact workflow</a><a href="/security/">Safety</a><a href="/mcp/">MCP server</a><a href="/self-hosting/">Self-hosting</a><a href="/engineering-harness/">Engineering harness</a><a href="/roadmap/">Roadmap</a></div>
+      <div class="footer-column"><strong>Guides</strong><a href="/guides/ai-artifact-vault/">AI artifact vault</a><a href="/guides/safe-ai-generated-html/">Safe generated HTML</a><a href="/guides/ai-artifact-storage/" aria-current="page">Where artifacts live</a></div>
+      <div class="footer-column"><strong>License</strong><span>AGPL-3.0-or-later</span><a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a><a href="mailto:gadsotek@gmail.com">Contact</a></div>
+    </div>
+    <div class="footer-end"><span>© 2026 Gadsotek</span><span>Preserves the output, not the conversation.</span></div>
+  </div>
+</footer>
+</body>
+</html>

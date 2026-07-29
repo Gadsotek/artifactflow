@@ -21,6 +21,9 @@ final class PublicSiteSeoTest extends TestCase
         'site/engineering-harness/index.html' => 'https://artifactflow.app/engineering-harness/',
         'site/workflow/index.html' => 'https://artifactflow.app/workflow/',
         'site/roadmap/index.html' => 'https://artifactflow.app/roadmap/',
+        'site/guides/ai-artifact-vault/index.html' => 'https://artifactflow.app/guides/ai-artifact-vault/',
+        'site/guides/safe-ai-generated-html/index.html' => 'https://artifactflow.app/guides/safe-ai-generated-html/',
+        'site/guides/ai-artifact-storage/index.html' => 'https://artifactflow.app/guides/ai-artifact-storage/',
     ];
 
     /** @var list<string> */
@@ -122,10 +125,11 @@ final class PublicSiteSeoTest extends TestCase
         $this->assertCount(count(self::PAGES), array_unique($descriptions));
     }
 
-    public function test_every_public_page_keeps_the_engineering_harness_second_in_main_navigation(): void
+    public function test_every_public_page_keeps_workflow_and_the_engineering_harness_in_main_navigation(): void
     {
         $expectedLinks = [
             ['Product', '/#product'],
+            ['Workflow', '/workflow/'],
             ['Harness', '/engineering-harness/'],
             ['Safety', '/security/'],
             ['MCP', '/mcp/'],
@@ -222,6 +226,8 @@ final class PublicSiteSeoTest extends TestCase
         $this->assertStringContainsString('User-agent: OAI-SearchBot', $robots);
         $this->assertStringContainsString('User-agent: Claude-SearchBot', $robots);
         $this->assertStringContainsString('User-agent: Claude-User', $robots);
+        $this->assertStringContainsString("User-agent: PerplexityBot\nAllow: /", $robots);
+        $this->assertStringContainsString("User-agent: Perplexity-User\nAllow: /", $robots);
         $this->assertStringContainsString('Sitemap: https://artifactflow.app/sitemap.xml', $robots);
         $this->assertStringNotContainsString('GPTBot', $robots);
         $this->assertStringNotContainsString("User-agent: ClaudeBot\n", $robots);
@@ -537,6 +543,56 @@ final class PublicSiteSeoTest extends TestCase
             $llms,
         );
         $this->assertDoesNotMatchRegularExpression('/^- [^[]+:\s+https:\/\//m', $llms);
+    }
+
+    public function test_llms_manifest_is_published_from_the_site_and_repository_roots(): void
+    {
+        $siteLlms = file_get_contents(base_path('site/llms.txt'));
+        $repositoryLlms = file_get_contents(base_path('llms.txt'));
+
+        $this->assertIsString($siteLlms);
+        $this->assertIsString($repositoryLlms);
+        $this->assertSame($siteLlms, $repositoryLlms);
+        $this->assertStringContainsString('normalized PNG/JPEG images', $siteLlms);
+        $this->assertStringContainsString('searches authoritative text and metadata', $siteLlms);
+        $this->assertStringContainsString('immutable content versions', $siteLlms);
+        $this->assertStringContainsString('## Guides', $siteLlms);
+        $this->assertStringNotContainsString('Indexes metadata, not full text', $siteLlms);
+    }
+
+    public function test_public_guides_answer_discovery_questions_with_first_party_evidence(): void
+    {
+        $homepage = file_get_contents(base_path('site/index.html'));
+        $vaultGuide = file_get_contents(base_path('site/guides/ai-artifact-vault/index.html'));
+        $htmlGuide = file_get_contents(base_path('site/guides/safe-ai-generated-html/index.html'));
+        $storageGuide = file_get_contents(base_path('site/guides/ai-artifact-storage/index.html'));
+
+        $this->assertIsString($homepage);
+        $this->assertIsString($vaultGuide);
+        $this->assertIsString($htmlGuide);
+        $this->assertIsString($storageGuide);
+
+        $this->assertStringContainsString('href="/guides/ai-artifact-vault/"', $homepage);
+        $this->assertStringContainsString('href="/guides/safe-ai-generated-html/"', $homepage);
+        $this->assertStringContainsString('href="/guides/ai-artifact-storage/"', $homepage);
+        $this->assertStringContainsString('<h1>What is an AI artifact vault?</h1>', $vaultGuide);
+        $this->assertStringContainsString(
+            'https://github.com/Gadsotek/artifactflow/blob/main/docs/ARTIFACT-LIFECYCLE.md',
+            $vaultGuide,
+        );
+        $this->assertStringContainsString(
+            '<h1>How should AI-generated HTML run safely?</h1>',
+            $htmlGuide,
+        );
+        $this->assertStringContainsString(
+            'https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md',
+            $htmlGuide,
+        );
+        $this->assertStringContainsString(
+            '<h1>Where should AI-generated artifacts live?</h1>',
+            $storageGuide,
+        );
+        $this->assertStringContainsString('No public sharing or marketplace', $storageGuide);
     }
 
     public function test_public_copy_frames_artifactflow_as_a_versioned_artifact_vault(): void

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Is an AI Artifact Vault? | ArtifactFlow</title>
+<meta name="description" content="Learn what an AI artifact vault preserves, how it differs from chat or static hosting, and which durable controls generated tools and documents need.">
+<link rel="canonical" href="https://artifactflow.app/guides/ai-artifact-vault/">
+<meta property="og:title" content="What Is an AI Artifact Vault? | ArtifactFlow">
+<meta property="og:description" content="A practical definition of the durable layer between AI chat and production software.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://artifactflow.app/guides/ai-artifact-vault/">
+<meta property="og:site_name" content="ArtifactFlow">
+<meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="What Is an AI Artifact Vault? | ArtifactFlow">
+<meta name="twitter:description" content="Stable identity, authoritative content, versions, search, permissions, safe use, and audit for AI-generated artifacts.">
+<meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
+<meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
+<meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#0d0f13" media="(prefers-color-scheme: dark)" data-theme-color="dark">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script src="/assets/theme.js?v=20260722-2" data-theme-bootstrap></script>
+<link rel="stylesheet" href="/assets/site.css?v=20260723-3">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "What is an AI artifact vault?",
+  "description": "A practical definition of the durable system-of-record layer for deliberate tools and documents created with AI.",
+  "url": "https://artifactflow.app/guides/ai-artifact-vault/",
+  "isPartOf": { "@id": "https://artifactflow.app/#website" }
+}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="shell nav">
+    <a class="brand" href="/" aria-label="ArtifactFlow home"><img class="brand-mark brand-mark-on-light" src="/assets/artifactflow-mark.svg" alt="" aria-hidden="true" width="512" height="512"><img class="brand-mark brand-mark-on-dark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512">Artifact<span class="brand-flow">Flow</span></a>
+    <nav class="nav-links" aria-label="Main navigation">
+      <a href="/#product">Product</a>
+      <a href="/workflow/">Workflow</a>
+      <a href="/engineering-harness/">Harness</a>
+      <a href="/security/">Safety</a>
+      <a href="/mcp/">MCP</a>
+      <a href="/self-hosting/">Self-host</a>
+      <a href="/roadmap/">Roadmap</a>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="3.5"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path></svg></span><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><path d="M20.4 15.3A8.5 8.5 0 0 1 8.7 3.6a8.5 8.5 0 1 0 11.7 11.7Z"></path></svg></span></button>
+      <a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <header class="detail-hero">
+    <div class="shell">
+      <p class="eyebrow">Guide · Category definition</p>
+      <h1>What is an AI artifact vault?</h1>
+      <p class="lede">An AI artifact vault is a durable system of record for deliberate tools and documents created with AI. It preserves the selected output independently of its original chat and gives that output stable identity, authoritative content, retained versions, search, ownership, permissions, safe use, and audit history.</p>
+      <div class="detail-actions">
+        <a class="button button-primary" href="/workflow/">See the ArtifactFlow lifecycle →</a>
+        <a class="button" href="/guides/ai-artifact-storage/">Compare storage choices →</a>
+      </div>
+    </div>
+  </header>
+
+  <article class="section">
+    <div class="article-shell article-grid">
+      <div class="article-content">
+        <section id="problem">
+          <p class="kicker">The missing layer</p>
+          <h2>The useful result should outlive the conversation that produced it.</h2>
+          <p>AI chats are effective working spaces, but a finished calculator, briefing, diagram, screenshot, runbook, or one-file dashboard may need a different life. People must know which copy is authoritative, who owns it, who can use it, what changed, and whether executable content can be opened without inheriting the trust of the application around it.</p>
+          <p>A vault preserves the output, not the conversation. It does not try to become agent memory, a vector database, a chat archive, an AI generator, or a general software deployment platform.</p>
+        </section>
+
+        <section id="properties">
+          <p class="kicker">Essential properties</p>
+          <h2>A folder of generated files is not yet an artifact vault.</h2>
+          <ul class="detail-list">
+            <li><strong>Stable identity</strong>One artifact keeps the same record even as its title, description, tags, lifecycle state, or content changes.</li>
+            <li><strong>Authoritative payload</strong>The system retains the source or normalized original that people and approved tools can retrieve again.</li>
+            <li><strong>Immutable content versions</strong>Each retained content change creates a new revision instead of silently overwriting history.</li>
+            <li><strong>Search and ownership</strong>Artifacts stay findable and accountable outside the chat or laptop where they began.</li>
+            <li><strong>Permissions and audit</strong>Reads and writes pass through one authority model and important changes remain explainable.</li>
+            <li><strong>Format-aware safe use</strong>Markdown, executable HTML, images, and future documents need different preview and processing boundaries.</li>
+          </ul>
+        </section>
+
+        <section id="lifecycle">
+          <p class="kicker">Identity and change</p>
+          <h2>Content history and ordinary metadata are different kinds of change.</h2>
+          <p>In ArtifactFlow, a page has a stable identity and a current version pointer. Retained source changes create immutable versions; metadata and draft state can change without manufacturing a content version. Reverting creates a new version copied from an older payload, so history remains append-only.</p>
+          <div class="callout">
+            <strong>Inspect the implementation contract</strong>
+            <p>The repository's <a href="https://github.com/Gadsotek/artifactflow/blob/main/docs/ARTIFACT-LIFECYCLE.md">artifact lifecycle document</a> defines current invariants, format payloads, draft behavior, version creation, and roadmap boundaries.</p>
+          </div>
+        </section>
+
+        <section id="safety">
+          <p class="kicker">Safe consumption</p>
+          <h2>Some artifacts are documents. Some are executable programs.</h2>
+          <p>Retaining an HTML file is easy. Running untrusted HTML near authenticated sessions is the hard part. A credible artifact vault treats preview as a trust-boundary problem, not a rendering convenience. ArtifactFlow serves generated HTML from a separate cookieless origin inside a sandboxed frame with restrictive response policy and short-lived signed access.</p>
+          <p>Those layers reduce risk but do not erase it. Scanning is advisory, and the documented self-navigation and browser-dependent WebRTC residuals still matter. The <a href="/guides/safe-ai-generated-html/">safe generated HTML guide</a> explains the boundary.</p>
+        </section>
+
+        <section id="scope">
+          <p class="kicker">ArtifactFlow today</p>
+          <h2>The public alpha implements a narrow, testable slice.</h2>
+          <p>ArtifactFlow currently supports Markdown pages with Mermaid diagrams, self-contained single-file HTML artifacts, and normalized PNG/JPEG images in personal or shared workspaces. Approved AI clients can search and retrieve authoritative content, create supported artifacts, update editable descriptions, and preserve new text or HTML versions through scoped MCP operations.</p>
+          <p>Searchable PDF and Word artifacts are the next product focus. Public sharing, a marketplace, AI generation, general static hosting, and full Confluence parity are not part of the current product boundary.</p>
+          <div class="page-links">
+            <a class="page-link" href="/workflow/"><strong>Artifact workflow</strong><span>Current identity, version, draft, metadata, and format invariants.</span></a>
+            <a class="page-link" href="/security/"><strong>Security architecture</strong><span>Maintained controls, threat boundaries, advisory safeguards, and residual risks.</span></a>
+            <a class="page-link" href="/mcp/"><strong>MCP for approved agents</strong><span>Scoped search, reads, creates, updates, descriptions, and reverts.</span></a>
+            <a class="page-link" href="/guides/ai-artifact-storage/"><strong>Where should artifacts live?</strong><span>When chat, a shared drive, Git, static hosting, or a vault is the right home.</span></a>
+          </div>
+        </section>
+      </div>
+
+      <aside class="detail-aside" aria-label="On this page">
+        <strong>On this page</strong>
+        <a href="#problem">The missing layer</a>
+        <a href="#properties">Essential properties</a>
+        <a href="#lifecycle">Identity and change</a>
+        <a href="#safety">Safe consumption</a>
+        <a href="#scope">ArtifactFlow today</a>
+      </aside>
+    </div>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <div class="footer-grid">
+      <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">A self-hosted, versioned artifact vault for tools and documents created with AI.</p></div>
+      <div class="footer-column"><strong>Explore</strong><a href="/">Home</a><a href="/workflow/">Artifact workflow</a><a href="/security/">Safety</a><a href="/mcp/">MCP server</a><a href="/self-hosting/">Self-hosting</a><a href="/engineering-harness/">Engineering harness</a><a href="/roadmap/">Roadmap</a></div>
+      <div class="footer-column"><strong>Guides</strong><a href="/guides/ai-artifact-vault/" aria-current="page">AI artifact vault</a><a href="/guides/safe-ai-generated-html/">Safe generated HTML</a><a href="/guides/ai-artifact-storage/">Where artifacts live</a></div>
+      <div class="footer-column"><strong>License</strong><span>AGPL-3.0-or-later</span><a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a><a href="mailto:gadsotek@gmail.com">Contact</a></div>
+    </div>
+    <div class="footer-end"><span>© 2026 Gadsotek</span><span>Preserves the output, not the conversation.</span></div>
+  </div>
+</footer>
+</body>
+</html>
