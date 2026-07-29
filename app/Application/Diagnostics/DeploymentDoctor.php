@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\Diagnostics;
 
 use App\Application\Administration\InstallationLimitCeilings;
+use App\Application\Identity\TurnstileConfiguration;
 use App\Application\PageCatalog\ImageArtifactLimits;
 use App\Application\PageCatalog\ImageNormalizationConfiguration;
 use App\Application\PageCatalog\ImageParserTimeouts;
@@ -57,6 +58,7 @@ final readonly class DeploymentDoctor
             $this->debugDisabledCheck($production),
             $this->dummyPasswordHashCheck($production),
             $this->sessionDomainCheck($production),
+            $this->turnstileCheck($production),
             $this->reverbCheck($production),
             $this->bootstrapCommandCheck($production),
         ];
@@ -453,6 +455,77 @@ final readonly class DeploymentDoctor
         }
 
         return $this->pass('reverb', 'Reverb realtime', 'Reverb dedicated secret, origins, rate limiting, and connection bound are hardened.');
+    }
+
+    private function turnstileCheck(bool $production): DoctorCheck
+    {
+        $turnstile = new TurnstileConfiguration($this->config);
+
+        if (!$turnstile->hasAnyCredentials()) {
+            return $this->skipped(
+                'turnstile',
+                'Cloudflare Turnstile',
+                'Turnstile is optional and no credentials are configured.',
+            );
+        }
+
+        try {
+            $turnstile->enabled();
+        } catch (\RuntimeException) {
+            return $this->fail(
+                'turnstile',
+                'Cloudflare Turnstile',
+                'TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY must be configured together.',
+            );
+        }
+
+        if (!$production) {
+            return $this->skipped(
+                'turnstile',
+                'Cloudflare Turnstile',
+                'Turnstile is configured; production additionally rejects test credentials and requires an exact application hostname.',
+            );
+        }
+
+        if ($this->string('app.runtime_role') !== 'app') {
+            return $this->fail(
+                'turnstile',
+                'Cloudflare Turnstile',
+                'Turnstile credentials must be scoped to the app runtime only.',
+            );
+        }
+
+        if ($turnstile->usesOfficialTestCredentials()) {
+            return $this->fail(
+                'turnstile',
+                'Cloudflare Turnstile',
+                'Cloudflare test credentials must not be used in production.',
+            );
+        }
+
+        try {
+            $expectedHostname = $turnstile->expectedHostname();
+            $turnstile->connectTimeoutSeconds();
+            $turnstile->requestTimeoutSeconds();
+        } catch (\RuntimeException $exception) {
+            return $this->fail('turnstile', 'Cloudflare Turnstile', $exception->getMessage());
+        }
+
+        $applicationHostname = $this->hostOf($this->string('app.url'));
+
+        if ($applicationHostname === null || $expectedHostname !== $applicationHostname) {
+            return $this->fail(
+                'turnstile',
+                'Cloudflare Turnstile',
+                'TURNSTILE_EXPECTED_HOSTNAME must match the APP_URL host.',
+            );
+        }
+
+        return $this->pass(
+            'turnstile',
+            'Cloudflare Turnstile',
+            sprintf('Turnstile is enabled for login and password recovery and bound to %s.', $expectedHostname),
+        );
     }
 
     private function bootstrapCommandCheck(bool $production): DoctorCheck

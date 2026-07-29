@@ -43,6 +43,77 @@ final class E2eIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('e2e-artifacts:', $compose);
     }
 
+    public function test_e2e_runs_the_real_turnstile_widget_with_public_test_credentials(): void
+    {
+        $compose = $this->readProjectFile('docker-compose.yml');
+        $startup = $this->readProjectFile('docker/start-e2e-app.sh');
+        $spec = $this->readProjectFile('tests/e2e/turnstile.spec.ts');
+
+        $this->assertStringContainsString(
+            "test('Turnstile widgets render on the real authentication pages under their CSP'",
+            $spec,
+        );
+        $this->assertStringContainsString(
+            "const turnstileTestSiteKey = '1x00000000000000000000AA';",
+            $spec,
+        );
+        $this->assertStringContainsString(
+            "process.env.E2E_TURNSTILE_APP_PORT ?? '18182'",
+            $spec,
+        );
+        $this->assertStringNotContainsString("createServer } from 'node:http'", $spec);
+        $this->assertStringNotContainsString('test.skip(', $spec);
+        $this->assertStringContainsString(
+            'TURNSTILE_SITE_KEY="1x00000000000000000000AA"',
+            $startup,
+        );
+        $this->assertStringContainsString(
+            'TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"',
+            $startup,
+        );
+        $this->assertStringContainsString(
+            'turnstile_app_port="${E2E_TURNSTILE_APP_PORT:-18182}"',
+            $startup,
+        );
+        $this->assertStringContainsString(
+            'APP_URL="http://localhost:${turnstile_app_port}"',
+            $startup,
+        );
+        $this->assertStringContainsString(
+            'command: ["sh", "/var/www/html/docker/start-e2e-app.sh"]',
+            $compose,
+        );
+        $this->assertStringContainsString(
+            'E2E_TURNSTILE_APP_PORT: ${E2E_TURNSTILE_APP_PORT:-18182}',
+            $compose,
+        );
+        $this->assertStringContainsString(
+            '"127.0.0.1:${E2E_TURNSTILE_APP_PORT:-18182}:8001"',
+            $compose,
+        );
+
+        $appMatched = preg_match(
+            '/\n  e2e-app:(?<block>.*?)\n  e2e-artifact-host:/s',
+            $compose,
+            $appMatches,
+        );
+        $artifactHostMatched = preg_match(
+            '/\n  e2e-artifact-host:(?<block>.*?)\nvolumes:/s',
+            $compose,
+            $artifactHostMatches,
+        );
+        $this->assertSame(1, $appMatched);
+        $this->assertSame(1, $artifactHostMatched);
+        $this->assertStringContainsString(
+            '"/var/www/html/docker/healthcheck-app.sh && PORT=8001 /var/www/html/docker/healthcheck-app.sh"',
+            $appMatches['block'],
+        );
+        foreach ([$appMatches['block'], $artifactHostMatches['block']] as $service) {
+            $this->assertStringContainsString('TURNSTILE_SITE_KEY: ""', $service);
+            $this->assertStringContainsString('TURNSTILE_SECRET_KEY: ""', $service);
+        }
+    }
+
     public function test_compose_does_not_shadow_the_mounted_environment_app_key(): void
     {
         $compose = $this->readProjectFile('docker-compose.yml');

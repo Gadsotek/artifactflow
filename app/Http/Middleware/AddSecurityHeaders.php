@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Middleware;
 
 use App\Application\Administration\RealtimeConfiguration;
+use App\Application\Identity\TurnstileConfiguration;
 use App\Infrastructure\Security\OriginNormalizer;
 use Closure;
 use Illuminate\Http\Request;
@@ -15,6 +16,7 @@ final class AddSecurityHeaders
 {
     public function __construct(
         private readonly RealtimeConfiguration $realtime,
+        private readonly TurnstileConfiguration $turnstile,
     ) {
     }
 
@@ -72,7 +74,7 @@ final class AddSecurityHeaders
         $response->headers->set('X-Frame-Options', 'DENY');
         $response->headers->set(
             'Content-Security-Policy',
-            $this->contentSecurityPolicy($includeDatabaseConfiguration),
+            $this->contentSecurityPolicy($request, $includeDatabaseConfiguration),
         );
         $response->headers->set('Strict-Transport-Security', $this->strictTransportSecurity());
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
@@ -89,11 +91,15 @@ final class AddSecurityHeaders
         return $response;
     }
 
-    private function contentSecurityPolicy(bool $includeDatabaseConfiguration): string
+    private function contentSecurityPolicy(Request $request, bool $includeDatabaseConfiguration): string
     {
+        $allowTurnstile = $request->isMethod('GET')
+            && $request->routeIs('login', 'password.request', 'password.reset')
+            && $this->turnstile->hasCompleteCredentials();
+
         return implode('; ', [
             "default-src 'self'",
-            'script-src ' . implode(' ', $this->scriptSources()),
+            'script-src ' . implode(' ', $this->scriptSources($allowTurnstile)),
             'style-src ' . implode(' ', $this->styleSources()),
             "img-src 'self' data: blob:",
             "font-src 'self' data:",
@@ -101,7 +107,7 @@ final class AddSecurityHeaders
             "object-src 'none'",
             "base-uri 'none'",
             'form-action ' . $this->formActionSources(),
-            'frame-src ' . $this->artifactFrameSource(),
+            'frame-src ' . implode(' ', $this->frameSources($allowTurnstile)),
             "webrtc 'block'",
             "frame-ancestors 'none'",
         ]);
@@ -124,13 +130,14 @@ final class AddSecurityHeaders
     /**
      * @return list<string>
      */
-    private function scriptSources(): array
+    private function scriptSources(bool $allowTurnstile): array
     {
-        return array_values(array_unique([
+        return array_values(array_unique(array_filter([
             "'self'",
             $this->nonceSource(),
+            $allowTurnstile ? TurnstileConfiguration::ORIGIN : null,
             ...$this->localViteSources(),
-        ]));
+        ])));
     }
 
     /**
@@ -234,9 +241,17 @@ final class AddSecurityHeaders
             : 'ws://' . substr($origin, strlen('http://'));
     }
 
-    private function artifactFrameSource(): string
+    /**
+     * @return list<string>
+     */
+    private function frameSources(bool $allowTurnstile): array
     {
-        return $this->originFromUrl($this->stringConfig('app.artifact_url')) ?? "'none'";
+        $sources = array_values(array_unique(array_filter([
+            $this->originFromUrl($this->stringConfig('app.artifact_url')),
+            $allowTurnstile ? TurnstileConfiguration::ORIGIN : null,
+        ])));
+
+        return $sources === [] ? ["'none'"] : $sources;
     }
 
     /**

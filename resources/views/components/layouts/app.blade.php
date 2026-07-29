@@ -143,5 +143,8 @@
                 {{ $slot }}
             </main>
         @endif
+        @if ($turnstileScriptUrl !== null)
+            <script nonce="{{ $cspNonce }}" src="{{ $turnstileScriptUrl }}" async defer></script>
+        @endif
     </body>
 </html>

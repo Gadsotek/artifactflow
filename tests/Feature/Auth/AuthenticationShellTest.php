@@ -43,6 +43,8 @@ final class AuthenticationShellTest extends TestCase
             ->assertSee('Password')
             ->assertDontSee('Remember me')
             ->assertDontSee('name="remember"', false)
+            ->assertDontSee('Public registration is disabled.')
+            ->assertDontSee('Authentication is protected by rate limiting.')
             ->assertDontSee('Register');
 
         $this->get('/register')->assertNotFound();

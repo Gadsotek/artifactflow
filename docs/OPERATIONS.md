@@ -435,6 +435,70 @@ Before public release, run `make verify-reverb-origin` once in an environment wi
 
 After the environment is configured, a System Admin can enable realtime from installation settings. Enabling is refused when Reverb is incomplete. Realtime traffic stays on the app trust boundary only; artifact-host responses must not gain websocket credentials or outbound realtime access.
 
+### Optional Cloudflare Turnstile authentication challenge
+
+Turnstile is disabled by default. An operator enables it by supplying both
+`TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` to **app-role replicas only**; there is no
+database or admin-screen switch. Once both keys are present, the login, reset-link request, and
+new-password pages automatically render the widget. The server verifies each challenge before
+checking a password, sending a reset notification, or consuming a reset token. Do not provide the
+secret to artifact-host, worker, or scheduler roles. Create the widget and keys in Cloudflare,
+then follow Cloudflare's [server-side validation guidance](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/).
+
+Set `TURNSTILE_EXPECTED_HOSTNAME` to the exact `APP_URL` host. Production boot and
+`artifactflow:doctor` reject partial key configuration, Cloudflare's published test credentials,
+a hostname that differs from `APP_URL`, credentials on a non-app runtime, or non-positive
+timeouts. The server also requires the verification response to carry `success=true`, the
+configured hostname, and the exact action for the submitted form: `login`,
+`password_reset_request`, or `password_reset`. A challenge minted for one form therefore cannot be
+reused on another. Any invalid response, timeout, connection failure, malformed JSON, or
+non-success HTTP response fails closed with a generic verification error. The default two-second
+connection and five-second request timeouts are capped in code at ten and fifteen seconds
+respectively.
+
+Outside production, supplying only one key or enabling Turnstile with a malformed hostname or
+timeout returns a clear `503` on the affected authentication forms instead of an exception page.
+Complete the pair and correct the settings, or remove both key values. Siteverify failures write one
+bounded warning with a stable reason, the HTTP status when applicable, and only syntax-restricted
+Cloudflare error codes. The warning never includes the challenge token, secret, visitor IP,
+configured hostname, or response hostname; authentication route limits bound repeated failure
+logging.
+
+Enabling Turnstile adds a deliberate third-party data flow: the browser loads Cloudflare's
+challenge script/frame, which Cloudflare says processes signals including the client IP, TLS
+fingerprint, User-Agent, site key, and associated origin. The app additionally sends the challenge
+token plus the request's derived client IP to Cloudflare's Siteverify endpoint. Review Cloudflare's
+privacy and data-processing terms for your deployment, including the
+[Turnstile Privacy Addendum](https://www.cloudflare.com/turnstile-privacy-policy/), and configure
+`TRUSTED_PROXIES` correctly so the forwarded IP is authoritative. A
+Cloudflare outage can prevent login and password recovery while the feature is enabled; remove
+both keys and redeploy to return to the self-contained, rate-limit-only authentication path.
+
+Turnstile is defense in depth against automated and distributed low-and-slow login attempts. The
+existing five-attempt email+IP minute bucket, configurable source-IP minute bucket, and
+IP-independent account-hour bucket remain the credential-stuffing backstop. Failed challenges
+consume the email+IP and source-IP budgets but not the account-hour password-guess budget, because
+no password was checked. Password-recovery submissions remain independently bounded by the
+configured email/IP hourly reset limit, including challenge failures.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `TURNSTILE_SITE_KEY` | empty | Public widget key; paired with the secret to enable Turnstile |
+| `TURNSTILE_SECRET_KEY` | empty | Server-side verification secret; app runtime only |
+| `TURNSTILE_EXPECTED_HOSTNAME` | `APP_URL` host | Exact hostname required in successful verification responses |
+| `TURNSTILE_CONNECT_TIMEOUT_SECONDS` | 2 | Siteverify connection timeout (hard-capped at 10 seconds) |
+| `TURNSTILE_TIMEOUT_SECONDS` | 5 | Siteverify request timeout (hard-capped at 15 seconds) |
+
+The isolated browser suite starts a second Laravel server inside the e2e app container with
+Cloudflare's published always-pass credentials. It loads the real `/login`, `/forgot-password`, and
+`/reset-password/{token}` responses, then verifies each page's emitted CSP, script nonce, configured
+action, Cloudflare frame, and generated response token. The normal e2e server explicitly receives
+blank Turnstile credentials, so existing authentication flows remain independent.
+`make e2e` therefore needs outbound HTTPS access to `https://challenges.cloudflare.com`. Siteverify
+and its action/hostname binding remain deterministic feature tests: Cloudflare's dummy validation
+response hardcodes `action: test`, so accepting it in the application would weaken the form-action
+contract being tested. Production boot rejects every published test credential.
+
 Durable domain events that fail dispatch are quarantined so later events can continue. After fixing the listener or infrastructure fault, requeue one failed event by UID without exposing payload metadata:
 
 ```sh

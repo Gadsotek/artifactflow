@@ -250,10 +250,16 @@ services:
       DB_PASSWORD: ${TEST_DB_PASSWORD:-app_local_password}
       QUEUE_CONNECTION: sync
       MAIL_MAILER: array
+      TURNSTILE_SITE_KEY: ""
+      TURNSTILE_SECRET_KEY: ""
+      TURNSTILE_EXPECTED_HOSTNAME: ""
+      E2E_TURNSTILE_APP_PORT: ${E2E_TURNSTILE_APP_PORT:-18182}
       ARTIFACT_STORAGE_ROOT: /var/www/html/storage/app/e2e_private_artifacts
       VITE_HOT_FILE: /tmp/artifactflow-e2e-no-hot
+    command: ["sh", "/var/www/html/docker/start-e2e-app.sh"]
     ports:
       - "127.0.0.1:${E2E_APP_PORT:-18180}:8000"
+      - "127.0.0.1:${E2E_TURNSTILE_APP_PORT:-18182}:8001"
     volumes:
       - ./:/var/www/html:delegated
       - ./vendor:/var/www/html/vendor
@@ -271,7 +277,7 @@ services:
       - default
       - image-parser
     healthcheck:
-      test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh"]
+      test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh && PORT=8001 /var/www/html/docker/healthcheck-app.sh"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -311,6 +317,9 @@ services:
       SESSION_DRIVER: array
       QUEUE_CONNECTION: sync
       MAIL_MAILER: array
+      TURNSTILE_SITE_KEY: ""
+      TURNSTILE_SECRET_KEY: ""
+      TURNSTILE_EXPECTED_HOSTNAME: ""
       IMAGE_PARSER_URL: ""
       IMAGE_PARSER_SHARED_SECRET: ""
       ARTIFACT_STORAGE_ROOT: /var/www/html/storage/app/e2e_private_artifacts

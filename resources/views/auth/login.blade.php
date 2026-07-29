@@ -1,4 +1,4 @@
-<x-layouts.app title="Login">
+<x-layouts.app title="Login" :turnstile-script-url="$turnstileScriptUrl">
     <section class="af-auth-shell" data-auth-shell>
         <div class="af-auth-story">
             <a class="af-auth-brand" href="{{ route('home') }}">
@@ -70,13 +70,27 @@
                         <a class="af-accent-link text-sm font-medium" href="{{ route('password.request') }}">Forgot password?</a>
                     </div>
 
+                    @if ($turnstileSiteKey !== null)
+                        <div>
+                            <div
+                                class="cf-turnstile"
+                                data-sitekey="{{ $turnstileSiteKey }}"
+                                data-action="login"
+                                data-theme="auto"
+                                data-size="flexible"
+                            ></div>
+                            @error('cf-turnstile-response')
+                                <p class="mt-2 text-sm text-red-700">{{ $message }}</p>
+                            @enderror
+                        </div>
+                    @endif
+
                     <button class="af-auth-submit w-full px-4 py-2.5 text-sm font-semibold text-white transition" type="submit">
                         Sign in
                         <span aria-hidden="true">→</span>
                     </button>
                 </form>
 
-                <p class="af-auth-security-note">Public registration is disabled. Authentication is protected by rate limiting.</p>
             </div>
         </div>
     </section>

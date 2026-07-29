@@ -43,6 +43,7 @@ use App\Http\Middleware\RejectArtifactHostRuntime;
 use App\Http\Middleware\RequireArtifactHostRuntime;
 use App\Http\Middleware\RequireRecentPasswordConfirmation;
 use App\Http\Middleware\RequireRecentSystemAdminPasswordConfirmation;
+use App\Http\Middleware\RequireValidTurnstileConfiguration;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/artifact-previews/{pageUid}/versions/{versionUid}', ArtifactPreviewController::class)
@@ -93,23 +94,25 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
     Route::redirect('/', '/login')->name('home');
 
     Route::middleware('guest')->group(function (): void {
-        Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
-        Route::post('/login', [AuthenticatedSessionController::class, 'store']);
+        Route::middleware(RequireValidTurnstileConfiguration::class)->group(function (): void {
+            Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
+            Route::post('/login', [AuthenticatedSessionController::class, 'store']);
+            Route::get('/forgot-password', [PasswordResetLinkController::class, 'create'])
+                ->name('password.request');
+            Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])
+                ->middleware('throttle:artifactflow-password-reset')
+                ->name('password.email');
+            Route::get('/reset-password/{token}', [NewPasswordController::class, 'create'])
+                ->name('password.reset');
+            Route::post('/reset-password', [NewPasswordController::class, 'store'])
+                ->middleware('throttle:artifactflow-password-reset')
+                ->name('password.update');
+        });
         Route::get('/login/two-factor-challenge', [TwoFactorChallengeController::class, 'create'])
             ->name('login.two-factor');
         Route::post('/login/two-factor-challenge', [TwoFactorChallengeController::class, 'store'])
             ->middleware('throttle:artifactflow-two-factor-challenge')
             ->name('login.two-factor.store');
-        Route::get('/forgot-password', [PasswordResetLinkController::class, 'create'])
-            ->name('password.request');
-        Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])
-            ->middleware('throttle:artifactflow-password-reset')
-            ->name('password.email');
-        Route::get('/reset-password/{token}', [NewPasswordController::class, 'create'])
-            ->name('password.reset');
-        Route::post('/reset-password', [NewPasswordController::class, 'store'])
-            ->middleware('throttle:artifactflow-password-reset')
-            ->name('password.update');
     });
 
     // Public invitation landing, reachable by guests so an invited person who has

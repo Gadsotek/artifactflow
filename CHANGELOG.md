@@ -9,9 +9,14 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 ### Added
 
 - Added version-level AI artifact provenance: immutable observed ingest facts, optional MCP-declared AI/human/software producers with exact provider/model IDs, external origin references, restore lineage, authorized web/MCP inspection, and provider/model search scopes. Declared claims remain explicitly self-reported and separate from unverified MCP-reported client metadata.
+- Added optional, deployment-configured Cloudflare Turnstile on password login and both password-recovery forms. Supplying both keys renders action-bound challenges and enables fail-closed server verification; installations without keys retain the self-contained authentication path.
 - Added versioned PNG/JPEG image and screenshot artifacts. Uploads are format/extension checked, bounded by byte/dimension/pixel limits, decoded and re-encoded without metadata or appended payloads, and previewed through a fixed scriptless document on the isolated artifact origin.
 - Added MCP image content reads and an Editor-capped `update_description` tool with content-version plus metadata concurrency, scanning, search refresh, throttling, and token/session audit attribution. Image artifacts intentionally have no OCR; full-text discovery uses editable catalog metadata.
 - Local stack setup and the guided local/test installer now provision a dedicated image-parser shared secret alongside the application and artifact-signing keys; production continues to require externally managed secrets before install.
+
+### Changed
+
+- Simplified the login screen by removing the operator-facing public-registration and rate-limiting note; the authentication controls remain documented and unchanged.
 
 ### Fixed
 
@@ -21,6 +26,7 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 ### Security
 
 - Provenance URLs and opaque external references are HTTPS/shape bounded, inherit page authorization, render as escaped `noopener noreferrer` links, and are excluded from logs, audit metadata, domain-event payloads, and full-text search.
+- Bound Turnstile verification to distinct login, reset-link-request, and password-reset actions plus the configured application hostname; rejected partial/test/role-leaking production configuration; returned clear non-production guidance for partial key pairs and malformed enabled settings; scoped Cloudflare CSP access to those three GET forms; added secret-free bounded Siteverify diagnostics and real-widget browser regressions against all three Laravel auth pages using Cloudflare's public test site key; and kept the existing login and password-reset rate limits as the abuse backstop.
 - Prevented workspace Editors who own a page from downgrading an existing page-Admin grant; changing or revoking Admin authority now consistently requires hard-delete authority.
 - Closed an artifact-preview parser differential where SVG/MathML `style` and MathML `script` content could hide a live nested browsing context from the response rewriter. Foreign-content breakout variants are now neutralized before parsing while genuine SVG script data remains verbatim; the browser egress matrix pins the served template and verifies zero TCP/UDP across Chromium, Firefox, and WebKit.
 - Closed an artifact-preview tokenizer differential where a slash inside an unquoted SVG/MathML attribute value could be mistaken for the tokenizer's self-closing flag and suppress nested-context neutralization. Resource hints and meta refresh elements are now neutralized synchronously across insertion, markup-parsing, attribute/accessor, attribute-node, and `relList` mutation sinks instead of waiting for the mutation observer; every inspected WebIDL string is coerced once and only that primitive reaches the native sink, preventing stateful-coercion bypasses. Artifact responses additionally opt out of DNS prefetching through a server-delivered header.

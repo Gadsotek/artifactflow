@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Auth;
 
+use App\Application\Identity\TurnstileConfiguration;
+use App\Application\Identity\TurnstileVerifier;
 use App\Http\Requests\AppFormRequest;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
@@ -27,20 +29,38 @@ final class LoginRequest extends AppFormRequest
     /**
      * @return array<string, list<string>>
      */
-    public function rules(): array
+    public function rules(TurnstileConfiguration $turnstile): array
     {
-        return [
+        $rules = [
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
         ];
+
+        if ($turnstile->enabled()) {
+            $rules['cf-turnstile-response'] = [
+                'required',
+                'string',
+                'max:' . TurnstileConfiguration::MAX_TOKEN_LENGTH,
+            ];
+        }
+
+        return $rules;
     }
 
     /**
      * @throws ValidationException
      */
-    public function validateCredentials(): User
+    public function validateCredentials(TurnstileVerifier $turnstile): User
     {
         $this->ensureIsNotRateLimited();
+
+        if ($turnstile->enabled() && !$turnstile->verify(
+            $this->string('cf-turnstile-response')->toString(),
+            $this->ip(),
+            TurnstileConfiguration::ACTION_LOGIN,
+        )) {
+            $this->failTurnstile();
+        }
 
         $credentials = [
             'email' => $this->normalizedEmail(),
@@ -83,6 +103,23 @@ final class LoginRequest extends AppFormRequest
 
         throw ValidationException::withMessages([
             'email' => __('auth.failed'),
+        ]);
+    }
+
+    /**
+     * A failed challenge did not test an account password, so it consumes the
+     * source-IP and email/IP budgets without poisoning the account-global
+     * credential budget that protects users from distributed password guessing.
+     *
+     * @throws ValidationException
+     */
+    private function failTurnstile(): never
+    {
+        RateLimiter::hit($this->throttleKey(), self::DECAY_SECONDS);
+        RateLimiter::hit($this->sourceIpThrottleKey(), self::DECAY_SECONDS);
+
+        throw ValidationException::withMessages([
+            'cf-turnstile-response' => 'Verification failed. Please try again.',
         ]);
     }
 

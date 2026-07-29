@@ -6,6 +6,8 @@ namespace App\Http\Controllers\Auth;
 
 use App\Application\Identity\RecordSuccessfulLogin;
 use App\Application\Identity\TrustedDeviceManager;
+use App\Application\Identity\TurnstileConfiguration;
+use App\Application\Identity\TurnstileVerifier;
 use App\Application\Identity\TwoFactorPendingChallenge;
 use App\Http\Middleware\RequireRecentPasswordConfirmation;
 use App\Http\Requests\Auth\LoginRequest;
@@ -25,17 +27,24 @@ final class AuthenticatedSessionController
         private readonly TrustedDeviceManager $trustedDevices,
         private readonly AuthenticationSessionRevision $sessionRevision,
         private readonly PasswordResetTokenReviewNotice $tokenReviewNotice,
+        private readonly TurnstileConfiguration $turnstileConfiguration,
+        private readonly TurnstileVerifier $turnstileVerifier,
     ) {
     }
 
     public function create(): View
     {
-        return view('auth.login');
+        return view('auth.login', [
+            'turnstileSiteKey' => $this->turnstileConfiguration->publicSiteKey(),
+            'turnstileScriptUrl' => $this->turnstileConfiguration->enabled()
+                ? TurnstileConfiguration::SCRIPT_URL
+                : null,
+        ]);
     }
 
     public function store(LoginRequest $request, RecordSuccessfulLogin $recordSuccessfulLogin): RedirectResponse
     {
-        $user = $request->validateCredentials();
+        $user = $request->validateCredentials($this->turnstileVerifier);
 
         if ($user->hasEnabledTwoFactor()) {
             $trustedDevice = $this->trustedDevices->findValidDevice($user, $request);
