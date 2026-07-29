@@ -667,7 +667,9 @@ Use non-sensitive test content and record the Safari/iOS versions and results:
    replay only during its short TTL.
 3. Attempt static and dynamic `iframe`/`frame`/`fencedframe`/`portal`, legacy
    `document.execCommand('insertHTML')`, `<object>`, `<embed>`, SVG `foreignObject`, worker, popup,
-   download, form, and external-network paths. Insert a benign `<link>` first and then mutate
+   download, form, and external-network paths. Include SVG/MathML `plaintext`, SVG `script`, and
+   scripting-enabled HTML `noscript` parser breakouts inside both open and closed declarative
+   shadow roots. Insert a benign `<link>` first and then mutate
    `rel`/`href` through properties, `setAttribute`, `setAttributeNS`, and `relList` to
    `dns-prefetch`, `preconnect`, `prefetch`, and `prerender`; repeat the ordering check with
    `<meta http-equiv="refresh">`. Repeat the string arguments with stateful `toString()` objects

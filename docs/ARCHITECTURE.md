@@ -267,16 +267,19 @@ frame-ancestors <configured app origin>
 
 Nested browsing contexts are not part of the artifact feature: actual static `iframe`, `frame`,
 `fencedframe`, and `portal` tokens are converted to inert templates before the hostile document is
-parsed without rewriting matching bytes inside genuine HTML/SVG script-data or text-control
-contexts. SVG/MathML elements whose children browsers parse as markup stay visible to the scanner,
-including SVG/MathML `style` and MathML `script`. The early guard blocks dynamic creation and common
-markup-parsing sinks. This layers over CSP because `frame-src 'none'` does not stop inline `srcdoc`
-realms in the maintained engines. Chromium and WebKit also ignore `webrtc 'block'`; the directive
-is best-effort hardening, not a credited barrier. Static response rewriting must therefore happen
-before parse, while MutationObserver cleanup remains a timing-dependent residual. The guard remains
-defense in depth rather than an authorization or isolation boundary. The reviewed parser
-differential did not cross the opaque sandbox or artifact/app origin split, and the real stack
-emitted no network traffic in the maintained browser corpus.
+parsed without rewriting matching bytes inside genuine HTML script-data or text-control contexts.
+SVG/MathML elements whose children browsers parse as markup stay visible to the scanner, including
+SVG/MathML `style`, SVG/MathML `plaintext`, and SVG/MathML `script`; scripting-enabled HTML
+`noscript` remains raw text. Static `shadowrootmode` attributes are renamed before parse so
+declarative Shadow DOM cannot hide a context in an open or closed tree from the residual light-DOM
+sweep. The early guard blocks dynamic creation and common markup-parsing sinks. This layers over
+CSP because `frame-src 'none'` does not stop inline `srcdoc` realms in the maintained engines.
+Chromium and WebKit also ignore `webrtc 'block'`; the directive is best-effort hardening, not a
+credited barrier. Static response rewriting must therefore happen before parse, while
+MutationObserver cleanup remains a timing-dependent residual. The guard remains defense in depth
+rather than an authorization or isolation boundary. The reviewed parser differentials did not
+cross the opaque sandbox or artifact/app origin split, and the corrected stack emits no network
+traffic in the maintained browser corpus.
 
 Do not add `allow-same-origin`, top navigation, forms, external scripts, outbound connections, public unauthenticated artifact access, or app-session middleware to the artifact surface without a written architecture decision and security tests.
 

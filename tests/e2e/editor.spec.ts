@@ -2133,17 +2133,22 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
                     detachedNestedContextCount +
                     document.querySelectorAll('iframe, frame, fencedframe, portal').length +
                     shadowRoot.querySelectorAll('iframe, frame, fencedframe, portal').length;
-                  document.getElementById('nested-result').textContent =
-                    nestedContextCount === 0 &&
-                    prefixedNamespaceBlocked &&
-                    objectCoercionBlocked &&
-                    surroundContentsBlocked &&
-                    unsafeElementSettersBlocked &&
-                    unsafeShadowSettersBlocked &&
-                    unsafeDocumentParserBlocked &&
-                    closedShadowParserBlocked &&
-                    execCommandNestedContextBlocked &&
-                    xsltState !== 'xslt-enabled'
+                  const nestedResult = document.getElementById('nested-result');
+                  const nestedState = {
+                    nestedContextCount,
+                    prefixedNamespaceBlocked,
+                    objectCoercionBlocked,
+                    surroundContentsBlocked,
+                    unsafeElementSettersBlocked,
+                    unsafeShadowSettersBlocked,
+                    unsafeDocumentParserBlocked,
+                    closedShadowParserBlocked,
+                    execCommandNestedContextBlocked,
+                    xsltMaterializationBlocked: xsltState !== 'xslt-enabled',
+                  };
+                  nestedResult.dataset.nestedContextState = JSON.stringify(nestedState);
+                  nestedResult.textContent =
+                    Object.values(nestedState).every((value) => value === true || value === 0)
                       ? 'nested-contexts-blocked'
                       : 'nested-contexts-present';
                 }, 250);
@@ -2165,10 +2170,172 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
     }
 
     const preview = page.frameLocator('[data-html-draft-preview-frame]');
-    await expect(preview.locator('#nested-result')).toHaveText('nested-contexts-blocked', {
+    const nestedResult = preview.locator('#nested-result');
+    await expect(nestedResult).toHaveAttribute('data-nested-context-state', /.+/u, {
       timeout: 20_000,
     });
+    expect(JSON.parse((await nestedResult.getAttribute('data-nested-context-state')) ?? '{}')).toEqual({
+      nestedContextCount: 0,
+      prefixedNamespaceBlocked: true,
+      objectCoercionBlocked: true,
+      surroundContentsBlocked: true,
+      unsafeElementSettersBlocked: true,
+      unsafeShadowSettersBlocked: true,
+      unsafeDocumentParserBlocked: true,
+      closedShadowParserBlocked: true,
+      execCommandNestedContextBlocked: true,
+      xsltMaterializationBlocked: true,
+    });
+    await expect(nestedResult).toHaveText('nested-contexts-blocked');
     await expect(preview.locator('iframe, frame, fencedframe, portal')).toHaveCount(0);
+    await page.waitForTimeout(1_500);
+    expect(udpPacketCount).toBe(0);
+  } finally {
+    await new Promise<void>((resolve) => udpProbe.close(() => resolve()));
+  }
+});
+
+test('HTML draft preview neutralizes parser differentials and shadow roots before WebRTC can escape @artifact-security', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+
+  let udpPacketCount = 0;
+  const udpProbe = createSocket('udp4');
+  udpProbe.on('message', () => {
+    udpPacketCount += 1;
+  });
+  await new Promise<void>((resolve, reject) => {
+    udpProbe.once('error', reject);
+    udpProbe.bind(0, '127.0.0.1', () => {
+      udpProbe.off('error', reject);
+      resolve();
+    });
+  });
+
+  try {
+    const address = udpProbe.address();
+    expect(typeof address).toBe('object');
+
+    if (typeof address === 'string') {
+      throw new Error('Expected an IPv4 UDP probe address.');
+    }
+
+    const rtcLeaf = `<!doctype html><script>
+      const peer = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:127.0.0.1:${address.port}' }],
+      });
+      peer.createDataChannel('artifactflow-parser-probe');
+      peer.createOffer().then((offer) => peer.setLocalDescription(offer));
+    </script>`;
+    const parserCases = [
+      {
+        context: 'svg-plaintext-shadow',
+        mode: 'open',
+        prefix: '<svg><plaintext><p>',
+        suffix: '',
+      },
+      {
+        context: 'svg-script-shadow',
+        mode: 'closed',
+        prefix: '<svg><script><p>',
+        suffix: '</script>',
+      },
+      {
+        context: 'noscript-style-shadow',
+        mode: 'open',
+        prefix: '<noscript><style></noscript><p>',
+        suffix: '</style>',
+      },
+    ];
+    const parserDifferentialFrames = parserCases
+      .map(
+        ({ context, mode, prefix, suffix }) =>
+          `<div data-parser-differential-host="${context}">` +
+          `<template shadowrootmode="${mode}">${prefix}` +
+          `<iframe data-breakout-context="${context}" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>` +
+          `${suffix}</template></div>`,
+      )
+      .join('');
+    const synthesizedTemplateCases = [
+      {
+        context: 'portal',
+        openingTag: '<portal shadowrootmode="open">',
+        closingTag: '</portal>',
+      },
+      {
+        context: 'fencedframe',
+        openingTag: '<fencedframe shadowrootmode="open">',
+        closingTag: '</fencedframe>',
+      },
+      {
+        context: 'iframe',
+        openingTag: '<iframe shadowrootmode="open">',
+        closingTag: '</iframe>',
+      },
+      {
+        context: 'frame',
+        openingTag: '<frame shadowrootmode="open">',
+        closingTag: '',
+      },
+    ];
+    const synthesizedTemplates = synthesizedTemplateCases
+      .map(
+        ({ context, openingTag, closingTag }) =>
+          openingTag.replace('>', ` data-synthesized-template="${context}">`) +
+          '<span>Inert fallback</span>' +
+          closingTag,
+      )
+      .join('');
+    const fixture = await prepareAuthenticatedDraftPreviewFixture(page);
+
+    await page.setContent(
+      authenticatedDraftPreviewDocument(
+        fixture,
+        `<!doctype html>${parserDifferentialFrames}${synthesizedTemplates}` +
+          '<p id="parser-control">safe</p>',
+      ),
+    );
+
+    const draftResponsePromise = page.waitForResponse(
+      (response) => response.url() === draftPreviewEndpoint,
+    );
+    await openAuthenticatedDraftPreview(page);
+    const servedBody = await (await draftResponsePromise).text();
+
+    for (const { context, mode } of parserCases) {
+      expect(servedBody).not.toContain(
+        `<div data-parser-differential-host="${context}"><template shadowrootmode="${mode}">`,
+      );
+      expect(servedBody).toContain(
+        `<div data-parser-differential-host="${context}"><template data-artifactflow-blocked-shadow-root="${mode}">`,
+      );
+      expect(servedBody).not.toContain(`<iframe data-breakout-context="${context}"`);
+      expect(servedBody).toContain(
+        `<template data-artifactflow-blocked-browsing-context data-breakout-context="${context}"`,
+      );
+    }
+
+    for (const { context } of synthesizedTemplateCases) {
+      expect(servedBody).toContain(
+        '<template data-artifactflow-blocked-browsing-context ' +
+          `data-artifactflow-blocked-shadow-root="open" data-synthesized-template="${context}"`,
+      );
+    }
+
+    const preview = page.frameLocator('[data-html-draft-preview-frame]');
+    await expect(preview.locator('#parser-control')).toHaveText('safe', { timeout: 20_000 });
+    await expect(preview.locator('[shadowrootmode]')).toHaveCount(0);
+    expect(
+      await preview.locator('body').evaluate(
+        (body) =>
+          Array.from(body.querySelectorAll('*')).filter(
+            (element) => (element as HTMLElement).shadowRoot !== null,
+          ).length,
+      ),
+    ).toBe(0);
+    await expect(preview.locator('iframe, frame, fencedframe, portal')).toHaveCount(0);
+    expect(page.frames()).toHaveLength(2);
     await page.waitForTimeout(1_500);
     expect(udpPacketCount).toBe(0);
   } finally {

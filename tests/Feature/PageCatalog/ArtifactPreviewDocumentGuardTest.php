@@ -328,15 +328,143 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         }
     }
 
-    public function test_svg_script_data_remains_verbatim_inside_foreign_content(): void
+    public function test_browser_parser_state_differentials_cannot_hide_nested_browsing_contexts(): void
     {
-        $script = '<script>window.literal = "<iframe id=not-markup>";</script>';
+        $cases = [
+            'svg-plaintext-breakout' => ['<svg><plaintext><p>', ''],
+            'math-plaintext-breakout' => ['<math><plaintext><p>', ''],
+            'svg-script-breakout' => ['<svg><script><p>', '</script>'],
+            'html-noscript-style-breakout' => ['<noscript><style></noscript><p>', '</style>'],
+        ];
+
+        foreach ($cases as $iframeId => [$prefix, $suffix]) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $prefix
+                . '<iframe id="' . $iframeId . '" '
+                . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>'
+                . $suffix
+                . '<p id="safe-content">Safe artifact content</p>',
+            );
+
+            $this->assertStringNotContainsString('<iframe id="' . $iframeId . '"', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="' . $iframeId . '"',
+                $hardened,
+            );
+            $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+        }
+    }
+
+    public function test_static_declarative_shadow_roots_are_neutralized_before_browser_parsing(): void
+    {
+        foreach (['open', 'closed'] as $mode) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html><div><template shadowrootmode="' . $mode . '">'
+                . '<iframe id="' . $mode . '-shadow-frame" '
+                . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>'
+                . '</template></div><p id="safe-content">Safe artifact content</p>',
+            );
+
+            $this->assertStringNotContainsString(' shadowrootmode=', strtolower($hardened));
+            $this->assertStringContainsString('data-artifactflow-blocked-shadow-root="' . $mode . '"', $hardened);
+            $this->assertStringNotContainsString('<iframe id="' . $mode . '-shadow-frame"', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="' . $mode . '-shadow-frame"',
+                $hardened,
+            );
+            $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+        }
+    }
+
+    public function test_synthesized_templates_cannot_retain_declarative_shadow_root_attributes(): void
+    {
+        $cases = [
+            'portal' => ['open', '<span>Portal fallback</span>', '</portal>'],
+            'fencedframe' => ['closed', '<span>Fenced frame fallback</span>', '</fencedframe>'],
+            'iframe' => ['open', '<span>Iframe fallback</span>', '</iframe>'],
+            'frame' => ['closed', '', ''],
+        ];
+
+        foreach ($cases as $tagName => [$mode, $contents, $closingTag]) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html><' . $tagName . ' SHADOWROOTMODE="' . $mode . '">'
+                . $contents
+                . $closingTag,
+            );
+
+            $this->assertStringNotContainsString(' shadowrootmode=', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context '
+                . 'data-artifactflow-blocked-shadow-root="' . $mode . '"',
+                $hardened,
+            );
+        }
+    }
+
+    public function test_shadow_root_attribute_neutralization_respects_html_attribute_boundaries(): void
+    {
         $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
-            '<!doctype html><svg>' . $script . '</svg>',
+            '<!doctype html><template data-note=" shadowrootmode=&quot;closed&quot;" '
+            . 'SHADOWROOTMODE=open shadowrootmode="closed"><p>Template content</p></template>',
         );
 
-        $this->assertStringContainsString('<svg>' . $script . '</svg>', $hardened);
-        $this->assertStringNotContainsString('data-artifactflow-blocked-browsing-context id=not-markup', $hardened);
+        $this->assertStringContainsString(
+            'data-note=" shadowrootmode=&quot;closed&quot;"',
+            $hardened,
+        );
+        $this->assertStringNotContainsString(' SHADOWROOTMODE=', $hardened);
+        $this->assertStringNotContainsString(' shadowrootmode="closed"', $hardened);
+        $this->assertSame(2, substr_count($hardened, 'data-artifactflow-blocked-shadow-root='));
+    }
+
+    public function test_shadow_root_attribute_neutralization_tracks_malformed_html_attribute_states(): void
+    {
+        $plainTemplate = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><template><span>Plain template content</span></template>',
+        );
+
+        $this->assertStringContainsString('<template><span>Plain template content</span></template>', $plainTemplate);
+        $this->assertStringNotContainsString('data-artifactflow-blocked-shadow-root', $plainTemplate);
+
+        $openingTags = [
+            '<template/shadowrootmode=open>',
+            '<template shadowrootmode/open>',
+            '<template shadowrootmode /x>',
+            '<template shadowrootmode = open>',
+            "<template shadowrootmode = 'open'>",
+            '<template shadowrootmode=>',
+            "<template shadowrootmode='open'/>",
+            '<template data-note="value"shadowrootmode=open>',
+            '<template shadowrootmode   >',
+        ];
+
+        foreach ($openingTags as $openingTag) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $openingTag . '<span>Template content</span></template>',
+            );
+
+            $this->assertStringContainsString('data-artifactflow-blocked-shadow-root', $hardened);
+            $this->assertDoesNotMatchRegularExpression(
+                '/<template[^>]*(?:\s|\/)shadowrootmode(?:\s|=|\/|>)/i',
+                $hardened,
+            );
+        }
+    }
+
+    public function test_svg_script_contents_are_scanned_as_foreign_markup(): void
+    {
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><svg><script><p>'
+            . '<iframe id="svg-script-context" '
+            . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>'
+            . '</script></svg>',
+        );
+
+        $this->assertStringNotContainsString('<iframe id="svg-script-context"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="svg-script-context"',
+            $hardened,
+        );
     }
 
     public function test_slash_in_unquoted_svg_attribute_value_does_not_fake_a_self_closing_tag(): void
