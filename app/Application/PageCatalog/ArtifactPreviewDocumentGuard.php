@@ -79,18 +79,16 @@ final class ArtifactPreviewDocumentGuard
         return "<script data-artifactflow-preview-guard{$recoveryAttribute}>\n" . self::$guardBody . "\n</script>";
     }
 
-    private function rewriteDangerousMarkup(string $html): string
+    private function rewriteDangerousMarkup(string $html, bool $scriptingEnabled = true): string
     {
         $length = strlen($html);
         $offset = 0;
         $result = '';
         $rawTextTag = null;
         $neutralizedContainers = [];
-        // Open SVG/MathML roots for the current foreign-content subtree. Tracking
-        // their names prevents an unmatched foreign end tag from moving this
-        // scanner back to the HTML raw-text rules before the browser does.
-        /** @var list<string> $foreignRoots */
-        $foreignRoots = [];
+        $foreignContent = new ArtifactPreviewForeignContentState();
+        $openFramesets = 0;
+        $openSelects = 0;
 
         while ($offset < $length) {
             if ($rawTextTag !== null) {
@@ -102,10 +100,26 @@ final class ArtifactPreviewDocumentGuard
                     // parsed template, so it must be escaped here too -- otherwise an
                     // embedded </template> closes the wrapper and following bytes
                     // (e.g. <iframe srcdoc>) parse as a live nested browsing context.
-                    return $result . $this->relocatedRawText(substr($html, $offset), $rawTextTag);
+                    $interior = substr($html, $offset);
+
+                    if ($rawTextTag === 'noscript') {
+                        $interior = $this->rewriteDangerousMarkup($interior, scriptingEnabled: false);
+                    }
+
+                    return $result . $this->relocatedRawText($interior, $rawTextTag);
                 }
 
-                $result .= $this->relocatedRawText(substr($html, $offset, $closingOffset - $offset), $rawTextTag);
+                $interior = substr($html, $offset, $closingOffset - $offset);
+
+                if ($rawTextTag === 'noscript') {
+                    // The outer scan follows the scripting-enabled parse, where
+                    // noscript is raw text. A second, scripting-disabled pass over
+                    // only its interior covers the browser mode where those same
+                    // bytes are live markup.
+                    $interior = $this->rewriteDangerousMarkup($interior, scriptingEnabled: false);
+                }
+
+                $result .= $this->relocatedRawText($interior, $rawTextTag);
                 $closingTag = $this->tagAt($html, $closingOffset);
 
                 if ($closingTag === null) {
@@ -147,6 +161,22 @@ final class ArtifactPreviewDocumentGuard
             $nextCharacter = $html[$tagOffset + 1] ?? '';
 
             if ($nextCharacter === '!' || $nextCharacter === '?') {
+                if (
+                    $nextCharacter === '!'
+                    && $foreignContent->hasOpenForeignElement()
+                    && substr_compare($html, '<![CDATA[', $tagOffset, 9) === 0
+                ) {
+                    $cdata = $this->rewriteForeignCdataSection(
+                        $html,
+                        $tagOffset,
+                        $scriptingEnabled,
+                        $foreignContent->currentElementIsHtmlIntegrationPoint(),
+                    );
+                    $result .= $cdata['rewritten'];
+                    $offset = $cdata['end'] + 1;
+                    continue;
+                }
+
                 $declarationEnd = $this->declarationEnd($html, $tagOffset);
 
                 if ($declarationEnd === null) {
@@ -170,15 +200,14 @@ final class ArtifactPreviewDocumentGuard
             $offset = $tag['end'] + 1;
 
             if ($tag['closing']) {
-                if ($foreignRoots !== [] && ($tag['name'] === 'svg' || $tag['name'] === 'math')) {
-                    for ($rootIndex = count($foreignRoots) - 1; $rootIndex >= 0; --$rootIndex) {
-                        if ($foreignRoots[$rootIndex] !== $tag['name']) {
-                            continue;
-                        }
+                $foreignContent->consumeEndTag($tag['name']);
 
-                        $foreignRoots = array_slice($foreignRoots, 0, $rootIndex);
-                        break;
-                    }
+                if ($tag['name'] === 'select' && $openSelects > 0) {
+                    --$openSelects;
+                }
+
+                if ($tag['name'] === 'frameset' && $openFramesets > 0) {
+                    --$openFramesets;
                 }
 
                 $openContainer = end($neutralizedContainers);
@@ -200,7 +229,13 @@ final class ArtifactPreviewDocumentGuard
                 continue;
             }
 
+            if ($tag['name'] === 'template') {
+                $tagText = $this->neutralizeDeclarativeShadowRoot($tagText);
+            }
+
             if (in_array($tag['name'], self::NESTED_BROWSING_CONTEXT_TAGS, true)) {
+                $usesHtmlTokenizer = $foreignContent->startTagUsesHtmlTokenizer($tag['name'], $tagText);
+
                 // Keep attributes and fallback bytes inspectable, but make the
                 // element inert before the browser sees it. A template neither
                 // creates a child realm nor fetches src/srcdoc resources.
@@ -208,7 +243,7 @@ final class ArtifactPreviewDocumentGuard
 
                 if ($tag['name'] === 'frame') {
                     $result .= '</template>';
-                } elseif ($tag['name'] === 'iframe') {
+                } elseif ($tag['name'] === 'iframe' && $usesHtmlTokenizer) {
                     $rawTextTag = $tag['name'];
                 } else {
                     $neutralizedContainers[] = $tag['name'];
@@ -217,25 +252,47 @@ final class ArtifactPreviewDocumentGuard
                 continue;
             }
 
+            $usesHtmlTokenizer = $foreignContent->consumeStartTag(
+                $tag['name'],
+                $tagText,
+                $tag['self_closing'],
+            );
             $result .= $tagText;
+            $startsRawText = $usesHtmlTokenizer && $this->startTagUsesRawTextTokenizer(
+                $tag['name'],
+                $scriptingEnabled,
+                $openFramesets,
+                $openSelects,
+            );
 
-            if ($tag['name'] === 'plaintext') {
+            if (
+                $tag['name'] === 'plaintext'
+                && $usesHtmlTokenizer
+                && $openFramesets === 0
+                && $openSelects === 0
+            ) {
                 return $result . substr($html, $offset);
             }
 
-            // Enter foreign content on a non-self-closing <svg>/<math>. A self-closing
-            // element (<svg/>) has no subtree, so it must not shift the depth.
-            if (
-                ($tag['name'] === 'svg' || $tag['name'] === 'math')
-                && !$tag['self_closing']
-            ) {
-                $foreignRoots[] = $tag['name'];
+            if ($usesHtmlTokenizer) {
+                if ($tag['name'] === 'select') {
+                    if ($openFramesets === 0) {
+                        // In "in select", another select start tag closes the
+                        // active select instead of opening a nested one. In
+                        // "in frameset" it is ignored altogether.
+                        $openSelects += $openSelects > 0 ? -1 : 1;
+                    }
+                }
+
+                if ($tag['name'] === 'frameset' && $openSelects === 0) {
+                    // The "in select" tree-builder mode ignores frameset.
+                    // Counting that nonexistent element would make a later
+                    // noframes token look like RAWTEXT and hide live markup.
+                    ++$openFramesets;
+                }
             }
 
-            if (
-                in_array($tag['name'], self::RAW_TEXT_TAGS, true)
-                && $this->usesRawTextTokenizerState($tag['name'], $foreignRoots)
-            ) {
+            if ($startsRawText) {
                 $rawTextTag = $tag['name'];
             }
         }
@@ -243,23 +300,28 @@ final class ArtifactPreviewDocumentGuard
         return $result;
     }
 
-    /**
-     * HTML raw-text elements do not generally retain that tokenizer behavior in
-     * SVG/MathML foreign content. Treating their interior as opaque creates a
-     * parser differential: markup inside SVG/MathML style or MathML script can
-     * break back into HTML and create a live nested browsing context without
-     * passing through this scanner. SVG script is the one foreign-content case
-     * whose contents genuinely use the script-data tokenizer state.
-     *
-     * @param list<string> $foreignRoots
-     */
-    private function usesRawTextTokenizerState(string $tagName, array $foreignRoots): bool
-    {
-        if ($foreignRoots === []) {
-            return true;
+    private function startTagUsesRawTextTokenizer(
+        string $tagName,
+        bool $scriptingEnabled,
+        int $openFramesets,
+        int $openSelects,
+    ): bool {
+        if ($openFramesets > 0) {
+            // "in frameset" delegates only noframes to the "in head"
+            // rules, where its contents use RAWTEXT. Tracking a fake
+            // </frameset> inside those bytes would make a later plaintext
+            // token look effective and leave following frame markup live.
+            return $tagName === 'noframes';
         }
 
-        return $tagName === 'script' && $foreignRoots[array_key_last($foreignRoots)] === 'svg';
+        if ($openSelects > 0) {
+            // "in select" delegates script to the "in head" rules. Other
+            // raw-text-looking start tags are ignored by the tree builder.
+            return $tagName === 'script';
+        }
+
+        return in_array($tagName, self::RAW_TEXT_TAGS, true)
+            || ($scriptingEnabled && $tagName === 'noscript');
     }
 
     /**
@@ -390,15 +452,63 @@ final class ArtifactPreviewDocumentGuard
      * the quote-aware start-tag scanner here would swallow following live markup
      * that the browser parses after an earlier `>`.
      *
-     * In foreign-content CDATA this conservative boundary can resume scanning
-     * before `]]>` and neutralize inert text, but it cannot miss a live nested
-     * browsing context. Real start/end tags continue to use tagBoundary().
+     * Foreign-content CDATA is handled separately because Firefox follows the
+     * CDATA state through `]]>`, while maintained Chromium/WebKit releases can
+     * treat the same integration-point bytes as a bogus comment. Real start/end
+     * tags continue to use tagBoundary().
      */
     private function declarationEnd(string $html, int $tagOffset): ?int
     {
         $end = strpos($html, '>', $tagOffset + 2);
 
         return $end === false ? null : $end;
+    }
+
+    /**
+     * Preserve ordinary foreign CDATA verbatim. At an HTML integration point,
+     * also harden bytes that Chromium/WebKit can parse as live markup after the
+     * bogus comment's first `>`. The outer scan resumes after `]]>` so
+     * Firefox-live suffix markup cannot be swallowed by a raw-text carrier found
+     * only in the alternate parse.
+     *
+     * @return array{end: int, rewritten: string}
+     */
+    private function rewriteForeignCdataSection(
+        string $html,
+        int $tagOffset,
+        bool $scriptingEnabled,
+        bool $maintainBogusCommentInterpretation,
+    ): array {
+        $terminator = strpos($html, ']]>', $tagOffset + 9);
+        $sectionEnd = $terminator === false ? strlen($html) - 1 : $terminator + 2;
+
+        if (!$maintainBogusCommentInterpretation) {
+            return [
+                'end' => $sectionEnd,
+                'rewritten' => substr($html, $tagOffset, $sectionEnd - $tagOffset + 1),
+            ];
+        }
+
+        $bogusCommentEnd = strpos($html, '>', $tagOffset + 2);
+
+        if ($bogusCommentEnd === false || $bogusCommentEnd >= $sectionEnd) {
+            return [
+                'end' => $sectionEnd,
+                'rewritten' => substr($html, $tagOffset, $sectionEnd - $tagOffset + 1),
+            ];
+        }
+
+        $prefixLength = $bogusCommentEnd - $tagOffset + 1;
+        $alternateLength = $sectionEnd - $bogusCommentEnd;
+
+        return [
+            'end' => $sectionEnd,
+            'rewritten' => substr($html, $tagOffset, $prefixLength)
+                . $this->rewriteDangerousMarkup(
+                    substr($html, $bogusCommentEnd + 1, $alternateLength),
+                    $scriptingEnabled,
+                ),
+        ];
     }
 
     /**
@@ -664,13 +774,15 @@ final class ArtifactPreviewDocumentGuard
 
     private function findRawTextClosingTag(string $html, string $tagName, int $offset): ?int
     {
+        if ($tagName === 'script') {
+            return $this->findScriptClosingTag($html, $offset);
+        }
+
         $needle = '</' . $tagName;
         $candidate = stripos($html, $needle, $offset);
 
         while ($candidate !== false) {
-            $boundary = $html[$candidate + strlen($needle)] ?? '';
-
-            if ($boundary === '' || $boundary === '>' || $boundary === '/' || $this->isAsciiWhitespace($boundary)) {
+            if ($this->hasRawTextTagBoundary($html, $candidate + strlen($needle))) {
                 return $candidate;
             }
 
@@ -678,6 +790,85 @@ final class ArtifactPreviewDocumentGuard
         }
 
         return null;
+    }
+
+    /**
+     * Script data has an extra escaped/double-escaped tokenizer state machine.
+     * In the double-escaped state, `</script>` returns the browser to the escaped
+     * state instead of closing the element. Treating that first sequence as the
+     * close desynchronizes the rewriter and can leave later live markup unscanned.
+     */
+    private function findScriptClosingTag(string $html, int $offset): ?int
+    {
+        $length = strlen($html);
+        $cursor = $offset;
+        $state = 'data';
+
+        while ($cursor < $length) {
+            if (
+                $state === 'data'
+                && substr_compare($html, '<!--', $cursor, 4) === 0
+            ) {
+                $state = 'escaped';
+                $cursor += 4;
+                continue;
+            }
+
+            if (
+                $state !== 'data'
+                && substr_compare($html, '-->', $cursor, 3) === 0
+            ) {
+                $state = 'data';
+                $cursor += 3;
+                continue;
+            }
+
+            if ($html[$cursor] !== '<') {
+                ++$cursor;
+                continue;
+            }
+
+            if ($this->hasScriptTagSequence($html, $cursor, '</script')) {
+                if ($state === 'double_escaped') {
+                    $state = 'escaped';
+                    $cursor += 8;
+                    continue;
+                }
+
+                return $cursor;
+            }
+
+            if (
+                $state === 'escaped'
+                && $this->hasScriptTagSequence($html, $cursor, '<script')
+            ) {
+                $state = 'double_escaped';
+                $cursor += 7;
+                continue;
+            }
+
+            ++$cursor;
+        }
+
+        return null;
+    }
+
+    private function hasScriptTagSequence(string $html, int $offset, string $sequence): bool
+    {
+        $sequenceLength = strlen($sequence);
+
+        return substr_compare($html, $sequence, $offset, $sequenceLength, true) === 0
+            && $this->hasRawTextTagBoundary($html, $offset + $sequenceLength);
+    }
+
+    private function hasRawTextTagBoundary(string $html, int $offset): bool
+    {
+        $boundary = $html[$offset] ?? '';
+
+        return $boundary === ''
+            || $boundary === '>'
+            || $boundary === '/'
+            || $this->isAsciiWhitespace($boundary);
     }
 
     /**
@@ -694,8 +885,232 @@ final class ArtifactPreviewDocumentGuard
     {
         $beforeName = substr($html, $tagOffset, $tag['name_start'] - $tagOffset);
         $afterName = substr($html, $tag['name_end'], $tag['end'] - $tag['name_end'] + 1);
+        $neutralizedTag = $beforeName
+            . 'template data-artifactflow-blocked-browsing-context'
+            . $afterName;
 
-        return $beforeName . 'template data-artifactflow-blocked-browsing-context' . $afterName;
+        return $this->neutralizeDeclarativeShadowRoot($neutralizedTag);
+    }
+
+    /**
+     * Declarative Shadow DOM materializes template contents during parsing and
+     * hides closed roots from the residual DOM sweep. Rename every actual
+     * shadowrootmode attribute before the browser parses the document, while
+     * preserving identical text inside quoted values or malformed attribute
+     * names.
+     */
+    private function neutralizeDeclarativeShadowRoot(string $tag): string
+    {
+        $length = strlen($tag);
+        $cursor = 1;
+
+        while (
+            $cursor < $length
+            && !$this->isAsciiWhitespace($tag[$cursor])
+            && $tag[$cursor] !== '/'
+            && $tag[$cursor] !== '>'
+        ) {
+            ++$cursor;
+        }
+
+        $state = 'before_attribute_name';
+        $attributeNameStart = null;
+        /** @var list<array{length: int, start: int}> $ranges */
+        $ranges = [];
+
+        while ($cursor < $length) {
+            $character = $tag[$cursor];
+
+            switch ($state) {
+                case 'before_attribute_name':
+                    if ($this->isAsciiWhitespace($character)) {
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        break 2;
+                    }
+
+                    if ($character === '/') {
+                        $state = 'self_closing_start_tag';
+                        ++$cursor;
+                        break;
+                    }
+
+                    $attributeNameStart = $cursor;
+                    $state = 'attribute_name';
+                    ++$cursor;
+                    break;
+
+                case 'attribute_name':
+                    if (
+                        $this->isAsciiWhitespace($character)
+                        || $character === '/'
+                        || $character === '='
+                        || $character === '>'
+                    ) {
+                        if (
+                            is_int($attributeNameStart)
+                            && strtolower(substr($tag, $attributeNameStart, $cursor - $attributeNameStart))
+                                === 'shadowrootmode'
+                        ) {
+                            $ranges[] = [
+                                'length' => $cursor - $attributeNameStart,
+                                'start' => $attributeNameStart,
+                            ];
+                        }
+
+                        $attributeNameStart = null;
+
+                        if ($this->isAsciiWhitespace($character)) {
+                            $state = 'after_attribute_name';
+                            ++$cursor;
+                            break;
+                        }
+
+                        if ($character === '/') {
+                            $state = 'self_closing_start_tag';
+                            ++$cursor;
+                            break;
+                        }
+
+                        if ($character === '=') {
+                            $state = 'before_attribute_value';
+                            ++$cursor;
+                            break;
+                        }
+
+                        break 2;
+                    }
+
+                    ++$cursor;
+                    break;
+
+                case 'after_attribute_name':
+                    if ($this->isAsciiWhitespace($character)) {
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '/') {
+                        $state = 'self_closing_start_tag';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '=') {
+                        $state = 'before_attribute_value';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        break 2;
+                    }
+
+                    $attributeNameStart = $cursor;
+                    $state = 'attribute_name';
+                    ++$cursor;
+                    break;
+
+                case 'before_attribute_value':
+                    if ($this->isAsciiWhitespace($character)) {
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '"') {
+                        $state = 'attribute_value_double_quoted';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === "'") {
+                        $state = 'attribute_value_single_quoted';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        break 2;
+                    }
+
+                    $state = 'attribute_value_unquoted';
+                    ++$cursor;
+                    break;
+
+                case 'attribute_value_double_quoted':
+                    if ($character === '"') {
+                        $state = 'after_attribute_value_quoted';
+                    }
+
+                    ++$cursor;
+                    break;
+
+                case 'attribute_value_single_quoted':
+                    if ($character === "'") {
+                        $state = 'after_attribute_value_quoted';
+                    }
+
+                    ++$cursor;
+                    break;
+
+                case 'attribute_value_unquoted':
+                    if ($this->isAsciiWhitespace($character)) {
+                        $state = 'before_attribute_name';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        break 2;
+                    }
+
+                    ++$cursor;
+                    break;
+
+                case 'after_attribute_value_quoted':
+                    if ($this->isAsciiWhitespace($character)) {
+                        $state = 'before_attribute_name';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '/') {
+                        $state = 'self_closing_start_tag';
+                        ++$cursor;
+                        break;
+                    }
+
+                    if ($character === '>') {
+                        break 2;
+                    }
+
+                    $state = 'before_attribute_name';
+                    break;
+
+                case 'self_closing_start_tag':
+                    if ($character === '>') {
+                        break 2;
+                    }
+
+                    $state = 'before_attribute_name';
+                    break;
+            }
+        }
+
+        for ($rangeIndex = count($ranges) - 1; $rangeIndex >= 0; --$rangeIndex) {
+            $range = $ranges[$rangeIndex];
+            $tag = substr_replace(
+                $tag,
+                'data-artifactflow-blocked-shadow-root',
+                $range['start'],
+                $range['length'],
+            );
+        }
+
+        return $tag;
     }
 
     private function isAsciiWhitespace(string $character): bool

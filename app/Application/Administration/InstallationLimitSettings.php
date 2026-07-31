@@ -40,6 +40,9 @@ final class InstallationLimitSettings
                 twoFactorRequiredForSystemAdmins: $settings->two_factor_required_for_system_admins,
                 twoFactorRequiredForAllUsers: $settings->two_factor_required_for_all_users,
                 realtimeEnabled: $settings->realtime_enabled,
+                externalSharingEnabled: $settings->external_sharing_enabled,
+                externalShareAcknowledgementRequired: $settings->external_share_acknowledgement_required,
+                externalShareMaxExpiryHours: $settings->external_share_max_expiry_hours,
             );
             $this->cachedFromDatabase = true;
             $this->cachedConfigSignature = null;
@@ -60,6 +63,9 @@ final class InstallationLimitSettings
             twoFactorRequiredForSystemAdmins: true,
             twoFactorRequiredForAllUsers: false,
             realtimeEnabled: false,
+            externalSharingEnabled: false,
+            externalShareAcknowledgementRequired: true,
+            externalShareMaxExpiryHours: 168,
         );
 
         return $this->cachedValues;

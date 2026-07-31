@@ -328,15 +328,537 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         }
     }
 
-    public function test_svg_script_data_remains_verbatim_inside_foreign_content(): void
+    public function test_browser_parser_state_differentials_cannot_hide_nested_browsing_contexts(): void
     {
-        $script = '<script>window.literal = "<iframe id=not-markup>";</script>';
+        $cases = [
+            'svg-plaintext-breakout' => ['<svg><plaintext><p>', ''],
+            'math-plaintext-breakout' => ['<math><plaintext><p>', ''],
+            'svg-script-breakout' => ['<svg><script><p>', '</script>'],
+            'html-noscript-style-breakout' => ['<noscript><style></noscript><p>', '</style>'],
+        ];
+
+        foreach ($cases as $iframeId => [$prefix, $suffix]) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $prefix
+                . '<iframe id="' . $iframeId . '" '
+                . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>'
+                . $suffix
+                . '<p id="safe-content">Safe artifact content</p>',
+            );
+
+            $this->assertStringNotContainsString('<iframe id="' . $iframeId . '"', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="' . $iframeId . '"',
+                $hardened,
+            );
+            $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+        }
+    }
+
+    public function test_script_double_escaped_state_cannot_hide_nested_browsing_contexts(): void
+    {
+        $carriers = ['title', 'textarea', 'style', 'xmp', 'noembed', 'noframes'];
+        $doubleEscapedPrefixes = [
+            'once' => '<!--<script>',
+            'twice' => '<!--<script><script>',
+        ];
+
+        foreach ($doubleEscapedPrefixes as $depth => $doubleEscapedPrefix) {
+            foreach ($carriers as $carrier) {
+                $iframeId = sprintf('script-double-escaped-%s-%s-breakout', $depth, $carrier);
+                $script = '<script>' . $doubleEscapedPrefix . '</script><' . $carrier . '></script>';
+                $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                    '<!doctype html>' . $script
+                    . '<iframe id="' . $iframeId . '" '
+                    . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>'
+                    . '<p id="safe-content">Safe artifact content</p>',
+                );
+
+                $this->assertStringContainsString($script, $hardened);
+                $this->assertStringNotContainsString('<iframe id="' . $iframeId . '"', strtolower($hardened));
+                $this->assertStringContainsString(
+                    '<template data-artifactflow-blocked-browsing-context id="' . $iframeId . '"',
+                    $hardened,
+                );
+                $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+            }
+        }
+    }
+
+    public function test_script_escaped_state_closes_normally_and_preserves_following_rcdata_bytes(): void
+    {
+        $inertTitle = '<title></script><iframe id="escaped-state-control"></iframe>';
         $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
-            '<!doctype html><svg>' . $script . '</svg>',
+            '<!doctype html><script><!--escaped</script>' . $inertTitle,
         );
 
-        $this->assertStringContainsString('<svg>' . $script . '</svg>', $hardened);
-        $this->assertStringNotContainsString('data-artifactflow-blocked-browsing-context id=not-markup', $hardened);
+        $this->assertStringContainsString(
+            '<script><!--escaped</script>' . $inertTitle,
+            $hardened,
+        );
+        $this->assertStringNotContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="escaped-state-control"',
+            $hardened,
+        );
+    }
+
+    public function test_script_comment_end_restores_data_state_before_the_closing_tag(): void
+    {
+        $prefixes = [
+            'escaped' => '<!--escaped--><script>',
+            'double-escaped' => '<!--<script>--><script>',
+        ];
+
+        foreach ($prefixes as $state => $prefix) {
+            $iframeId = 'script-comment-end-' . $state . '-breakout';
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html><script>' . $prefix . '</script>'
+                . '<iframe id="' . $iframeId . '" srcdoc="&lt;p&gt;nested&lt;/p&gt;"></iframe>',
+            );
+
+            $this->assertStringNotContainsString('<iframe id="' . $iframeId . '"', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="' . $iframeId . '"',
+                $hardened,
+            );
+        }
+    }
+
+    public function test_plaintext_is_not_treated_as_terminal_when_the_tree_builder_ignores_it(): void
+    {
+        $cases = [
+            'frameset' => '<frameset><plaintext><frame id="frameset-plaintext-breakout" src="/nested">',
+            'select' => '<select><plaintext></select>'
+                . '<iframe id="select-plaintext-breakout" srcdoc="&lt;p&gt;nested&lt;/p&gt;"></iframe>',
+            'self-closing-frameset' => '<frameset/><plaintext>'
+                . '<frame id="self-closing-frameset-plaintext-breakout" src="/nested">',
+            'self-closing-select' => '<select/><plaintext></select>'
+                . '<iframe id="self-closing-select-plaintext-breakout" '
+                . 'srcdoc="&lt;p&gt;nested&lt;/p&gt;"></iframe>',
+        ];
+
+        foreach ($cases as $context => $markup) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $markup . '<p id="safe-' . $context . '">Safe</p>',
+            );
+
+            $this->assertStringNotContainsString('<frame id="frameset-plaintext-breakout"', strtolower($hardened));
+            $this->assertStringNotContainsString('<iframe id="select-plaintext-breakout"', strtolower($hardened));
+            $this->assertStringNotContainsString(
+                '<frame id="self-closing-frameset-plaintext-breakout"',
+                strtolower($hardened),
+            );
+            $this->assertStringNotContainsString(
+                '<iframe id="self-closing-select-plaintext-breakout"',
+                strtolower($hardened),
+            );
+            $this->assertStringContainsString('data-artifactflow-blocked-browsing-context', $hardened);
+        }
+    }
+
+    public function test_raw_text_is_not_entered_when_the_tree_builder_ignores_the_start_tag(): void
+    {
+        $cases = [
+            'select-style-breakout' => '<select><style></select>',
+            'frameset-style-breakout' => '<frameset><style></frameset>',
+        ];
+
+        foreach ($cases as $iframeId => $prefix) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $prefix
+                . '<iframe id="' . $iframeId . '" '
+                . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>',
+            );
+
+            $this->assertStringNotContainsString('<iframe id="' . $iframeId . '"', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="' . $iframeId . '"',
+                $hardened,
+            );
+        }
+    }
+
+    public function test_ignored_frameset_inside_select_does_not_enable_noframes_raw_text(): void
+    {
+        $iframeId = 'select-ignored-frameset-noframes-breakout';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><select><option><frameset>--><noframes></select>'
+            . '<iframe data-decoy=">" id="' . $iframeId . '"></iframe>',
+        );
+
+        $this->assertStringNotContainsString('<iframe data-decoy=">" id="' . $iframeId . '"', $hardened);
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context data-decoy=">" id="'
+            . $iframeId . '"',
+            $hardened,
+        );
+    }
+
+    public function test_recognized_raw_text_cannot_desynchronize_insertion_mode_state(): void
+    {
+        $cases = [
+            'frameset-noframes-plaintext-breakout' => [
+                '<frameset><noframes></frameset></noframes><plaintext>',
+                'frame',
+            ],
+            'select-script-plaintext-breakout' => [
+                '<select><script>/*</select>*/</script><plaintext></select>',
+                'iframe',
+            ],
+        ];
+
+        foreach ($cases as $contextId => [$prefix, $tagName]) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $prefix
+                . '<' . $tagName . ' id="' . $contextId . '" '
+                . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;">'
+                . ($tagName === 'iframe' ? '</iframe>' : ''),
+            );
+
+            $this->assertStringNotContainsString(
+                '<' . $tagName . ' id="' . $contextId . '"',
+                strtolower($hardened),
+            );
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="' . $contextId . '"',
+                $hardened,
+            );
+        }
+    }
+
+    public function test_noscript_is_hardened_for_both_scripting_parser_modes(): void
+    {
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><noscript>'
+            . '<iframe id="scripting-disabled-breakout" srcdoc="&lt;p&gt;nested&lt;/p&gt;"></iframe>'
+            . '</noscript><p id="safe-content">Safe artifact content</p>',
+        );
+
+        $this->assertStringNotContainsString('<iframe id="scripting-disabled-breakout"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<noscript><template data-artifactflow-blocked-browsing-context '
+            . 'id="scripting-disabled-breakout"',
+            $hardened,
+        );
+        $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+    }
+
+    public function test_foreign_cdata_is_hardened_for_cdata_and_bogus_comment_engines(): void
+    {
+        $integrationPoints = [
+            'svg-foreign-object' => ['<svg><foreignObject>', '</foreignObject></svg>'],
+            'svg-desc' => ['<svg><desc>', '</desc></svg>'],
+            'svg-title' => ['<svg><title>', '</title></svg>'],
+            'math-annotation-html' => [
+                '<math><annotation-xml encoding="text/html">',
+                '</annotation-xml></math>',
+            ],
+            'math-mtext' => ['<math><mtext>', '</mtext></math>'],
+        ];
+
+        foreach ($integrationPoints as $context => [$openingMarkup, $closingMarkup]) {
+            foreach (['style', 'title', 'textarea'] as $carrier) {
+                $iframeId = sprintf('foreign-cdata-%s-%s-breakout', $context, $carrier);
+                $cdata = '<![CDATA[x><' . $carrier . '>]]>';
+                $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                    '<!doctype html>' . $openingMarkup . $cdata . $closingMarkup
+                    . '<iframe id="' . $iframeId . '" '
+                    . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>',
+                );
+
+                $this->assertStringContainsString($cdata, $hardened);
+                $this->assertStringNotContainsString('<iframe id="' . $iframeId . '"', strtolower($hardened));
+                $this->assertStringContainsString(
+                    '<template data-artifactflow-blocked-browsing-context id="' . $iframeId . '"',
+                    $hardened,
+                );
+            }
+        }
+
+        $inlineIframeId = 'foreign-cdata-bogus-comment-inline';
+        $inlineIframe = '<iframe id="' . $inlineIframeId . '" '
+            . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><svg><foreignObject><![CDATA[x>'
+            . $inlineIframe
+            . ']]></foreignObject></svg>',
+        );
+
+        $this->assertStringNotContainsString('<iframe id="' . $inlineIframeId . '"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="' . $inlineIframeId . '"',
+            $hardened,
+        );
+        $this->assertStringContainsString(']]></foreignObject></svg>', $hardened);
+    }
+
+    public function test_cdata_outside_an_html_integration_point_is_preserved_verbatim(): void
+    {
+        $cdata = '<![CDATA[x><iframe id="foreign-cdata-literal"></iframe>]]>';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><svg><g>' . $cdata . '</g></svg>',
+        );
+
+        $this->assertStringContainsString($cdata, $hardened);
+    }
+
+    public function test_html_integration_point_raw_text_cannot_desynchronize_foreign_content_state(): void
+    {
+        $style = '</svg><script>';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><svg><foreignObject><style>' . $style . '</style>'
+            . '<div><template shadowrootmode="closed">'
+            . '<iframe id="integration-point-breakout" '
+            . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>'
+            . '</template></div></foreignObject></svg>',
+        );
+
+        $this->assertStringContainsString('<style>' . $style . '</style>', $hardened);
+        $this->assertStringNotContainsString(' shadowrootmode=', strtolower($hardened));
+        $this->assertStringNotContainsString('<iframe id="integration-point-breakout"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="integration-point-breakout"',
+            $hardened,
+        );
+    }
+
+    public function test_html_integration_points_preserve_legitimate_raw_text_bytes(): void
+    {
+        $script = 'window.example = "<iframe data-literal>";';
+        $cases = [
+            '<svg><foreignObject><script>' . $script . '</script></foreignObject></svg>',
+            '<math><mtext><script>' . $script . '</script></mtext></math>',
+            '<math><annotation-xml encoding="text/html"><script>'
+                . $script . '</script></annotation-xml></math>',
+            '<math><annotation-xml encoding="text/html"><svg><title><script>'
+                . $script . '</script></title></svg></annotation-xml></math>',
+        ];
+
+        foreach ($cases as $markup) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $markup . '<p id="safe-content">Safe artifact content</p>',
+            );
+
+            $this->assertStringContainsString('<script>' . $script . '</script>', $hardened);
+            $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+        }
+    }
+
+    public function test_annotation_xml_dispatches_svg_without_an_encoding_attribute(): void
+    {
+        $integrationCandidates = ['mi', 'mn', 'mo', 'ms', 'mtext'];
+        $rawTextCandidates = [
+            'style',
+            'script',
+            'textarea',
+            'title',
+            'xmp',
+            'noembed',
+            'noframes',
+            'plaintext',
+        ];
+
+        foreach ($integrationCandidates as $integrationCandidate) {
+            foreach ($rawTextCandidates as $rawTextCandidate) {
+                $iframeId = sprintf(
+                    'annotation-svg-%s-%s-breakout',
+                    $integrationCandidate,
+                    $rawTextCandidate,
+                );
+                $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                    '<!doctype html><math><annotation-xml><svg>'
+                    . '<' . $integrationCandidate . '><' . $rawTextCandidate . '><b>'
+                    . '<iframe id="' . $iframeId . '" '
+                    . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>'
+                    . '</b></' . $rawTextCandidate . '></' . $integrationCandidate . '>'
+                    . '</svg></annotation-xml></math>',
+                );
+
+                $this->assertStringNotContainsString(
+                    '<iframe id="' . $iframeId . '"',
+                    strtolower($hardened),
+                );
+                $this->assertStringContainsString(
+                    '<template data-artifactflow-blocked-browsing-context id="' . $iframeId . '"',
+                    $hardened,
+                );
+            }
+        }
+    }
+
+    public function test_duplicate_annotation_encoding_cannot_fake_an_html_integration_point(): void
+    {
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><math><annotation-xml '
+            . 'encoding="application/xml" encoding="text/html"><script><p>'
+            . '<iframe id="duplicate-encoding-breakout" srcdoc="&lt;p&gt;nested&lt;/p&gt;"></iframe>'
+            . '</p></script></annotation-xml></math>',
+        );
+
+        $this->assertStringNotContainsString('<iframe id="duplicate-encoding-breakout"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="duplicate-encoding-breakout"',
+            $hardened,
+        );
+    }
+
+    public function test_foreign_content_breakout_tokens_restore_html_raw_text_rules(): void
+    {
+        $script = 'window.example = "<iframe data-literal>";';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><svg><g><p><script>' . $script . '</script>'
+            . '<iframe id="real-breakout" srcdoc="&lt;p&gt;nested&lt;/p&gt;"></iframe>',
+        );
+
+        $this->assertStringContainsString('<script>' . $script . '</script>', $hardened);
+        $this->assertStringNotContainsString('<iframe id="real-breakout"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="real-breakout"',
+            $hardened,
+        );
+    }
+
+    public function test_conditional_font_foreign_content_breakout_restores_html_raw_text_rules(): void
+    {
+        $script = 'window.example = "<iframe data-literal>";';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><svg><g><font color="red"><script>' . $script . '</script>'
+            . '<iframe id="conditional-font-breakout" srcdoc="&lt;p&gt;nested&lt;/p&gt;"></iframe>',
+        );
+
+        $this->assertStringContainsString('<script>' . $script . '</script>', $hardened);
+        $this->assertStringNotContainsString('<iframe id="conditional-font-breakout"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="conditional-font-breakout"',
+            $hardened,
+        );
+    }
+
+    public function test_unmatched_foreign_end_tags_are_processed_in_bounded_time(): void
+    {
+        $html = '<!doctype html>'
+            . str_repeat('<svg>', 12_000)
+            . str_repeat('</math>', 12_000)
+            . '<iframe id="bounded-work" srcdoc="&lt;p&gt;nested&lt;/p&gt;"></iframe>';
+        $startedAt = hrtime(true);
+
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden($html);
+        $elapsedSeconds = (hrtime(true) - $startedAt) / 1_000_000_000;
+
+        $this->assertLessThan(2.0, $elapsedSeconds);
+        $this->assertStringNotContainsString('<iframe id="bounded-work"', strtolower($hardened));
+    }
+
+    public function test_static_declarative_shadow_roots_are_neutralized_before_browser_parsing(): void
+    {
+        foreach (['open', 'closed'] as $mode) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html><div><template shadowrootmode="' . $mode . '">'
+                . '<iframe id="' . $mode . '-shadow-frame" '
+                . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>'
+                . '</template></div><p id="safe-content">Safe artifact content</p>',
+            );
+
+            $this->assertStringNotContainsString(' shadowrootmode=', strtolower($hardened));
+            $this->assertStringContainsString('data-artifactflow-blocked-shadow-root="' . $mode . '"', $hardened);
+            $this->assertStringNotContainsString('<iframe id="' . $mode . '-shadow-frame"', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="' . $mode . '-shadow-frame"',
+                $hardened,
+            );
+            $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
+        }
+    }
+
+    public function test_synthesized_templates_cannot_retain_declarative_shadow_root_attributes(): void
+    {
+        $cases = [
+            'portal' => ['open', '<span>Portal fallback</span>', '</portal>'],
+            'fencedframe' => ['closed', '<span>Fenced frame fallback</span>', '</fencedframe>'],
+            'iframe' => ['open', '<span>Iframe fallback</span>', '</iframe>'],
+            'frame' => ['closed', '', ''],
+        ];
+
+        foreach ($cases as $tagName => [$mode, $contents, $closingTag]) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html><' . $tagName . ' SHADOWROOTMODE="' . $mode . '">'
+                . $contents
+                . $closingTag,
+            );
+
+            $this->assertStringNotContainsString(' shadowrootmode=', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context '
+                . 'data-artifactflow-blocked-shadow-root="' . $mode . '"',
+                $hardened,
+            );
+        }
+    }
+
+    public function test_shadow_root_attribute_neutralization_respects_html_attribute_boundaries(): void
+    {
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><template data-note=" shadowrootmode=&quot;closed&quot;" '
+            . 'SHADOWROOTMODE=open shadowrootmode="closed"><p>Template content</p></template>',
+        );
+
+        $this->assertStringContainsString(
+            'data-note=" shadowrootmode=&quot;closed&quot;"',
+            $hardened,
+        );
+        $this->assertStringNotContainsString(' SHADOWROOTMODE=', $hardened);
+        $this->assertStringNotContainsString(' shadowrootmode="closed"', $hardened);
+        $this->assertSame(2, substr_count($hardened, 'data-artifactflow-blocked-shadow-root='));
+    }
+
+    public function test_shadow_root_attribute_neutralization_tracks_malformed_html_attribute_states(): void
+    {
+        $plainTemplate = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><template><span>Plain template content</span></template>',
+        );
+
+        $this->assertStringContainsString('<template><span>Plain template content</span></template>', $plainTemplate);
+        $this->assertStringNotContainsString('data-artifactflow-blocked-shadow-root', $plainTemplate);
+
+        $openingTags = [
+            '<template/shadowrootmode=open>',
+            '<template shadowrootmode/open>',
+            '<template shadowrootmode /x>',
+            '<template shadowrootmode = open>',
+            "<template shadowrootmode = 'open'>",
+            '<template shadowrootmode=>',
+            "<template shadowrootmode='open'/>",
+            '<template data-note="value"shadowrootmode=open>',
+            '<template shadowrootmode   >',
+        ];
+
+        foreach ($openingTags as $openingTag) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $openingTag . '<span>Template content</span></template>',
+            );
+
+            $this->assertStringContainsString('data-artifactflow-blocked-shadow-root', $hardened);
+            $this->assertDoesNotMatchRegularExpression(
+                '/<template[^>]*(?:\s|\/)shadowrootmode(?:\s|=|\/|>)/i',
+                $hardened,
+            );
+        }
+    }
+
+    public function test_svg_script_contents_are_scanned_as_foreign_markup(): void
+    {
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><svg><script><p>'
+            . '<iframe id="svg-script-context" '
+            . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>'
+            . '</script></svg>',
+        );
+
+        $this->assertStringNotContainsString('<iframe id="svg-script-context"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="svg-script-context"',
+            $hardened,
+        );
     }
 
     public function test_slash_in_unquoted_svg_attribute_value_does_not_fake_a_self_closing_tag(): void

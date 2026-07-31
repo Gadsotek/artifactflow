@@ -188,6 +188,8 @@ To configure local clients with a token, run:
 
 The connector discovers the standard Claude Desktop config, the active Claude Code user config (including `CLAUDE_CONFIG_DIR`), conventional sibling Claude Code config directories, the active/default Codex user config (including `CODEX_HOME`), conventional sibling Codex homes, and existing Codex profile overlays. It prints every discovered or creatable target and requires an explicit choice of target numbers or `all`; no config is silently selected. Existing files are backed up and merged, and each result is restricted to mode `0600`. For automation, set `MCP_URL`, `MCP_TOKEN`, and `MCP_TARGETS` (`all` or the comma-separated target numbers printed by the script).
 
+Every written config launches the connection through the `npx mcp-remote` bridge, so the client machine needs Node.js at runtime. The connector checks for `npx` up front and stops with install guidance (Node.js LTS from nodejs.org) before any prompt, token read, or config write when it is missing. Set `MCP_SKIP_NODE_CHECK=1` to write configs anyway on a machine where Node.js will be installed later.
+
 The connector intentionally does not offer project `.mcp.json` or `.codex/config.toml` files. Its generated bridge contains the bearer token, so writing it into repository-level configuration would create a commit and collaborator-disclosure risk. Use the selectable user-level configs instead.
 
 For headless agents, create a service-account token from the app container:
@@ -201,6 +203,7 @@ docker compose exec -T app php artisan artifactflow:mcp-token-create \
   --scope="mcp:read" \
   --scope="mcp:create" \
   --scope="mcp:update" \
+  --scope="mcp:share" \
   --ttl-days=30
 ```
 
@@ -221,6 +224,7 @@ Available scopes:
 - `mcp:read` reads in-scope text content as an explicit untrusted data envelope. For an image page it returns normalized PNG/JPEG derivatives up to the configured `ARTIFACT_MAX_BYTES` (10 MiB by default, hard-capped at 64 MiB — the same read limit as every other page type, expanded by roughly a third once base64-framed) as a standard MCP image content block beside untrusted metadata; a retained derivative above that limit returns `content_too_large` before the bytes are read or base64-expanded. The original upload no longer exists. The server never treats read content or image pixels as authorization for a later write.
 - `mcp:create` creates Markdown or single-file HTML pages through the normal page creation handler. It can attach tag names and either select a category by UID or create a workspace-local category by name in the same operation. The same scope powers `create_category` and `create_tag`; both require live Editor authority in the supplied in-scope workspace, and standalone tag creation remains installation-wide after that authority check.
 - `mcp:update` appends a new Markdown/HTML version through the normal update handler and requires a fresh `base_version_uid`; it powers one-action revert and `update_description`. Description updates require both the fresh `current_version_uid` and separate `metadata_revision` returned by read or search, pass the normal description scanner, refresh full-text search, and cannot change title, owner, hierarchy, category, or tags.
+- `mcp:share` creates a one-time or expiring external-share capability for an in-scope page the MCP principal owns and can still edit, only while that workspace's **Allow Editors and page owners to share pages** setting is enabled. It is not access-management authority and grants no inventory or revoke operation. Human and service-account principals follow the same rule; MCP's Editor authority ceiling means an underlying administrator cannot bypass the workspace switch through this tool. `create_external_share` returns the raw bearer URL once; store it only in the intended recipient channel and never copy it into an artifact, metadata, prompt, trace, or log.
 
 ### MCP provenance
 
@@ -281,7 +285,7 @@ that person/client as the model that produced the restored bytes.
 
 Content scanning remains advisory except for explicit secret and credential patterns, which block writes. Inline script in an HTML artifact is expected; it is recorded as a warning finding and audit trail, not held for human acknowledgement. Descriptions are scanned for obvious secrets and prompt-injection role markers before save. MCP taxonomy names and slugs are user-authored data and are therefore returned inside the same explicit untrusted-data envelope as other user-authored text.
 
-Set `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` to tune the pre-authenticated source-IP ceiling, `MCP_RATE_LIMIT_PER_MINUTE` to tune the authenticated token ceiling, and `MCP_WRITE_RATE_LIMIT_PER_MINUTE` to tune per-token create/update-description/update-content/revert write throughput. Invalid or unauthenticated bearer attempts are bucketed by source IP before token lookup so random bearer rotation cannot create fresh unauthenticated buckets. Authenticated calls are also limited after token authentication. If many legitimate MCP clients share one NAT or proxy egress IP, size the pre-auth limit for the aggregate caller pool or route trusted clients through distinct egress identities. The official Laravel MCP transport negotiates the protocol during initialization and issues `MCP-Session-Id`; compliant clients return that non-secret identifier automatically, and ArtifactFlow records it in MCP-created version, description update, and restore audit metadata. Never place signed preview URLs, application session cookies, or raw authorization headers in MCP client prompts or logs.
+Set `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` to tune the pre-authenticated source-IP ceiling, `MCP_RATE_LIMIT_PER_MINUTE` to tune the authenticated token ceiling, and `MCP_WRITE_RATE_LIMIT_PER_MINUTE` to tune per-token create/update-description/update-content/revert/external-share write throughput. Invalid or unauthenticated bearer attempts are bucketed by source IP before token lookup so random bearer rotation cannot create fresh unauthenticated buckets. Authenticated calls are also limited after token authentication. External-share creation additionally consumes the normal per-actor/page `EXTERNAL_SHARE_CREATE_RATE_LIMIT_PER_MINUTE` budget. If many legitimate MCP clients share one NAT or proxy egress IP, size the pre-auth limit for the aggregate caller pool or route trusted clients through distinct egress identities. The official Laravel MCP transport negotiates the protocol during initialization and issues `MCP-Session-Id`; compliant clients return that non-secret identifier automatically, and ArtifactFlow records it in MCP-created version, description update, restore, and external-share audit metadata. Never place signed preview URLs, returned external-share URLs, application session cookies, or raw authorization headers in MCP client prompts or logs.
 
 ## Mail Delivery
 
@@ -528,7 +532,15 @@ Production artifact preview also requires:
 ## Tunables
 
 Every limit below ships with a safe default and can be overridden per install through the
-environment. Values are read from `config/rate_limits.php` and `config/pages.php`.
+environment. Values are read from `config/rate_limits.php`, `config/pages.php`, and
+`config/external_sharing.php`.
+
+System Admins enable external sharing and choose its maximum expiring-link
+lifetime in the installation settings UI. The UI accepts whole days from 1
+through 30 (7 by default); persistence and enforcement retain the equivalent
+hour value internally so existing installations and expiry calculations remain
+compatible. This maximum does not add an expiry to one-time links: those remain
+usable only until their single redemption or explicit revocation.
 
 Rate limits:
 
@@ -583,6 +595,11 @@ Content and storage limits:
 | `PAGE_MAX_PAGE_STORAGE_BYTES` | 100 MiB | Total artifact storage per page |
 | `PAGE_MAX_PAGE_VERSIONS` | 200 | Retained versions per page (retention cap: appends past it prune the oldest, never block the edit) |
 | `PAGE_MAX_TAGS_PER_PAGE` | 25 | Tags per page |
+| `EXTERNAL_SHARE_MAX_ACTIVE_PER_PAGE` | 20 | Hard active external-share ceiling per page; terminal shares do not count |
+| `EXTERNAL_SHARE_MAX_ACTIVE_PER_INSTALLATION` | 10,000 | Hard active external-share ceiling across the installation |
+| `EXTERNAL_SHARE_MAX_VIEW_SESSIONS_PER_SHARE` | 100 | Maximum concurrent window-lived viewer sessions retained for one expiring share; opening another evicts the oldest |
+| `EXTERNAL_SHARE_CREATE_RATE_LIMIT_PER_MINUTE` | 10 | External-share creations per actor and page per minute |
+| `EXTERNAL_SHARE_PUBLIC_RATE_LIMIT_PER_MINUTE` | 20 | Anonymous exchange/open attempts per source, selector, and operation per minute |
 | `WORKSPACE_INVITATION_TTL_DAYS` | 7 | Invitation validity |
 | `WORKSPACE_RENAME_COOLDOWN_SECONDS` | 60 | Cooldown between workspace renames |
 
@@ -626,6 +643,22 @@ checks exact-byte content binding. It is deterministic and runs as part of the o
 the focused command is for local iteration. Signature comparison uses PHP's `hash_equals`, while
 cryptographic review or a dedicated statistical timing assessment remains separate work.
 
+The Playwright security corpus also includes a bounded differential fuzzer for the hand-maintained
+artifact response rewriter. It generates tokenizer and tree-builder state combinations, invokes the
+exact PHP rewriter without injecting the runtime JavaScript guard, and asks Chromium, Firefox, and
+WebKit to parse both the raw and rewritten bytes. Rewritten documents must always report
+`window.frames.length === 0`; parsing without the runtime guard ensures that later DOM cleanup
+cannot hide a response-time miss. CI uses the first 32 bits of `GITHUB_SHA` as a reproducible seed,
+while local runs use a stable fallback. Failures print the seed, case index, payload, and command
+needed to reproduce them. Run the default 128-case corpus or expand it up to the bounded 512-case
+limit with:
+
+```sh
+E2E_GREP='artifact parser differential fuzz corpus' make e2e
+ARTIFACT_PARSER_FUZZ_SEED=123 ARTIFACT_PARSER_FUZZ_CASES=512 \
+  E2E_GREP='artifact parser differential fuzz corpus' make e2e
+```
+
 CI runs:
 
 - Gitleaks secret scan.
@@ -638,8 +671,8 @@ CI runs:
 - 100% type-coverage enforcement.
 - PCOV line-coverage enforcement against the committed `COVERAGE_MIN` floor.
 - Vite asset build.
-- Full Playwright E2E suite on Chromium, plus the tagged artifact security corpus on Firefox and
-  WebKit.
+- Full Playwright E2E suite on Chromium, plus the tagged artifact security corpus—including the
+  seeded artifact-parser differential fuzzer—on Firefox and WebKit.
 - Production Caddy/FrankenPHP image build.
 - Trivy image scan with vulnerability, secret, and misconfiguration scanners.
 - Trivy filesystem scan combining repository secret and misconfiguration checks.
@@ -667,7 +700,9 @@ Use non-sensitive test content and record the Safari/iOS versions and results:
    replay only during its short TTL.
 3. Attempt static and dynamic `iframe`/`frame`/`fencedframe`/`portal`, legacy
    `document.execCommand('insertHTML')`, `<object>`, `<embed>`, SVG `foreignObject`, worker, popup,
-   download, form, and external-network paths. Insert a benign `<link>` first and then mutate
+   download, form, and external-network paths. Include SVG/MathML `plaintext`, SVG `script`, and
+   scripting-enabled HTML `noscript` parser breakouts inside both open and closed declarative
+   shadow roots. Insert a benign `<link>` first and then mutate
    `rel`/`href` through properties, `setAttribute`, `setAttributeNS`, and `relList` to
    `dns-prefetch`, `preconnect`, `prefetch`, and `prerender`; repeat the ordering check with
    `<meta http-equiv="refresh">`. Repeat the string arguments with stateful `toString()` objects
@@ -687,6 +722,17 @@ Use non-sensitive test content and record the Safari/iOS versions and results:
    than access revocation, so a viewer who still has live page access may receive a new revision-bound
    URL; a revoked viewer may not. Already-rendered bytes remaining on screen are the documented
    non-revocable browser-delivery residual.
+7. Open one-time and expiring external-share links both signed out and while an ArtifactFlow login
+   session exists. Confirm the fragment is removed immediately and its secret never appears in a
+   request URL, referrer, cookie, page markup, or artifact-preview URL. A one-time link must remain
+   unconsumed at the confirmation screen, enter one window-lived viewer session only after the
+   explicit open action, survive a reload in that window, and show the same unavailable state in a
+   second window or browser.
+8. Exercise external Markdown, HTML, and image shares. Confirm private wiki links are inert text,
+   HTML remains in an opaque `sandbox="allow-scripts"` artifact-origin frame, and images remain in
+   a scriptless `sandbox=""` frame. Revoke the share, disable installation-wide external sharing,
+   archive the page, and move or access-invalidate it; each subsequent viewer reload and preview-URL
+   renewal must fail without disclosing the reason.
 
 Any divergence is a release blocker until it is reproduced, added to the automated corpus where
 possible, and reflected in `THREAT-MODEL.md`.

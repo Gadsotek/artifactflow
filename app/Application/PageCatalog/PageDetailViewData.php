@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Application\PageCatalog;
 
 use App\Application\Administration\RealtimeConfiguration;
+use App\Application\ExternalSharing\ExternalShareInventoryPage;
+use App\Application\ExternalSharing\ExternalSharingPolicySettings;
+use App\Application\ExternalSharing\ListExternalShares;
 use App\Application\Provenance\PageVersionProvenanceView;
 use App\Application\Provenance\ProvenanceReadModel;
 use App\Domain\PageCatalog\PageStatus;
@@ -28,6 +31,8 @@ final readonly class PageDetailViewData
         private PageWorkspaceMoveOptions $moveOptions,
         private RealtimeConfiguration $realtimeConfiguration,
         private ProvenanceReadModel $provenance,
+        private ExternalSharingPolicySettings $externalSharingPolicy,
+        private ListExternalShares $externalShares,
     ) {
     }
 
@@ -45,6 +50,9 @@ final readonly class PageDetailViewData
      *     contentUnavailable: bool,
      *     contentEditorDialogId: string,
      *     contentEditorLabel: string,
+     *     externalShareInventory: ExternalShareInventoryPage,
+     *     externalShareMaxExpiryHours: int,
+     *     externalSharingEnabled: bool,
      *     metadataCategories: list<Category>,
      *     metadataOwners: list<User>,
      *     metadataParentPages: list<Page>,
@@ -75,6 +83,7 @@ final readonly class PageDetailViewData
         $content = $this->content->forPage($actor, $page, $canMutateContent);
         $tags = array_values($page->tags()->orderBy('name')->get()->all());
         $canManageAccess = $this->access->canManageAccess($actor, $page);
+        $externalSharingPolicy = $this->externalSharingPolicy->current();
         $pageMoveTargets = $this->moveOptions->forPage($actor, $page);
         $contentEditorAction = $this->contentEditorAction($page->type);
 
@@ -91,6 +100,11 @@ final readonly class PageDetailViewData
             'contentUnavailable' => $content->contentUnavailable,
             'contentEditorDialogId' => $contentEditorAction['dialog_id'],
             'contentEditorLabel' => $contentEditorAction['label'],
+            'externalShareInventory' => $canManageAccess
+                ? $this->externalShares->forPage($actor, $page->uid)
+                : new ExternalShareInventoryPage([], false),
+            'externalShareMaxExpiryHours' => $externalSharingPolicy->maxExpiryHours,
+            'externalSharingEnabled' => $externalSharingPolicy->enabled,
             // The pickers only render inside the canEdit metadata form; skip their
             // queries entirely for viewers who cannot edit.
             'metadataCategories' => $canEdit ? $this->metadataOptions->categoriesFor([$page->workspace_uid]) : [],

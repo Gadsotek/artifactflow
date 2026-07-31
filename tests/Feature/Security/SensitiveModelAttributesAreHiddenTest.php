@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Security;
 
+use App\Models\ExternalShare;
+use App\Models\ExternalShareSession;
 use App\Models\McpAccessToken;
 use App\Models\TrustedDevice;
 use App\Models\User;
@@ -46,6 +48,17 @@ final class SensitiveModelAttributesAreHiddenTest extends TestCase
         $this->assertArrayNotHasKey('token_hash', $invitation->toArray());
         // The plaintext link secret is a transient property, never an attribute.
         $this->assertArrayNotHasKey('plainToken', $invitation->toArray());
+    }
+
+    public function test_external_share_verifier_hashes_are_hidden_from_serialization(): void
+    {
+        $share = new ExternalShare();
+        $share->forceFill(['secret_hash' => hash('sha256', 'external-share-secret')]);
+        $session = new ExternalShareSession();
+        $session->forceFill(['credential_hash' => hash('sha256', 'external-share-session')]);
+
+        $this->assertArrayNotHasKey('secret_hash', $share->toArray());
+        $this->assertArrayNotHasKey('credential_hash', $session->toArray());
     }
 
     public function test_user_credentials_and_two_factor_material_are_hidden_from_serialization(): void

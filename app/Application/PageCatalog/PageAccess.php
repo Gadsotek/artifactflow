@@ -126,6 +126,14 @@ final class PageAccess
         return $grantRole === WorkspaceRole::Admin || $grantRole === WorkspaceRole::Editor;
     }
 
+    public function canShareOwnedPageViaMcp(User $user, Page $page): bool
+    {
+        return $this->mcpAuthority->isActive()
+            && $page->owner_user_uid === $user->uid
+            && $this->canEdit($user, $page)
+            && $this->workspaceAllowsEditorPageSharing($page->workspace_uid);
+    }
+
     public function canHardDelete(User $user, Page $page): bool
     {
         if (!$this->mcpAuthority->adminClassCapabilitiesAllowed()) {
@@ -241,6 +249,25 @@ final class PageAccess
         $this->pageGrantRoleCache = [];
         $this->membershipRemovalCache = [];
         $this->editorPageSharingCache = [];
+    }
+
+    /**
+     * Lock and cache the workspace policy used by page-sharing authorization.
+     * The caller must already hold the relevant page row lock, preserving the
+     * application-wide page-then-workspace order. A concurrent workspace
+     * settings update can therefore commit either before this authorization
+     * reads the policy or after the surrounding page mutation commits, never
+     * between authorization and commit.
+     */
+    public function lockWorkspaceSharingPolicy(string $workspaceUid): void
+    {
+        $workspace = Workspace::query()
+            ->whereKey($workspaceUid)
+            ->lockForUpdate()
+            ->first();
+
+        $this->editorPageSharingCache[$workspaceUid] = $workspace instanceof Workspace
+            && $workspace->allow_editor_page_sharing;
     }
 
     /**

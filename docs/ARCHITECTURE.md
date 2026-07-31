@@ -144,7 +144,7 @@ confirmation (step-up), and minting an MCP token additionally requires a fresh T
 
 An MCP server (`app/Mcp`, backed by the official `laravel/mcp` package, with application
 behavior in `app/Application/Mcp`) is exposed at `POST /mcp` on the **app** runtime only. It lets approved
-AI clients call `list_workspaces` / `list_taxonomy` / `search` / `read` / `create` / `create_category` / `create_tag` / `update` / `update_description` / `revert`
+AI clients call `list_workspaces` / `list_taxonomy` / `search` / `read` / `create` / `create_category` / `create_tag` / `update` / `update_description` / `revert` / `create_external_share`
 through the *same* command handlers, policies, scanners, and optimistic-concurrency checks
 as humans. Authority flows through scoped, expiring bearer tokens (hashed at rest,
 read-only or read-write, bound to selected workspaces) whose reach is the intersection of
@@ -155,6 +155,18 @@ text content is framed as an untrusted-data envelope, while normalized image rea
 still needs write scope, live access, and the matching content-version or metadata-revision token required by that operation.
 
 `update_description` requires both the observed current-version UID and the page's separate optimistic metadata revision, then deliberately changes only the description. This prevents image-derived text from being attached after the pixels are replaced while preserving human-managed title, owner, parent, category, and tags and reusing the normal description scanner, search projection, audit event, and MCP token/session attribution.
+
+`create_external_share` requires the separately opt-in `mcp:share` write scope.
+It does not inherit browser access-management authority: the page must be
+inside the token's workspace ceiling, owned by the MCP principal, and still
+editable by that principal, and the workspace must allow Editors and page
+owners to share pages. The shared application handler performs the normal
+policy, lock, installation-limit, secret-hashing, event, and audit work.
+Human and service-account principals follow the same rule. MCP authority is
+de-elevated to Editor even for an underlying workspace administrator, so the
+workspace sharing switch always applies on this path. The raw bearer URL is
+returned once in the tool response and is excluded from persistence, events,
+and audit metadata.
 
 Laravel MCP owns protocol-version negotiation, standard session IDs, JSON-RPC framing,
 tool discovery/schema serialization, and lifecycle notifications. ArtifactFlow middleware
@@ -267,16 +279,25 @@ frame-ancestors <configured app origin>
 
 Nested browsing contexts are not part of the artifact feature: actual static `iframe`, `frame`,
 `fencedframe`, and `portal` tokens are converted to inert templates before the hostile document is
-parsed without rewriting matching bytes inside genuine HTML/SVG script-data or text-control
-contexts. SVG/MathML elements whose children browsers parse as markup stay visible to the scanner,
-including SVG/MathML `style` and MathML `script`. The early guard blocks dynamic creation and common
-markup-parsing sinks. This layers over CSP because `frame-src 'none'` does not stop inline `srcdoc`
-realms in the maintained engines. Chromium and WebKit also ignore `webrtc 'block'`; the directive
-is best-effort hardening, not a credited barrier. Static response rewriting must therefore happen
-before parse, while MutationObserver cleanup remains a timing-dependent residual. The guard remains
-defense in depth rather than an authorization or isolation boundary. The reviewed parser
-differential did not cross the opaque sandbox or artifact/app origin split, and the real stack
-emitted no network traffic in the maintained browser corpus.
+parsed without rewriting matching bytes inside genuine HTML script-data or text-control contexts.
+SVG/MathML elements whose children browsers parse as markup stay visible to the scanner, including
+SVG/MathML `style`, SVG/MathML `plaintext`, and SVG/MathML `script`; scripting-enabled HTML
+`noscript` remains raw text. Foreign `<![CDATA[` sections at HTML integration points follow both
+Firefox's spec-conforming `]]>` boundary and the maintained Chromium/WebKit bogus-comment
+interpretation so neither parser can hide a live child context from the other branch; ordinary
+foreign CDATA remains verbatim. Raw-text tokenizer transitions are suppressed
+for start tags that active HTML `select` or `frameset` tree-builder modes ignore, while recognized
+`script` and `noframes` carriers retain their tokenizer states so fake container closes inside their
+text cannot desynchronize the scanner. Static
+`shadowrootmode` attributes are renamed before parse so declarative Shadow DOM cannot hide a context
+in an open or closed tree from the residual light-DOM sweep. The early guard blocks dynamic creation
+and common markup-parsing sinks. This layers over CSP because `frame-src 'none'` does not stop inline
+`srcdoc` realms in the maintained engines. Chromium and WebKit also ignore `webrtc 'block'`; the
+directive is best-effort hardening, not a credited barrier. Static response rewriting must therefore
+happen before parse, while MutationObserver cleanup remains a timing-dependent residual. The guard
+remains defense in depth rather than an authorization or isolation boundary. The reviewed parser
+differentials did not cross the opaque sandbox or artifact/app origin split, and the corrected stack
+emits no network traffic in the maintained browser corpus.
 
 Do not add `allow-same-origin`, top navigation, forms, external scripts, outbound connections, public unauthenticated artifact access, or app-session middleware to the artifact surface without a written architecture decision and security tests.
 
@@ -389,7 +410,8 @@ git diff --check
 The following are deliberately outside the current launch boundary unless the architecture is updated first:
 
 - collaborative editing beyond optimistic concurrency plus advisory Reverb presence;
-- public sharing;
+- broad public publishing, search, and navigation beyond the bounded external
+  capability design in `docs/architecture/external-sharing.md`;
 - SSO or enterprise RBAC expansion;
 - S3/object storage migration;
 - Redis/Meilisearch;

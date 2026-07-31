@@ -116,6 +116,23 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringNotContainsString('run: make fuzz-capabilities', $workflow);
     }
 
+    public function test_artifact_parser_differential_fuzzer_runs_cross_engine_in_ci(): void
+    {
+        $workflow = $this->readProjectFile('.github/workflows/ci.yml');
+        $spec = $this->readProjectFile('tests/e2e/artifact-parser-differential-fuzz.spec.ts');
+        $generator = $this->readProjectFile(
+            'tests/e2e/support/artifact-parser-differential-corpus.php',
+        );
+
+        $this->assertStringContainsString('run: make e2e', $workflow);
+        $this->assertStringContainsString(
+            'artifact parser differential fuzz corpus @artifact-security',
+            $spec,
+        );
+        $this->assertStringContainsString('window.frames.length', $spec);
+        $this->assertStringContainsString('rewriteDangerousMarkup', $generator);
+    }
+
     public function test_release_security_gates_include_general_sast_trivy_secret_misconfig_and_moderate_npm_audit(): void
     {
         $makefile = $this->readProjectFile('Makefile');

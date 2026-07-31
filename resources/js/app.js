@@ -36,6 +36,10 @@ if (document.querySelector('[data-copy-page-link]')) {
   void import('./copy-page-link');
 }
 
+if (document.querySelector('[data-external-share-management]')) {
+  void import('./external-share-management');
+}
+
 if (document.querySelector('[data-two-factor-challenge]')) {
   void import('./two-factor-challenge');
 }

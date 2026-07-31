@@ -333,6 +333,10 @@ JSON;
             'MCP_TOKEN' => 'af_mcp_test_token_value',
             'HOME' => $home,
             'CODEX_HOME' => $codexHome,
+            // The dev/test image intentionally ships without Node.js. These tests
+            // pin the plaintext-loopback guard; the Node runtime check has its own
+            // coverage in ConnectMcpNodeRuntimeGuardTest.
+            'MCP_SKIP_NODE_CHECK' => '1',
         ];
 
         if ($targets !== null) {

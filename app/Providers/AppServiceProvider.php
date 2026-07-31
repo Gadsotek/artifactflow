@@ -19,6 +19,7 @@ use App\Application\PageCatalog\PageContentStrategy;
 use App\Application\PageCatalog\PageContentStrategyRegistry;
 use App\Application\PageCatalog\RasterImagePageContentStrategy;
 use App\Application\PageCatalog\TextPageContentStrategy;
+use App\Http\Support\ExternalShareResponses;
 use App\Infrastructure\Security\ProductionSecurityConfiguration;
 use App\Models\McpAccessToken;
 use App\Models\Page;
@@ -42,6 +43,7 @@ use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Mcp\Events\SessionInitialized;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 final class AppServiceProvider extends ServiceProvider
 {
@@ -196,6 +198,36 @@ final class AppServiceProvider extends ServiceProvider
                 'rate_limits.draft_preview_capabilities_per_minute',
                 30,
             ))->by($this->rateLimitKey($request));
+        });
+
+        RateLimiter::for('artifactflow-external-share-creates', function (Request $request): Limit {
+            $page = $request->route('page');
+            $pageUid = $page instanceof Page
+                ? $page->uid
+                : (is_string($page) ? $page : 'missing');
+
+            return Limit::perMinute($this->configuredRateLimit(
+                'rate_limits.external_share_creates_per_minute',
+                10,
+            ))->by($this->rateLimitKey($request) . ':page:' . $pageUid);
+        });
+
+        RateLimiter::for('artifactflow-external-share-public', function (Request $request): Limit {
+            $selector = $request->route('externalShareUid');
+            $selectorKey = is_string($selector) ? $selector : 'missing';
+            $ip = $request->ip() ?? 'unknown';
+            $operation = $request->route()?->getName() ?? 'unknown';
+
+            return Limit::perMinute($this->configuredRateLimit(
+                'rate_limits.external_share_public_per_minute',
+                20,
+            ))
+                ->by('external-share-public:' . hash('sha256', $ip . '|' . $selectorKey . '|' . $operation))
+                ->response(
+                    static fn (Request $request, array $headers): SymfonyResponse => app(
+                        ExternalShareResponses::class,
+                    )->unavailableForRateLimitedRequest($request, $headers),
+                );
         });
 
         RateLimiter::for('artifact-previews', function (Request $request): array {

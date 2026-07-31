@@ -111,6 +111,31 @@
                     <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V7l-8-4Zm0 5v8m-4-4h8"/></svg>
                     <span>Access</span>
                 </button>
+                @if ($canManageAccess)
+                    @if ($externalSharingEnabled && $page->status !== PageStatus::Archived)
+                        <button
+                            data-open-editor-dialog="page-external-share-dialog"
+                            type="button"
+                            title="Share externally"
+                        >
+                            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M14 5h5v5m0-5-8 8M10 7H5v12h12v-5"/></svg>
+                            <span>Share externally</span>
+                            @if ($externalShareInventory->activeCount > 0)
+                                <span aria-label="{{ $externalShareInventory->activeCount }} active external shares">({{ $externalShareInventory->activeCount }})</span>
+                            @endif
+                        </button>
+                    @else
+                        <button
+                            data-open-editor-dialog="page-external-share-dialog"
+                            data-external-sharing-disabled
+                            type="button"
+                            title="{{ $page->status === PageStatus::Archived ? 'Archived pages cannot be shared externally.' : 'External sharing is disabled for this installation.' }}"
+                        >
+                            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M14 5h5v5m0-5-8 8M10 7H5v12h12v-5"/></svg>
+                            <span>Share externally</span>
+                        </button>
+                    @endif
+                @endif
                 @if ($canEdit || $canArchive || $canDelete)
                     <button data-open-editor-dialog="page-lifecycle-dialog" type="button" title="Lifecycle">
                         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v4m0 10v4M3 12h4m10 0h4M5.6 5.6l2.8 2.8m7.2 7.2 2.8 2.8m0-12.8-2.8 2.8m-7.2 7.2-2.8 2.8"/><circle cx="12" cy="12" r="3"/></svg>
@@ -221,6 +246,9 @@
             @include('pages.partials.provenance-dialog')
             @include('pages.partials.activity-dialog')
             @include('pages.partials.access-dialog')
+            @if ($canManageAccess)
+                @include('pages.partials.external-share-dialog')
+            @endif
             @include('pages.partials.lifecycle-dialog')
         </main>
     </div>

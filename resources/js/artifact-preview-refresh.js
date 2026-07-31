@@ -1,3 +1,5 @@
+import { externalShareWindowToken } from './external-share-window';
+
 const previewReadyRequest = 'artifactflow:preview-ready-request';
 const previewReadyResponse = 'artifactflow:preview-ready';
 const readySignalGracePeriodMs = 100;
@@ -54,10 +56,26 @@ function initialiseArtifactPreviewRefresh(wrapper) {
     lastRecoveryAt = Date.now();
 
     try {
-      const response = await fetch(endpoint, {
+      const externalShell = document.querySelector('[data-external-share-viewer-shell]');
+      const selector =
+        externalShell instanceof HTMLElement ? (externalShell.dataset.externalShareUid ?? '') : '';
+      const windowToken = selector === '' ? null : externalShareWindowToken(selector);
+      const options = {
         credentials: 'same-origin',
         headers: { Accept: 'application/json' },
-      });
+      };
+
+      if (selector !== '') {
+        if (windowToken === null) {
+          return;
+        }
+
+        options.method = 'POST';
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify({ window_token: windowToken });
+      }
+
+      const response = await fetch(endpoint, options);
 
       if (!response.ok) {
         return;

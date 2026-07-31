@@ -9,9 +9,11 @@ set -euo pipefail
 # stdio<->HTTP bridge.
 #
 # Pure bash: needs only standard tools (awk/sed/grep; curl is optional, used for
-# a best-effort token check). No app, Docker, make, artisan, node, python, or
-# jq required to run it. (Note: the clients themselves need Node.js at runtime,
-# since `mcp-remote` runs under npx.)
+# a best-effort token check). No app, Docker, make, artisan, python, or jq
+# required to run it. The clients themselves launch the connection through
+# `npx mcp-remote`, so the script checks for Node.js (npx) up front and stops
+# with install guidance when it is missing; set MCP_SKIP_NODE_CHECK=1 to write
+# configs on a machine where Node.js will be installed later.
 #
 # Mint the af_mcp_ token yourself in the app (Settings > MCP tokens). The token
 # is never printed; it is written only into the client config files (chmod 600),
@@ -42,6 +44,33 @@ usage() {
 case "${1:-}" in
     -h|--help) usage; exit 0 ;;
 esac
+
+# --- Node.js runtime check ---
+# The script itself runs without Node, but every config it writes launches the
+# `npx mcp-remote` bridge, so a machine without Node.js would receive a
+# connection that can never start. Refuse early, before any prompt, token
+# read, or config write. MCP_SKIP_NODE_CHECK=1 opts into config-only
+# provisioning for machines where Node.js arrives later.
+if ! command -v npx >/dev/null 2>&1; then
+    if [ "${MCP_SKIP_NODE_CHECK:-}" = "1" ]; then
+        warn "'npx' not found; writing configs anyway (MCP_SKIP_NODE_CHECK=1). Install Node.js before using the connection."
+    else
+        {
+            printf 'error: Node.js (npx) was not found on this computer.\n'
+            printf '\n'
+            printf 'The Claude and Codex apps start this MCP connection through a small\n'
+            printf 'bridge program (mcp-remote) that needs Node.js. The config files this\n'
+            printf 'script writes would not work until Node.js is installed.\n'
+            printf '\n'
+            printf '  1. Install Node.js LTS from https://nodejs.org\n'
+            printf '  2. Re-run this script.\n'
+            printf '\n'
+            printf 'To write the config files anyway and install Node.js later, re-run\n'
+            printf 'with MCP_SKIP_NODE_CHECK=1.\n'
+        } >&2
+        exit 1
+    fi
+fi
 
 # --- Gather the two inputs: URL and token ---
 URL="${MCP_URL:-}"
@@ -581,4 +610,3 @@ done
 info ""
 info "Done. MCP server '$SERVER_NAME' -> $ENDPOINT"
 info "The token lives only in the client config file(s) (chmod 600)."
-command -v npx >/dev/null 2>&1 || warn "'npx' not found — install Node.js so the clients can launch mcp-remote."

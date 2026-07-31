@@ -202,6 +202,16 @@ final class E2eIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('run-e2e-app-cmd', $spec);
     }
 
+    public function test_artifact_parser_corpus_keeps_nested_make_diagnostics_out_of_json(): void
+    {
+        $spec = $this->readProjectFile('tests/e2e/artifact-parser-differential-fuzz.spec.ts');
+
+        $this->assertMatchesRegularExpression(
+            "/execFileSync\\(\\s*'make',\\s*\\[\\s*'--no-print-directory',\\s*appCommandTarget,/u",
+            $spec,
+        );
+    }
+
     public function test_makefile_exposes_the_search_reindex_operator_command(): void
     {
         $makefile = $this->readProjectFile('Makefile');
