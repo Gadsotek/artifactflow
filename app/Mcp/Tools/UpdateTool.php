@@ -35,7 +35,12 @@ final class UpdateTool extends ArtifactFlowTool
     {
         return [
             'page_uid' => $schema->string()->required(),
-            'content' => $schema->string()->required(),
+            'content' => $schema->string()
+                ->description('New page source. For an HTML artifact, provide one self-contained HTML document with all dependencies inline; CDNs, external URLs, fetch, and other network access will not work.')
+                ->required(),
+            'change_summary' => $schema->string()
+                ->description('Required concise summary of what changed in this version, up to 255 characters.')
+                ->required(),
             'base_version_uid' => $schema->string()
                 ->description('Must match the current version UID.')
                 ->required(),

@@ -44,6 +44,7 @@ final readonly class McpRevertTool
             $result = $this->revertToPreviousVersion->handle($actor, new RevertToPreviousVersionCommand(
                 pageUid: $page->uid,
                 baseVersionUid: $arguments->requiredString('base_version_uid'),
+                changeSummary: $arguments->requiredString('change_summary'),
             ));
 
             return McpToolResult::success([

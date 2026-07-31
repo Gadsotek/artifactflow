@@ -63,6 +63,7 @@ final class PageDetailVersionListProjectionTest extends TestCase
             $this->assertArrayHasKey('content_hash', $attributes);
             $this->assertArrayHasKey('byte_size', $attributes);
             $this->assertArrayHasKey('scan_status', $attributes);
+            $this->assertArrayHasKey('change_summary', $attributes);
             $this->assertSame($editor->name, $historyVersion->creator->name);
         }
     }

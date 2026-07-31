@@ -45,6 +45,7 @@ final readonly class McpUpdateTool
                 source: PageVersionSource::Mcp,
                 baseVersionUid: $arguments->nullableString('base_version_uid'),
                 provenance: $this->provenance->fromArguments($arguments),
+                changeSummary: $arguments->requiredString('change_summary'),
             ));
 
             return McpToolResult::success([

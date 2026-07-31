@@ -79,6 +79,8 @@ final class PageCreationHttpTest extends TestCase
             ->assertSee('data-editor-capabilities="rich-markdown source-code"', false)
             ->assertSee('data-rich-markdown-editor', false)
             ->assertSee('contenteditable="true"', false)
+            ->assertSee('name="change_summary"', false)
+            ->assertSee('maxlength="255"', false)
             ->assertSee('Rich Markdown', false);
     }
 
@@ -119,12 +121,17 @@ final class PageCreationHttpTest extends TestCase
                 'title' => 'Browser Owned Page',
                 'status' => 'draft',
                 'content' => '# Browser Owned Page',
+                'change_summary' => 'Create the browser-owned page.',
             ])
             ->assertRedirect();
 
         $page = Page::query()->where('title', 'Browser Owned Page')->sole();
 
         $this->assertSame($editor->uid, $page->owner_user_uid);
+        $this->assertSame(
+            'Create the browser-owned page.',
+            PageVersion::query()->whereKey($page->current_version_uid)->sole()->change_summary,
+        );
     }
 
     public function test_page_creation_can_create_and_assign_a_workspace_category_ad_hoc(): void

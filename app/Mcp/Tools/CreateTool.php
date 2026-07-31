@@ -42,7 +42,12 @@ final class CreateTool extends ArtifactFlowTool
                 PageType::HtmlArtifact->value,
             ])->required(),
             'title' => $schema->string()->required(),
-            'content' => $schema->string()->required(),
+            'content' => $schema->string()
+                ->description('Page source. For html_artifact, provide one self-contained HTML document with all dependencies inline; CDNs, external URLs, fetch, and other network access will not work.')
+                ->required(),
+            'change_summary' => $schema->string()
+                ->description('Required concise summary of what this initial version contains, up to 255 characters.')
+                ->required(),
             'description' => $schema->string(),
             'status' => $schema->string()->enum(PageStatus::class)->default(PageStatus::Draft->value),
             'category_uid' => $schema->string()->description('Existing category in the target workspace.'),

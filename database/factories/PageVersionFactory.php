@@ -45,6 +45,7 @@ final class PageVersionFactory extends Factory
             'scan_status' => PageSecurityScanStatus::Clean,
             'scan_findings' => null,
             'source' => PageVersionSource::Upload,
+            'change_summary' => null,
             'created_by_user_uid' => User::factory(),
             'extracted_text' => 'Factory artifact',
             'source_text' => self::DEFAULT_CONTENT,

@@ -35,6 +35,7 @@ final readonly class RestorePageVersion
         private McpRequestContext $mcpContext,
         private PageVersionPruner $versionPruner,
         private ArtifactContentDeleter $artifactContentDeleter,
+        private PageVersionChangeSummaryRules $changeSummaryRules,
     ) {
     }
 
@@ -67,6 +68,7 @@ final readonly class RestorePageVersion
         $closureCompleted = false;
 
         try {
+            $changeSummary = $this->changeSummaryRules->normalize($command->changeSummary);
             $preparedAppend = $this->versions->prepare(
                 $actor,
                 $page,
@@ -77,6 +79,7 @@ final readonly class RestorePageVersion
                     sourceVersionUid: $sourceVersion->uid,
                     sourceContentHash: $sourceVersion->content_hash,
                 ),
+                changeSummary: $changeSummary,
             );
 
             $restored = DB::transaction(function () use (

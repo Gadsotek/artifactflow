@@ -15,6 +15,7 @@ final readonly class UpdatePageContentCommand
         public PageVersionSource $source = PageVersionSource::Editor,
         public ?string $baseVersionUid = null,
         public ?VersionProvenanceInput $provenance = null,
+        public ?string $changeSummary = null,
     ) {
     }
 }

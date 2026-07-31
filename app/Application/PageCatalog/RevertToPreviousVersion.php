@@ -67,6 +67,7 @@ final readonly class RevertToPreviousVersion
             // the unlocked check above is a fast fail, but a save committed between
             // it and the lock must surface as a 409, not silently overwrite.
             expectedCurrentVersionUid: $command->baseVersionUid,
+            changeSummary: $command->changeSummary,
         ));
 
         return new RevertToPreviousVersionResult(

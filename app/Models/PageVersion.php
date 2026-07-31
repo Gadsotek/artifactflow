@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property PageSecurityScanStatus $scan_status
  * @property list<array{severity: string, code: string, message: string}>|null $scan_findings
  * @property PageVersionSource $source
+ * @property string|null $change_summary
  * @property string $created_by_user_uid
  * @property string|null $extracted_text
  * @property string|null $source_text

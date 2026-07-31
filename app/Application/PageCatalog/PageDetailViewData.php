@@ -173,6 +173,7 @@ final readonly class PageDetailViewData
                 'content_hash',
                 'byte_size',
                 'scan_status',
+                'change_summary',
                 'created_by_user_uid',
                 'created_at',
             ])

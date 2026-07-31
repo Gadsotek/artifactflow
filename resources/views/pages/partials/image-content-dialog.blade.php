@@ -13,6 +13,7 @@
             @csrf
             <input name="mode" type="hidden" value="upload">
             <input name="base_version_uid" type="hidden" value="{{ $baseVersionUid }}">
+            @include('pages.partials.change-summary-field')
             <label class="block">
                 <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">PNG or JPEG image</span>
                 <input class="mt-3 block w-full text-sm" name="image_file" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" required>

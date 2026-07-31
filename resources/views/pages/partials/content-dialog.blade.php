@@ -74,6 +74,8 @@
                     </div>
                 </div>
 
+                @include('pages.partials.change-summary-field')
+
                 <div class="flex flex-col gap-3 border-t border-zinc-200 pt-4 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
                     <div class="flex items-center gap-4">
                         <span class="text-xs font-medium uppercase tracking-wide text-zinc-500">Cmd/Ctrl + S to save</span>
@@ -83,10 +85,11 @@
             </form>
 
             @if ($page->type === PageType::HtmlArtifact)
-                <form class="mt-6 border-t border-zinc-200 pt-5 dark:border-zinc-800" method="POST" action="{{ route('pages.versions.store', $page) }}" enctype="multipart/form-data">
+                <form class="mt-6 space-y-4 border-t border-zinc-200 pt-5 dark:border-zinc-800" method="POST" action="{{ route('pages.versions.store', $page) }}" enctype="multipart/form-data">
                     @csrf
                     <input name="mode" type="hidden" value="upload">
                     <input name="base_version_uid" type="hidden" value="{{ $baseVersionUid }}">
+                    @include('pages.partials.change-summary-field')
                     <div class="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
                         <label class="block">
                             <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Replace from HTML file</span>

@@ -43,6 +43,7 @@ final class PageVersionController
                 content: $request->pageContent(),
                 source: $request->versionSource(),
                 baseVersionUid: $request->baseVersionUid(),
+                changeSummary: $request->changeSummary(),
             ));
         } catch (ImageNormalizationRejected $exception) {
             return ImageNormalizationRejectionResponse::make($exception);
