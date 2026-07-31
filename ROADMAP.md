@@ -62,14 +62,25 @@ Current image support deliberately stays small:
 
 Raster decoding now runs in a separately resource-isolated, internal-only processing service. PDF/DOCX parsing must preserve or strengthen that boundary, with format-specific parser and renderer limits, before those formats ship.
 
-## Post-alpha: expiring external share links
+## Alpha in progress: expiring and one-time external share links
 
-External sharing is deliberately outside the Alpha. A later sharing surface should let an authorized page access manager create a high-entropy capability link for someone who does not have an ArtifactFlow account, with two explicit modes:
+The product direction and security architecture for a deliberately narrow external sharing surface
+are now accepted in [`docs/architecture/external-sharing.md`](docs/architecture/external-sharing.md).
+Implementation and the required cross-browser security proof remain in progress. The surface lets an
+authorized page access manager create a high-entropy capability link for someone who does not have
+an ArtifactFlow account, with two explicit modes:
 
 - **time-bounded link:** usable until a required expiry chosen within an operator-configured maximum;
-- **one-time link:** atomically consumed by the first successful redemption, with an optional short expiry as a backstop.
+- **one-time link:** no expiry, atomically consumed by the first successful redemption.
 
-This must not reuse internal user grants or make external recipients installation accounts implicitly. Before implementation, write an architecture decision and update the threat model to settle the share origin, Markdown and HTML rendering surfaces, current-versus-pinned version semantics, download behavior, and whether recipient verification is required.
+This does not reuse internal user grants or make external recipients installation accounts
+implicitly. The accepted decision settles fragment-based secret exchange, distinct anonymous
+viewing sessions, latest-version behavior, no downloads or recipient verification, and the existing
+Markdown, HTML, and image rendering boundaries. MCP creation is separately
+opt-in through `mcp:share` and is narrower than browser access management: the
+principal may create a share only for an in-scope page it owns and can still
+edit while the workspace permits Editors and page owners to share, and the
+bearer URL is returned once.
 
 Required security properties:
 
@@ -79,7 +90,8 @@ Required security properties:
 4. Reveal only the explicitly shared page/version. Never expose workspace membership, coworker directory entries, sibling titles, taxonomy, search, history, MCP, or authenticated application navigation.
 5. Keep executable HTML on the isolated artifact origin under the existing opaque sandbox and network-restrictive CSP. Ordinary fetch and connection APIs stay blocked, while the documented self-navigation and browser-dependent WebRTC residuals still apply. No external share may place untrusted content or a bearer token into the authenticated app DOM or cookies.
 6. Rate-limit creation and redemption, record non-secret create/revoke/redeem audit events, and give access managers a clear inventory with expiry, status, and last-redemption metadata.
-7. Add browser-level proof for token leakage, one-time concurrency, revocation/expiry, uniform failures, and the HTML sandbox boundary before enabling the feature.
+7. Prove the MCP path requires `mcp:share`, token-workspace reach, page ownership, live edit authority, and the workspace's live editor-sharing permission for both human and service-account principals, without leaking the returned URL into persistence, events, or audit metadata.
+8. Add browser-level proof for token leakage, one-time concurrency, revocation/expiry, uniform failures, and the HTML sandbox boundary before enabling the feature.
 
 ## Focus: searchable PDF artifacts
 

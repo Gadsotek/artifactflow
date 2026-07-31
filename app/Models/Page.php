@@ -124,4 +124,12 @@ final class Page extends Model
     {
         return $this->hasMany(PageAccessGrant::class, 'page_uid', 'uid');
     }
+
+    /**
+     * @return HasMany<ExternalShare, $this>
+     */
+    public function externalShares(): HasMany
+    {
+        return $this->hasMany(ExternalShare::class, 'page_uid', 'uid');
+    }
 }

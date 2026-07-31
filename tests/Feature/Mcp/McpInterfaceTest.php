@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Mcp;
 
+use App\Application\Administration\InstallationLimitSettings;
+use App\Application\ExternalSharing\ExternalShareSecret;
 use App\Application\Identity\CreateSharedWorkspace;
 use App\Application\Mcp\McpAccessTokenIssuer;
 use App\Application\Mcp\McpIssuedAccessToken;
@@ -26,6 +28,8 @@ use App\Domain\PageCatalog\PageVersionSource;
 use App\Models\AuditEntry;
 use App\Models\Category;
 use App\Models\DomainEvent;
+use App\Models\ExternalShare;
+use App\Models\InstallationSettings;
 use App\Models\McpAccessToken;
 use App\Models\McpClientSession;
 use App\Models\Page;
@@ -683,6 +687,280 @@ final class McpInterfaceTest extends TestCase
         $this->assertSame($createdPage->uid, $read['uid']);
     }
 
+    public function test_create_external_share_returns_one_time_and_expiring_urls_once_for_an_owned_page(): void
+    {
+        Storage::fake('artifacts');
+        Carbon::setTestNow('2026-07-30 12:00:00 UTC');
+        $this->enableExternalSharing(72);
+
+        $workspaceOwner = $this->createUser('MCP Share Workspace Owner', 'mcp-share-owner@example.test');
+        $service = $this->createServiceAccount('MCP Share Agent', 'mcp-share-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($workspaceOwner, 'MCP Share Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $page = $this->createPageWithApprovedStatus(
+            actor: $service,
+            workspace: $workspace,
+            title: 'MCP-owned external artifact',
+            content: '# Share me',
+        );
+        $issuedToken = $this->issueToken(
+            principal: $service,
+            scopes: [McpAccessTokenIssuer::SCOPE_SHARE],
+            workspaceUids: [$workspace->uid],
+        );
+
+        $oneTime = $this->successfulToolPayload($this->callTool(
+            $issuedToken->plainTextToken,
+            'create_external_share',
+            [
+                'page_uid' => $page->uid,
+                'mode' => 'one_time',
+            ],
+        ));
+
+        $this->assertSame($page->uid, $oneTime['page_uid']);
+        $this->assertSame('one_time', $oneTime['mode']);
+        $this->assertNull($oneTime['expires_at']);
+        $this->assertTrue($oneTime['secret_presented_once']);
+        $oneTimeUrl = $this->payloadString($oneTime, 'url');
+        $oneTimeShareUid = $this->payloadString($oneTime, 'share_uid');
+        $this->assertStringStartsWith(
+            route('external-shares.bootstrap', ['externalShareUid' => $oneTimeShareUid]) . '#secret=',
+            $oneTimeUrl,
+        );
+        $oneTimeSecret = explode('#secret=', $oneTimeUrl, 2)[1] ?? null;
+        $this->assertIsString($oneTimeSecret);
+        $oneTimeShare = ExternalShare::query()->whereKey($oneTimeShareUid)->sole();
+        $this->assertNotSame($oneTimeSecret, $oneTimeShare->secret_hash);
+        $this->assertTrue(app(ExternalShareSecret::class)->matches(
+            $oneTimeSecret,
+            $oneTimeShare->secret_hash,
+        ));
+
+        $expiresAt = Carbon::now()->addDay()->toISOString();
+        $expiring = $this->successfulToolPayload($this->callTool(
+            $issuedToken->plainTextToken,
+            'create_external_share',
+            [
+                'page_uid' => $page->uid,
+                'mode' => 'expires_at',
+                'expires_at' => $expiresAt,
+            ],
+        ));
+
+        $this->assertSame('expires_at', $expiring['mode']);
+        $this->assertSame($expiresAt, $expiring['expires_at']);
+        $this->assertTrue($expiring['secret_presented_once']);
+        $expiringUrl = $this->payloadString($expiring, 'url');
+        $this->assertStringContainsString('#secret=', $expiringUrl);
+
+        $event = DomainEvent::query()
+            ->where('event_type', 'page.external_share.created')
+            ->where('payload->external_share_uid', $oneTimeShareUid)
+            ->sole();
+        $this->assertSame(
+            $issuedToken->accessToken->uid,
+            $event->payload['mcp_access_token_uid'] ?? null,
+        );
+        $this->assertSame('test-session', $event->payload['mcp_agent_session_id'] ?? null);
+        $this->assertStringNotContainsString(
+            $oneTimeSecret,
+            json_encode($event->payload, JSON_THROW_ON_ERROR),
+        );
+        $audit = AuditEntry::query()->where('event_uid', $event->uid)->sole();
+        $this->assertSame(
+            $issuedToken->accessToken->uid,
+            $audit->metadata['mcp_access_token_uid'] ?? null,
+        );
+    }
+
+    public function test_create_external_share_requires_its_scope_page_ownership_edit_access_and_workspace_scope(): void
+    {
+        Storage::fake('artifacts');
+        $this->enableExternalSharing();
+
+        $workspaceOwner = $this->createUser('MCP Share Boundary Owner', 'mcp-share-boundary-owner@example.test');
+        $service = $this->createServiceAccount('MCP Share Boundary Agent', 'mcp-share-boundary-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($workspaceOwner, 'MCP Share Boundary Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $ownedPage = $this->createPageWithApprovedStatus(
+            actor: $service,
+            workspace: $workspace,
+            title: 'Owned MCP share target',
+            content: '# Owned',
+        );
+        $otherPage = $this->createPageWithApprovedStatus(
+            actor: $workspaceOwner,
+            workspace: $workspace,
+            title: 'Human-owned MCP share target',
+            content: '# Human owned',
+        );
+        $foreignWorkspace = app(CreateSharedWorkspace::class)->handle(
+            $workspaceOwner,
+            'MCP Share Foreign Team',
+        );
+        $this->addMember($foreignWorkspace, $service, WorkspaceRole::Editor);
+        $foreignOwnedPage = $this->createPageWithApprovedStatus(
+            actor: $service,
+            workspace: $foreignWorkspace,
+            title: 'Out-of-scope owned target',
+            content: '# Foreign',
+        );
+
+        $createOnlyToken = $this->issueToken(
+            principal: $service,
+            scopes: [McpAccessTokenIssuer::SCOPE_CREATE],
+            workspaceUids: [$workspace->uid],
+        )->plainTextToken;
+        $this->assertSame('insufficient_scope', $this->toolErrorPayload($this->callTool(
+            $createOnlyToken,
+            'create_external_share',
+            ['page_uid' => $ownedPage->uid, 'mode' => 'one_time'],
+        ))['type']);
+
+        $shareToken = $this->issueToken(
+            principal: $service,
+            scopes: [McpAccessTokenIssuer::SCOPE_SHARE],
+            workspaceUids: [$workspace->uid],
+        )->plainTextToken;
+        $this->assertSame(
+            ['type' => 'not_found', 'message' => 'Page not found.'],
+            $this->toolErrorPayload($this->callTool($shareToken, 'create_external_share', [
+                'page_uid' => $otherPage->uid,
+                'mode' => 'one_time',
+            ])),
+        );
+        $this->assertSame(
+            ['type' => 'not_found', 'message' => 'Page not found.'],
+            $this->toolErrorPayload($this->callTool($shareToken, 'create_external_share', [
+                'page_uid' => $foreignOwnedPage->uid,
+                'mode' => 'one_time',
+            ])),
+        );
+
+        $this->addMember($workspace, $service, WorkspaceRole::Reader);
+        $this->assertSame(
+            ['type' => 'not_found', 'message' => 'Page not found.'],
+            $this->toolErrorPayload($this->callTool($shareToken, 'create_external_share', [
+                'page_uid' => $ownedPage->uid,
+                'mode' => 'one_time',
+            ])),
+        );
+        $this->assertSame(0, ExternalShare::query()->count());
+    }
+
+    public function test_create_external_share_respects_the_workspace_editor_sharing_policy(): void
+    {
+        Storage::fake('artifacts');
+        $this->enableExternalSharing();
+
+        $workspaceOwner = $this->createUser(
+            'MCP Share Policy Owner',
+            'mcp-share-policy-owner@example.test',
+        );
+        $service = $this->createServiceAccount(
+            'MCP Share Policy Agent',
+            'mcp-share-policy-agent@example.test',
+        );
+        $workspace = app(CreateSharedWorkspace::class)->handle(
+            $workspaceOwner,
+            'MCP Share Policy Team',
+        );
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $page = $this->createPageWithApprovedStatus(
+            actor: $service,
+            workspace: $workspace,
+            title: 'Policy-controlled MCP share target',
+            content: '# Policy controlled',
+        );
+        $workspace->forceFill(['allow_editor_page_sharing' => false])->save();
+        app(PageAccess::class)->flushCache();
+        $token = $this->issueToken(
+            principal: $service,
+            scopes: [McpAccessTokenIssuer::SCOPE_SHARE],
+            workspaceUids: [$workspace->uid],
+        )->plainTextToken;
+
+        $this->assertSame(
+            ['type' => 'not_found', 'message' => 'Page not found.'],
+            $this->toolErrorPayload($this->callTool($token, 'create_external_share', [
+                'page_uid' => $page->uid,
+                'mode' => 'one_time',
+            ])),
+        );
+        $this->assertSame(0, ExternalShare::query()->count());
+    }
+
+    public function test_create_external_share_validates_mode_expiry_and_rate_limits_per_actor_and_page(): void
+    {
+        Storage::fake('artifacts');
+        Carbon::setTestNow('2026-07-30 12:00:00 UTC');
+        $this->enableExternalSharing(48);
+
+        $workspaceOwner = $this->createUser('MCP Share Validation Owner', 'mcp-share-validation-owner@example.test');
+        $service = $this->createServiceAccount('MCP Share Validation Agent', 'mcp-share-validation-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($workspaceOwner, 'MCP Share Validation Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $firstPage = $this->createPageWithApprovedStatus(
+            actor: $service,
+            workspace: $workspace,
+            title: 'First rate-limited share target',
+            content: '# First',
+        );
+        $secondPage = $this->createPageWithApprovedStatus(
+            actor: $service,
+            workspace: $workspace,
+            title: 'Second rate-limited share target',
+            content: '# Second',
+        );
+        $token = $this->issueToken(
+            principal: $service,
+            scopes: [McpAccessTokenIssuer::SCOPE_SHARE],
+            workspaceUids: [$workspace->uid],
+        )->plainTextToken;
+
+        $missingExpiry = $this->toolErrorPayload($this->callTool($token, 'create_external_share', [
+            'page_uid' => $firstPage->uid,
+            'mode' => 'expires_at',
+        ]));
+        $this->assertSame('invalid_request', $missingExpiry['type']);
+
+        $oneTimeWithExpiry = $this->toolErrorPayload($this->callTool($token, 'create_external_share', [
+            'page_uid' => $firstPage->uid,
+            'mode' => 'one_time',
+            'expires_at' => Carbon::now()->addDay()->toISOString(),
+        ]));
+        $this->assertSame('invalid_request', $oneTimeWithExpiry['type']);
+
+        $overMaximum = $this->toolErrorPayload($this->callTool($token, 'create_external_share', [
+            'page_uid' => $firstPage->uid,
+            'mode' => 'expires_at',
+            'expires_at' => Carbon::now()->addHours(49)->toISOString(),
+        ]));
+        $this->assertSame('invalid_request', $overMaximum['type']);
+        $this->assertSame(0, ExternalShare::query()->count());
+
+        RateLimiter::clear(
+            'mcp-external-share-create:user:' . $service->uid . ':page:' . $firstPage->uid,
+        );
+        config(['rate_limits.external_share_creates_per_minute' => 1]);
+        $this->successfulToolPayload($this->callTool($token, 'create_external_share', [
+            'page_uid' => $firstPage->uid,
+            'mode' => 'one_time',
+        ]));
+        $rateLimited = $this->toolErrorPayload($this->callTool($token, 'create_external_share', [
+            'page_uid' => $firstPage->uid,
+            'mode' => 'one_time',
+        ]));
+        $this->assertSame('rate_limited', $rateLimited['type']);
+
+        $this->successfulToolPayload($this->callTool($token, 'create_external_share', [
+            'page_uid' => $secondPage->uid,
+            'mode' => 'one_time',
+        ]));
+        $this->assertSame(2, ExternalShare::query()->count());
+    }
+
     public function test_create_rejects_content_with_control_bytes_instead_of_a_write_error(): void
     {
         Storage::fake('artifacts');
@@ -1176,11 +1454,22 @@ final class McpInterfaceTest extends TestCase
         $tools->assertOk();
         $toolDefinitions = $tools->json('result.tools');
         $this->assertIsArray($toolDefinitions);
-        $this->assertCount(10, $toolDefinitions);
+        $this->assertCount(11, $toolDefinitions);
         $this->assertContains('list_taxonomy', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_category', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_tag', array_column($toolDefinitions, 'name'));
+        $this->assertContains('create_external_share', array_column($toolDefinitions, 'name'));
         $this->assertContains('update_description', array_column($toolDefinitions, 'name'));
+        $createExternalShare = collect($toolDefinitions)->firstWhere('name', 'create_external_share');
+        $this->assertIsArray($createExternalShare);
+        $this->assertSame(
+            ['expires_at', 'one_time'],
+            data_get($createExternalShare, 'inputSchema.properties.mode.enum'),
+        );
+        $requiredExternalShareArguments = data_get($createExternalShare, 'inputSchema.required');
+        $this->assertIsArray($requiredExternalShareArguments);
+        $this->assertContains('page_uid', $requiredExternalShareArguments);
+        $this->assertContains('mode', $requiredExternalShareArguments);
         $updateDescription = collect($toolDefinitions)->firstWhere('name', 'update_description');
         $this->assertIsArray($updateDescription);
         $updateDescriptionSummary = $updateDescription['description'] ?? null;
@@ -2620,6 +2909,17 @@ final class McpInterfaceTest extends TestCase
         ])->save();
 
         return $user->refresh();
+    }
+
+    private function enableExternalSharing(int $maxExpiryHours = 168): void
+    {
+        InstallationSettings::query()->forceCreate([
+            ...app(InstallationLimitSettings::class)->current()->toPersistenceArray(),
+            'scope' => InstallationSettings::SCOPE_INSTALLATION,
+            'external_sharing_enabled' => true,
+            'external_share_acknowledgement_required' => true,
+            'external_share_max_expiry_hours' => $maxExpiryHours,
+        ]);
     }
 
     private function addMember(Workspace $workspace, User $user, WorkspaceRole $role): void

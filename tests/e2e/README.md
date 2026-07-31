@@ -29,3 +29,16 @@ at the artifact boundary, including:
 Ordinary editor, layout, and application-flow tests remain Chromium-only unless the feature has a
 specific cross-engine compatibility requirement. Use explicit DOM or application readiness
 assertions; do not use `networkidle`, which is unreliable in WebKit.
+
+The artifact parser differential fuzzer is part of the tagged security corpus. Its PHP generator
+feeds seeded tokenizer/tree-builder mutations through the exact server-side response rewriter, and
+Playwright parses both the raw and rewritten bytes without the runtime JavaScript guard. Every
+rewritten document must report `window.frames.length === 0` in Chromium, Firefox, and WebKit.
+CI derives the seed from `GITHUB_SHA`; local runs use a stable fallback. A failure prints a complete
+reproducer. Run a focused or expanded corpus with:
+
+```sh
+E2E_GREP='artifact parser differential fuzz corpus' make e2e
+ARTIFACT_PARSER_FUZZ_SEED=123 ARTIFACT_PARSER_FUZZ_CASES=512 \
+  E2E_GREP='artifact parser differential fuzz corpus' make e2e
+```

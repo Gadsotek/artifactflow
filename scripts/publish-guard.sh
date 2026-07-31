@@ -10,6 +10,7 @@ public_paths=(
     "docs/ARTIFACT-LIFECYCLE.md"
     "docs/OPERATIONS.md"
     "docs/architecture/README.md"
+    "docs/architecture/external-sharing.md"
     "docs/architecture/overview.svg"
     "docs/architecture/workflows.svg"
     "THREAT-MODEL.md"
@@ -20,6 +21,7 @@ published_docs=(
     "docs/ARTIFACT-LIFECYCLE.md"
     "docs/OPERATIONS.md"
     "docs/architecture/README.md"
+    "docs/architecture/external-sharing.md"
     "docs/architecture/overview.svg"
     "docs/architecture/workflows.svg"
 )
@@ -60,6 +62,7 @@ readme_links=(
 )
 
 architecture_links=(
+    "docs/architecture/external-sharing.md"
     "docs/architecture/overview.svg"
     "docs/architecture/workflows.svg"
 )

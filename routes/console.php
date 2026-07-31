@@ -15,3 +15,7 @@ Schedule::command('artifactflow:prune-domain-events')
 Schedule::command('artifactflow:prune-credentials')
     ->dailyAt('03:20')
     ->withoutOverlapping();
+
+Schedule::command('artifactflow:prune-external-shares')
+    ->dailyAt('03:30')
+    ->withoutOverlapping();

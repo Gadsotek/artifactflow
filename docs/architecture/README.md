@@ -11,6 +11,13 @@ Two self-contained SVGs (open in any browser; embeddable in the main README):
 | [`overview.svg`](overview.svg) | **Where what lives**: the layers, the application modules, and the directory map |
 | [`workflows.svg`](workflows.svg) | **Design & workflows**: the two-origin security model + the request flows that matter |
 
+Accepted security-sensitive architecture decisions:
+
+- [`external-sharing.md`](external-sharing.md): fragment capability exchange,
+  one-time redemption, isolated window-lived viewing sessions, scoped MCP
+  creation, lifecycle invalidation, and safe type-specific presentation for
+  external artifact shares.
+
 > Diagrams reflect the *actual* current code. Yes, the implementation is AI-assisted; the rigor behind it (repeated security audits, PHPStan-max, a documented threat model, a broad test suite including browser-level sandbox proofs) is the point.
 
 ## The 30-second model
