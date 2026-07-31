@@ -75,11 +75,15 @@ function generateCorpus(seed: number, caseCount: number): ArtifactParserCorpus {
   const command =
     'php tests/e2e/support/artifact-parser-differential-corpus.php' +
     ` --seed=${seed} --cases=${caseCount}`;
-  const output = execFileSync('make', [appCommandTarget, `APP_CMD=${command}`], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    maxBuffer: 16 * 1024 * 1024,
-  });
+  const output = execFileSync(
+    'make',
+    ['--no-print-directory', appCommandTarget, `APP_CMD=${command}`],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+    },
+  );
 
   return JSON.parse(output) as ArtifactParserCorpus;
 }
