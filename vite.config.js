@@ -43,7 +43,12 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       laravel({
-        input: ['resources/css/app.css', 'resources/js/app.js'],
+        input: [
+          'resources/css/app.css',
+          'resources/js/app.js',
+          'resources/js/external-share-bootstrap.js',
+          'resources/js/external-share-viewer.js',
+        ],
         refresh: true,
       }),
       tailwindcss(),

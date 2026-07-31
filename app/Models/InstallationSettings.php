@@ -20,6 +20,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property bool $two_factor_required_for_system_admins
  * @property bool $two_factor_required_for_all_users
  * @property bool $realtime_enabled
+ * @property bool $external_sharing_enabled
+ * @property bool $external_share_acknowledgement_required
+ * @property int $external_share_max_expiry_hours
  * @property string|null $updated_by_user_uid
  */
 final class InstallationSettings extends Model
@@ -54,6 +57,9 @@ final class InstallationSettings extends Model
             'two_factor_required_for_system_admins' => 'boolean',
             'two_factor_required_for_all_users' => 'boolean',
             'realtime_enabled' => 'boolean',
+            'external_sharing_enabled' => 'boolean',
+            'external_share_acknowledgement_required' => 'boolean',
+            'external_share_max_expiry_hours' => 'integer',
         ];
     }
 }

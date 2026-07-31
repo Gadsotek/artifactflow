@@ -64,6 +64,14 @@ final class UpdateInstallationLimitsRequest extends AppFormRequest
             'two_factor_required_for_system_admins' => ['nullable', 'boolean'],
             'two_factor_required_for_all_users' => ['nullable', 'boolean'],
             'realtime_enabled' => ['nullable', 'boolean'],
+            'external_sharing_enabled' => ['nullable', 'boolean'],
+            'external_share_acknowledgement_required' => ['nullable', 'boolean'],
+            'external_share_max_expiry_days' => [
+                'nullable',
+                'integer',
+                'min:1',
+                'max:' . InstallationLimitCeilings::EXTERNAL_SHARE_EXPIRY_DAYS,
+            ],
         ];
     }
 
@@ -103,7 +111,27 @@ final class UpdateInstallationLimitsRequest extends AppFormRequest
             twoFactorRequiredForSystemAdmins: $this->boolean('two_factor_required_for_system_admins', true),
             twoFactorRequiredForAllUsers: $this->boolean('two_factor_required_for_all_users', false),
             realtimeEnabled: $this->boolean('realtime_enabled', false),
+            externalSharingEnabled: $this->boolean('external_sharing_enabled', false),
+            externalShareAcknowledgementRequired: $this->boolean(
+                'external_share_acknowledgement_required',
+                true,
+            ),
+            externalShareMaxExpiryHours: $this->externalShareMaxExpiryHours(),
         );
+    }
+
+    private function externalShareMaxExpiryHours(): int
+    {
+        return $this->positiveIntOrDefault('external_share_max_expiry_days', 7) * 24;
+    }
+
+    private function positiveIntOrDefault(string $key, int $default): int
+    {
+        if (!$this->has($key)) {
+            return $default;
+        }
+
+        return $this->positiveInt($key);
     }
 
     private function positiveInt(string $key): int

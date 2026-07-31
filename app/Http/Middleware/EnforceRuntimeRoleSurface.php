@@ -23,7 +23,10 @@ final class EnforceRuntimeRoleSurface
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $isArtifactPreview = $request->is('artifact-previews/*');
+        $isArtifactPreview = $request->is(
+            'artifact-previews/*',
+            'external-artifact-previews/*',
+        );
         $runtimeRole = config('app.runtime_role');
         $isArtifactHost = $runtimeRole === 'artifact-host';
 

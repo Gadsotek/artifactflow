@@ -26,6 +26,10 @@ enum DomainEventType: string
     case PageCreated = 'page.created';
     case PageDeprecated = 'page.deprecated';
     case PageDeprecationRestored = 'page.deprecation_restored';
+    case PageExternalShareCreated = 'page.external_share.created';
+    case PageExternalShareConsumed = 'page.external_share.consumed';
+    case PageExternalShareOpened = 'page.external_share.opened';
+    case PageExternalShareRevoked = 'page.external_share.revoked';
     case PageHardDeleted = 'page.hard_deleted';
     case PageMarkedApproved = 'page.marked_approved';
     case PageMetadataUpdated = 'page.metadata.updated';

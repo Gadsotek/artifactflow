@@ -2174,7 +2174,9 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
     await expect(nestedResult).toHaveAttribute('data-nested-context-state', /.+/u, {
       timeout: 20_000,
     });
-    expect(JSON.parse((await nestedResult.getAttribute('data-nested-context-state')) ?? '{}')).toEqual({
+    expect(
+      JSON.parse((await nestedResult.getAttribute('data-nested-context-state')) ?? '{}'),
+    ).toEqual({
       nestedContextCount: 0,
       prefixedNamespaceBlocked: true,
       objectCoercionBlocked: true,
@@ -2233,19 +2235,31 @@ test('HTML draft preview neutralizes parser differentials and shadow roots befor
         context: 'svg-plaintext-shadow',
         mode: 'open',
         prefix: '<svg><plaintext><p>',
-        suffix: '',
+        suffix: '</p></plaintext></svg>',
       },
       {
         context: 'svg-script-shadow',
         mode: 'closed',
         prefix: '<svg><script><p>',
-        suffix: '</script>',
+        suffix: '</p></script></svg>',
       },
       {
         context: 'noscript-style-shadow',
         mode: 'open',
         prefix: '<noscript><style></noscript><p>',
         suffix: '</style>',
+      },
+      {
+        context: 'html-integration-point-shadow',
+        mode: 'closed',
+        prefix: '<svg><foreignObject><style></svg><script></style><div>',
+        suffix: '</div></foreignObject></svg>',
+      },
+      {
+        context: 'annotation-svg-namespace-shadow',
+        mode: 'open',
+        prefix: '<math><annotation-xml><svg><mtext><style><b>',
+        suffix: '</b></style></mtext></svg></annotation-xml></math>',
       },
     ];
     const parserDifferentialFrames = parserCases
@@ -2255,6 +2269,77 @@ test('HTML draft preview neutralizes parser differentials and shadow roots befor
           `<template shadowrootmode="${mode}">${prefix}` +
           `<iframe data-breakout-context="${context}" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>` +
           `${suffix}</template></div>`,
+      )
+      .join('');
+    const conditionalFontScript =
+      'window.__artifactflowFontLiteral = "<iframe data-font-literal>";';
+    const conditionalFontBreakout =
+      `<svg><g><font color="red"><script>${conditionalFontScript}</script>` + '</font></g></svg>';
+    const nestedAnnotationScript =
+      'window.__artifactflowAnnotationLiteral = "<iframe data-annotation-literal>";';
+    const nestedAnnotationTransition =
+      '<math><annotation-xml encoding="text/html"><svg><title>' +
+      `<script>${nestedAnnotationScript}</script>` +
+      '</title></svg></annotation-xml></math>';
+    const selfClosingPlaintextBreakout =
+      '<select/><plaintext></select>' +
+      '<iframe id="self-closing-select-plaintext-breakout" ' +
+      'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>';
+    const selectStyleBreakout =
+      '<select><style></select>' +
+      `<iframe id="select-style-breakout" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>`;
+    const framesetNoframesBreakout =
+      '<frameset><noframes></frameset></noframes><plaintext>' +
+      `<frame id="frameset-noframes-plaintext-breakout" ` +
+      `srcdoc="${escapeHtmlAttribute(rtcLeaf)}">`;
+    const selectScriptBreakout =
+      '<select><script>/*</select>*/</script><plaintext></select>' +
+      `<iframe id="select-script-plaintext-breakout" ` +
+      `srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>`;
+    const foreignCdataSuffixBreakout =
+      '<svg><foreignObject><![CDATA[x><style>]]></foreignObject></svg>' +
+      `<iframe id="foreign-cdata-suffix-breakout" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>`;
+    const foreignCdataInlineBreakout =
+      '<svg><foreignObject><![CDATA[x>' +
+      `<iframe id="foreign-cdata-inline-breakout" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>` +
+      ']]></foreignObject></svg>';
+    const foreignCdataLiteral =
+      '<svg><g><![CDATA[x><iframe id="foreign-cdata-literal"></iframe>]]></g></svg>';
+    const scriptDoubleEscapedCases = [
+      {
+        context: 'script-double-escaped-title',
+        prefix: '<script><!--<script></script><title></script>',
+      },
+      {
+        context: 'script-double-escaped-textarea',
+        prefix: '<script><!--<script></script><textarea></script>',
+      },
+      {
+        context: 'script-double-escaped-style',
+        prefix: '<script><!--<script></script><style></script>',
+      },
+      {
+        context: 'script-double-escaped-xmp',
+        prefix: '<script><!--<script></script><xmp></script>',
+      },
+      {
+        context: 'script-double-escaped-nested-twice',
+        prefix: '<script><!--<script><script></script><title></script>',
+      },
+      {
+        context: 'script-escaped-comment-end',
+        prefix: '<script><!--escaped--><script></script>',
+      },
+      {
+        context: 'script-double-escaped-comment-end',
+        prefix: '<script><!--<script>--><script></script>',
+      },
+    ];
+    const scriptDoubleEscapedFrames = scriptDoubleEscapedCases
+      .map(
+        ({ context, prefix }) =>
+          prefix +
+          `<iframe data-breakout-context="${context}" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>`,
       )
       .join('');
     const synthesizedTemplateCases = [
@@ -2292,8 +2377,13 @@ test('HTML draft preview neutralizes parser differentials and shadow roots befor
     await page.setContent(
       authenticatedDraftPreviewDocument(
         fixture,
-        `<!doctype html>${parserDifferentialFrames}${synthesizedTemplates}` +
-          '<p id="parser-control">safe</p>',
+        `<!doctype html>${parserDifferentialFrames}${conditionalFontBreakout}` +
+          `${nestedAnnotationTransition}${synthesizedTemplates}` +
+          `${scriptDoubleEscapedFrames}<p id="parser-control">safe</p>` +
+          `${selfClosingPlaintextBreakout}${selectStyleBreakout}` +
+          `${framesetNoframesBreakout}${selectScriptBreakout}` +
+          `${foreignCdataSuffixBreakout}` +
+          `${foreignCdataInlineBreakout}${foreignCdataLiteral}`,
       ),
     );
 
@@ -2316,6 +2406,44 @@ test('HTML draft preview neutralizes parser differentials and shadow roots befor
       );
     }
 
+    expect(servedBody).toContain(`<script>${conditionalFontScript}</script>`);
+    expect(servedBody).toContain(`<script>${nestedAnnotationScript}</script>`);
+    expect(servedBody).not.toContain('<iframe id="self-closing-select-plaintext-breakout"');
+    expect(servedBody).toContain(
+      '<template data-artifactflow-blocked-browsing-context ' +
+        'id="self-closing-select-plaintext-breakout"',
+    );
+    expect(servedBody).not.toContain('<iframe id="select-style-breakout"');
+    expect(servedBody).toContain(
+      '<template data-artifactflow-blocked-browsing-context id="select-style-breakout"',
+    );
+    expect(servedBody).not.toContain('<frame id="frameset-noframes-plaintext-breakout"');
+    expect(servedBody).toContain(
+      '<template data-artifactflow-blocked-browsing-context ' +
+        'id="frameset-noframes-plaintext-breakout"',
+    );
+    expect(servedBody).not.toContain('<iframe id="select-script-plaintext-breakout"');
+    expect(servedBody).toContain(
+      '<template data-artifactflow-blocked-browsing-context ' +
+        'id="select-script-plaintext-breakout"',
+    );
+    expect(servedBody).not.toContain('<iframe id="foreign-cdata-suffix-breakout"');
+    expect(servedBody).toContain(
+      '<template data-artifactflow-blocked-browsing-context id="foreign-cdata-suffix-breakout"',
+    );
+    expect(servedBody).not.toContain('<iframe id="foreign-cdata-inline-breakout"');
+    expect(servedBody).toContain(
+      '<template data-artifactflow-blocked-browsing-context id="foreign-cdata-inline-breakout"',
+    );
+    expect(servedBody).toContain(foreignCdataLiteral);
+
+    for (const { context } of scriptDoubleEscapedCases) {
+      expect(servedBody).not.toContain(`<iframe data-breakout-context="${context}"`);
+      expect(servedBody).toContain(
+        `<template data-artifactflow-blocked-browsing-context data-breakout-context="${context}"`,
+      );
+    }
+
     for (const { context } of synthesizedTemplateCases) {
       expect(servedBody).toContain(
         '<template data-artifactflow-blocked-browsing-context ' +
@@ -2326,13 +2454,39 @@ test('HTML draft preview neutralizes parser differentials and shadow roots befor
     const preview = page.frameLocator('[data-html-draft-preview-frame]');
     await expect(preview.locator('#parser-control')).toHaveText('safe', { timeout: 20_000 });
     await expect(preview.locator('[shadowrootmode]')).toHaveCount(0);
+    await expect
+      .poll(() =>
+        preview.locator('body').evaluate(
+          () =>
+            (
+              window as typeof window & {
+                __artifactflowFontLiteral?: string;
+              }
+            ).__artifactflowFontLiteral,
+        ),
+      )
+      .toBe('<iframe data-font-literal>');
+    await expect
+      .poll(() =>
+        preview.locator('body').evaluate(
+          () =>
+            (
+              window as typeof window & {
+                __artifactflowAnnotationLiteral?: string;
+              }
+            ).__artifactflowAnnotationLiteral,
+        ),
+      )
+      .toBe('<iframe data-annotation-literal>');
     expect(
-      await preview.locator('body').evaluate(
-        (body) =>
-          Array.from(body.querySelectorAll('*')).filter(
-            (element) => (element as HTMLElement).shadowRoot !== null,
-          ).length,
-      ),
+      await preview
+        .locator('body')
+        .evaluate(
+          (body) =>
+            Array.from(body.querySelectorAll('*')).filter(
+              (element) => (element as HTMLElement).shadowRoot !== null,
+            ).length,
+        ),
     ).toBe(0);
     await expect(preview.locator('iframe, frame, fencedframe, portal')).toHaveCount(0);
     expect(page.frames()).toHaveLength(2);

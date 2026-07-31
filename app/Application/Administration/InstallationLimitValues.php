@@ -19,6 +19,9 @@ final readonly class InstallationLimitValues
         public bool $twoFactorRequiredForSystemAdmins = true,
         public bool $twoFactorRequiredForAllUsers = false,
         public bool $realtimeEnabled = false,
+        public bool $externalSharingEnabled = false,
+        public bool $externalShareAcknowledgementRequired = true,
+        public int $externalShareMaxExpiryHours = 168,
     ) {
         if ($this->maxMarkdownBytes > InstallationLimitCeilings::CONTENT_BYTES) {
             throw new DomainRuleViolation('Markdown write limit must not exceed the HTTP request envelope.');
@@ -32,6 +35,13 @@ final readonly class InstallationLimitValues
             throw new DomainRuleViolation(
                 'Artifact read limit must be greater than or equal to every content write limit.',
             );
+        }
+
+        if (
+            $this->externalShareMaxExpiryHours < 1
+            || $this->externalShareMaxExpiryHours > InstallationLimitCeilings::EXTERNAL_SHARE_EXPIRY_HOURS
+        ) {
+            throw new DomainRuleViolation('External share expiry limit must be between 1 and 720 hours.');
         }
     }
 
@@ -51,7 +61,15 @@ final readonly class InstallationLimitValues
             'two_factor_required_for_system_admins' => $this->twoFactorRequiredForSystemAdmins,
             'two_factor_required_for_all_users' => $this->twoFactorRequiredForAllUsers,
             'realtime_enabled' => $this->realtimeEnabled,
+            'external_sharing_enabled' => $this->externalSharingEnabled,
+            'external_share_acknowledgement_required' => $this->externalShareAcknowledgementRequired,
+            'external_share_max_expiry_hours' => $this->externalShareMaxExpiryHours,
         ];
+    }
+
+    public function externalShareMaxExpiryDays(): int
+    {
+        return intdiv($this->externalShareMaxExpiryHours + 23, 24);
     }
 
     public function valueForConfigKey(string $key): int

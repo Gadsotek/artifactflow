@@ -72,6 +72,9 @@ final class SystemAdminInstallationSettingsTest extends TestCase
                 'max_page_storage_bytes' => '12',
                 'max_page_versions' => '2',
                 'max_tags_per_page' => '8',
+                'external_sharing_enabled' => '1',
+                'external_share_acknowledgement_required' => '0',
+                'external_share_max_expiry_days' => '2',
             ])
             ->assertRedirect('/admin/settings')
             ->assertSessionHas('status', 'Installation limits updated.');
@@ -85,6 +88,9 @@ final class SystemAdminInstallationSettingsTest extends TestCase
             'max_page_storage_bytes' => 12,
             'max_page_versions' => 2,
             'max_tags_per_page' => 8,
+            'external_sharing_enabled' => true,
+            'external_share_acknowledgement_required' => false,
+            'external_share_max_expiry_hours' => 48,
             'updated_by_user_uid' => $admin->uid,
         ]);
         $this->assertDatabaseCount('installation_settings', 1);
@@ -96,6 +102,9 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         $this->assertSame($admin->uid, $event->payload['updated_by_user_uid']);
         $this->assertSame(12, $event->payload['max_page_storage_bytes']);
         $this->assertSame(2, $event->payload['max_page_versions']);
+        $this->assertTrue($event->payload['external_sharing_enabled']);
+        $this->assertFalse($event->payload['external_share_acknowledgement_required']);
+        $this->assertSame(48, $event->payload['external_share_max_expiry_hours']);
 
         $audit = AuditEntry::query()
             ->where('action', 'installation.limits.updated')
@@ -159,12 +168,39 @@ final class SystemAdminInstallationSettingsTest extends TestCase
             ->assertOk()
             ->assertSee('name="max_markdown_bytes_amount"', false)
             ->assertSee('name="max_markdown_bytes_unit"', false)
+            ->assertSee('name="external_sharing_enabled"', false)
+            ->assertSee('name="external_share_acknowledgement_required"', false)
+            ->assertSee('name="external_share_max_expiry_days"', false)
+            ->assertSee('value="7"', false)
             ->assertSee('value="5"', false)
             ->assertSee('MiB')
             ->assertSee('Product Team')
             ->assertSee('5 B of 1.0 GiB')
             ->assertSee('&lt; 0.1% used', false)
             ->assertSee('aria-valuenow="0.001"', false);
+    }
+
+    public function test_installation_settings_reject_external_share_expiry_above_the_hard_ceiling(): void
+    {
+        $admin = $this->createUser('System Admin', 'external-policy-admin@example.test', true);
+
+        $this->actingAs($admin)
+            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->put('/admin/settings', [
+                'max_markdown_bytes' => '32',
+                'max_html_bytes' => '64',
+                'artifact_max_bytes' => '64',
+                'max_workspace_storage_bytes' => '20',
+                'max_page_storage_bytes' => '12',
+                'max_page_versions' => '2',
+                'max_tags_per_page' => '8',
+                'external_sharing_enabled' => '1',
+                'external_share_acknowledgement_required' => '1',
+                'external_share_max_expiry_days' => '31',
+            ])
+            ->assertSessionHasErrors('external_share_max_expiry_days');
+
+        $this->assertDatabaseCount('installation_settings', 0);
     }
 
     public function test_system_admin_can_update_byte_limits_with_readable_amounts_and_units(): void

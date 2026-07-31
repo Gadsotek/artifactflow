@@ -180,7 +180,50 @@
                                 <span>Enable Reverb-backed realtime features</span>
                             </label>
                         </div>
-                        <button class="af-primary-button" type="submit">Save limits</button>
+                        <div class="border-b border-zinc-200 pb-4 dark:border-zinc-800">
+                            <p class="text-sm font-medium text-zinc-700 dark:text-zinc-300">External sharing</p>
+                            <p class="mt-1 text-xs text-zinc-500">Controls the anonymous bearer-capability flow. Existing sessions still undergo live page and policy checks.</p>
+                            <label class="mt-3 flex items-start gap-3 text-sm text-zinc-700 dark:text-zinc-300">
+                                <input name="external_sharing_enabled" type="hidden" value="0">
+                                <input
+                                    class="af-checkbox mt-1 h-4 w-4 rounded border-zinc-300"
+                                    name="external_sharing_enabled"
+                                    type="checkbox"
+                                    value="1"
+                                    @checked(old('external_sharing_enabled', $limitValues->externalSharingEnabled ? '1' : '0') === '1')
+                                >
+                                <span>Enable external artifact sharing</span>
+                            </label>
+                            <label class="mt-3 flex items-start gap-3 text-sm text-zinc-700 dark:text-zinc-300">
+                                <input name="external_share_acknowledgement_required" type="hidden" value="0">
+                                <input
+                                    class="af-checkbox mt-1 h-4 w-4 rounded border-zinc-300"
+                                    name="external_share_acknowledgement_required"
+                                    type="checkbox"
+                                    value="1"
+                                    @checked(old('external_share_acknowledgement_required', $limitValues->externalShareAcknowledgementRequired ? '1' : '0') === '1')
+                                >
+                                <span>Require recipients to acknowledge the external-sharing warning</span>
+                            </label>
+                            <label class="mt-3 block">
+                                <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Maximum expiring-link lifetime</span>
+                                <span class="mt-1 grid grid-cols-[minmax(0,1fr)_5.5rem] gap-2">
+                                    <input
+                                        class="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+                                        name="external_share_max_expiry_days"
+                                        type="number"
+                                        min="1"
+                                        max="30"
+                                        step="1"
+                                        value="{{ old('external_share_max_expiry_days', $limitValues->externalShareMaxExpiryDays()) }}"
+                                        required
+                                    >
+                                    <span class="flex items-center text-sm text-zinc-500">days</span>
+                                </span>
+                                <span class="mt-1 block text-xs text-zinc-500">Applies only to expiring links; one-time links remain unexpired until redeemed or revoked.</span>
+                            </label>
+                        </div>
+                        <button class="af-primary-button" type="submit">Save settings</button>
                     </form>
                 </aside>
             </section>

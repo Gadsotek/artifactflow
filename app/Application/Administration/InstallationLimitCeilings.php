@@ -15,4 +15,6 @@ final class InstallationLimitCeilings
     public const int PAGE_STORAGE_BYTES = 1024 * 1024 * 1024;
     public const int PAGE_VERSIONS = 1000000;
     public const int TAGS_PER_PAGE = 1000000;
+    public const int EXTERNAL_SHARE_EXPIRY_DAYS = 30;
+    public const int EXTERNAL_SHARE_EXPIRY_HOURS = 720;
 }

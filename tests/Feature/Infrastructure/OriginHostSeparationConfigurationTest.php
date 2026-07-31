@@ -139,6 +139,9 @@ final class OriginHostSeparationConfigurationTest extends TestCase
                 'HTML draft preview blocks recursively nested browsing contexts before WebRTC can escape @artifact-security',
                 'HTML draft preview refuses external script sources while inline scripts run @artifact-security',
             ],
+            'tests/e2e/artifact-parser-differential-fuzz.spec.ts' => [
+                'artifact parser differential fuzz corpus @artifact-security',
+            ],
             'tests/e2e/saved-artifact-preview.spec.ts' => [
                 'saved HTML artifact executes only inside the controller-served sandbox @artifact-security',
                 'historical HTML versions stay inside the artifact-origin sandbox @artifact-security',

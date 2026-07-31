@@ -53,7 +53,12 @@ final class AddSecurityHeaders
     private function applyResponse(Request $request, Response $response, bool $includeDatabaseConfiguration): Response
     {
         if ($this->isArtifactHostRuntime()) {
-            if (!$request->is('artifact-previews/*') || !$response->headers->has('Content-Security-Policy')) {
+            $isArtifactPreview = $request->is(
+                'artifact-previews/*',
+                'external-artifact-previews/*',
+            );
+
+            if (!$isArtifactPreview || !$response->headers->has('Content-Security-Policy')) {
                 $response->headers->set('Content-Security-Policy', $this->artifactHostFallbackPolicy());
             }
             // The artifact-preview response carries X-Frame-Options: DENY even though
@@ -93,6 +98,10 @@ final class AddSecurityHeaders
 
     private function contentSecurityPolicy(Request $request, bool $includeDatabaseConfiguration): string
     {
+        if ($request->routeIs('external-shares.*')) {
+            return $this->externalShareContentSecurityPolicy();
+        }
+
         $allowTurnstile = $request->isMethod('GET')
             && $request->routeIs('login', 'password.request', 'password.reset')
             && $this->turnstile->hasCompleteCredentials();
@@ -108,6 +117,27 @@ final class AddSecurityHeaders
             "base-uri 'none'",
             'form-action ' . $this->formActionSources(),
             'frame-src ' . implode(' ', $this->frameSources($allowTurnstile)),
+            "webrtc 'block'",
+            "frame-ancestors 'none'",
+        ]);
+    }
+
+    private function externalShareContentSecurityPolicy(): string
+    {
+        return implode('; ', [
+            "default-src 'self'",
+            'script-src ' . implode(' ', $this->scriptSources(false)),
+            'style-src ' . implode(' ', $this->styleSources()),
+            "img-src 'self' data: blob:",
+            "font-src 'self' data:",
+            'connect-src ' . implode(' ', array_values(array_unique([
+                "'self'",
+                ...$this->localViteConnectSources(),
+            ]))),
+            "object-src 'none'",
+            "base-uri 'none'",
+            "form-action 'none'",
+            'frame-src ' . implode(' ', $this->frameSources(false)),
             "webrtc 'block'",
             "frame-ancestors 'none'",
         ]);
