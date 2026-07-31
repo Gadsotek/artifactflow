@@ -151,6 +151,7 @@ final class PageController
                 sourceFilename: $request->sourceFilename(),
                 source: $request->pageVersionSource(),
                 categoryName: $this->nullableString($request, 'category_name'),
+                changeSummary: $this->nullableString($request, 'change_summary'),
             ));
         } catch (ImageNormalizationRejected $exception) {
             return ImageNormalizationRejectionResponse::make($exception);

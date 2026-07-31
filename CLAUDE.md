@@ -12,5 +12,6 @@ Critical working agreements:
 - If a command may have touched the local development database unexpectedly, stop immediately and tell the user before running any further database-writing commands.
 - New production behavior requires tests first, including edge cases and security boundaries.
 - Before any commit, the required gates in `AGENTS.md` must be green.
+- Every commit requires DCO sign-off through `git commit -s` or `git commit --signoff`.
 
 Project Claude hooks live in `.claude/settings.json` and share their implementation with Codex hook scripts under `scripts/ai-hooks/`.

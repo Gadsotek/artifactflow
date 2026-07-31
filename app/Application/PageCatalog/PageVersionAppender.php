@@ -45,8 +45,18 @@ final readonly class PageVersionAppender
         ?VersionProvenanceInput $provenance = null,
         VersionOperation $operation = VersionOperation::Update,
         ?VersionLineage $lineage = null,
+        ?string $changeSummary = null,
     ): PageVersion {
-        return $this->prepare($actor, $page, $content, $source, $provenance, $operation, $lineage)->append(
+        return $this->prepare(
+            actor: $actor,
+            page: $page,
+            content: $content,
+            source: $source,
+            provenance: $provenance,
+            operation: $operation,
+            lineage: $lineage,
+            changeSummary: $changeSummary,
+        )->append(
             page: $page,
             baseVersionUid: $baseVersionUid,
             expectedCurrentVersionUid: $expectedCurrentVersionUid,
@@ -61,6 +71,7 @@ final readonly class PageVersionAppender
         ?VersionProvenanceInput $provenance = null,
         VersionOperation $operation = VersionOperation::Update,
         ?VersionLineage $lineage = null,
+        ?string $changeSummary = null,
     ): PreparedPageVersionAppend {
         $this->ensurePageAcceptsContentChanges($page);
         $actorUid = ActorId::fromUser($actor);
@@ -81,6 +92,7 @@ final readonly class PageVersionAppender
                 provenance: $provenance,
                 operation: $operation,
                 lineage: $lineage,
+                changeSummary: $changeSummary,
             ),
         );
     }
@@ -95,6 +107,7 @@ final readonly class PageVersionAppender
         ?VersionProvenanceInput $provenance = null,
         VersionOperation $operation = VersionOperation::Update,
         ?VersionLineage $lineage = null,
+        ?string $changeSummary = null,
     ): PageVersion {
         $actorUid = ActorId::fromUser($actor);
         $page = $this->lockPageForVersionAppend($page);
@@ -119,6 +132,7 @@ final readonly class PageVersionAppender
                 provenance: $provenance,
                 operation: $operation,
                 lineage: $lineage,
+                changeSummary: $changeSummary,
             );
             $page->forceFill(['current_version_uid' => $version->uid])->save();
             $this->returnContentChangedPageToDraft($actor, $page);

@@ -37,6 +37,9 @@ final class RevertTool extends ArtifactFlowTool
             'base_version_uid' => $schema->string()
                 ->description('Must match the current version UID.')
                 ->required(),
+            'change_summary' => $schema->string()
+                ->description('Required concise reason for reverting this version, up to 255 characters.')
+                ->required(),
         ];
     }
 

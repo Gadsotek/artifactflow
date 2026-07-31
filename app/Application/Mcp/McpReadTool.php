@@ -76,6 +76,7 @@ final readonly class McpReadTool
         $hierarchy = $this->hierarchy->forPages($actor, [$page]);
         $payload = $this->payload->forPage($page) + [
             'current_version_uid' => $version?->uid,
+            'current_version_change_summary' => McpDataEnvelope::text($version?->change_summary),
             'hierarchy' => $hierarchy[$page->uid],
             'provenance' => $version instanceof PageVersion
                 ? $this->provenancePayload->make($this->provenance->forVersion($version))

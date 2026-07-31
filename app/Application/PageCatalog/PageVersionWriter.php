@@ -34,6 +34,7 @@ final readonly class PageVersionWriter
         private WorkspaceStorageQuota $storageQuota,
         private RecordPageVersionProvenance $provenanceRecorder,
         private VersionProvenanceRules $provenanceRules,
+        private PageVersionChangeSummaryRules $changeSummaryRules,
     ) {
     }
 
@@ -43,6 +44,7 @@ final readonly class PageVersionWriter
         PageVersionSource $source,
         string $actorUid,
         ?VersionProvenanceInput $provenance = null,
+        ?string $changeSummary = null,
     ): PageVersion {
         return $this->write(
             page: $page,
@@ -54,6 +56,7 @@ final readonly class PageVersionWriter
             operation: VersionOperation::Create,
             provenance: $provenance,
             lineage: null,
+            changeSummary: $changeSummary,
         );
     }
 
@@ -65,6 +68,7 @@ final readonly class PageVersionWriter
         ?VersionProvenanceInput $provenance = null,
         VersionOperation $operation = VersionOperation::Update,
         ?VersionLineage $lineage = null,
+        ?string $changeSummary = null,
     ): PageVersion {
         return $this->write(
             page: $page,
@@ -76,6 +80,7 @@ final readonly class PageVersionWriter
             operation: $operation,
             provenance: $provenance,
             lineage: $lineage,
+            changeSummary: $changeSummary,
         );
     }
 
@@ -89,7 +94,9 @@ final readonly class PageVersionWriter
         VersionOperation $operation,
         ?VersionProvenanceInput $provenance,
         ?VersionLineage $lineage,
+        ?string $changeSummary,
     ): PageVersion {
+        $changeSummary = $this->changeSummaryRules->normalize($changeSummary);
         $this->provenanceRules->ensureValid($provenance);
 
         $content = $prepared->content;
@@ -130,6 +137,7 @@ final readonly class PageVersionWriter
                     : PageSecurityScanStatus::Clean,
                 'scan_findings' => $scan->persistedFindings(),
                 'source' => $source,
+                'change_summary' => $changeSummary,
                 'created_by_user_uid' => $actorUid,
                 // Cap at write like source_text: search only indexes and snippets the
                 // first MAX_EXTRACTED_TEXT_SEARCH_CHARACTERS, so persisting more is dead

@@ -20,6 +20,9 @@ The guards are intentionally conservative:
   project hooks. Nested calls are not inferred by parsing JavaScript; agents
   must use native hook-visible tools instead.
 - `git push` and GitHub API deletion of Git refs in any repository always ask first.
+- `git commit` is denied unless it includes DCO sign-off through lowercase `-s`
+  (including a short-option group) or `--signoff`; GPG `-S` does not satisfy DCO,
+  and `--no-signoff` always fails closed.
 - File deletion through `rm`, `unlink`, or `shred`, command dispatch through
   `xargs`, and `find -delete`/`find -exec` variants are denied.
 - Dangerous recursive deletion targets such as `/`, `.`, `..`, `~`, or `$HOME` are denied.

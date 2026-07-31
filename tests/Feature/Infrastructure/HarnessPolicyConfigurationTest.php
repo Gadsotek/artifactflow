@@ -94,7 +94,7 @@ final class HarnessPolicyConfigurationTest extends TestCase
             JSON_THROW_ON_ERROR,
         );
         $this->assertIsArray($contract);
-        $this->assertSame(2, $contract['contract_version'] ?? null);
+        $this->assertSame(3, $contract['contract_version'] ?? null);
         $this->assertSame('artifactflow', $contract['canonical_project'] ?? null);
         $this->assertNotSame([], $contract['shared_files'] ?? []);
         $this->assertNotSame([], $contract['normalized_files'] ?? []);

@@ -6,6 +6,7 @@ namespace App\Http\Requests\PageCatalog;
 
 use App\Application\Administration\InstallationLimitSettings;
 use App\Application\PageCatalog\PageMetadataRules;
+use App\Application\PageCatalog\PageVersionChangeSummaryRules;
 use App\Domain\PageCatalog\PageContentEncoding;
 use App\Domain\PageCatalog\PageCreationMode;
 use App\Domain\PageCatalog\PageStatus;
@@ -32,6 +33,7 @@ final class StorePageRequest extends AppFormRequest
             'mode' => ['nullable', Rule::in(array_column(PageCreationMode::cases(), 'value'))],
             'title' => ['required', 'string', new StorableText(), 'max:' . PageMetadataRules::MAX_TITLE_CHARACTERS],
             'description' => ['nullable', 'string', new StorableText(), 'max:' . PageMetadataRules::MAX_DESCRIPTION_CHARACTERS],
+            'change_summary' => ['nullable', 'string', new StorableText(), 'max:' . PageVersionChangeSummaryRules::MAX_CHARACTERS],
             'status' => ['required', Rule::in([PageStatus::Draft->value, PageStatus::Approved->value])],
             'category_uid' => ['nullable', 'string'],
             'category_name' => [

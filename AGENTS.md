@@ -117,6 +117,10 @@ git status --short
 git diff --check
 ```
 
+Every commit must carry a valid DCO `Signed-off-by` trailer matching the commit
+identity. Use `git commit -s` or `git commit --signoff`; GPG signing with `-S`
+does not replace DCO sign-off.
+
 Do not commit `.env`, secrets, private keys, certificates, database dumps, local logs, generated reports, `vendor/`, `node_modules/`, or build/cache output.
 
 Never push without explicit user approval for that specific push. Asking before every push is mandatory, even when the branch, remote, or previous approval seems obvious.

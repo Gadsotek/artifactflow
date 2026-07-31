@@ -657,11 +657,36 @@ def find_file_deletion_or_dispatch(segment: list[str]) -> Finding | None:
     return None
 
 
+def git_commit_has_signoff(arguments: list[str]) -> bool:
+    options: list[str] = []
+
+    for argument in arguments:
+        if argument == "--":
+            break
+        options.append(argument)
+
+    if "--no-signoff" in options:
+        return False
+
+    return "--signoff" in options or any(
+        option.startswith("-")
+        and not option.startswith("--")
+        and "s" in option[1:]
+        for option in options
+    )
+
+
 def find_git_risk(segment: list[str]) -> Finding | None:
-    if len(segment) < 2 or segment[0] != "git":
+    parsed = segment_command(segment)
+    if parsed is None:
         return None
 
-    subcommand = segment[1]
+    command, arguments = parsed
+    if command != "git" or not arguments:
+        return None
+
+    subcommand = arguments[0]
+    subcommand_arguments = arguments[1:]
     if subcommand == "push":
         return Finding(
             code="git_push",
@@ -669,7 +694,17 @@ def find_git_risk(segment: list[str]) -> Finding | None:
             reason="git push requires explicit user approval for this exact push.",
         )
 
-    if subcommand == "reset" and "--hard" in segment[2:]:
+    if subcommand == "commit" and not git_commit_has_signoff(subcommand_arguments):
+        return Finding(
+            code="git_commit_without_signoff",
+            action="deny",
+            reason=(
+                "Every AI-created commit requires a DCO Signed-off-by trailer. "
+                "Use `git commit -s` or `git commit --signoff`."
+            ),
+        )
+
+    if subcommand == "reset" and "--hard" in subcommand_arguments:
         return Finding(
             code="git_reset_hard",
             action="ask",
@@ -683,7 +718,7 @@ def find_git_risk(segment: list[str]) -> Finding | None:
             reason="git clean deletes untracked files and requires explicit approval.",
         )
 
-    if subcommand == "checkout" and "--" in segment[2:]:
+    if subcommand == "checkout" and "--" in subcommand_arguments:
         return Finding(
             code="git_checkout_discard",
             action="ask",
@@ -697,14 +732,14 @@ def find_git_risk(segment: list[str]) -> Finding | None:
             reason="git restore can discard local changes and requires explicit approval.",
         )
 
-    if subcommand == "branch" and any(token in {"-d", "-D", "--delete"} for token in segment[2:]):
+    if subcommand == "branch" and any(token in {"-d", "-D", "--delete"} for token in subcommand_arguments):
         return Finding(
             code="git_branch_delete",
             action="ask",
             reason="Deleting git branches requires explicit approval.",
         )
 
-    if subcommand == "tag" and any(token in {"-d", "--delete"} for token in segment[2:]):
+    if subcommand == "tag" and any(token in {"-d", "--delete"} for token in subcommand_arguments):
         return Finding(
             code="git_tag_delete",
             action="ask",

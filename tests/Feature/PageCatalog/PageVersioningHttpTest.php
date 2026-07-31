@@ -49,6 +49,7 @@ final class PageVersioningHttpTest extends TestCase
             pageUid: $page->uid,
             content: '# Version Two',
             baseVersionUid: $firstVersion->uid,
+            changeSummary: 'Expand the versioned example.',
         ));
         $this->assertNotNull($firstVersion->created_at);
 
@@ -64,6 +65,8 @@ final class PageVersioningHttpTest extends TestCase
             ->assertSee('data-open-editor-dialog="page-content-dialog"', false)
             ->assertSee('id="page-content-dialog"', false)
             ->assertSee('name="base_version_uid"', false)
+            ->assertSee('name="change_summary"', false)
+            ->assertSee('maxlength="255"', false)
             ->assertSee('value="' . $secondVersion->uid . '"', false)
             ->assertSee('data-page-tools', false)
             ->assertSee('data-editor-view-button', false)
@@ -76,6 +79,7 @@ final class PageVersioningHttpTest extends TestCase
             ->assertSee('Version 1')
             ->assertSee('Version 2')
             ->assertSee('Changed by Editor User')
+            ->assertSee('Expand the versioned example.')
             ->assertSee($firstVersion->created_at->toDateString())
             ->assertSee("pages/{$page->uid}/versions/{$firstVersion->uid}/restore", false)
             ->assertDontSee("pages/{$page->uid}/versions/{$secondVersion->uid}/restore", false);
@@ -84,11 +88,16 @@ final class PageVersioningHttpTest extends TestCase
             ->post("/pages/{$page->uid}/versions", [
                 'content' => '# Version Three',
                 'base_version_uid' => $page->refresh()->current_version_uid,
+                'change_summary' => 'Document the third revision.',
             ])
             ->assertRedirect("/pages/{$page->uid}");
 
         $page->refresh();
         $this->assertSame(3, PageVersion::query()->where('page_uid', $page->uid)->count());
+        $this->assertSame(
+            'Document the third revision.',
+            PageVersion::query()->whereKey($page->current_version_uid)->sole()->change_summary,
+        );
 
         $this->actingAs($editor)
             ->post("/pages/{$page->uid}/versions/{$firstVersion->uid}/restore", [

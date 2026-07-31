@@ -19,6 +19,9 @@
                             @endif
                         </div>
                         <p>Changed by {{ $historyVersion->creator->name }} · {{ $historyVersion->created_at->toDateString() }} · {{ $historyVersion->scan_status->value }} · {{ $historyVersion->byte_size }} bytes</p>
+                        @if ($historyVersion->change_summary !== null)
+                            <p class="mt-2 font-medium text-zinc-800 dark:text-zinc-200">{{ $historyVersion->change_summary }}</p>
+                        @endif
                         <code>SHA-256 {{ $historyVersion->content_hash }}</code>
                         <div class="mt-3 flex flex-wrap justify-end gap-2">
                             <a class="af-secondary-button" href="{{ route('pages.versions.show', [$page, $historyVersion]) }}">Inspect</a>

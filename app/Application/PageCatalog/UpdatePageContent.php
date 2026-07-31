@@ -21,6 +21,7 @@ final readonly class UpdatePageContent
         private RecordBlockedPageContentScan $recordBlockedScan,
         private PageVersionPruner $versionPruner,
         private ArtifactContentDeleter $artifactContentDeleter,
+        private PageVersionChangeSummaryRules $changeSummaryRules,
     ) {
     }
 
@@ -39,6 +40,8 @@ final readonly class UpdatePageContent
         $prunedStoragePaths = [];
 
         try {
+            $changeSummary = $this->changeSummaryRules->normalize($command->changeSummary);
+
             // Native image decoding and the parser network round trip must complete
             // before a transaction owns a pooled DB connection or locks this page.
             // Authority, status, concurrency, and quota are still re-checked below
@@ -49,6 +52,7 @@ final readonly class UpdatePageContent
                 content: $command->content,
                 source: $command->source,
                 provenance: $command->provenance,
+                changeSummary: $changeSummary,
             );
 
             $version = DB::transaction(function () use (
