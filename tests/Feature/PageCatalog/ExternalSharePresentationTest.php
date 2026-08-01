@@ -10,6 +10,7 @@ use App\Application\ExternalSharing\CreateExternalShareCommand;
 use App\Application\ExternalSharing\ExchangeExternalShare;
 use App\Application\ExternalSharing\ExternalArtifactPreviewUrl;
 use App\Application\ExternalSharing\ExternalPagePresentationRegistry;
+use App\Application\ExternalSharing\ExternalShareViewContext;
 use App\Application\ExternalSharing\ExternalShareViewerContent;
 use App\Application\ExternalSharing\ExternalShareWindowToken;
 use App\Application\ExternalSharing\ResolveExternalShareView;
@@ -58,9 +59,9 @@ final class ExternalSharePresentationTest extends TestCase
             PageType::Markdown,
             "# Shared\n\n[[Private runbook]]\n\n<script>document.body.dataset.leaked = 'yes'</script>",
         );
-        [$shareUid, $credential, , $windowToken] = $this->viewCredential($owner, $page);
+        [$shareUid, $sessionUid, $credential, , $windowToken] = $this->viewCredential($owner, $page);
 
-        $response = $this->viewerContent($shareUid, $credential, $windowToken);
+        $response = $this->viewerContent($shareUid, $sessionUid, $credential, $windowToken);
 
         $response
             ->assertOk()
@@ -83,19 +84,24 @@ final class ExternalSharePresentationTest extends TestCase
             PageType::HtmlArtifact,
             '<!doctype html><html><body><h1>Shared HTML</h1><script>document.body.dataset.ready = "yes";</script></body></html>',
         );
-        [$shareUid, $credential, $secret, $windowToken] = $this->viewCredential($owner, $page);
+        [$shareUid, $sessionUid, $credential, $secret, $windowToken] = $this->viewCredential($owner, $page);
 
-        $viewer = $this->viewerContent($shareUid, $credential, $windowToken);
+        $viewer = $this->viewerContent($shareUid, $sessionUid, $credential, $windowToken);
 
         $viewer
             ->assertOk()
             ->assertSee('sandbox="allow-scripts"', false)
             ->assertSee('data-artifact-preview-refresh-endpoint', false)
-            ->assertSee("/external-shares/{$shareUid}/artifact-preview-url", false)
+            ->assertSee("/external-shares/{$shareUid}/sessions/{$sessionUid}/artifact-preview-url", false)
             ->assertDontSee('allow-same-origin', false)
             ->assertDontSee($secret);
 
-        $context = app(ResolveExternalShareView::class)->fromCredential($shareUid, $credential);
+        $context = app(ResolveExternalShareView::class)->withCredential(
+            $shareUid,
+            $sessionUid,
+            $credential,
+            static fn (ExternalShareViewContext $context): ExternalShareViewContext => $context,
+        );
         $this->assertNotNull($context);
         $content = app(ExternalShareViewerContent::class)->forContext($context);
         $this->assertNotNull($content);
@@ -129,7 +135,7 @@ final class ExternalSharePresentationTest extends TestCase
         $appUrl = config('app.url');
         $this->assertIsString($appUrl);
         $refreshEndpoint = rtrim($appUrl, '/')
-            . "/external-shares/{$shareUid}/artifact-preview-url";
+            . "/external-shares/{$shareUid}/sessions/{$sessionUid}/artifact-preview-url";
 
         $this->withHeaders($this->sameOriginHeaders())
             ->withUnencryptedCookie('artifactflow_external_view', $credential)
@@ -182,18 +188,23 @@ final class ExternalSharePresentationTest extends TestCase
         Storage::disk('artifacts')->put($version->content_storage_path, $png);
         $page->forceFill(['type' => PageType::Image])->save();
         $page = $page->refresh();
-        [$shareUid, $credential, , $windowToken] = $this->viewCredential($owner, $page);
+        [$shareUid, $sessionUid, $credential, , $windowToken] = $this->viewCredential($owner, $page);
 
-        $viewer = $this->viewerContent($shareUid, $credential, $windowToken);
+        $viewer = $this->viewerContent($shareUid, $sessionUid, $credential, $windowToken);
 
         $viewer
             ->assertOk()
             ->assertSee('sandbox=""', false)
             ->assertDontSee('sandbox="allow-scripts"', false)
             ->assertDontSee('data-artifact-preview-refresh-endpoint', false)
-            ->assertDontSee("/external-shares/{$shareUid}/artifact-preview-url", false);
+            ->assertDontSee("/external-shares/{$shareUid}/sessions/{$sessionUid}/artifact-preview-url", false);
 
-        $context = app(ResolveExternalShareView::class)->fromCredential($shareUid, $credential);
+        $context = app(ResolveExternalShareView::class)->withCredential(
+            $shareUid,
+            $sessionUid,
+            $credential,
+            static fn (ExternalShareViewContext $context): ExternalShareViewContext => $context,
+        );
         $this->assertNotNull($context);
         $content = app(ExternalShareViewerContent::class)->forContext($context);
         $this->assertNotNull($content);
@@ -239,7 +250,7 @@ final class ExternalSharePresentationTest extends TestCase
     }
 
     /**
-     * @return array{string, string, string, string}
+     * @return array{string, string, string, string, string}
      */
     private function viewCredential(User $owner, Page $page): array
     {
@@ -260,6 +271,7 @@ final class ExternalSharePresentationTest extends TestCase
 
         return [
             $issued->share->uid,
+            $exchange->issuedSession->session->uid,
             $exchange->issuedSession->credential(),
             $issued->secret(),
             app(ExternalShareWindowToken::class)->issue(
@@ -273,6 +285,7 @@ final class ExternalSharePresentationTest extends TestCase
      */
     private function viewerContent(
         string $shareUid,
+        string $sessionUid,
         string $viewCredential,
         string $windowToken,
     ): TestResponse {
@@ -284,9 +297,12 @@ final class ExternalSharePresentationTest extends TestCase
             'Sec-Fetch-Site' => 'same-origin',
         ])
             ->withUnencryptedCookie('artifactflow_external_view', $viewCredential)
-            ->post(rtrim($appUrl, '/') . "/external-shares/{$shareUid}/viewer/content", [
+            ->post(
+                rtrim($appUrl, '/') . "/external-shares/{$shareUid}/sessions/{$sessionUid}/viewer/content",
+                [
                 'window_token' => $windowToken,
-            ]);
+                ],
+            );
     }
 
     /**

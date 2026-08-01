@@ -41,7 +41,10 @@
                 class="af-artifact-preview flex flex-col gap-3"
                 data-artifact-preview
                 @if ($viewer->presentation === ExternalPagePresentation::SandboxedHtml)
-                    data-artifact-preview-refresh-endpoint="{{ route('external-shares.artifact-preview-url', ['externalShareUid' => $viewer->context->share->uid], false) }}"
+                    data-artifact-preview-refresh-endpoint="{{ route('external-shares.artifact-preview-url', [
+                        'externalShareUid' => $viewer->context->share->uid,
+                        'externalShareSessionUid' => $viewer->context->session->uid,
+                    ], false) }}"
                 @endif
             >
                 <div class="af-external-preview-toolbar">

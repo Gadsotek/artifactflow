@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Application\ExternalSharing\ExternalArtifactPreviewUrl;
+use App\Application\ExternalSharing\ExternalShareViewContext;
 use App\Application\ExternalSharing\ResolveExternalShareView;
 use App\Application\PageCatalog\ArtifactContentReader;
 use App\Application\PageCatalog\RasterImageInspector;
@@ -34,54 +35,71 @@ final readonly class ExternalArtifactPreviewController
         string $pageUid,
         string $versionUid,
     ): Response {
-        $context = $this->views->fromSessionUid($externalShareUid, $sessionUid);
-        $version = PageVersion::query()->find($versionUid);
+        if (!$this->urls->requestMatchesArtifactOrigin($request)) {
+            abort(404);
+        }
 
-        if (
-            !$this->urls->requestMatchesArtifactOrigin($request)
-            || $context === null
-            || !$version instanceof PageVersion
-            || $context->page->uid !== $pageUid
-            || $context->page->current_version_uid !== $version->uid
-            || $version->page_uid !== $context->page->uid
-            || !$context->page->type->usesArtifactHostPreview()
-            || !$this->urls->hasValidSignature(
-                $context,
+        $response = $this->views->withSessionUid(
+            $externalShareUid,
+            $sessionUid,
+            function (ExternalShareViewContext $context) use (
+                $request,
+                $pageUid,
                 $versionUid,
-                $this->queryString($request, 'expires'),
-                $this->queryString($request, 'signature'),
-            )
-        ) {
+            ): ?Response {
+                $version = PageVersion::query()->find($versionUid);
+
+                if (
+                    !$version instanceof PageVersion
+                    || $context->page->uid !== $pageUid
+                    || $context->page->current_version_uid !== $version->uid
+                    || $version->page_uid !== $context->page->uid
+                    || !$context->page->type->usesArtifactHostPreview()
+                    || !$this->urls->hasValidSignature(
+                        $context,
+                        $versionUid,
+                        $this->queryString($request, 'expires'),
+                        $this->queryString($request, 'signature'),
+                    )
+                ) {
+                    return null;
+                }
+
+                if ($this->responder->isTopLevelNavigation($request)) {
+                    return $this->responder->topLevelNavigationNotice(null);
+                }
+
+                $content = $this->contentReader->read($version->content_storage_path);
+
+                if ($content === null) {
+                    return null;
+                }
+
+                Log::info('external_artifact_preview.served', [
+                    'external_share_uid' => $context->share->uid,
+                    'page_uid' => $context->page->uid,
+                    'version_uid' => $version->uid,
+                ]);
+
+                if ($context->page->type === PageType::Image) {
+                    try {
+                        $image = $this->imageInspector->inspectStored($content);
+                    } catch (DomainRuleViolation) {
+                        return null;
+                    }
+
+                    return $this->responder->imageDocument($content, $image->mediaType);
+                }
+
+                return $this->responder->document($content, recoveryEnabled: true);
+            },
+        );
+
+        if (!$response instanceof Response) {
             abort(404);
         }
 
-        if ($this->responder->isTopLevelNavigation($request)) {
-            return $this->responder->topLevelNavigationNotice(null);
-        }
-
-        $content = $this->contentReader->read($version->content_storage_path);
-
-        if ($content === null) {
-            abort(404);
-        }
-
-        Log::info('external_artifact_preview.served', [
-            'external_share_uid' => $context->share->uid,
-            'page_uid' => $context->page->uid,
-            'version_uid' => $version->uid,
-        ]);
-
-        if ($context->page->type === PageType::Image) {
-            try {
-                $image = $this->imageInspector->inspectStored($content);
-            } catch (DomainRuleViolation) {
-                abort(404);
-            }
-
-            return $this->responder->imageDocument($content, $image->mediaType);
-        }
-
-        return $this->responder->document($content, recoveryEnabled: true);
+        return $response;
     }
 
     private function queryString(Request $request, string $key): ?string

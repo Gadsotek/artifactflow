@@ -202,6 +202,14 @@ def main() -> int:
     assert_finding("git commit --amend --no-edit", "git_commit_without_signoff", "deny")
     assert_finding("git commit -S -m 'GPG signed only'", "git_commit_without_signoff", "deny")
     assert_finding("git commit -- -s", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -m -summary", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -F -signed-message.txt", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -ms", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -Ss", "git_commit_without_signoff", "deny")
+    assert_finding("git commit --message -summary", "git_commit_without_signoff", "deny")
+    assert_finding("git commit --file -signed-message.txt", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -C -signed-commit", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -us", "git_commit_without_signoff", "deny")
     assert_finding(
         "GIT_AUTHOR_NAME=Agent git commit -m 'Unsigned commit'",
         "git_commit_without_signoff",
@@ -215,6 +223,9 @@ def main() -> int:
     assert_no_command_finding("git commit -s -m 'DCO signed off'")
     assert_no_command_finding("git commit --signoff -m 'DCO signed off'")
     assert_no_command_finding("git commit -sam 'DCO signed off'")
+    assert_no_command_finding("git commit -S -s -m 'DCO signed off'")
+    assert_no_command_finding("git commit -u -s -m 'DCO signed off'")
+    assert_no_command_finding("git commit -s -m --no-signoff")
     assert_no_command_finding("GIT_AUTHOR_NAME=Agent git commit -s -m 'DCO signed off'")
     assert_finding(
         "gh api --method DELETE repos/octo-org/widget-vault/git/refs/heads/feature/example",

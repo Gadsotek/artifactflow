@@ -23,7 +23,8 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ### Fixed
 
-- External-share viewer throttling now preserves the route's uniform HTML unavailable surface and rate-limit headers; transient viewer failures retain the per-window proof so a redeemed one-time link can recover on reload. Expiring shares cap retained viewer sessions and evict the oldest at the configured ceiling.
+- External-share viewer throttling now preserves the route's uniform HTML unavailable surface and rate-limit headers, including preview-URL renewal. Transient viewer failures retain the per-window proof so a redeemed one-time link can recover on reload. Expiring-share windows now keep independent path-scoped view credentials, while view authorization stays locked through response materialization so concurrent revocation cannot serve stale content. Expiring shares cap retained viewer sessions and evict the oldest at the configured ceiling.
+- The AI commit guard now distinguishes real DCO sign-off options from option arguments that merely contain a lowercase `s`.
 - Stabilized the external-share authorization concurrency proof by isolating the forked worker on a dedicated database connection and keeping it alive until the parent transaction completes.
 - Hardened provenance by blocking obvious credential patterns, keeping user-controlled producer identifiers out of event/audit metadata, bounding the denormalized search projection, resolving restore origins in constant database work, and labelling MCP `clientInfo` as caller-reported rather than observed identity.
 - MCP create tools now identify an inaccessible target as `Workspace not found.` while retaining the opaque `not_found` response used to prevent workspace disclosure.

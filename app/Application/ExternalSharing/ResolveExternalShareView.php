@@ -9,6 +9,8 @@ use App\Models\ExternalShare;
 use App\Models\ExternalShareSession;
 use App\Models\Page;
 use Carbon\CarbonImmutable;
+use Closure;
+use Illuminate\Support\Facades\DB;
 
 final readonly class ResolveExternalShareView
 {
@@ -19,11 +21,20 @@ final readonly class ResolveExternalShareView
     ) {
     }
 
-    public function fromCredential(
+    /**
+     * @template TResult
+     *
+     * @param Closure(ExternalShareViewContext): TResult $use
+     *
+     * @return TResult|null
+     */
+    public function withCredential(
         string $externalShareUid,
+        string $sessionUid,
         #[\SensitiveParameter]
         string $credential,
-    ): ?ExternalShareViewContext {
+        Closure $use,
+    ): mixed {
         $credentialHash = $this->credentials->hashForLookup(
             ExternalShareSessionKind::View,
             $credential,
@@ -33,58 +44,109 @@ final readonly class ResolveExternalShareView
             return null;
         }
 
-        $session = ExternalShareSession::query()
-            ->where('external_share_uid', $externalShareUid)
-            ->where('credential_hash', $credentialHash)
-            ->where('kind', ExternalShareSessionKind::View->value)
-            ->first();
-
-        return $session instanceof ExternalShareSession
-            ? $this->fromSession($externalShareUid, $session)
-            : null;
+        return $this->withSession(
+            $externalShareUid,
+            credentialHash: $credentialHash,
+            sessionUid: $sessionUid,
+            use: $use,
+        );
     }
 
-    public function fromSessionUid(
+    /**
+     * @template TResult
+     *
+     * @param Closure(ExternalShareViewContext): TResult $use
+     *
+     * @return TResult|null
+     */
+    public function withSessionUid(
         string $externalShareUid,
         string $sessionUid,
-    ): ?ExternalShareViewContext {
-        $session = ExternalShareSession::query()
-            ->whereKey($sessionUid)
-            ->where('external_share_uid', $externalShareUid)
-            ->where('kind', ExternalShareSessionKind::View->value)
-            ->first();
-
-        return $session instanceof ExternalShareSession
-            ? $this->fromSession($externalShareUid, $session)
-            : null;
+        Closure $use,
+    ): mixed {
+        return $this->withSession(
+            $externalShareUid,
+            credentialHash: null,
+            sessionUid: $sessionUid,
+            use: $use,
+        );
     }
 
-    private function fromSession(
+    /**
+     * @template TResult
+     *
+     * @param Closure(ExternalShareViewContext): TResult $use
+     *
+     * @return TResult|null
+     */
+    private function withSession(
         string $externalShareUid,
-        ExternalShareSession $session,
-    ): ?ExternalShareViewContext {
-        $share = ExternalShare::query()->find($externalShareUid);
+        ?string $credentialHash,
+        ?string $sessionUid,
+        Closure $use,
+    ): mixed {
+        $pageUid = ExternalShare::query()
+            ->whereKey($externalShareUid)
+            ->value('page_uid');
 
-        if (!$share instanceof ExternalShare) {
+        if (!is_string($pageUid)) {
             return null;
         }
 
-        $page = Page::query()->find($share->page_uid);
+        return DB::transaction(function () use (
+            $externalShareUid,
+            $pageUid,
+            $credentialHash,
+            $sessionUid,
+            $use,
+        ): mixed {
+            $page = Page::query()
+                ->whereKey($pageUid)
+                ->lockForUpdate()
+                ->first();
+            $share = ExternalShare::query()
+                ->whereKey($externalShareUid)
+                ->where('page_uid', $pageUid)
+                ->lockForUpdate()
+                ->first();
 
-        if (!$page instanceof Page) {
-            return null;
-        }
+            if (!$page instanceof Page || !$share instanceof ExternalShare) {
+                return null;
+            }
 
-        $policy = $this->policySettings->current();
+            $sessionQuery = ExternalShareSession::query()
+                ->where('external_share_uid', $externalShareUid)
+                ->where('kind', ExternalShareSessionKind::View->value);
 
-        return $this->liveState->canUseViewSession(
-            $policy,
-            $share,
-            $page,
-            $session,
-            CarbonImmutable::now(),
-        )
-            ? new ExternalShareViewContext($share, $page, $session)
-            : null;
+            if ($credentialHash !== null) {
+                $sessionQuery->where('credential_hash', $credentialHash);
+            }
+
+            if ($sessionUid !== null) {
+                $sessionQuery->whereKey($sessionUid);
+            }
+
+            if ($credentialHash === null && $sessionUid === null) {
+                return null;
+            }
+
+            $session = $sessionQuery->lockForUpdate()->first();
+            $policy = $this->policySettings->current();
+
+            if (
+                !$session instanceof ExternalShareSession
+                || !$this->liveState->canUseViewSession(
+                    $policy,
+                    $share,
+                    $page,
+                    $session,
+                    CarbonImmutable::now(),
+                )
+            ) {
+                return null;
+            }
+
+            return $use(new ExternalShareViewContext($share, $page, $session));
+        });
     }
 }

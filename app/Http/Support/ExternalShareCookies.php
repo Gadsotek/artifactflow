@@ -44,7 +44,10 @@ final class ExternalShareCookies
             name: $this->name($kind),
             value: $issued->credential(),
             expire: $expiresAt,
-            path: $this->path($externalShareUid),
+            path: $this->path(
+                $externalShareUid,
+                $kind === ExternalShareSessionKind::View ? $issued->session->uid : null,
+            ),
             secure: $this->isSecure($request),
             httpOnly: true,
             sameSite: Cookie::SAMESITE_STRICT,
@@ -72,9 +75,13 @@ final class ExternalShareCookies
         };
     }
 
-    private function path(string $externalShareUid): string
+    private function path(string $externalShareUid, ?string $viewSessionUid = null): string
     {
-        return '/external-shares/' . rawurlencode($externalShareUid);
+        $sharePath = '/external-shares/' . rawurlencode($externalShareUid);
+
+        return $viewSessionUid === null
+            ? $sharePath
+            : $sharePath . '/sessions/' . rawurlencode($viewSessionUid);
     }
 
     private function isSecure(Request $request): bool

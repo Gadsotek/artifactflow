@@ -658,22 +658,60 @@ def find_file_deletion_or_dispatch(segment: list[str]) -> Finding | None:
 
 
 def git_commit_has_signoff(arguments: list[str]) -> bool:
-    options: list[str] = []
+    long_options_with_values = {
+        "--author",
+        "--cleanup",
+        "--date",
+        "--file",
+        "--fixup",
+        "--message",
+        "--pathspec-from-file",
+        "--reedit-message",
+        "--reuse-message",
+        "--squash",
+        "--template",
+        "--trailer",
+    }
+    short_options_with_values = {"C", "F", "c", "m", "t"}
+    short_options_with_optional_attached_values = {"S", "u"}
+    has_signoff = False
+    skip_next_argument = False
 
     for argument in arguments:
+        if skip_next_argument:
+            skip_next_argument = False
+            continue
         if argument == "--":
             break
-        options.append(argument)
 
-    if "--no-signoff" in options:
-        return False
+        if argument == "--no-signoff":
+            return False
+        if argument == "--signoff":
+            has_signoff = True
+            continue
 
-    return "--signoff" in options or any(
-        option.startswith("-")
-        and not option.startswith("--")
-        and "s" in option[1:]
-        for option in options
-    )
+        if argument.startswith("--"):
+            option, separator, _ = argument.partition("=")
+            if not separator and option in long_options_with_values:
+                skip_next_argument = True
+            continue
+
+        if not argument.startswith("-") or argument == "-":
+            continue
+
+        short_options = argument[1:]
+        for index, option in enumerate(short_options):
+            if option == "s":
+                has_signoff = True
+                continue
+            if option in short_options_with_values:
+                if index == len(short_options) - 1:
+                    skip_next_argument = True
+                break
+            if option in short_options_with_optional_attached_values:
+                break
+
+    return has_signoff
 
 
 def find_git_risk(segment: list[str]) -> Finding | None:

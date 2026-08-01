@@ -121,6 +121,35 @@ async function createOneTimeLink(page: Page): Promise<string> {
   return rawUrl;
 }
 
+async function createExpiringLink(page: Page): Promise<string> {
+  const shareButton = page.getByRole('button', { name: /Share externally/u });
+  await expect(shareButton).toHaveAttribute('data-editor-dialog-trigger-ready', '');
+  await shareButton.click();
+  const dialog = page.locator('#page-external-share-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute('data-external-share-management-ready', '');
+  await dialog.getByLabel(/Expires at/u).check();
+  const expiry = dialog.locator('[data-external-share-expiry]');
+  const maximum = await expiry.getAttribute('max');
+  expect(maximum).not.toBeNull();
+  const validExpiry = await expiry.evaluate((input: HTMLInputElement) => {
+    const date = new Date(input.max);
+    date.setHours(date.getHours() - 1);
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+
+    return local.toISOString().slice(0, 16);
+  });
+  await expiry.fill(validExpiry);
+  await dialog.getByRole('button', { name: 'Create external link' }).click();
+  const secretInput = dialog.locator('[data-external-share-secret-url]');
+  await expect(secretInput).toBeVisible();
+  const rawUrl = await secretInput.inputValue();
+  await dialog.getByRole('button', { name: 'Close external sharing' }).click();
+  await expect(dialog).toBeHidden();
+
+  return rawUrl;
+}
+
 test('expiring link picker enforces the installation maximum and renders local viewer time', async ({
   browser,
   page,
@@ -188,6 +217,35 @@ test('expiring link picker enforces the installation maximum and renders local v
   }
 });
 
+test('expiring link windows keep independent view sessions @artifact-security', async ({
+  browser,
+  page,
+}) => {
+  const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
+  const title = `External parallel windows ${suffix}`;
+  await createUserAndLogin(page, 'external-parallel-windows');
+  await createMarkdownPage(page, title);
+  const rawUrl = await createExpiringLink(page);
+  const recipientContext = await browser.newContext();
+
+  try {
+    const first = await openConfirmation(recipientContext, rawUrl, title);
+    await first.page.getByRole('button', { name: /open artifact/iu }).click();
+    await expect(first.page.getByText('Recipient content.')).toBeVisible();
+
+    const second = await openConfirmation(recipientContext, rawUrl, title);
+    await second.page.getByRole('button', { name: /open artifact/iu }).click();
+    await expect(second.page.getByText('Recipient content.')).toBeVisible();
+
+    await first.page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(first.page.getByText('Recipient content.')).toBeVisible();
+    await second.page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(second.page.getByText('Recipient content.')).toBeVisible();
+  } finally {
+    await recipientContext.close();
+  }
+});
+
 async function openConfirmation(
   context: BrowserContext,
   rawUrl: string,
@@ -241,15 +299,16 @@ test('one-time fragment sharing is explicit, single-use, and independent of logi
   try {
     const opened = await openConfirmation(anonymousContext, rawUrl, title);
     await opened.page.getByRole('button', { name: /open artifact/iu }).click();
-    await expect(opened.page).toHaveURL(/\/external-shares\/[0-9a-hjkmnp-tv-z]{26}\/viewer$/u);
+    await expect(opened.page).toHaveURL(
+      /\/external-shares\/[0-9a-hjkmnp-tv-z]{26}\/sessions\/[0-9a-hjkmnp-tv-z]{26}\/viewer$/u,
+    );
     await expect(opened.page.getByText('Recipient content.')).toBeVisible();
     const viewerContent = opened.page.locator('.af-external-viewer-content');
     await expect(viewerContent).toBeVisible();
     await expect
       .poll(() =>
         viewerContent.evaluate(
-          (element) =>
-            element.getBoundingClientRect().width / document.documentElement.clientWidth,
+          (element) => element.getBoundingClientRect().width / document.documentElement.clientWidth,
         ),
       )
       .toBeGreaterThan(0.9);
@@ -294,9 +353,7 @@ test('one-time fragment sharing is explicit, single-use, and independent of logi
       });
     });
     await opened.page.reload({ waitUntil: 'domcontentloaded' });
-    await expect(
-      opened.page.getByText('This external artifact is unavailable.'),
-    ).toBeVisible();
+    await expect(opened.page.getByText('This external artifact is unavailable.')).toBeVisible();
     await opened.page.unroute('**/viewer/content');
     await opened.page.reload({ waitUntil: 'domcontentloaded' });
     await expect(opened.page.getByText('Recipient content.')).toBeVisible();

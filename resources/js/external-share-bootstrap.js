@@ -20,11 +20,16 @@ function safeViewerUrl(value, selector) {
 
   try {
     const url = new URL(value, window.location.origin);
-    const expectedPath = `/external-shares/${encodeURIComponent(selector)}/viewer`;
+    const segments = url.pathname.split('/');
+    const hasExpectedPath =
+      segments.length === 6 &&
+      segments[1] === 'external-shares' &&
+      segments[2] === selector &&
+      segments[3] === 'sessions' &&
+      /^[0-9A-Za-z]{26}$/u.test(segments[4] ?? '') &&
+      segments[5] === 'viewer';
 
-    return url.origin === window.location.origin && url.pathname === expectedPath
-      ? url.toString()
-      : null;
+    return url.origin === window.location.origin && hasExpectedPath ? url.toString() : null;
   } catch {
     return null;
   }
