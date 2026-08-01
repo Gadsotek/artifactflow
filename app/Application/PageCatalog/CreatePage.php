@@ -38,6 +38,7 @@ final readonly class CreatePage
         private SlugGenerator $slugs,
         private McpRequestContext $mcpContext,
         private PageMetadataRules $metadataRules,
+        private PageVersionChangeSummaryRules $changeSummaryRules,
         private CreateCategory $createCategory,
     ) {
     }
@@ -51,6 +52,19 @@ final readonly class CreatePage
         $title = $this->metadataRules->normalizeTitle($command->title);
         $description = $this->metadataRules->normalizeDescription($command->description);
         $this->ensureDescriptionIsSafe($actor, $workspace, $command->type, $description);
+        try {
+            $changeSummary = $this->changeSummaryRules->normalize($command->changeSummary);
+        } catch (BlockedPageContentException $exception) {
+            $this->recordBlockedScan->forPageCreation(
+                actor: $actor,
+                workspace: $workspace,
+                pageType: $command->type,
+                findingCodes: $exception->findingCodes(),
+                operation: 'create_page_change_summary',
+            );
+
+            throw $exception;
+        }
         $this->contentPreparer->validateInput($command->type, $command->content);
         $ownerUserUid = $this->resolveOwnerUserUid($actorUid, $command);
         $this->metadataRules->ensureOwnerBelongsToWorkspace($ownerUserUid, $workspace->uid);
@@ -97,6 +111,7 @@ final readonly class CreatePage
                 &$closureCompleted,
                 $title,
                 $workspace,
+                $changeSummary,
             ): Page {
                 $lockedParent = null;
 
@@ -171,6 +186,7 @@ final readonly class CreatePage
                     source: $command->source,
                     actorUid: $actorUid,
                     provenance: $command->provenance,
+                    changeSummary: $changeSummary,
                 );
                 $storagePath = $version->content_storage_path;
                 $page->forceFill(['current_version_uid' => $version->uid])->save();

@@ -14,6 +14,7 @@ final readonly class RestorePageVersionCommand
         // page moved on under the page lock. The HTTP restore and revert paths always
         // supply it; null opts a programmatic caller out of the check.
         public ?string $expectedCurrentVersionUid = null,
+        public ?string $changeSummary = null,
     ) {
     }
 }

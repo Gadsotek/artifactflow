@@ -192,9 +192,15 @@ final class ExternalSharePublicFlowTest extends TestCase
             ->assertOk()
             ->assertJsonPath('state', 'viewer');
 
+        $viewSession = ExternalShareSession::query()
+            ->where('kind', ExternalShareSessionKind::View->value)
+            ->sole();
         $viewerUrl = $opened->json('viewer_url');
         $this->assertSame(
-            route('external-shares.viewer', ['externalShareUid' => $issued->share->uid]),
+            route('external-shares.viewer', [
+                'externalShareUid' => $issued->share->uid,
+                'externalShareSessionUid' => $viewSession->uid,
+            ]),
             $viewerUrl,
         );
         $windowToken = $opened->json('window_token');
@@ -208,9 +214,7 @@ final class ExternalSharePublicFlowTest extends TestCase
         $this->assertNotNull($issued->share->refresh()->redeemed_at);
         $this->assertSame(1, $issued->share->view_session_count);
         $this->assertSame(1, ExternalShareSession::query()->where('kind', 'view')->count());
-        $this->assertNull(
-            ExternalShareSession::query()->where('kind', 'view')->sole()->expires_at,
-        );
+        $this->assertNull($viewSession->expires_at);
 
         $this->withHeaders($this->sameOriginHeaders())
             ->withCredentials()
@@ -222,7 +226,7 @@ final class ExternalSharePublicFlowTest extends TestCase
             ->assertExactJson(['state' => 'unavailable']);
 
         $shell = $this->withUnencryptedCookie(self::VIEW_COOKIE, $viewCredential)
-            ->get("/external-shares/{$issued->share->uid}/viewer")
+            ->get("/external-shares/{$issued->share->uid}/sessions/{$viewSession->uid}/viewer")
             ->assertOk()
             ->assertSee('data-external-share-viewer-shell', false)
             ->assertSee('data-external-theme-bootstrap', false)
@@ -233,7 +237,7 @@ final class ExternalSharePublicFlowTest extends TestCase
 
         $content = $this->withHeaders($this->sameOriginHeaders())
             ->withUnencryptedCookie(self::VIEW_COOKIE, $viewCredential)
-            ->post("/external-shares/{$issued->share->uid}/viewer/content", [
+            ->post("/external-shares/{$issued->share->uid}/sessions/{$viewSession->uid}/viewer/content", [
                 'window_token' => $windowToken,
             ])
             ->assertOk()
@@ -249,7 +253,7 @@ final class ExternalSharePublicFlowTest extends TestCase
 
         $this->withHeaders($this->sameOriginHeaders())
             ->withUnencryptedCookie(self::VIEW_COOKIE, $viewCredential)
-            ->post("/external-shares/{$issued->share->uid}/viewer/content", [
+            ->post("/external-shares/{$issued->share->uid}/sessions/{$viewSession->uid}/viewer/content", [
                 'window_token' => str_repeat('0', 64),
             ])
             ->assertNotFound()
@@ -292,6 +296,68 @@ final class ExternalSharePublicFlowTest extends TestCase
             ->assertNotFound()
             ->assertSee('This external artifact is unavailable.')
             ->assertDontSee($page->title);
+    }
+
+    public function test_expiring_share_view_cookies_are_scoped_to_independent_session_paths(): void
+    {
+        [$owner, $page] = $this->pageFixture();
+        $this->configureExternalSharing(enabled: true, acknowledgementRequired: false);
+        $issued = app(CreateExternalShare::class)->handle(
+            $owner,
+            new CreateExternalShareCommand(
+                $page->uid,
+                ExternalShareMode::ExpiresAt,
+                CarbonImmutable::now()->addHour(),
+            ),
+        );
+        $sessions = [];
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $exchange = $this->exchange($issued->share, $issued->secret())
+                ->assertJsonPath('state', 'viewer');
+            $viewCookie = $this->responseCookie(
+                $exchange->headers->getCookies(),
+                self::VIEW_COOKIE,
+            );
+            $viewCredential = $this->cookieValue($viewCookie);
+            $credentialHash = app(ExternalShareSessionCredential::class)->hashForLookup(
+                ExternalShareSessionKind::View,
+                $viewCredential,
+            );
+            $this->assertIsString($credentialHash);
+            $session = ExternalShareSession::query()
+                ->where('external_share_uid', $issued->share->uid)
+                ->where('credential_hash', $credentialHash)
+                ->sole();
+            $expectedPath = "/external-shares/{$issued->share->uid}/sessions/{$session->uid}";
+
+            $this->assertSame($expectedPath, $viewCookie->getPath());
+            $this->assertSame(
+                route('external-shares.viewer', [
+                    'externalShareUid' => $issued->share->uid,
+                    'externalShareSessionUid' => $session->uid,
+                ]),
+                $exchange->json('viewer_url'),
+            );
+            $windowToken = $exchange->json('window_token');
+            $this->assertIsString($windowToken);
+            $sessions[] = [
+                'uid' => $session->uid,
+                'credential' => $viewCredential,
+                'window_token' => $windowToken,
+            ];
+        }
+
+        foreach ($sessions as $session) {
+            $this->withHeaders($this->sameOriginHeaders())
+                ->withUnencryptedCookie(self::VIEW_COOKIE, $session['credential'])
+                ->post(
+                    "/external-shares/{$issued->share->uid}/sessions/{$session['uid']}/viewer/content",
+                    ['window_token' => $session['window_token']],
+                )
+                ->assertOk()
+                ->assertSee($page->title);
+        }
     }
 
     public function test_wrong_secret_cross_site_open_revocation_and_global_disable_share_one_unavailable_surface(): void
@@ -376,6 +442,7 @@ final class ExternalSharePublicFlowTest extends TestCase
     {
         config(['rate_limits.external_share_public_per_minute' => 1]);
         $selector = (string) Str::ulid();
+        $sessionUid = (string) Str::ulid();
         $responses = [];
 
         for ($attempt = 0; $attempt < 2; $attempt++) {
@@ -384,7 +451,7 @@ final class ExternalSharePublicFlowTest extends TestCase
                 'Accept' => 'text/html',
             ])
                 ->withServerVariables(['REMOTE_ADDR' => '203.0.113.13'])
-                ->post("/external-shares/{$selector}/viewer/content", [
+                ->post("/external-shares/{$selector}/sessions/{$sessionUid}/viewer/content", [
                     'window_token' => str_repeat('0', 64),
                 ])
                 ->assertNotFound()
@@ -401,11 +468,39 @@ final class ExternalSharePublicFlowTest extends TestCase
         $this->assertSame($responses[0]->getContent(), $responses[1]->getContent());
     }
 
+    public function test_preview_url_rate_limit_uses_the_same_unavailable_json_surface(): void
+    {
+        config(['rate_limits.external_share_public_per_minute' => 1]);
+        $selector = (string) Str::ulid();
+        $sessionUid = (string) Str::ulid();
+        $responses = [];
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $responses[] = $this->withHeaders([
+                ...$this->sameOriginHeaders(),
+                'Accept' => 'application/json',
+            ])
+                ->withServerVariables(['REMOTE_ADDR' => '203.0.113.14'])
+                ->post("/external-shares/{$selector}/sessions/{$sessionUid}/artifact-preview-url", [
+                    'window_token' => str_repeat('0', 64),
+                ])
+                ->assertNotFound()
+                ->assertHeader('Cache-Control', 'no-store, private')
+                ->assertHeader('X-RateLimit-Limit', '1')
+                ->assertHeader('X-RateLimit-Remaining', '0')
+                ->assertExactJson(['state' => 'unavailable']);
+        }
+
+        $this->assertSame($responses[0]->getContent(), $responses[1]->getContent());
+    }
+
     public function test_external_share_routes_use_dedicated_creation_and_public_limiters(): void
     {
         foreach ([
             'external-shares.exchange',
             'external-shares.open',
+            'external-shares.viewer.content',
+            'external-shares.artifact-preview-url',
         ] as $routeName) {
             $route = Route::getRoutes()->getByName($routeName);
             $this->assertNotNull($route);
@@ -534,10 +629,15 @@ final class ExternalSharePublicFlowTest extends TestCase
                 ->assertJsonPath('state', 'viewer');
             $windowToken = $exchange->json('window_token');
             $this->assertIsString($windowToken);
+            $viewCookie = $this->responseCookie(
+                $exchange->headers->getCookies(),
+                self::VIEW_COOKIE,
+            );
+            $sessionUid = basename($viewCookie->getPath());
+            $this->assertMatchesRegularExpression('/^[0-9A-Za-z]{26}$/', $sessionUid);
             $sessions[] = [
-                'credential' => $this->cookieValue(
-                    $this->responseCookie($exchange->headers->getCookies(), self::VIEW_COOKIE),
-                ),
+                'uid' => $sessionUid,
+                'credential' => $this->cookieValue($viewCookie),
                 'window_token' => $windowToken,
             ];
         }
@@ -555,6 +655,7 @@ final class ExternalSharePublicFlowTest extends TestCase
             $issued->share,
             $sessions[0]['credential'],
             $sessions[0]['window_token'],
+            $sessions[0]['uid'],
         )->assertNotFound();
 
         foreach (array_slice($sessions, 1) as $session) {
@@ -562,6 +663,7 @@ final class ExternalSharePublicFlowTest extends TestCase
                 $issued->share,
                 $session['credential'],
                 $session['window_token'],
+                $session['uid'],
             )
                 ->assertOk()
                 ->assertSee($page->title);
@@ -639,10 +741,24 @@ final class ExternalSharePublicFlowTest extends TestCase
         ExternalShare $share,
         string $viewCredential,
         string $windowToken,
+        ?string $viewSessionUid = null,
     ): TestResponse {
+        if ($viewSessionUid === null) {
+            $credentialHash = app(ExternalShareSessionCredential::class)->hashForLookup(
+                ExternalShareSessionKind::View,
+                $viewCredential,
+            );
+            $this->assertIsString($credentialHash);
+            $viewSessionUid = ExternalShareSession::query()
+                ->where('external_share_uid', $share->uid)
+                ->where('credential_hash', $credentialHash)
+                ->sole()
+                ->uid;
+        }
+
         return $this->withHeaders($this->sameOriginHeaders())
             ->withUnencryptedCookie(self::VIEW_COOKIE, $viewCredential)
-            ->post("/external-shares/{$share->uid}/viewer/content", [
+            ->post("/external-shares/{$share->uid}/sessions/{$viewSessionUid}/viewer/content", [
                 'window_token' => $windowToken,
             ]);
     }

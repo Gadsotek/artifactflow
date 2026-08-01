@@ -254,6 +254,8 @@
                     <iframe class="h-[32rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700" data-html-draft-preview-frame name="artifactflow-html-draft-preview" sandbox="allow-scripts" allow="" referrerpolicy="no-referrer" title="Unsaved HTML draft preview"></iframe>
                 </section>
 
+                @include('pages.partials.change-summary-field')
+
                 <div class="af-create-submit">
                     <button class="af-primary-button" type="submit">Save page</button>
                 </div>

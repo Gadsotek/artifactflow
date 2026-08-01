@@ -9,6 +9,7 @@ final readonly class RevertToPreviousVersionCommand
     public function __construct(
         public string $pageUid,
         public string $baseVersionUid,
+        public ?string $changeSummary = null,
     ) {
     }
 }

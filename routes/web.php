@@ -153,7 +153,10 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
             Illuminate\View\Middleware\ShareErrorsFromSession::class,
         ])
         ->where('externalShareUid', '[0-9A-Za-z]{26}');
-    Route::get('/external-shares/{externalShareUid}/viewer', ExternalShareViewerController::class)
+    Route::get(
+        '/external-shares/{externalShareUid}/sessions/{externalShareSessionUid}/viewer',
+        ExternalShareViewerController::class,
+    )
         ->name('external-shares.viewer')
         ->withoutMiddleware([
             Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
@@ -162,9 +165,12 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
             Illuminate\Session\Middleware\StartSession::class,
             Illuminate\View\Middleware\ShareErrorsFromSession::class,
         ])
-        ->where('externalShareUid', '[0-9A-Za-z]{26}');
+        ->where([
+            'externalShareUid' => '[0-9A-Za-z]{26}',
+            'externalShareSessionUid' => '[0-9A-Za-z]{26}',
+        ]);
     Route::post(
-        '/external-shares/{externalShareUid}/viewer/content',
+        '/external-shares/{externalShareUid}/sessions/{externalShareSessionUid}/viewer/content',
         ExternalShareViewerContentController::class,
     )
         ->name('external-shares.viewer.content')
@@ -176,12 +182,16 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
             Illuminate\Session\Middleware\StartSession::class,
             Illuminate\View\Middleware\ShareErrorsFromSession::class,
         ])
-        ->where('externalShareUid', '[0-9A-Za-z]{26}');
+        ->where([
+            'externalShareUid' => '[0-9A-Za-z]{26}',
+            'externalShareSessionUid' => '[0-9A-Za-z]{26}',
+        ]);
     Route::post(
-        '/external-shares/{externalShareUid}/artifact-preview-url',
+        '/external-shares/{externalShareUid}/sessions/{externalShareSessionUid}/artifact-preview-url',
         ExternalShareArtifactPreviewUrlController::class,
     )
         ->name('external-shares.artifact-preview-url')
+        ->middleware('throttle:artifactflow-external-share-public')
         ->withoutMiddleware([
             Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
             Illuminate\Cookie\Middleware\EncryptCookies::class,
@@ -189,7 +199,10 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
             Illuminate\Session\Middleware\StartSession::class,
             Illuminate\View\Middleware\ShareErrorsFromSession::class,
         ])
-        ->where('externalShareUid', '[0-9A-Za-z]{26}');
+        ->where([
+            'externalShareUid' => '[0-9A-Za-z]{26}',
+            'externalShareSessionUid' => '[0-9A-Za-z]{26}',
+        ]);
 
     Route::middleware('guest')->group(function (): void {
         Route::middleware(RequireValidTurnstileConfiguration::class)->group(function (): void {

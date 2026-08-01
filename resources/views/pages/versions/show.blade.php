@@ -29,6 +29,9 @@
                     <p class="af-eyebrow">Immutable snapshot</p>
                     <h2>Version {{ $inspection->version->version_number }}</h2>
                     <p>Changed by {{ $inspection->version->creator->name }} · {{ $inspection->version->created_at->toDayDateTimeString() }} · {{ $inspection->version->byte_size }} bytes · {{ $inspection->version->scan_status->value }}</p>
+                    @if ($inspection->version->change_summary !== null)
+                        <p class="mt-2 font-medium text-zinc-800 dark:text-zinc-200">{{ $inspection->version->change_summary }}</p>
+                    @endif
                     <code>SHA-256 {{ $inspection->version->content_hash }}</code>
                 </div>
                 <nav class="flex flex-wrap items-center gap-2" aria-label="Version navigation">

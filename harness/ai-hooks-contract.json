@@ -1,5 +1,5 @@
 {
-  "contract_version": 2,
+  "contract_version": 4,
   "canonical_project": "artifactflow",
   "project_substitutions": {
     "slug": "artifactflow",
@@ -9,17 +9,17 @@
     "scripts/ai-hooks/guard_command.py": "77077c0cdb4534967c4777a864767c00997ea42e9b80af015bbba3c3f0e6173c",
     "scripts/ai-hooks/guard_file_write.py": "dce7940626b83d14f359fc13a6b0e123a80fd45900396bca7a9173e551945774",
     "scripts/ai-hooks/guard_prompt.py": "02c63866cd932311f213bb690e4994e9258b637055e1c23fea6b054c98cfcb91",
-    "scripts/ai-hooks/policy.py": "fcb5558c0578b3f97e9c605a221f237520c24bb734d2212c2429930e35d1c131"
+    "scripts/ai-hooks/policy.py": "2c52e932117eee17559ad67a74f45a8eebe1cae0cde88587c7cbaf5ce8f42a72"
   },
   "normalized_files": {
     "scripts/ai-hooks/README.md": {
-      "sha256": "535b7db0593ee3522298e1a2037381f7666f5699f3bcde25d0c64a4332c5d146",
+      "sha256": "410d464ac550aefb43823934a6747085f689e4fe83b049032c81f51f2eb95c7b",
       "substitutions": [
         "slug"
       ]
     },
     "scripts/ai-hooks/run_harness.py": {
-      "sha256": "fa661ce518e8bcc4e17b0fd323497e91b22ff502f461024f0e9bcb9c3de7b71e",
+      "sha256": "e5fc7e43f8c56b6e295a69d6fa79166154768e1bcd4fef52c6c1406384b58516",
       "substitutions": [
         "focused_test"
       ]

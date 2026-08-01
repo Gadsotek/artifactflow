@@ -29,6 +29,7 @@ final readonly class CreatePageCommand
         public PageVersionSource $source = PageVersionSource::Editor,
         public ?string $categoryName = null,
         public ?VersionProvenanceInput $provenance = null,
+        public ?string $changeSummary = null,
     ) {
     }
 }

@@ -109,6 +109,7 @@ final class PageVersioningTest extends TestCase
             pageUid: $page->uid,
             content: '# Revised' . PHP_EOL . PHP_EOL . 'Searchable update.',
             baseVersionUid: $firstVersion->uid,
+            changeSummary: '  Clarify the deployment procedure.  ',
         ));
 
         $page->refresh();
@@ -117,6 +118,7 @@ final class PageVersioningTest extends TestCase
         $this->assertSame(PageVersionSource::Editor, $newVersion->source);
         $this->assertSame($newVersion->uid, $page->current_version_uid);
         $this->assertNotSame($firstVersion->uid, $newVersion->uid);
+        $this->assertSame('Clarify the deployment procedure.', $newVersion->change_summary);
         $this->assertStringContainsString('Searchable update', (string) $newVersion->extracted_text);
 
         Storage::disk('artifacts')->assertExists($firstVersion->content_storage_path);

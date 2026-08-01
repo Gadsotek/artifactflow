@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Http\Requests\PageCatalog;
 
 use App\Application\Administration\InstallationLimitSettings;
+use App\Application\PageCatalog\PageVersionChangeSummaryRules;
 use App\Domain\PageCatalog\PageContentEncoding;
 use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PageVersionSource;
 use App\Http\Requests\AppFormRequest;
 use App\Models\Page;
+use App\Rules\StorableText;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -41,6 +43,12 @@ final class StorePageVersionRequest extends AppFormRequest
                 'max:' . $this->imageUploadRules()->maxUploadKilobytes(),
             ],
             'base_version_uid' => ['nullable', 'string', 'size:26'],
+            'change_summary' => [
+                'nullable',
+                'string',
+                new StorableText(),
+                'max:' . PageVersionChangeSummaryRules::MAX_CHARACTERS,
+            ],
         ];
     }
 
@@ -115,6 +123,13 @@ final class StorePageVersionRequest extends AppFormRequest
         $baseVersionUid = $this->string('base_version_uid')->trim()->toString();
 
         return $baseVersionUid === '' ? null : $baseVersionUid;
+    }
+
+    public function changeSummary(): ?string
+    {
+        $changeSummary = $this->string('change_summary')->trim()->toString();
+
+        return $changeSummary === '' ? null : $changeSummary;
     }
 
     private function normalizedMode(): PageVersionSource

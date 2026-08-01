@@ -198,6 +198,35 @@ def main() -> int:
     )
     assert_finding("git push origin main", "git_push", "ask")
     assert_finding("cd /tmp\ngit push origin main", "git_push", "ask")
+    assert_finding("git commit -m 'Unsigned commit'", "git_commit_without_signoff", "deny")
+    assert_finding("git commit --amend --no-edit", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -S -m 'GPG signed only'", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -- -s", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -m -summary", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -F -signed-message.txt", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -ms", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -Ss", "git_commit_without_signoff", "deny")
+    assert_finding("git commit --message -summary", "git_commit_without_signoff", "deny")
+    assert_finding("git commit --file -signed-message.txt", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -C -signed-commit", "git_commit_without_signoff", "deny")
+    assert_finding("git commit -us", "git_commit_without_signoff", "deny")
+    assert_finding(
+        "GIT_AUTHOR_NAME=Agent git commit -m 'Unsigned commit'",
+        "git_commit_without_signoff",
+        "deny",
+    )
+    assert_finding(
+        "git commit -s --no-signoff -m 'Explicitly unsigned'",
+        "git_commit_without_signoff",
+        "deny",
+    )
+    assert_no_command_finding("git commit -s -m 'DCO signed off'")
+    assert_no_command_finding("git commit --signoff -m 'DCO signed off'")
+    assert_no_command_finding("git commit -sam 'DCO signed off'")
+    assert_no_command_finding("git commit -S -s -m 'DCO signed off'")
+    assert_no_command_finding("git commit -u -s -m 'DCO signed off'")
+    assert_no_command_finding("git commit -s -m --no-signoff")
+    assert_no_command_finding("GIT_AUTHOR_NAME=Agent git commit -s -m 'DCO signed off'")
     assert_finding(
         "gh api --method DELETE repos/octo-org/widget-vault/git/refs/heads/feature/example",
         "github_ref_delete",
@@ -398,6 +427,32 @@ def main() -> int:
     output = claude_result["hookSpecificOutput"]
     assert isinstance(output, dict)
     assert output["permissionDecision"] == "ask"
+
+    codex_unsigned_commit_payload = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {"command": "git commit -m 'Unsigned commit'"},
+    }
+    codex_unsigned_commit_result = run_hook(
+        "guard_command.py",
+        codex_unsigned_commit_payload,
+        "--agent",
+        "codex",
+    )
+    assert codex_unsigned_commit_result.returncode == 2
+    assert "signed-off-by" in codex_unsigned_commit_result.stderr.lower()
+
+    codex_signed_commit_payload = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {"command": "git commit -s -m 'DCO signed off'"},
+    }
+    assert run_hook(
+        "guard_command.py",
+        codex_signed_commit_payload,
+        "--agent",
+        "codex",
+    ).returncode == 0
 
     codex_github_ref_payload = {
         "hook_event_name": "PreToolUse",

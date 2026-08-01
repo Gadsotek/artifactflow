@@ -50,6 +50,7 @@ final readonly class ExternalShareOpenController
             'state' => 'viewer',
             'viewer_url' => route('external-shares.viewer', [
                 'externalShareUid' => $externalShareUid,
+                'externalShareSessionUid' => $issued->session->uid,
             ]),
             'window_token' => $this->windowTokens->issue($issued->credential()),
         ]);

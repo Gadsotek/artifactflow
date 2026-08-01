@@ -92,7 +92,10 @@ The bootstrap, exchange, open, viewer, and unavailable responses use:
 - a restrictive nonce-based application CSP with no third-party resources;
 - no private artifact metadata before successful capability exchange.
 
-`GET /external-shares/{share_uid}/viewer` is a metadata-free application shell.
+`GET /external-shares/{share_uid}/sessions/{view_session_uid}/viewer` is a
+metadata-free application shell. The non-secret view-session UID scopes the
+HttpOnly cookie path so separate permitted windows for one expiring share keep
+independent credentials; the credential and per-window proof remain required.
 After redemption, the bootstrap stores a keyed, domain-separated proof of the
 external-view credential in that top-level browsing context's
 `sessionStorage`, then navigates to the shell. The proof is never put in a URL,

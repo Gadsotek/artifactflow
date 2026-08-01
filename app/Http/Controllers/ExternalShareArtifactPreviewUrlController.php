@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Application\ExternalSharing\ExternalShareViewContext;
 use App\Application\ExternalSharing\ExternalShareViewerContent;
 use App\Application\ExternalSharing\ExternalShareWindowToken;
 use App\Application\ExternalSharing\ResolveExternalShareView;
@@ -26,8 +27,11 @@ final readonly class ExternalShareArtifactPreviewUrlController
     ) {
     }
 
-    public function __invoke(Request $request, string $externalShareUid): JsonResponse
-    {
+    public function __invoke(
+        Request $request,
+        string $externalShareUid,
+        string $externalShareSessionUid,
+    ): JsonResponse {
         $credential = $this->cookies->credential($request, ExternalShareSessionKind::View);
         $windowToken = $request->input('window_token');
 
@@ -40,13 +44,21 @@ final readonly class ExternalShareArtifactPreviewUrlController
             return $this->responses->unavailableJson();
         }
 
-        $context = $this->views->fromCredential($externalShareUid, $credential);
-        $viewer = $context === null ? null : $this->content->forContext($context);
+        $response = $this->views->withCredential(
+            $externalShareUid,
+            $externalShareSessionUid,
+            $credential,
+            function (ExternalShareViewContext $context): JsonResponse {
+                $viewer = $this->content->forContext($context);
 
-        if ($viewer === null || $viewer->artifactPreviewUrl === null) {
-            return $this->responses->unavailableJson();
-        }
+                return $viewer === null || $viewer->artifactPreviewUrl === null
+                    ? $this->responses->unavailableJson()
+                    : $this->responses->json(['url' => $viewer->artifactPreviewUrl]);
+            },
+        );
 
-        return $this->responses->json(['url' => $viewer->artifactPreviewUrl]);
+        return $response instanceof JsonResponse
+            ? $response
+            : $this->responses->unavailableJson();
     }
 }

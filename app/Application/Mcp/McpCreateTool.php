@@ -48,6 +48,7 @@ final readonly class McpCreateTool
                 source: PageVersionSource::Mcp,
                 categoryName: $arguments->nullableString('category_name'),
                 provenance: $this->provenance->fromArguments($arguments),
+                changeSummary: $arguments->requiredString('change_summary'),
             ));
 
             return McpToolResult::success($this->payload->forPage($page) + [

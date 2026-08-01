@@ -14,10 +14,13 @@ final readonly class ExternalShareViewerController
     ) {
     }
 
-    public function __invoke(string $externalShareUid): Response
-    {
+    public function __invoke(
+        string $externalShareUid,
+        string $externalShareSessionUid,
+    ): Response {
         return $this->responses->secure(response()->view('external-shares.viewer', [
             'externalShareUid' => $externalShareUid,
+            'externalShareSessionUid' => $externalShareSessionUid,
         ]));
     }
 }

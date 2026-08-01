@@ -7,6 +7,11 @@ namespace Tests\Feature\PageCatalog;
 use App\Application\Administration\InstallationLimitSettings;
 use App\Application\ExternalSharing\CreateExternalShare;
 use App\Application\ExternalSharing\CreateExternalShareCommand;
+use App\Application\ExternalSharing\ExchangeExternalShare;
+use App\Application\ExternalSharing\ExternalShareViewContext;
+use App\Application\ExternalSharing\ResolveExternalShareView;
+use App\Application\ExternalSharing\RevokeExternalShare;
+use App\Application\ExternalSharing\RevokeExternalShareCommand;
 use App\Application\Identity\CreateSharedWorkspace;
 use App\Application\Identity\CreateUser;
 use App\Application\Identity\UpdateWorkspaceSettings;
@@ -23,6 +28,7 @@ use App\Models\InstallationSettings;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceMembership;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -37,8 +43,8 @@ final class ExternalShareConcurrencyTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * The forked database session must see committed fixtures, so this one
-     * concurrency test cannot run inside RefreshDatabase's outer transaction.
+     * The forked database sessions must see committed fixtures, so these
+     * concurrency tests cannot run inside RefreshDatabase's outer transaction.
      *
      * @var list<string>
      */
@@ -269,6 +275,162 @@ final class ExternalShareConcurrencyTest extends TestCase
         );
 
         $this->assertFalse(Workspace::query()->findOrFail($workspace->uid)->allow_editor_page_sharing);
+    }
+
+    public function test_view_authorization_serializes_with_revocation_until_the_response_is_materialized(): void
+    {
+        Storage::fake('artifacts');
+        $this->enableExternalSharing();
+        InstallationSettings::query()->update([
+            'external_share_acknowledgement_required' => false,
+        ]);
+        $owner = app(CreateUser::class)->handle(
+            'External View Race Owner',
+            'external-view-race-owner@example.test',
+            'correct horse battery staple',
+        );
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'External View Race Team');
+        $page = app(CreatePage::class)->handle($owner, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'External view race target',
+            description: null,
+            content: '# External view race target',
+        ));
+        $issued = app(CreateExternalShare::class)->handle(
+            $owner,
+            new CreateExternalShareCommand(
+                pageUid: $page->uid,
+                mode: ExternalShareMode::ExpiresAt,
+                expiresAt: CarbonImmutable::now()->addHour(),
+            ),
+        );
+        $exchange = app(ExchangeExternalShare::class)->handle(
+            $issued->share->uid,
+            $issued->secret(),
+        );
+        $this->assertNotNull($exchange);
+        $credential = $exchange->issuedSession->credential();
+        $resolver = app(ResolveExternalShareView::class);
+        $defaultConnection = DB::getDefaultConnection();
+        $connection = config("database.connections.{$defaultConnection}");
+        $this->assertIsArray($connection);
+        config(['database.connections.external_view_concurrent' => $connection]);
+
+        $sockets = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+
+        if ($sockets === false) {
+            self::fail('Unable to create the external-view synchronization socket pair.');
+        }
+
+        [$parentSocket, $childSocket] = $sockets;
+        stream_set_timeout($parentSocket, 10);
+        stream_set_timeout($childSocket, 10);
+        $pid = pcntl_fork();
+
+        if ($pid === -1) {
+            fclose($parentSocket);
+            fclose($childSocket);
+            self::fail('Unable to fork the external-view authorization transaction.');
+        }
+
+        if ($pid === 0) {
+            fclose($parentSocket);
+            DB::setDefaultConnection('external_view_concurrent');
+
+            try {
+                $resolved = app(ResolveExternalShareView::class)->withCredential(
+                    $issued->share->uid,
+                    $exchange->issuedSession->session->uid,
+                    $credential,
+                    static function (ExternalShareViewContext $context) use ($childSocket): string {
+                        fwrite($childSocket, "authorized\n");
+                        fflush($childSocket);
+
+                        if (fgets($childSocket) !== "complete\n") {
+                            throw new \RuntimeException('Missing view-completion signal.');
+                        }
+
+                        return $context->share->uid;
+                    },
+                );
+                fwrite(
+                    $childSocket,
+                    $resolved === $issued->share->uid ? "resolved\n" : "error:unresolved\n",
+                );
+                fclose($childSocket);
+                exit($resolved === $issued->share->uid ? 0 : 1);
+            } catch (Throwable $exception) {
+                fwrite(
+                    $childSocket,
+                    sprintf("error:%s:%s\n", get_debug_type($exception), (string) $exception->getCode()),
+                );
+                fclose($childSocket);
+                exit(1);
+            }
+        }
+
+        fclose($childSocket);
+        $authorizationSignal = fgets($parentSocket);
+
+        if ($authorizationSignal !== "authorized\n") {
+            fclose($parentSocket);
+            $status = 0;
+            pcntl_waitpid($pid, $status);
+            self::fail(sprintf(
+                'External-view child failed before authorization: %s',
+                is_string($authorizationSignal) ? trim($authorizationSignal) : 'no signal',
+            ));
+        }
+
+        $revocationOutcome = 'committed';
+
+        try {
+            DB::statement("SET lock_timeout TO '500ms'");
+            app(RevokeExternalShare::class)->handle(
+                $owner,
+                new RevokeExternalShareCommand($page->uid, $issued->share->uid),
+            );
+        } catch (QueryException $exception) {
+            $revocationOutcome = (string) $exception->getCode() === '55P03'
+                ? 'blocked'
+                : 'error';
+        } finally {
+            DB::statement("SET lock_timeout TO '0'");
+            fwrite($parentSocket, "complete\n");
+            fflush($parentSocket);
+        }
+
+        $resolutionOutcome = fgets($parentSocket);
+        fclose($parentSocket);
+        $status = 0;
+        $waitedPid = pcntl_waitpid($pid, $status);
+
+        $this->assertSame("authorized\n", $authorizationSignal);
+        $this->assertSame(
+            'blocked',
+            $revocationOutcome,
+            'Revocation must wait until an authorized external response has been materialized.',
+        );
+        $this->assertSame("resolved\n", $resolutionOutcome);
+        $this->assertSame($pid, $waitedPid);
+
+        if (!is_int($status)) {
+            self::fail('The external-view child process did not return an integer wait status.');
+        }
+
+        $this->assertTrue(pcntl_wifexited($status));
+        $this->assertSame(0, pcntl_wexitstatus($status));
+        $this->assertTrue(app(RevokeExternalShare::class)->handle(
+            $owner,
+            new RevokeExternalShareCommand($page->uid, $issued->share->uid),
+        ));
+        $this->assertNull($resolver->withCredential(
+            $issued->share->uid,
+            $exchange->issuedSession->session->uid,
+            $credential,
+            static fn (ExternalShareViewContext $context): string => $context->share->uid,
+        ));
     }
 
     private function enableExternalSharing(): void

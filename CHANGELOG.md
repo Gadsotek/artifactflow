@@ -9,6 +9,7 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 ### Added
 
 - Added alpha external page sharing through one-time or expiring bearer links, with fragment-only secret bootstrap, explicit one-time redemption, window-bound anonymous viewing, live page/policy revalidation, isolated Markdown/HTML/image presentation, authorized inventory and revocation, and the dedicated MCP `mcp:share` scope for owned editable pages in opted-in workspaces.
+- Added optional 255-character change summaries to immutable page versions, shown in browser history and exposed to MCP as untrusted data. MCP create, update, and revert writes require a summary.
 - Added version-level AI artifact provenance: immutable observed ingest facts, optional MCP-declared AI/human/software producers with exact provider/model IDs, external origin references, restore lineage, authorized web/MCP inspection, and provider/model search scopes. Declared claims remain explicitly self-reported and separate from unverified MCP-reported client metadata.
 - Added optional, deployment-configured Cloudflare Turnstile on password login and both password-recovery forms. Supplying both keys renders action-bound challenges and enables fail-closed server verification; installations without keys retain the self-contained authentication path.
 - Added versioned PNG/JPEG image and screenshot artifacts. Uploads are format/extension checked, bounded by byte/dimension/pixel limits, decoded and re-encoded without metadata or appended payloads, and previewed through a fixed scriptless document on the isolated artifact origin.
@@ -17,11 +18,13 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ### Changed
 
+- MCP discovery now tells AI clients to generate single-file, self-contained HTML artifacts with inline dependencies and no CDN or network-dependent behavior.
 - Simplified the login screen by removing the operator-facing public-registration and rate-limiting note; the authentication controls remain documented and unchanged.
 
 ### Fixed
 
-- External-share viewer throttling now preserves the route's uniform HTML unavailable surface and rate-limit headers; transient viewer failures retain the per-window proof so a redeemed one-time link can recover on reload. Expiring shares cap retained viewer sessions and evict the oldest at the configured ceiling.
+- External-share viewer throttling now preserves the route's uniform HTML unavailable surface and rate-limit headers, including preview-URL renewal. Transient viewer failures retain the per-window proof so a redeemed one-time link can recover on reload. Expiring-share windows now keep independent path-scoped view credentials, while view authorization stays locked through response materialization so concurrent revocation cannot serve stale content. Expiring shares cap retained viewer sessions and evict the oldest at the configured ceiling.
+- The AI commit guard now distinguishes real DCO sign-off options from option arguments that merely contain a lowercase `s`.
 - Stabilized the external-share authorization concurrency proof by isolating the forked worker on a dedicated database connection and keeping it alive until the parent transaction completes.
 - Hardened provenance by blocking obvious credential patterns, keeping user-controlled producer identifiers out of event/audit metadata, bounding the denormalized search projection, resolving restore origins in constant database work, and labelling MCP `clientInfo` as caller-reported rather than observed identity.
 - MCP create tools now identify an inaccessible target as `Workspace not found.` while retaining the opaque `not_found` response used to prevent workspace disclosure.

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Application\ExternalSharing\ExternalShareViewContext;
 use App\Application\ExternalSharing\ExternalShareViewerContent;
 use App\Application\ExternalSharing\ExternalShareWindowToken;
 use App\Application\ExternalSharing\ResolveExternalShareView;
@@ -26,8 +27,11 @@ final readonly class ExternalShareViewerContentController
     ) {
     }
 
-    public function __invoke(Request $request, string $externalShareUid): Response
-    {
+    public function __invoke(
+        Request $request,
+        string $externalShareUid,
+        string $externalShareSessionUid,
+    ): Response {
         $credential = $this->cookies->credential($request, ExternalShareSessionKind::View);
         $windowToken = $request->input('window_token');
 
@@ -40,15 +44,26 @@ final readonly class ExternalShareViewerContentController
             return $this->responses->unavailableView();
         }
 
-        $context = $this->views->fromCredential($externalShareUid, $credential);
-        $viewer = $context === null ? null : $this->content->forContext($context);
+        $response = $this->views->withCredential(
+            $externalShareUid,
+            $externalShareSessionUid,
+            $credential,
+            function (ExternalShareViewContext $context): Response {
+                $viewer = $this->content->forContext($context);
 
-        if ($viewer === null) {
-            return $this->responses->unavailableView();
-        }
+                if ($viewer === null) {
+                    return $this->responses->unavailableView();
+                }
 
-        return $this->responses->secure(response()->view('external-shares.partials.viewer-content', [
-            'viewer' => $viewer,
-        ]));
+                return $this->responses->secure(response()->view(
+                    'external-shares.partials.viewer-content',
+                    ['viewer' => $viewer],
+                ));
+            },
+        );
+
+        return $response instanceof Response
+            ? $response
+            : $this->responses->unavailableView();
     }
 }

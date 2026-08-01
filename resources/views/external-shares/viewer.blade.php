@@ -16,7 +16,10 @@
                 class="af-external-gate"
                 data-external-share-viewer-shell
                 data-external-share-uid="{{ $externalShareUid }}"
-                data-external-share-content-endpoint="{{ route('external-shares.viewer.content', ['externalShareUid' => $externalShareUid], false) }}"
+                data-external-share-content-endpoint="{{ route('external-shares.viewer.content', [
+                    'externalShareUid' => $externalShareUid,
+                    'externalShareSessionUid' => $externalShareSessionUid,
+                ], false) }}"
             >
                 <section class="af-external-card">
                     <p class="af-eyebrow">ArtifactFlow external artifact</p>
