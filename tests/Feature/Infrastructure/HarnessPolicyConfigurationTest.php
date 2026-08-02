@@ -94,11 +94,43 @@ final class HarnessPolicyConfigurationTest extends TestCase
             JSON_THROW_ON_ERROR,
         );
         $this->assertIsArray($contract);
-        $this->assertSame(4, $contract['contract_version'] ?? null);
+        $this->assertSame(5, $contract['contract_version'] ?? null);
         $this->assertSame('artifactflow', $contract['canonical_project'] ?? null);
         $this->assertNotSame([], $contract['shared_files'] ?? []);
         $this->assertNotSame([], $contract['normalized_files'] ?? []);
         $this->assertFileExists(base_path('tests/Feature/Architecture/AiHarnessDriftContractTest.php'));
+    }
+
+    public function test_ai_working_agreement_requires_scoped_changes_and_fresh_quality_before_push(): void
+    {
+        $agents = $this->projectFile('AGENTS.md');
+        $claude = $this->projectFile('CLAUDE.md');
+
+        $this->assertStringContainsString('Objective, in-scope work, explicit non-goals', $agents);
+        $this->assertStringContainsString('Do not fix adjacent defects', $agents);
+        $this->assertStringContainsString(
+            'Before requesting approval for any push, run `make quality-full` against the current worktree',
+            $agents,
+        );
+        $this->assertStringContainsString('Do not fix unrelated or adjacent defects', $claude);
+        $this->assertStringContainsString('Before requesting approval for a push, run `make quality-full`', $claude);
+    }
+
+    public function test_shared_ai_policy_is_split_into_a_small_facade_and_cohesive_modules(): void
+    {
+        foreach ([
+            'scripts/ai-hooks/policy_types.py',
+            'scripts/ai-hooks/policy_events.py',
+            'scripts/ai-hooks/policy_files.py',
+            'scripts/ai-hooks/policy_commands.py',
+            'scripts/ai-hooks/policy_observability.py',
+            'scripts/ai-hooks/policy_prompts.py',
+        ] as $path) {
+            $this->assertFileExists(base_path($path));
+        }
+
+        $policy = $this->projectFile('scripts/ai-hooks/policy.py');
+        $this->assertLessThanOrEqual(120, substr_count($policy, "\n") + 1);
     }
 
     private function projectFile(string $path): string

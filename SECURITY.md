@@ -102,16 +102,18 @@ wonder.
   `policy.py`) inspects the proposed action and returns a verdict: allow, ask for confirmation, or
   deny. As Claude Code and Codex pre-tool-use hooks, that verdict is their only influence over the
   assistant: they gate the assistant's own actions, they do not grant it new capabilities.
-- **What they block.** The actions this project treats as unsafe for an assistant to take on its own,
-  for example editing security-control files (the Makefile, the hook and policy files themselves),
-  reading secret-bearing files such as `.env`, running recursive deletions, pushing to a remote
-  without explicit approval, and running database-touching test commands directly instead of through
-  the isolated `make test` wrapper.
+- **What they block or escalate.** The actions this project treats as unsafe for an assistant to take
+  on its own. Secret, generated, deletion, and Git-internal writes are denied. Editing AI
+  instructions, security contracts, the Makefile, hooks, policy, CI, or enforcement configuration
+  requires explicit approval. Pushes and destructive external actions also require approval, while
+  database-touching test commands are denied unless they use the isolated `make test` wrapper.
 - **Verify rather than trust.** The full source is in `scripts/ai-hooks/`, the wiring is in
   `.claude/settings.json` and `.codex/hooks.json`, and the behavior is covered by
-  `scripts/ai-hooks/run_harness.py` (run in CI via `make ai-hooks-test`). They are deliberately small
-  so you can read them in a few minutes. The same habit applies to any repository that ships agent
-  hooks: read them first.
+  `scripts/ai-hooks/run_harness.py` (run in CI via `make ai-hooks-test`). The policy is split by
+  responsibility so each part can be inspected independently. Every invocation also emits a
+  non-sensitive stderr marker and appends an ignored local JSONL record to
+  `storage/logs/ai-hooks.jsonl`; neither output contains prompt, command, path, or credential data.
+  The same inspection habit applies to any repository that ships agent hooks: read them first.
 
 ## Supported versions
 

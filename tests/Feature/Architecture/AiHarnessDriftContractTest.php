@@ -14,7 +14,7 @@ final class AiHarnessDriftContractTest extends TestCase
         $this->assertIsString($contents);
         $contract = json_decode($contents, true, 512, JSON_THROW_ON_ERROR);
         $this->assertIsArray($contract);
-        $this->assertSame(4, $contract['contract_version'] ?? null);
+        $this->assertSame(5, $contract['contract_version'] ?? null);
         $this->assertSame('artifactflow', $contract['canonical_project'] ?? null);
 
         $sharedFiles = $contract['shared_files'] ?? null;

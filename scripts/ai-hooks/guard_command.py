@@ -6,6 +6,7 @@ import json
 import sys
 
 from policy import event_name, extract_command, load_event, scan_command, strongest_finding
+from policy_observability import emit_hook_trace
 
 
 def emit_claude_decision(event: str, action: str, reason: str) -> int:
@@ -56,10 +57,20 @@ def main() -> int:
     event = load_event()
     command = extract_command(event)
     finding = strongest_finding(scan_command(command))
+    hook_event = event_name(event, args.event)
+    raw_tool_name = event.get("tool_name")
+    tool_name = raw_tool_name if isinstance(raw_tool_name, str) else "Bash"
+    emit_hook_trace(
+        hook="guard_command.py",
+        agent=args.agent,
+        event=hook_event,
+        tool=tool_name,
+        decision=finding.action if finding is not None else "allow",
+        code=finding.code if finding is not None else None,
+    )
     if finding is None:
         return 0
 
-    hook_event = event_name(event, args.event)
     if args.agent == "claude":
         return emit_claude_decision(hook_event, finding.action, finding.reason)
 

@@ -73,3 +73,13 @@ $safeEvent = new DomainEvent(
     // ok: artifactflow.no-private-content-in-traceability
     metadata: ['content_hash' => $contentHash],
 );
+
+$unsafeShareEvent = new DomainEvent(
+    // ruleid: artifactflow.no-external-share-credentials-in-traceability
+    metadata: ['window_token' => $windowToken],
+);
+
+$safeShareEvent = new DomainEvent(
+    // ok: artifactflow.no-external-share-credentials-in-traceability
+    metadata: ['external_share_uid' => $externalShareUid],
+);
