@@ -705,7 +705,10 @@ Use non-sensitive test content and record the Safari/iOS versions and results:
    shadow roots. Insert a benign `<link>` first and then mutate
    `rel`/`href` through properties, `setAttribute`, `setAttributeNS`, and `relList` to
    `dns-prefetch`, `preconnect`, `prefetch`, and `prerender`; repeat the ordering check with
-   `<meta http-equiv="refresh">`. Repeat the string arguments with stateful `toString()` objects
+   `<meta http-equiv="refresh">`. Also load static `rel="&#112reconnect"` and
+   `http-equiv="&#114efresh"` payloads without trailing semicolons, and confirm the delivered
+   response no longer contains their targets before checking that neither a TCP connection nor
+   frame navigation occurs. Repeat the string arguments with stateful `toString()` objects
    that return a safe value during guard inspection and a dangerous value on a second coercion,
    including `document.execCommand` command names. The elements must be neutralized synchronously,
    the response must carry `X-DNS-Prefetch-Control: off`, and no nested browsing context,

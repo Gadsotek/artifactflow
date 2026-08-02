@@ -124,9 +124,25 @@ $mandatoryCases = [
     'regression/script-double-escaped' =>
         '<!doctype html><script><!--<script></script><title></script>'
         . '<iframe id="af-parser-script"></iframe>',
+    'regression/script-comment-overlap' =>
+        '<!doctype html><script><!--><script></script>'
+        . '<iframe id="af-parser-script-overlap" srcdoc="&lt;script&gt;window.ran=1&lt;/script&gt;"></iframe>'
+        . '</script>',
     'regression/integration-point-cdata' =>
         '<!doctype html><svg><foreignObject><![CDATA[x><style>]]></foreignObject></svg>'
         . '<iframe id="af-parser-cdata"></iframe>',
+    'regression/foreign-end-p-cdata' =>
+        '<!doctype html><svg></p><![CDATA[x>'
+        . '<iframe id="af-parser-foreign-end" srcdoc="&lt;script&gt;window.ran=1&lt;/script&gt;"></iframe>',
+    'regression/frameset-ignored-svg-cdata' =>
+        '<!doctype html><frameset><svg><![CDATA[x>'
+        . '<frame id="af-parser-frameset-svg" src="about:blank">]]>',
+    'regression/select-ignored-svg-cdata' =>
+        '<!doctype html><select><svg></select><![CDATA[x>'
+        . '<iframe id="af-parser-select-svg" srcdoc="&lt;script&gt;window.ran=1&lt;/script&gt;"></iframe>',
+    'regression/select-noframes-engine-differential' =>
+        '<!doctype html><table><select></style><noframes><script><svg>'
+        . '<noframes><xmp></noframes><iframe id="af-parser-select-noframes"></iframe>',
     'regression/frameset-plaintext' =>
         '<!doctype html><frameset><noframes></frameset></noframes><plaintext>'
         . '<frame id="af-parser-frameset">',
@@ -189,6 +205,8 @@ $stateTransitions = [
     '</frameset>',
     '</svg>',
     '</math>',
+    '</p>',
+    '</br>',
     '<font color=red>',
     '<p>',
     '<br>',
@@ -198,6 +216,8 @@ $treeBuilderTokens = [
     '</svg>',
     '<math>',
     '</math>',
+    '</p>',
+    '</br>',
     '<foreignObject>',
     '</foreignObject>',
     '<desc>',
@@ -266,6 +286,8 @@ while (count($cases) < $caseCount) {
             '<script/>',
             '</script>',
             '</script/>',
+            '>',
+            '->',
             '<',
             '</scrip',
             'x',

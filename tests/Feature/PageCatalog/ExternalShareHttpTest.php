@@ -12,9 +12,11 @@ use App\Application\Identity\CreateUser;
 use App\Application\PageCatalog\CreatePage;
 use App\Application\PageCatalog\CreatePageCommand;
 use App\Domain\ExternalSharing\ExternalShareMode;
+use App\Domain\ExternalSharing\ExternalShareSessionKind;
 use App\Domain\Identity\WorkspaceRole;
 use App\Domain\PageCatalog\PageType;
 use App\Models\ExternalShare;
+use App\Models\ExternalShareSession;
 use App\Models\InstallationSettings;
 use App\Models\Page;
 use App\Models\User;
@@ -207,11 +209,18 @@ final class ExternalShareHttpTest extends TestCase
             new CreateExternalShareCommand($page->uid, ExternalShareMode::OneTime, null),
         )->share;
         $share->forceFill(['redeemed_at' => now()])->save();
+        ExternalShareSession::query()->forceCreate([
+            'external_share_uid' => $share->uid,
+            'credential_hash' => hash('sha256', 'open-view-session'),
+            'kind' => ExternalShareSessionKind::View->value,
+            'expires_at' => null,
+        ]);
 
         $this->actingAs($owner)
             ->get("/pages/{$page->uid}")
             ->assertOk()
             ->assertSee('Redeemed')
+            ->assertSee('Session still open')
             ->assertSee(
                 route('pages.external-shares.destroy', [$page, $share->uid]),
                 false,

@@ -67,6 +67,7 @@ final class MermaidRendererSecurityTest extends TestCase
         $renderer = (string) file_get_contents(base_path('resources/js/mermaid-renderer.js'));
 
         $this->assertStringContainsString("securityLevel: 'strict'", $renderer);
+        $this->assertStringContainsString("secure: ['htmlLabels', 'flowchart']", $renderer);
         $this->assertStringContainsString('htmlLabels: false', $renderer);
         $this->assertStringContainsString("'script, foreignObject, iframe, object, embed, image'", $renderer);
         $this->assertStringContainsString("attributeName.startsWith('on')", $renderer);

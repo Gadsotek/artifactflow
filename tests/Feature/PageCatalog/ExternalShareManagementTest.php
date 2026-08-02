@@ -471,10 +471,9 @@ final class ExternalShareManagementTest extends TestCase
             'expires_at' => null,
         ]);
 
-        $this->assertSame(
-            ExternalShareStatus::Redeemed,
-            app(ListExternalShares::class)->forPage($owner, $page->uid)->items[0]->status,
-        );
+        $redeemed = app(ListExternalShares::class)->forPage($owner, $page->uid)->items[0];
+        $this->assertSame(ExternalShareStatus::Redeemed, $redeemed->status);
+        $this->assertTrue($redeemed->hasOpenViewSession);
         $this->assertTrue($session->externalShare()->firstOrFail()->is($share));
         $this->assertTrue($share->sessions()->whereKey($session->uid)->exists());
 
@@ -488,10 +487,9 @@ final class ExternalShareManagementTest extends TestCase
         $this->assertSame(0, ExternalShareSession::query()
             ->where('external_share_uid', $share->uid)
             ->count());
-        $this->assertSame(
-            ExternalShareStatus::Revoked,
-            app(ListExternalShares::class)->forPage($owner, $page->uid)->items[0]->status,
-        );
+        $revoked = app(ListExternalShares::class)->forPage($owner, $page->uid)->items[0];
+        $this->assertSame(ExternalShareStatus::Revoked, $revoked->status);
+        $this->assertFalse($revoked->hasOpenViewSession);
     }
 
     public function test_external_share_secret_rejects_malformed_wrong_and_noncanonical_credentials(): void

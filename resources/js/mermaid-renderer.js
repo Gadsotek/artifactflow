@@ -66,6 +66,7 @@ async function configuredMermaid() {
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: 'strict',
+      secure: ['htmlLabels', 'flowchart'],
       suppressErrorRendering: true,
       htmlLabels: false,
       flowchart: {

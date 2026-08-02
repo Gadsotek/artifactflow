@@ -22,6 +22,7 @@ use App\Domain\ExternalSharing\ExternalPagePresentation;
 use App\Domain\ExternalSharing\ExternalShareMode;
 use App\Domain\ExternalSharing\ExternalShareSessionKind;
 use App\Domain\PageCatalog\PageType;
+use App\Models\ExternalShare;
 use App\Models\InstallationSettings;
 use App\Models\Page;
 use App\Models\PageVersion;
@@ -74,6 +75,8 @@ final class ExternalSharePresentationTest extends TestCase
 
     public function test_html_uses_an_opaque_script_sandbox_and_a_share_bound_artifact_url(): void
     {
+        $openedAt = CarbonImmutable::parse('2026-07-30T10:00:00Z');
+        $this->travelTo($openedAt);
         config([
             'app.artifact_frame_ancestors' => 'http://app.example.test',
             'app.artifact_url' => 'http://artifacts.example.test',
@@ -136,8 +139,15 @@ final class ExternalSharePresentationTest extends TestCase
         $this->assertIsString($appUrl);
         $refreshEndpoint = rtrim($appUrl, '/')
             . "/external-shares/{$shareUid}/sessions/{$sessionUid}/artifact-preview-url";
+        $share = ExternalShare::query()->findOrFail($shareUid);
+        $openedLastViewedAt = $share->last_viewed_at;
+        $this->assertInstanceOf(CarbonImmutable::class, $openedLastViewedAt);
+        $this->assertTrue($openedLastViewedAt->equalTo($openedAt));
 
-        $this->withHeaders($this->sameOriginHeaders())
+        $previewRefreshedAt = $openedAt->addMinutes(10);
+        $this->travelTo($previewRefreshedAt);
+
+        $refreshedPreview = $this->withHeaders($this->sameOriginHeaders())
             ->withUnencryptedCookie('artifactflow_external_view', $credential)
             ->post($refreshEndpoint, [
                 'window_token' => $windowToken,
@@ -148,7 +158,13 @@ final class ExternalSharePresentationTest extends TestCase
                     $url,
                     "http://artifacts.example.test/external-artifact-previews/{$shareUid}/sessions/",
                 ));
+        $refreshedPreviewUrl = $refreshedPreview->json('url');
+        $this->assertIsString($refreshedPreviewUrl);
+        $refreshedLastViewedAt = $share->refresh()->last_viewed_at;
+        $this->assertInstanceOf(CarbonImmutable::class, $refreshedLastViewedAt);
+        $this->assertTrue($refreshedLastViewedAt->equalTo($previewRefreshedAt));
 
+        $this->travelTo($previewRefreshedAt->addMinutes(10));
         $this->withHeaders($this->sameOriginHeaders())
             ->withUnencryptedCookie('artifactflow_external_view', $credential)
             ->post($refreshEndpoint, [
@@ -156,10 +172,14 @@ final class ExternalSharePresentationTest extends TestCase
             ])
             ->assertNotFound()
             ->assertExactJson(['state' => 'unavailable']);
+        $invalidRequestLastViewedAt = $share->refresh()->last_viewed_at;
+        $this->assertInstanceOf(CarbonImmutable::class, $invalidRequestLastViewedAt);
+        $this->assertTrue($invalidRequestLastViewedAt->equalTo($previewRefreshedAt));
 
+        $this->travelTo($previewRefreshedAt);
         config(['app.runtime_role' => 'artifact-host']);
 
-        $preview = $this->withHeader('Sec-Fetch-Dest', 'iframe')->get($previewUrl);
+        $preview = $this->withHeader('Sec-Fetch-Dest', 'iframe')->get($refreshedPreviewUrl);
         $preview
             ->assertOk()
             ->assertSee('<h1>Shared HTML</h1>', false)

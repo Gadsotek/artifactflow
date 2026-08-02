@@ -568,7 +568,8 @@ final class ExternalSharePublicFlowTest extends TestCase
 
     public function test_one_time_view_session_remains_available_to_the_winning_window_without_an_arbitrary_timeout(): void
     {
-        $this->travelTo(CarbonImmutable::parse('2026-07-30T10:00:00Z'));
+        $openedAt = CarbonImmutable::parse('2026-07-30T10:00:00Z');
+        $this->travelTo($openedAt);
         [$owner, $page] = $this->pageFixture();
         $this->configureExternalSharing(enabled: true, acknowledgementRequired: false);
         $issued = app(CreateExternalShare::class)->handle(
@@ -593,12 +594,25 @@ final class ExternalSharePublicFlowTest extends TestCase
         $windowToken = $opened->json('window_token');
         $this->assertIsString($windowToken);
         $this->assertSame(0, $viewCookie->getExpiresTime());
+        $openedLastViewedAt = $issued->share->refresh()->last_viewed_at;
+        $this->assertInstanceOf(CarbonImmutable::class, $openedLastViewedAt);
+        $this->assertTrue($openedLastViewedAt->equalTo($openedAt));
 
-        $this->travelTo(CarbonImmutable::parse('2027-07-30T10:00:00Z'));
+        $activityAt = CarbonImmutable::parse('2027-07-30T10:00:00Z');
+        $this->travelTo($activityAt);
         $this->viewerContent($issued->share, $viewCredential, $windowToken)
             ->assertOk()
             ->assertSee($page->title)
             ->assertDontSee('Viewing session ends');
+        $activeLastViewedAt = $issued->share->refresh()->last_viewed_at;
+        $this->assertInstanceOf(CarbonImmutable::class, $activeLastViewedAt);
+        $this->assertTrue($activeLastViewedAt->equalTo($activityAt));
+
+        $this->travelTo($activityAt->addMinutes(4));
+        $this->viewerContent($issued->share, $viewCredential, $windowToken)->assertOk();
+        $coarselyUpdatedLastViewedAt = $issued->share->refresh()->last_viewed_at;
+        $this->assertInstanceOf(CarbonImmutable::class, $coarselyUpdatedLastViewedAt);
+        $this->assertTrue($coarselyUpdatedLastViewedAt->equalTo($activityAt));
 
         $this->withHeaders($this->sameOriginHeaders())
             ->postJson("/external-shares/{$issued->share->uid}/exchange", [

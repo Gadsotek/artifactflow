@@ -182,6 +182,12 @@
                                         <dd>{{ $externalShare->redeemedAt->format('M j, Y H:i T') }}</dd>
                                     </div>
                                 @endif
+                                @if ($externalShare->status === ExternalShareStatus::Redeemed && $externalShare->hasOpenViewSession)
+                                    <div>
+                                        <dt class="font-medium text-zinc-800 dark:text-zinc-200">Viewing session</dt>
+                                        <dd>Session still open · revoke to close</dd>
+                                    </div>
+                                @endif
                                 @if ($externalShare->revokedAt !== null)
                                     <div>
                                         <dt class="font-medium text-zinc-800 dark:text-zinc-200">Revoked</dt>

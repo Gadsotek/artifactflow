@@ -59,10 +59,12 @@ script runs. The timing-independent response hardener therefore tokenizes and ne
 blocks dynamic element creation and the common HTML parsing/setter APIs; its MutationObserver
 removes residual contexts but is too late to count as the primary control. This is regression-tested
 with fifteen recursive `srcdoc` levels, foreign-content parser breakouts (including SVG/MathML
-`plaintext`, SVG `script`, and scripting-enabled HTML `noscript` states), HTML `select`/`frameset`
-tree-builder and raw-text-carrier breakouts, Firefox foreign-CDATA integration-point behavior, the
-maintained Chromium/WebKit bogus-comment interpretation of the same CDATA bytes, open and closed
-declarative shadow roots, response-body template assertions, and a real UDP STUN listener. Static
+`plaintext`, SVG `script`, foreign `</p>`/`</br>` reprocessing, and scripting-enabled HTML `noscript`
+states), HTML `select`/`frameset` ignored-token and raw-text-carrier breakouts, overlapping script
+comment endings, the Chromium/WebKit `select`/`noframes` interpretation, Firefox foreign-CDATA
+integration-point behavior, the maintained Chromium/WebKit bogus-comment interpretation of the
+same CDATA bytes, open and closed declarative shadow roots, response-body template assertions, and
+a real UDP STUN listener. Static
 `shadowrootmode` attributes are renamed before parsing because a residual light-DOM observer cannot
 inspect a materialized closed shadow tree. These measures close the maintained attack corpus but
 remain layered compatibility hardening, not a reason to weaken the three load-bearing controls
@@ -90,9 +92,19 @@ application control is to prevent that realm from existing before parse, not to 
 'block'`, Permissions Policy, or the iframe `allow` attribute with protection they do not provide.
 Deployment-level network egress policy is a separate operator choice.
 
+The overlapping script-comment, foreign `</p>`/`</br>`, and ignored `select`/`frameset` token
+differentials were separately confirmed to create live child realms when browsers parsed only the
+vulnerable rewriter output. In the complete shipped response, the residual DOM guard removed those
+children before their fetch, image, or WebRTC STUN probes reached the network in Chromium, Firefox,
+or WebKit. They were therefore contained defense-in-depth failures rather than app-origin or
+tenant-isolation escapes, but still violated the absolute no-nested-context invariant and remain
+mandatory guard-free parser regressions.
+
 **Speculative resource hints are unsupported.** `prefetch`/`prerender` fetches are covered by the
 header CSP, but browser behavior for `dns-prefetch` and `preconnect` is not governed consistently
-by `connect-src`. The server rewriter removes static resource hints and refresh metas, every
+by `connect-src`. The server rewriter removes static resource hints and refresh metas after
+browser-equivalent numeric-character-reference normalization, including references whose optional
+semicolon is absent. Every
 artifact response sends `X-DNS-Prefetch-Control: off`, and the early guard synchronously
 neutralizes later `rel`/`href` and `http-equiv`/`content` mutations through attribute methods,
 IDL accessors, attribute nodes, and `relList` before calling a native DOM sink. Guard wrappers
@@ -101,6 +113,16 @@ the primitive to the native sink; native code never receives the original coerci
 mutation observer is only a residual fallback; it is too late to stop a mutation that itself
 initiates DNS or TCP work. Origin isolation remains the load-bearing limit on what the artifact
 can read.
+
+Before numeric-reference normalization accepted the browser's optional-semicolon behavior, a
+decimal entity in `rel="&#112reconnect"` survived the rewriter and caused WebKit to open a real TCP
+connection to an attacker-controlled listener through the complete response stack. The same root
+cause let `http-equiv="&#114efresh"` self-navigate the artifact frame in all three maintained
+engines. The preconnect disclosed the viewer-facing IP plus a view/time signal, while neither path
+gained application-origin authority or tenant data; this was a bounded network-egress defect, not
+an origin-isolation escape. The saved-preview browser regression now inspects the delivered
+response to prove both tags were removed before parsing and requires zero navigation or live TCP
+collector hits in Chromium, Firefox, and WebKit.
 
 Implemented in: `app/Http/Support/ArtifactSandboxResponder.php` (shared header CSP + `securityHeaders()`),
 `app/Http/Controllers/ArtifactPreviewController.php` and `ArtifactDraftPreviewController.php` (delegate saved and draft responses to the shared responder),
@@ -352,8 +374,10 @@ PNG and JPEG uploads are hostile binary parser input. ArtifactFlow does not reta
 the uploaded container. The write boundary requires a valid upload, an extension matching the
 header-detected format, a supported PNG/JPEG envelope, bounded compressed bytes, a bounded maximum
 dimension, and a bounded total pixel count. The application performs only fixed-offset PNG header
-inspection or a JPEG walk capped at 256 pre-frame markers and 1 MiB of header bytes; restart
-markers before scan data are rejected. It does not invoke a native raster decoder.
+inspection or a JPEG walk capped at 256 pre-frame markers inside the 5 MiB upload envelope.
+Length-prefixed metadata payloads are skipped from their declared sizes, so there is deliberately
+no separate 1 MiB header-byte ceiling; restart markers before scan data are rejected. The
+application does not invoke a native raster decoder.
 
 The original bytes are sent to a dedicated `image-parser` container over an internal-only network.
 Timestamped nonce-bearing requests and parser responses are HMAC authenticated with a dedicated
@@ -531,6 +555,10 @@ expiry, share mode/state/expiry, page archival/deletion, copied workspace identi
 access revision. Revocation, workspace movement, and relevant access changes therefore fail closed
 without waiting for the viewing-session TTL. New current versions remain visible by design.
 Deprecation remains visible with fixed application-owned warning text.
+Successful viewer-content and preview-URL resolutions refresh the owner-visible `last_viewed_at`
+at most once per five minutes. Redeemed one-time inventory rows separately report whether a
+server-stored window session still exists, so the active-share count does not hide the remaining
+revocation target.
 
 Presentation does not create a new rendering bypass:
 
