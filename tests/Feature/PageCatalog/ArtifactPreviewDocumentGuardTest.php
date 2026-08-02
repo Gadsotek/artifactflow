@@ -5,10 +5,32 @@ declare(strict_types=1);
 namespace Tests\Feature\PageCatalog;
 
 use App\Application\PageCatalog\ArtifactPreviewDocumentGuard;
+use ReflectionProperty;
+use RuntimeException;
 use Tests\TestCase;
 
 final class ArtifactPreviewDocumentGuardTest extends TestCase
 {
+    public function test_missing_guard_source_fails_closed(): void
+    {
+        $application = app();
+        $originalBasePath = $application->basePath();
+        $guardBody = new ReflectionProperty(ArtifactPreviewDocumentGuard::class, 'guardBody');
+
+        try {
+            $application->setBasePath(
+                sys_get_temp_dir() . '/artifactflow-missing-guard-' . bin2hex(random_bytes(8)),
+            );
+            $guardBody->setValue(null, null);
+
+            $this->expectException(RuntimeException::class);
+            app(ArtifactPreviewDocumentGuard::class)->harden('<!doctype html><p>inert</p>');
+        } finally {
+            $application->setBasePath($originalBasePath);
+            $guardBody->setValue(null, null);
+        }
+    }
+
     public function test_served_guard_body_is_the_single_shared_source_of_truth(): void
     {
         $canonical = file_get_contents(resource_path('js/artifact-preview-guard.js'));
@@ -30,9 +52,14 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         $this->assertStringContainsString("defineValue(ShadowRoot.prototype, 'setHTMLUnsafe', noop)", $hardened);
         $this->assertStringNotContainsString("hardenMarkupMethod(Element.prototype, 'setHTMLUnsafe')", $hardened);
         $this->assertStringNotContainsString("hardenMarkupMethod(ShadowRoot.prototype, 'setHTMLUnsafe')", $hardened);
-        // Programmatic self-navigation is neutralized where the browser allows it.
-        $this->assertStringContainsString("defineValue(window.location, 'assign', noop)", $hardened);
-        $this->assertStringContainsString("defineValue(window.location, 'replace', noop)", $hardened);
+        $this->assertStringContainsString("hardenMarkupMethod(Document, 'parseHTML')", $hardened);
+        $this->assertStringContainsString("hardenMarkupMethod(Element.prototype, 'setHTML')", $hardened);
+        $this->assertStringContainsString("hardenMarkupMethod(ShadowRoot.prototype, 'setHTML')", $hardened);
+        // These legacy-unforgeable properties cannot be patched. The guard
+        // must not claim that a silent assignment fallback neutralized them.
+        $this->assertStringNotContainsString("defineValue(window, 'top', blockedWindowProxy)", $hardened);
+        $this->assertStringNotContainsString("defineValue(window.location, 'assign', noop)", $hardened);
+        $this->assertStringNotContainsString("defineValue(window.location, 'replace', noop)", $hardened);
     }
 
     public function test_security_documentation_preserves_the_self_navigation_network_residual(): void
@@ -89,12 +116,17 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
 
     public function test_meta_refresh_tags_are_stripped(): void
     {
-        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
-            '<!doctype html><html><head><meta http-equiv="refresh" content="0;url=https://evil.example.test"></head><body></body></html>',
-        );
+        $values = ['refresh', '&#114;efresh', '&#114efresh', '&#000114efresh'];
 
-        $this->assertStringNotContainsString('http-equiv="refresh"', $hardened);
-        $this->assertStringNotContainsString('evil.example.test', $hardened);
+        foreach ($values as $index => $value) {
+            $host = "refresh-{$index}.evil.example.test";
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html><html><head><meta http-equiv="' . $value
+                . '" content="0;url=https://' . $host . '"></head><body></body></html>',
+            );
+
+            $this->assertStringNotContainsString($host, $hardened);
+        }
     }
 
     public function test_resource_hint_links_are_stripped_but_benign_links_are_kept(): void
@@ -106,6 +138,8 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
             . '<link rel="prefetch" href="https://prefetch.evil.example.test">'
             . '<link rel="prerender" href="https://prerender.evil.example.test">'
             . '<link rel="PRECONNECT DNS-PREFETCH" href="https://mixed.evil.example.test">'
+            . '<link rel="&#112reconnect" href="https://numeric-decimal.evil.example.test">'
+            . '<link rel="&#x70refetch" href="https://numeric-hex.evil.example.test">'
             . '<link rel="stylesheet" href="/local.css">'
             . '</head><body></body></html>',
         );
@@ -115,7 +149,65 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         $this->assertStringNotContainsString('prefetch.evil.example.test', $hardened);
         $this->assertStringNotContainsString('prerender.evil.example.test', $hardened);
         $this->assertStringNotContainsString('mixed.evil.example.test', $hardened);
+        $this->assertStringNotContainsString('numeric-decimal.evil.example.test', $hardened);
+        $this->assertStringNotContainsString('numeric-hex.evil.example.test', $hardened);
         $this->assertStringContainsString('rel="stylesheet"', $hardened);
+    }
+
+    public function test_first_duplicate_refresh_and_resource_hint_attributes_control_normalization(): void
+    {
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><html><head>'
+            . '<meta http-equiv="x-safe" http-equiv="refresh" content="0;url=https://safe-meta.example.test">'
+            . '<link rel="stylesheet" rel="preconnect" href="https://safe-link.example.test/style.css">'
+            . '</head></html>',
+        );
+
+        $this->assertStringContainsString('safe-meta.example.test', $hardened);
+        $this->assertStringContainsString('safe-link.example.test', $hardened);
+    }
+
+    public function test_numeric_attribute_references_follow_the_html_replacement_table_and_invalid_rules(): void
+    {
+        $references = [
+            '&#128;',
+            '&#130;',
+            '&#131;',
+            '&#132;',
+            '&#133;',
+            '&#134;',
+            '&#135;',
+            '&#136;',
+            '&#137;',
+            '&#x8a;',
+            '&#x8B;',
+            '&#140;',
+            '&#142;',
+            '&#145;',
+            '&#146;',
+            '&#147;',
+            '&#148;',
+            '&#149;',
+            '&#150;',
+            '&#151;',
+            '&#152;',
+            '&#153;',
+            '&#x9a;',
+            '&#x9B;',
+            '&#156;',
+            '&#158;',
+            '&#159;',
+            '&#0;',
+            '&#55296;',
+            '&#999999999999999999999999999999;',
+        ];
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><html><head><link rel="'
+            . implode(' ', $references)
+            . '" href="https://safe.example.test/style.css"></head></html>',
+        );
+
+        $this->assertStringContainsString('safe.example.test/style.css', $hardened);
     }
 
     public function test_nested_browsing_contexts_are_neutralized_at_every_static_nesting_depth(): void
@@ -174,6 +266,99 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
             );
             $this->assertStringContainsString('<p id="safe-content">Safe artifact content</p>', $hardened);
         }
+    }
+
+    public function test_nested_and_malformed_comment_states_resume_scanning_at_the_browser_boundary(): void
+    {
+        $comments = [
+            '<!---->',
+            '<!---x-->',
+            '<!--a-x-->',
+            '<!--a<x-->',
+            '<!--a<<x-->',
+            '<!--a<!x-->',
+            '<!--a<!-x-->',
+            '<!--a<!-- nested -->',
+            '<!--a--!-x-->',
+            '<!--a--!x-->',
+        ];
+
+        foreach ($comments as $index => $comment) {
+            $iframeId = 'comment-state-' . $index;
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $comment . '<iframe id="' . $iframeId . '"></iframe>',
+            );
+
+            $this->assertStringContainsString($comment, $hardened);
+            $this->assertStringNotContainsString('<iframe id="' . $iframeId . '"', strtolower($hardened));
+        }
+    }
+
+    public function test_unterminated_comment_declaration_tag_and_script_syntax_remains_inert(): void
+    {
+        $guard = app(ArtifactPreviewDocumentGuard::class);
+        $inputs = [
+            '<!doctype html><!--unterminated',
+            '<!doctype html><!unterminated',
+            '<!doctype html>< invalid-tag',
+            '<!doctype html><div data-value="unterminated',
+            '<!doctype html><script><!--unterminated',
+        ];
+
+        foreach ($inputs as $input) {
+            $hardened = $guard->harden($input);
+
+            $this->assertStringContainsString(substr($input, 15), $hardened);
+            $this->assertStringNotContainsString('<template data-artifactflow-blocked-browsing-context', $hardened);
+        }
+    }
+
+    public function test_invalid_raw_text_close_candidate_does_not_hide_the_real_close(): void
+    {
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><style>literal</stylex></style><iframe id="after-real-style-close"></iframe>',
+        );
+
+        $this->assertStringContainsString('<style>literal</stylex></style>', $hardened);
+        $this->assertStringNotContainsString('<iframe id="after-real-style-close"', strtolower($hardened));
+    }
+
+    public function test_plaintext_keeps_the_remaining_document_inert(): void
+    {
+        $literal = '<iframe id="plaintext-literal"></iframe>';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><plaintext>' . $literal,
+        );
+
+        $this->assertStringContainsString('<plaintext>' . $literal, $hardened);
+        $this->assertStringNotContainsString('<template data-artifactflow-blocked-browsing-context', $hardened);
+    }
+
+    public function test_unterminated_noscript_is_scanned_for_the_scripting_disabled_parse(): void
+    {
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><noscript><iframe id="unterminated-noscript-breakout"></iframe>',
+        );
+
+        $this->assertStringNotContainsString('<iframe id="unterminated-noscript-breakout"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="unterminated-noscript-breakout"',
+            $hardened,
+        );
+    }
+
+    public function test_attribute_name_parse_errors_do_not_hide_a_following_context(): void
+    {
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><div first second="value">'
+            . '<iframe id="after-space-separated-attributes"></iframe></div>',
+        );
+
+        $this->assertStringNotContainsString('<iframe id="after-space-separated-attributes"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="after-space-separated-attributes"',
+            $hardened,
+        );
     }
 
     public function test_declaration_parser_differentials_cannot_hide_nested_browsing_contexts(): void
@@ -424,6 +609,26 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         }
     }
 
+    public function test_overlapping_script_comment_end_restores_data_state_before_the_closing_tag(): void
+    {
+        foreach (['<!-->', '<!--->'] as $escapedPrefix) {
+            $iframeId = $escapedPrefix === '<!-->'
+                ? 'script-comment-overlap-empty-breakout'
+                : 'script-comment-overlap-dash-breakout';
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html><script>' . $escapedPrefix . '<script></script>'
+                . '<iframe id="' . $iframeId . '" '
+                . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe></script>',
+            );
+
+            $this->assertStringNotContainsString('<iframe id="' . $iframeId . '"', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="' . $iframeId . '"',
+                $hardened,
+            );
+        }
+    }
+
     public function test_plaintext_is_not_treated_as_terminal_when_the_tree_builder_ignores_it(): void
     {
         $cases = [
@@ -490,6 +695,21 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         $this->assertStringContainsString(
             '<template data-artifactflow-blocked-browsing-context data-decoy=">" id="'
             . $iframeId . '"',
+            $hardened,
+        );
+    }
+
+    public function test_select_noframes_engine_differential_cannot_hide_a_later_context(): void
+    {
+        $iframeId = 'select-noframes-engine-breakout';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><table><select></style><noframes><script><svg>'
+            . '<noframes><xmp></noframes><iframe id="' . $iframeId . '"></iframe>',
+        );
+
+        $this->assertStringNotContainsString('<iframe id="' . $iframeId . '"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="' . $iframeId . '"',
             $hardened,
         );
     }
@@ -600,6 +820,150 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         );
 
         $this->assertStringContainsString($cdata, $hardened);
+    }
+
+    public function test_frameset_alternate_does_not_corrupt_inert_foreign_cdata(): void
+    {
+        $liveFrameId = 'frameset-alternate-live-frame';
+        $cdata = '<![CDATA[x><iframe id="frameset-alternate-cdata-literal"></iframe>]]>';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><div>body</div>'
+            . '<frameset><noframes></frameset></noframes><plaintext>'
+            . '<frame id="' . $liveFrameId . '" src="about:blank">'
+            . '<svg><g>' . $cdata . '</g></svg>',
+        );
+
+        $this->assertStringNotContainsString('<frame id="' . $liveFrameId . '"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="' . $liveFrameId . '"',
+            $hardened,
+        );
+        $this->assertStringContainsString($cdata, $hardened);
+    }
+
+    public function test_frameset_cdata_alternate_respects_noframes_raw_text(): void
+    {
+        $rawTextFrameId = 'frameset-cdata-noframes-literal';
+        $liveFrameId = 'frameset-cdata-live-frame';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><frameset><svg><![CDATA[x>'
+            . '<noframes><frame id="' . $rawTextFrameId . '"></noframes>'
+            . '<frame id="' . $liveFrameId . '">]]></svg>',
+        );
+
+        $this->assertStringContainsString('<frame id="' . $rawTextFrameId . '">', $hardened);
+        $this->assertStringNotContainsString('<frame id="' . $liveFrameId . '">', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="' . $liveFrameId . '">',
+            $hardened,
+        );
+
+        $unterminatedRawTextFrameId = 'frameset-cdata-unterminated-noframes-literal';
+        $unterminated = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><frameset><svg><![CDATA[x><noframes>'
+            . '<frame id="' . $unterminatedRawTextFrameId . '">]]>',
+        );
+
+        $this->assertStringContainsString('<frame id="' . $unterminatedRawTextFrameId . '">', $unterminated);
+    }
+
+    public function test_frameset_cdata_alternate_preserves_non_tag_syntax_while_scanning_frames(): void
+    {
+        $liveFrameId = 'frameset-cdata-after-non-tag-syntax';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><frameset><svg><![CDATA[x>'
+            . '<!--preserved-comment--><!preserved-declaration>< '
+            . '<frame id="' . $liveFrameId . '">]]>',
+        );
+
+        $this->assertStringContainsString('<!--preserved-comment-->', $hardened);
+        $this->assertStringContainsString('<!preserved-declaration>', $hardened);
+        $this->assertStringContainsString('< ', $hardened);
+        $this->assertStringNotContainsString('<frame id="' . $liveFrameId . '">', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="' . $liveFrameId . '">',
+            $hardened,
+        );
+    }
+
+    public function test_frameset_cdata_alternate_preserves_unterminated_and_delimiter_free_sections(): void
+    {
+        $guard = app(ArtifactPreviewDocumentGuard::class);
+        $sections = [
+            '<![CDATA[x]]>',
+            '<![CDATA[x><!--unterminated',
+            '<![CDATA[x><!unterminated',
+            '<![CDATA[x><div>',
+        ];
+
+        foreach ($sections as $section) {
+            $hardened = $guard->harden('<!doctype html><frameset><svg>' . $section);
+
+            $this->assertStringContainsString($section, $hardened);
+        }
+    }
+
+    public function test_foreign_br_and_p_end_tags_break_out_before_following_cdata(): void
+    {
+        $prefixes = [
+            'svg-p' => '<svg></p>',
+            'svg-br' => '<svg></br>',
+            'math-p' => '<math></p>',
+            'nested-svg-p' => '<svg><g></p>',
+        ];
+
+        foreach ($prefixes as $case => $prefix) {
+            $iframeId = 'foreign-end-' . $case . '-breakout';
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $prefix . '<![CDATA[x>'
+                . '<iframe id="' . $iframeId . '" '
+                . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>',
+            );
+
+            $this->assertStringNotContainsString('<iframe id="' . $iframeId . '"', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="' . $iframeId . '"',
+                $hardened,
+            );
+        }
+    }
+
+    public function test_ignored_foreign_start_tags_do_not_change_cdata_handling(): void
+    {
+        $cases = [
+            'frameset-svg' => [
+                '<frameset><svg><![CDATA[x>',
+                'frame',
+            ],
+            'select-svg' => [
+                '<select><svg></select><![CDATA[x>',
+                'iframe',
+            ],
+            'select-foreign-end' => [
+                '<svg><foreignObject><select></foreignObject></select><![CDATA[x>',
+                'iframe',
+            ],
+        ];
+
+        foreach ($cases as $case => [$prefix, $tagName]) {
+            $contextId = 'ignored-foreign-' . $case . '-breakout';
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html>' . $prefix
+                . '<' . $tagName . ' id="' . $contextId . '" '
+                . 'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;">'
+                . ($tagName === 'iframe' ? '</iframe>' : '')
+                . ']]>',
+            );
+
+            $this->assertStringNotContainsString(
+                '<' . $tagName . ' id="' . $contextId . '"',
+                strtolower($hardened),
+            );
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="' . $contextId . '"',
+                $hardened,
+            );
+        }
     }
 
     public function test_html_integration_point_raw_text_cannot_desynchronize_foreign_content_state(): void

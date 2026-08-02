@@ -178,6 +178,20 @@ final class ArtifactPreviewForeignContentState
 
     public function consumeEndTag(string $name): void
     {
+        if (
+            $this->elements !== []
+            && ($name === 'br' || $name === 'p')
+        ) {
+            // Foreign-content </br> and </p> tokens are reprocessed under
+            // the active HTML insertion mode after the browser pops back to
+            // an integration point or HTML element. Keeping deeper foreign
+            // entries here would make later CDATA look inert when the browser
+            // tokenizes it as a bogus comment followed by live markup.
+            $this->popUntilIntegrationPoint();
+
+            return;
+        }
+
         $positions = $this->positions[$name] ?? [];
 
         if ($positions === []) {
@@ -218,11 +232,8 @@ final class ArtifactPreviewForeignContentState
 
     private function pop(): void
     {
+        /** @var array{integration: string|null, name: string, namespace: string} $element */
         $element = array_pop($this->elements);
-
-        if (!is_array($element)) {
-            return;
-        }
 
         array_pop($this->positions[$element['name']]);
 

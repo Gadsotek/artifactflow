@@ -715,10 +715,12 @@
     // entry points instead of attempting incomplete post-parse cleanup.
     if (typeof ShadowRoot === 'function') {
       hardenMarkupSetter(ShadowRoot.prototype, 'innerHTML');
+      hardenMarkupMethod(ShadowRoot.prototype, 'setHTML');
       defineValue(ShadowRoot.prototype, 'setHTMLUnsafe', noop);
     }
 
     hardenMarkupMethod(Element.prototype, 'insertAdjacentHTML', 1);
+    hardenMarkupMethod(Element.prototype, 'setHTML');
     defineValue(Element.prototype, 'setHTMLUnsafe', noop);
     hardenMarkupMethod(Range.prototype, 'createContextualFragment');
     const nativeParseFromString = DOMParser.prototype.parseFromString;
@@ -733,6 +735,7 @@
     // pretending a chunk-local rewrite is a security boundary.
     defineValue(Document.prototype, 'write', noop);
     defineValue(Document.prototype, 'writeln', noop);
+    hardenMarkupMethod(Document, 'parseHTML');
     defineValue(Document, 'parseHTMLUnsafe', noop);
     hardenNodeInsertionSinks();
     blockLegacyMarkupInsertion();
@@ -827,7 +830,6 @@
     // The sandbox or browser owns this property already.
   }
   defineValue(window, 'parent', blockedWindowProxy);
-  defineValue(window, 'top', blockedWindowProxy);
   defineValue(window, 'opener', null);
   document.addEventListener(
     'click',
@@ -852,15 +854,10 @@
     true,
   );
   document.addEventListener('submit', blockNavigationEvent, true);
-  // Best-effort neutralization of programmatic self-navigation, layered on the real
-  // boundary (opaque-origin sandbox + the app's frame-src CSP, which pins the frame to
-  // the artifact origin). This matches how every other escape vector is stubbed. Note
-  // `window.location` itself is non-configurable, so `location.href = ...` cannot be
-  // intercepted here; assign()/replace() are the interceptable cross-origin nav methods,
-  // and unload is cancelled. A script still cannot reach app storage or ordinary
-  // connection APIs; location-based navigation remains the documented residual.
-  defineValue(window.location, 'assign', noop);
-  defineValue(window.location, 'replace', noop);
+  // `window.top` and `window.location` navigation members are legacy-unforgeable;
+  // attempts to replace them silently leave the originals active. The opaque-origin
+  // sandbox and frame-src policy remain the boundary, while location-based
+  // self-navigation remains the documented residual.
 
   if (recoveryTarget !== null) {
     window.addEventListener('message', respondToPreviewReadyRequest, true);

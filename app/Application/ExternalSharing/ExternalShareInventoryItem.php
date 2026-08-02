@@ -25,6 +25,7 @@ final readonly class ExternalShareInventoryItem
         public ?CarbonImmutable $firstViewedAt,
         public ?CarbonImmutable $lastViewedAt,
         public int $viewSessionCount,
+        public bool $hasOpenViewSession,
     ) {
     }
 }

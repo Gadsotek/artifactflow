@@ -23,6 +23,8 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ### Fixed
 
+- Corrected the JPEG threat-model contract to describe the implemented bound: at most 256 pre-frame markers inside the 5 MiB upload envelope, with length-prefixed metadata skipped rather than an independent 1 MiB header cap.
+- External-share inventory now coarsely refreshes `last_viewed_at` after successful viewer-content and preview-URL resolution, and redeemed one-time rows explicitly show when their window-lived view session is still open and revocable.
 - External-share viewer throttling now preserves the route's uniform HTML unavailable surface and rate-limit headers, including preview-URL renewal. Transient viewer failures retain the per-window proof so a redeemed one-time link can recover on reload. Expiring-share windows now keep independent path-scoped view credentials, while view authorization stays locked through response materialization so concurrent revocation cannot serve stale content. Expiring shares cap retained viewer sessions and evict the oldest at the configured ceiling.
 - The AI commit guard now distinguishes real DCO sign-off options from option arguments that merely contain a lowercase `s`.
 - Stabilized the external-share authorization concurrency proof by isolating the forked worker on a dedicated database connection and keeping it alive until the parent transaction completes.
@@ -31,6 +33,8 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ### Security
 
+- Closed artifact-preview parser differentials for overlapping script comment endings, foreign-content `</p>`/`</br>` breakouts, and foreign elements ignored in `select`/`frameset` insertion modes. The expanded corpus also found and closed a Chromium/WebKit `select`/`noframes` raw-text divergence; all cases are mandatory guard-free regressions in Chromium, Firefox, and WebKit.
+- Static refresh metas and resource hints now normalize decimal and hexadecimal numeric character references with the browser's missing-semicolon behavior before classification. This closes a confirmed WebKit TCP preconnect callback and all-engine artifact-frame self-navigation from entity-bypassed tags; the full-stack regression inspects the rewritten response and requires zero live collector hits. Mermaid directives cannot reopen HTML-label configuration, the image responder locally rejects media types other than PNG/JPEG, and the preview guard covers the safe Sanitizer API markup entry points without claiming that legacy-unforgeable `top` or `location` members were replaced.
 - Added a bounded, seed-reproducible artifact-parser differential fuzzer to the required
   cross-engine browser corpus. It generates tokenizer/tree-builder mutations, runs the exact
   response rewriter without runtime DOM cleanup, and requires zero nested frames in Chromium,

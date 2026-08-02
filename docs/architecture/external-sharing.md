@@ -125,7 +125,7 @@ application logging not to record request bodies.
 - creator UID and creation timestamp;
 - nullable redemption timestamp;
 - nullable revocation timestamp and revoker UID;
-- bounded first/last successful viewing-session timestamps and session count.
+- bounded first-view/session-count facts plus a coarsely refreshed last successful viewer-activity timestamp.
 
 Database checks enforce the exclusive mode/expiry combinations. A one-time row
 can move from active to redeemed once and can never be reset. An expiring row
@@ -257,9 +257,12 @@ may start a new session through a fresh secret exchange, but every such session
 remains bounded by the share's own expiry.
 
 The first successful session records `page.external_share.opened`. A one-time
-winner also records `page.external_share.consumed`. Repeated sessions on an
-expiring link update the bounded first/last/count fields but do not create an
-unbounded event or audit row per open.
+winner also records `page.external_share.consumed`. Session issuance updates the
+bounded first-view and count fields. Successful viewer-content and preview-URL
+resolutions refresh the last-viewed field at most once per five minutes, without
+creating an unbounded event or audit row per request. Redeemed one-time inventory
+rows show when a retained window-lived view session is still open and can be closed
+through the existing revoke action.
 
 ## Live revalidation and lifecycle
 

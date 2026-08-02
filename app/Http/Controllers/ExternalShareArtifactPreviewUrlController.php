@@ -7,11 +7,13 @@ namespace App\Http\Controllers;
 use App\Application\ExternalSharing\ExternalShareViewContext;
 use App\Application\ExternalSharing\ExternalShareViewerContent;
 use App\Application\ExternalSharing\ExternalShareWindowToken;
+use App\Application\ExternalSharing\RecordExternalShareViewActivity;
 use App\Application\ExternalSharing\ResolveExternalShareView;
 use App\Domain\ExternalSharing\ExternalShareSessionKind;
 use App\Http\Support\ExternalShareCookies;
 use App\Http\Support\ExternalShareResponses;
 use App\Http\Support\ExternalShareSameOrigin;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -20,6 +22,7 @@ final readonly class ExternalShareArtifactPreviewUrlController
     public function __construct(
         private ResolveExternalShareView $views,
         private ExternalShareViewerContent $content,
+        private RecordExternalShareViewActivity $activity,
         private ExternalShareWindowToken $windowTokens,
         private ExternalShareCookies $cookies,
         private ExternalShareSameOrigin $sameOrigin,
@@ -51,9 +54,13 @@ final readonly class ExternalShareArtifactPreviewUrlController
             function (ExternalShareViewContext $context): JsonResponse {
                 $viewer = $this->content->forContext($context);
 
-                return $viewer === null || $viewer->artifactPreviewUrl === null
-                    ? $this->responses->unavailableJson()
-                    : $this->responses->json(['url' => $viewer->artifactPreviewUrl]);
+                if ($viewer === null || $viewer->artifactPreviewUrl === null) {
+                    return $this->responses->unavailableJson();
+                }
+
+                $this->activity->record($context->share, CarbonImmutable::now());
+
+                return $this->responses->json(['url' => $viewer->artifactPreviewUrl]);
             },
         );
 

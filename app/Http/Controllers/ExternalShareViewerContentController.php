@@ -7,11 +7,13 @@ namespace App\Http\Controllers;
 use App\Application\ExternalSharing\ExternalShareViewContext;
 use App\Application\ExternalSharing\ExternalShareViewerContent;
 use App\Application\ExternalSharing\ExternalShareWindowToken;
+use App\Application\ExternalSharing\RecordExternalShareViewActivity;
 use App\Application\ExternalSharing\ResolveExternalShareView;
 use App\Domain\ExternalSharing\ExternalShareSessionKind;
 use App\Http\Support\ExternalShareCookies;
 use App\Http\Support\ExternalShareResponses;
 use App\Http\Support\ExternalShareSameOrigin;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
@@ -20,6 +22,7 @@ final readonly class ExternalShareViewerContentController
     public function __construct(
         private ResolveExternalShareView $views,
         private ExternalShareViewerContent $content,
+        private RecordExternalShareViewActivity $activity,
         private ExternalShareWindowToken $windowTokens,
         private ExternalShareCookies $cookies,
         private ExternalShareSameOrigin $sameOrigin,
@@ -54,6 +57,8 @@ final readonly class ExternalShareViewerContentController
                 if ($viewer === null) {
                     return $this->responses->unavailableView();
                 }
+
+                $this->activity->record($context->share, CarbonImmutable::now());
 
                 return $this->responses->secure(response()->view(
                     'external-shares.partials.viewer-content',

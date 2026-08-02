@@ -8,6 +8,7 @@ use App\Application\PageCatalog\ArtifactPreviewDocumentGuard;
 use App\Infrastructure\Security\OriginNormalizer;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -19,6 +20,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 final readonly class ArtifactSandboxResponder
 {
+    /** @var list<string> */
+    private const array IMAGE_MEDIA_TYPES = ['image/jpeg', 'image/png'];
+
     public function __construct(
         private ArtifactPreviewDocumentGuard $documentGuard,
     ) {
@@ -44,6 +48,10 @@ final readonly class ArtifactSandboxResponder
      */
     public function imageDocument(string $bytes, string $mediaType): StreamedResponse
     {
+        if (!in_array($mediaType, self::IMAGE_MEDIA_TYPES, true)) {
+            throw new InvalidArgumentException('Unsupported artifact image media type.');
+        }
+
         return response()->stream(static function () use ($bytes, $mediaType): void {
             echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
                 . '<meta name="viewport" content="width=device-width, initial-scale=1">'

@@ -225,7 +225,9 @@ test('saved HTML artifact executes only inside the controller-served sandbox @ar
 <html>
   <head>
     <title>Saved preview sandbox</title>
-    <meta http-equiv="refresh" content="0; url=${baseUrl}/saved-preview-navigation-check?via=meta">
+    <meta http-equiv="&#114efresh" content="0; url=${baseUrl}/saved-preview-navigation-check?via=meta">
+    <link rel="&#112reconnect" href="${speculativeProbeUrl}/static-numeric-preconnect">
+    <link rel="&#112refetch" href="${speculativeProbeUrl}/static-numeric-prefetch">
   </head>
   <body>
     <p id="result">starting</p>
@@ -591,6 +593,12 @@ test('saved HTML artifact executes only inside the controller-served sandbox @ar
     /saved-preview-navigation-check/u,
   );
 
+  const previewResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().resourceType() === 'document' &&
+      new URL(response.url()).pathname.startsWith('/artifact-previews/'),
+  );
+
   await page.getByRole('button', { name: 'Save page' }).click();
 
   // The save posts via fetch and rebuilds the document; the preview then loads
@@ -598,6 +606,13 @@ test('saved HTML artifact executes only inside the controller-served sandbox @ar
   // on CI than the 5s default expect timeout, so wait for them explicitly.
   await expect(page).toHaveURL(/\/pages\/[0-9a-hjkmnp-tv-z]{26}$/u, { timeout: 20_000 });
   await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 20_000 });
+
+  const previewResponse = await previewResponsePromise;
+  const hardenedPreviewBody = await previewResponse.text();
+  expect(await previewResponse.headerValue('x-dns-prefetch-control')).toBe('off');
+  expect(hardenedPreviewBody).not.toContain('static-numeric-preconnect');
+  expect(hardenedPreviewBody).not.toContain('static-numeric-prefetch');
+  expect(hardenedPreviewBody).not.toContain('saved-preview-navigation-check?via=meta');
 
   const frame = page.locator('iframe[title="Artifact preview"]');
   await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');

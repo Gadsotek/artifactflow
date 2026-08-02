@@ -15,6 +15,7 @@ use App\Application\PageCatalog\UpdatePageContent;
 use App\Application\PageCatalog\UpdatePageContentCommand;
 use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PageVersionSource;
+use App\Http\Support\ArtifactSandboxResponder;
 use App\Models\Page;
 use App\Models\PageVersion;
 use App\Models\User;
@@ -26,6 +27,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use InvalidArgumentException;
 use Tests\Concerns\FakesImageParser;
 use Tests\Support\RecordingLogger;
 use Tests\TestCase;
@@ -40,6 +42,14 @@ final class ImageArtifactHttpTest extends TestCase
         parent::setUp();
 
         $this->fakeImageParser();
+    }
+
+    public function test_image_sandbox_responder_rejects_a_non_raster_media_type(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Unsupported artifact image media type.');
+
+        app(ArtifactSandboxResponder::class)->imageDocument('<svg onload="alert(1)"></svg>', 'image/svg+xml');
     }
 
     public function test_disabled_image_artifacts_reject_new_uploads_without_contacting_the_parser(): void

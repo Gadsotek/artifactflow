@@ -89,6 +89,7 @@ final class ArtifactPreviewDocumentGuard
         $foreignContent = new ArtifactPreviewForeignContentState();
         $openFramesets = 0;
         $openSelects = 0;
+        $selectNoframesRawTextAlternate = false;
 
         while ($offset < $length) {
             if ($rawTextTag !== null) {
@@ -120,13 +121,13 @@ final class ArtifactPreviewDocumentGuard
                 }
 
                 $result .= $this->relocatedRawText($interior, $rawTextTag);
+                /**
+                 * findRawTextClosingTag only returns offsets whose complete
+                 * closing tag boundary has already been validated.
+                 *
+                 * @var array{end: int, name: string, name_end: int, name_start: int, closing: bool, self_closing: bool} $closingTag
+                 */
                 $closingTag = $this->tagAt($html, $closingOffset);
-
-                if ($closingTag === null) {
-                    $result .= '<';
-                    $offset = $closingOffset + 1;
-                    continue;
-                }
 
                 $tagText = substr($html, $closingOffset, $closingTag['end'] - $closingOffset + 1);
                 $result .= in_array($rawTextTag, self::NESTED_BROWSING_CONTEXT_TAGS, true)
@@ -171,6 +172,7 @@ final class ArtifactPreviewDocumentGuard
                         $tagOffset,
                         $scriptingEnabled,
                         $foreignContent->currentElementIsHtmlIntegrationPoint(),
+                        $openFramesets > 0,
                     );
                     $result .= $cdata['rewritten'];
                     $offset = $cdata['end'] + 1;
@@ -200,7 +202,9 @@ final class ArtifactPreviewDocumentGuard
             $offset = $tag['end'] + 1;
 
             if ($tag['closing']) {
-                $foreignContent->consumeEndTag($tag['name']);
+                if ($openSelects === 0) {
+                    $foreignContent->consumeEndTag($tag['name']);
+                }
 
                 if ($tag['name'] === 'select' && $openSelects > 0) {
                     --$openSelects;
@@ -208,6 +212,10 @@ final class ArtifactPreviewDocumentGuard
 
                 if ($tag['name'] === 'frameset' && $openFramesets > 0) {
                     --$openFramesets;
+                }
+
+                if ($tag['name'] === 'noframes') {
+                    $selectNoframesRawTextAlternate = false;
                 }
 
                 $openContainer = end($neutralizedContainers);
@@ -252,18 +260,38 @@ final class ArtifactPreviewDocumentGuard
                 continue;
             }
 
-            $usesHtmlTokenizer = $foreignContent->consumeStartTag(
-                $tag['name'],
-                $tagText,
-                $tag['self_closing'],
-            );
+            // The in-select tree-builder mode ignores foreign start tags. Do
+            // not let an element the browser never created enter the foreign
+            // stack and change later CDATA tokenization. Frameset parsing is
+            // maintained as a separate alternate: the ordinary foreign path
+            // preserves inert CDATA, while the frameset path independently
+            // neutralizes live <frame> tokens inside the same bytes.
+            $usesHtmlTokenizer = $openSelects > 0
+                ? true
+                : $foreignContent->consumeStartTag(
+                    $tag['name'],
+                    $tagText,
+                    $tag['self_closing'],
+                );
             $result .= $tagText;
-            $startsRawText = $usesHtmlTokenizer && $this->startTagUsesRawTextTokenizer(
-                $tag['name'],
-                $scriptingEnabled,
-                $openFramesets,
-                $openSelects,
-            );
+
+            if ($tag['name'] === 'noframes' && $openSelects > 0) {
+                // Firefox ignores noframes in select, while maintained
+                // Chromium/WebKit tokenize it as raw text. Scan its interior
+                // as live markup until the first matching close: bytes rewritten
+                // for Firefox remain text in the raw-text interpretation, and
+                // markup after the close cannot hide behind a false script state.
+                $selectNoframesRawTextAlternate = true;
+            }
+
+            $startsRawText = !$selectNoframesRawTextAlternate
+                && $usesHtmlTokenizer
+                && $this->startTagUsesRawTextTokenizer(
+                    $tag['name'],
+                    $scriptingEnabled,
+                    $openFramesets,
+                    $openSelects,
+                );
 
             if (
                 $tag['name'] === 'plaintext'
@@ -469,7 +497,9 @@ final class ArtifactPreviewDocumentGuard
      * also harden bytes that Chromium/WebKit can parse as live markup after the
      * bogus comment's first `>`. The outer scan resumes after `]]>` so
      * Firefox-live suffix markup cannot be swallowed by a raw-text carrier found
-     * only in the alternate parse.
+     * only in the alternate parse. When a frameset interpretation is active,
+     * the same bytes are scanned separately for live frame tokens without
+     * rewriting nested-context names that the frameset mode ignores.
      *
      * @return array{end: int, rewritten: string}
      */
@@ -478,11 +508,12 @@ final class ArtifactPreviewDocumentGuard
         int $tagOffset,
         bool $scriptingEnabled,
         bool $maintainBogusCommentInterpretation,
+        bool $maintainFramesetInterpretation,
     ): array {
         $terminator = strpos($html, ']]>', $tagOffset + 9);
         $sectionEnd = $terminator === false ? strlen($html) - 1 : $terminator + 2;
 
-        if (!$maintainBogusCommentInterpretation) {
+        if (!$maintainBogusCommentInterpretation && !$maintainFramesetInterpretation) {
             return [
                 'end' => $sectionEnd,
                 'rewritten' => substr($html, $tagOffset, $sectionEnd - $tagOffset + 1),
@@ -500,15 +531,108 @@ final class ArtifactPreviewDocumentGuard
 
         $prefixLength = $bogusCommentEnd - $tagOffset + 1;
         $alternateLength = $sectionEnd - $bogusCommentEnd;
+        $alternateMarkup = substr($html, $bogusCommentEnd + 1, $alternateLength);
+        $rewrittenAlternate = $maintainBogusCommentInterpretation
+            ? $this->rewriteDangerousMarkup($alternateMarkup, $scriptingEnabled)
+            : $this->rewriteFramesetAlternateMarkup($alternateMarkup);
 
         return [
             'end' => $sectionEnd,
             'rewritten' => substr($html, $tagOffset, $prefixLength)
-                . $this->rewriteDangerousMarkup(
-                    substr($html, $bogusCommentEnd + 1, $alternateLength),
-                    $scriptingEnabled,
-                ),
+                . $rewrittenAlternate,
         ];
+    }
+
+    /**
+     * Scan the bytes that a foreign-content branch keeps as CDATA but the
+     * frameset insertion mode sees after a bogus-comment close. In frameset
+     * mode only frame creates a nested browsing context; iframe, portal, and
+     * fencedframe tokens are ignored and must remain byte-exact in the foreign
+     * branch. Noframes still uses RAWTEXT and hides any frame-looking bytes in
+     * its interior.
+     */
+    private function rewriteFramesetAlternateMarkup(string $html): string
+    {
+        $length = strlen($html);
+        $offset = 0;
+        $result = '';
+
+        while ($offset < $length) {
+            $tagOffset = strpos($html, '<', $offset);
+
+            if ($tagOffset === false) {
+                return $result . substr($html, $offset);
+            }
+
+            $result .= substr($html, $offset, $tagOffset - $offset);
+
+            if (substr_compare($html, '<!--', $tagOffset, 4) === 0) {
+                $commentEnd = $this->htmlCommentEnd($html, $tagOffset);
+
+                if ($commentEnd === null) {
+                    return $result . substr($html, $tagOffset);
+                }
+
+                $result .= substr($html, $tagOffset, $commentEnd + 1 - $tagOffset);
+                $offset = $commentEnd + 1;
+                continue;
+            }
+
+            $nextCharacter = $html[$tagOffset + 1] ?? '';
+
+            if ($nextCharacter === '!' || $nextCharacter === '?') {
+                $declarationEnd = $this->declarationEnd($html, $tagOffset);
+
+                if ($declarationEnd === null) {
+                    return $result . substr($html, $tagOffset);
+                }
+
+                $result .= substr($html, $tagOffset, $declarationEnd - $tagOffset + 1);
+                $offset = $declarationEnd + 1;
+                continue;
+            }
+
+            $tag = $this->tagAt($html, $tagOffset);
+
+            if ($tag === null) {
+                $result .= '<';
+                $offset = $tagOffset + 1;
+                continue;
+            }
+
+            $tagText = substr($html, $tagOffset, $tag['end'] - $tagOffset + 1);
+            $offset = $tag['end'] + 1;
+
+            if ($tag['closing']) {
+                $result .= $tagText;
+                continue;
+            }
+
+            if ($tag['name'] === 'noframes') {
+                $closingOffset = $this->findRawTextClosingTag($html, 'noframes', $offset);
+
+                if ($closingOffset === null) {
+                    return $result . $tagText . substr($html, $offset);
+                }
+
+                $closingTag = $this->tagAt($html, $closingOffset);
+                /** @var array{end: int, name: string, name_end: int, name_start: int, closing: bool, self_closing: bool} $closingTag */
+
+                $result .= $tagText
+                    . substr($html, $offset, $closingTag['end'] + 1 - $offset);
+                $offset = $closingTag['end'] + 1;
+                continue;
+            }
+
+            if ($tag['name'] === 'frame') {
+                $result .= $this->neutralizedOpeningTag($html, $tagOffset, $tag) . '</template>';
+                continue;
+            }
+
+            $result .= $tagText;
+        }
+
+        return $result;
     }
 
     /**
@@ -805,48 +929,85 @@ final class ArtifactPreviewDocumentGuard
         $state = 'data';
 
         while ($cursor < $length) {
-            if (
-                $state === 'data'
-                && substr_compare($html, '<!--', $cursor, 4) === 0
-            ) {
-                $state = 'escaped';
-                $cursor += 4;
-                continue;
-            }
+            $character = $html[$cursor];
 
-            if (
-                $state !== 'data'
-                && substr_compare($html, '-->', $cursor, 3) === 0
-            ) {
-                $state = 'data';
-                $cursor += 3;
-                continue;
-            }
+            if ($state === 'data') {
+                if ($character !== '<') {
+                    ++$cursor;
+                    continue;
+                }
 
-            if ($html[$cursor] !== '<') {
+                if ($this->hasScriptTagSequence($html, $cursor, '</script')) {
+                    return $cursor;
+                }
+
+                if (substr_compare($html, '<!--', $cursor, 4) === 0) {
+                    // Consuming <!-- leaves the tokenizer in script-data
+                    // escaped-dash-dash, not a generic escaped state. The
+                    // immediately overlapping > in <!--> therefore returns
+                    // to script data without requiring a later literal -->.
+                    $state = 'escaped_dash_dash';
+                    $cursor += 4;
+                    continue;
+                }
+
                 ++$cursor;
                 continue;
             }
 
-            if ($this->hasScriptTagSequence($html, $cursor, '</script')) {
-                if ($state === 'double_escaped') {
-                    $state = 'escaped';
-                    $cursor += 8;
+            $doubleEscaped = str_starts_with($state, 'double_escaped');
+
+            if ($character === '<') {
+                if ($doubleEscaped) {
+                    if ($this->hasScriptTagSequence($html, $cursor, '</script')) {
+                        $state = 'escaped';
+                        $cursor += 8;
+                        continue;
+                    }
+
+                    $state = 'double_escaped';
+                    ++$cursor;
                     continue;
                 }
 
-                return $cursor;
-            }
+                if ($this->hasScriptTagSequence($html, $cursor, '</script')) {
+                    return $cursor;
+                }
 
-            if (
-                $state === 'escaped'
-                && $this->hasScriptTagSequence($html, $cursor, '<script')
-            ) {
-                $state = 'double_escaped';
-                $cursor += 7;
+                if ($this->hasScriptTagSequence($html, $cursor, '<script')) {
+                    $state = 'double_escaped';
+                    $cursor += 7;
+                    continue;
+                }
+
+                $state = 'escaped';
+                ++$cursor;
                 continue;
             }
 
+            if ($character === '-') {
+                $state = match (true) {
+                    $state === 'escaped' => 'escaped_dash',
+                    $state === 'double_escaped' => 'double_escaped_dash',
+                    $doubleEscaped => 'double_escaped_dash_dash',
+                    default => 'escaped_dash_dash',
+                };
+
+                ++$cursor;
+                continue;
+            }
+
+            if ($character === '>' && str_ends_with($state, '_dash_dash')) {
+                // Returning to data from double-escaped dash-dash is a
+                // deliberate conservative over-approximation: it scans more
+                // bytes as markup than the browser, never fewer, and preserves
+                // the existing hardening of ambiguous comment-like scripts.
+                $state = 'data';
+                ++$cursor;
+                continue;
+            }
+
+            $state = $doubleEscaped ? 'double_escaped' : 'escaped';
             ++$cursor;
         }
 
@@ -1140,11 +1301,8 @@ final class ArtifactPreviewDocumentGuard
                 continue;
             }
 
+            /** @var list<string> $rels */
             $rels = preg_split('/\s+/', $this->normalizeAttributeValue($value), -1, PREG_SPLIT_NO_EMPTY);
-
-            if (!is_array($rels)) {
-                return false;
-            }
 
             foreach ($rels as $rel) {
                 if (in_array($rel, self::RESOURCE_HINT_RELS, true)) {
@@ -1161,16 +1319,12 @@ final class ArtifactPreviewDocumentGuard
      */
     private function tagAttributes(string $tag): array
     {
-        $matched = preg_match_all(
+        preg_match_all(
             '~([^\s"\'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+)))?~',
             $tag,
             $attributes,
             PREG_SET_ORDER,
         );
-
-        if ($matched === false || $matched === 0) {
-            return [];
-        }
 
         $parsed = [];
 
@@ -1203,10 +1357,84 @@ final class ArtifactPreviewDocumentGuard
 
     private function normalizeAttributeValue(string $value): string
     {
-        $decoded = html_entity_decode($value, ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE, 'UTF-8');
+        $decodedNumeric = preg_replace_callback(
+            '/&#(?:[xX]([0-9A-Fa-f]+)|([0-9]+));?/',
+            function (array $matches): string {
+                $hexDigits = $matches[1];
+                $digits = $hexDigits !== '' ? $hexDigits : ($matches[2] ?? '');
+                $codePoint = $this->numericCharacterReferenceCodePoint(
+                    $digits,
+                    $hexDigits !== '' ? 16 : 10,
+                );
+                return mb_chr($codePoint, 'UTF-8');
+            },
+            $value,
+        );
+        $decoded = html_entity_decode(
+            is_string($decodedNumeric) ? $decodedNumeric : $value,
+            ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE,
+            'UTF-8',
+        );
         $collapsed = preg_replace('/[\x00-\x20]+/', ' ', $decoded);
 
         return strtolower(trim(is_string($collapsed) ? $collapsed : $decoded));
+    }
+
+    private function numericCharacterReferenceCodePoint(string $digits, int $base): int
+    {
+        $codePoint = 0;
+
+        for ($index = 0, $length = strlen($digits); $index < $length; ++$index) {
+            $ordinal = ord($digits[$index]);
+            $digit = $ordinal >= 48 && $ordinal <= 57
+                ? $ordinal - 48
+                : (strtolower($digits[$index]) === $digits[$index] ? $ordinal - 87 : $ordinal - 55);
+
+            if ($codePoint > intdiv(0x10FFFF - $digit, $base)) {
+                return 0xFFFD;
+            }
+
+            $codePoint = ($codePoint * $base) + $digit;
+        }
+
+        if (
+            $codePoint === 0
+            || $codePoint > 0x10FFFF
+            || ($codePoint >= 0xD800 && $codePoint <= 0xDFFF)
+        ) {
+            return 0xFFFD;
+        }
+
+        return match ($codePoint) {
+            0x80 => 0x20AC,
+            0x82 => 0x201A,
+            0x83 => 0x0192,
+            0x84 => 0x201E,
+            0x85 => 0x2026,
+            0x86 => 0x2020,
+            0x87 => 0x2021,
+            0x88 => 0x02C6,
+            0x89 => 0x2030,
+            0x8A => 0x0160,
+            0x8B => 0x2039,
+            0x8C => 0x0152,
+            0x8E => 0x017D,
+            0x91 => 0x2018,
+            0x92 => 0x2019,
+            0x93 => 0x201C,
+            0x94 => 0x201D,
+            0x95 => 0x2022,
+            0x96 => 0x2013,
+            0x97 => 0x2014,
+            0x98 => 0x02DC,
+            0x99 => 0x2122,
+            0x9A => 0x0161,
+            0x9B => 0x203A,
+            0x9C => 0x0153,
+            0x9E => 0x017E,
+            0x9F => 0x0178,
+            default => $codePoint,
+        };
     }
 
     private function injectAfterPattern(string $html, string $pattern, string $injectedHtml): ?string

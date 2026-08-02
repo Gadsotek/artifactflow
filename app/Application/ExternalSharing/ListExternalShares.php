@@ -6,7 +6,9 @@ namespace App\Application\ExternalSharing;
 
 use App\Application\PageCatalog\PageAccess;
 use App\Application\PageCatalog\PageFinder;
+use App\Domain\ExternalSharing\ExternalShareSessionKind;
 use App\Models\ExternalShare;
+use App\Models\ExternalShareSession;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -69,8 +71,21 @@ final readonly class ListExternalShares
             ->limit($pageSize + 1)
             ->get();
         $hasMore = $shares->count() > $pageSize;
+        $visibleShares = $shares->take($pageSize);
+        $shareUids = $visibleShares
+            ->map(static fn (ExternalShare $share): string => $share->uid)
+            ->values()
+            ->all();
+        $openViewSessionShareUids = ExternalShareSession::query()
+            ->whereIn('external_share_uid', $shareUids)
+            ->where('kind', ExternalShareSessionKind::View->value)
+            ->distinct()
+            ->get(['external_share_uid'])
+            ->map(static fn (ExternalShareSession $session): string => $session->external_share_uid)
+            ->all();
+        $openViewSessions = array_fill_keys($openViewSessionShareUids, true);
 
-        foreach ($shares->take($pageSize) as $share) {
+        foreach ($visibleShares as $share) {
             $items[] = new ExternalShareInventoryItem(
                 uid: $share->uid,
                 mode: $share->mode,
@@ -86,6 +101,7 @@ final readonly class ListExternalShares
                 firstViewedAt: $share->first_viewed_at,
                 lastViewedAt: $share->last_viewed_at,
                 viewSessionCount: $share->view_session_count,
+                hasOpenViewSession: isset($openViewSessions[$share->uid]),
             );
         }
 
