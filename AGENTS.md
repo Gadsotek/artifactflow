@@ -125,6 +125,8 @@ Do not commit `.env`, secrets, private keys, certificates, database dumps, local
 
 Never push without explicit user approval for that specific push. Asking before every push is mandatory, even when the branch, remote, or previous approval seems obvious.
 
+Before requesting approval for any push, run `make quality-full` against the current worktree and report the result. If the worktree changes afterwards, rerun the affected gates before pushing.
+
 Never run recursive deletion such as `rm -rf`, `rm -fr`, `rm -r`, or `rm -R` without explicit user approval for that exact command. Do not work around this through shell wrappers, scripts, globs, or aliases.
 
 Never run direct Laravel/Pest/PHPUnit test commands. Use `make test` or `make test TEST_FILTER=...` only, because direct commands may target the local development database.
@@ -139,6 +141,10 @@ Project AI guardrails live in `CLAUDE.md`, `.claude/settings.json`, `.codex/hook
 - Do not make local development depend on services that are explicitly post-MVP in the architecture, such as Redis, Meilisearch, S3, or SSO.
 
 ## Working Agreement
+
+Before non-trivial implementation work, state the Objective, in-scope work, explicit non-goals, governing architecture or security contracts, and expected tests. Keep that boundary current when the user changes the request.
+
+Do not fix adjacent defects or implement nearby improvements during the current task unless they block the requested outcome or the user explicitly adds them to scope. Report worthwhile adjacent work separately.
 
 If a requested change conflicts with the documented product direction, architecture, security model, or these instructions, stop and call out the conflict before implementing it.
 

@@ -1,25 +1,31 @@
 {
-  "contract_version": 4,
+  "contract_version": 5,
   "canonical_project": "artifactflow",
   "project_substitutions": {
     "slug": "artifactflow",
     "focused_test": "PageCreationHttpTest"
   },
   "shared_files": {
-    "scripts/ai-hooks/guard_command.py": "77077c0cdb4534967c4777a864767c00997ea42e9b80af015bbba3c3f0e6173c",
-    "scripts/ai-hooks/guard_file_write.py": "dce7940626b83d14f359fc13a6b0e123a80fd45900396bca7a9173e551945774",
-    "scripts/ai-hooks/guard_prompt.py": "02c63866cd932311f213bb690e4994e9258b637055e1c23fea6b054c98cfcb91",
-    "scripts/ai-hooks/policy.py": "2c52e932117eee17559ad67a74f45a8eebe1cae0cde88587c7cbaf5ce8f42a72"
+    "scripts/ai-hooks/guard_command.py": "f64b0796b63425d8f4c05ade0b754a8a648ca36b14cd50405b339880711f625c",
+    "scripts/ai-hooks/guard_file_write.py": "c75f0ed0b443fe54166a624dacf2691a85db4d57e2a2e3793afc8d3eb25bb476",
+    "scripts/ai-hooks/guard_prompt.py": "65fccff46a68751411780a96d634cb6b88ab8b3f9658553a97e7d8d8e47e05b7",
+    "scripts/ai-hooks/policy.py": "9872a913ac4cc74ff6c8f4334f9045fabc1425ea835b4ad74a7a4b80eb26c9e0",
+    "scripts/ai-hooks/policy_commands.py": "94c6a9d58f79a1c826d455bec247fd146bb7f175793ca1b4fcb5adaf2dd6fc43",
+    "scripts/ai-hooks/policy_events.py": "8d64c58c39b70dcf7993282c99b26c0da3acccff51f296e871ab40bcb14f8908",
+    "scripts/ai-hooks/policy_files.py": "567d533a4ce33fac320fb82e15598dfd88fa8ff932a5c70c30360ef08f0f1dc6",
+    "scripts/ai-hooks/policy_observability.py": "1f69a30fd3a98b4b85772693ea4646955369b1b11be07a155ea8806f9d663720",
+    "scripts/ai-hooks/policy_prompts.py": "8541296bf0ce76caf7a34913786cb0540452113b5b92f5d41fcb439f654834ef",
+    "scripts/ai-hooks/policy_types.py": "28a04f77369a16e592d849169d839ea2a48342bd33fa68d56ef1b96d0976060c"
   },
   "normalized_files": {
     "scripts/ai-hooks/README.md": {
-      "sha256": "410d464ac550aefb43823934a6747085f689e4fe83b049032c81f51f2eb95c7b",
+      "sha256": "dd4b222ab58b5bada8c3f841e54e1f457264047b2cff8b4f1b8cc3952f47228a",
       "substitutions": [
         "slug"
       ]
     },
     "scripts/ai-hooks/run_harness.py": {
-      "sha256": "e5fc7e43f8c56b6e295a69d6fa79166154768e1bcd4fef52c6c1406384b58516",
+      "sha256": "d7a368dc385b38f68e0994a7c8e9e2e1c9080807307e54b30c7a2779022dacc9",
       "substitutions": [
         "focused_test"
       ]

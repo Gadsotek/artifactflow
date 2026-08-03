@@ -6,6 +6,7 @@ import json
 import sys
 
 from policy import extract_prompt, load_event, scan_prompt, strongest_finding
+from policy_observability import emit_hook_trace
 
 
 def emit_claude_block(reason: str) -> int:
@@ -26,7 +27,16 @@ def main() -> int:
     parser.add_argument("--agent", choices=("claude", "codex"), required=True)
     args = parser.parse_args()
 
-    finding = strongest_finding(scan_prompt(extract_prompt(load_event())))
+    event = load_event()
+    finding = strongest_finding(scan_prompt(extract_prompt(event)))
+    emit_hook_trace(
+        hook="guard_prompt.py",
+        agent=args.agent,
+        event="UserPromptSubmit",
+        tool="none",
+        decision=finding.action if finding is not None else "allow",
+        code=finding.code if finding is not None else None,
+    )
     if finding is None:
         return 0
 

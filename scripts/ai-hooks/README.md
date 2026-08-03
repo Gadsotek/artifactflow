@@ -19,6 +19,10 @@ The guards are intentionally conservative:
   intercept nested operations that the desktop/tool bridge does not expose to
   project hooks. Nested calls are not inferred by parsing JavaScript; agents
   must use native hook-visible tools instead.
+- Known mutating file tools fail closed when their target cannot be extracted.
+  AI instructions, security contracts, hook code, CI workflows, and enforcement
+  configuration require explicit approval to edit; secret, generated, and Git
+  internal files remain denied.
 - `git push` and GitHub API deletion of Git refs in any repository always ask first.
 - `git commit` is denied unless it includes DCO sign-off through an actual
   lowercase `-s` option (including a short-option group) or `--signoff`;
@@ -34,6 +38,26 @@ The guards are intentionally conservative:
   arbitrary pipes into interpreters are denied.
 - Docker volume deletion, destructive git commands, privilege changes, and cloud deletes require approval.
 - Prompts that appear to contain pasted credentials are blocked.
+
+## Invocation trace
+
+Every hook invocation emits a concise diagnostic to stderr, for example:
+
+```text
+ArtifactFlow AI Called: guard_command.py Output: allow Agent: codex Event: PreToolUse Tool: Bash Code: none
+```
+
+The same result is appended as JSON Lines to the ignored local file
+`storage/logs/ai-hooks.jsonl`. Records contain only timestamp, hook, agent,
+event, tool, decision, and finding code. Prompt text, command strings, file
+paths, reasons, and credentials are never recorded. Set
+`ARTIFACTFLOW_AI_HOOK_TRACE_FILE` to redirect the trace for testing or local
+tooling. Trace-write failure is reported but does not weaken or block the
+underlying safety verdict.
+
+The import surface remains `policy.py`, while event extraction, file policy,
+command analysis, prompt scanning, result types, and observability live in
+cohesive `policy_*.py` modules.
 
 ## Security boundary and residual risk
 

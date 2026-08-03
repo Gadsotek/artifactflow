@@ -13,23 +13,35 @@ from policy import (
     normalize_tool_name,
     scan_file_write,
     strongest_finding,
+    tool_requires_known_file_target,
 )
+from policy_observability import emit_hook_trace
 
 
-def emit_claude_decision(event: str, reason: str) -> int:
+def emit_claude_decision(event: str, action: str, reason: str) -> int:
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": event,
-            "permissionDecision": "deny",
+            "permissionDecision": "deny" if action == "deny" else "ask",
             "permissionDecisionReason": reason,
         },
     }))
     return 0
 
 
-def emit_codex_decision(reason: str) -> int:
-    print(reason, file=sys.stderr)
-    return 2
+def emit_codex_decision(action: str, reason: str) -> int:
+    if action == "deny":
+        print(reason, file=sys.stderr)
+        return 2
+
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "ask",
+            "permissionDecisionReason": reason,
+        },
+    }))
+    return 0
 
 
 def main() -> int:
@@ -53,21 +65,30 @@ def main() -> int:
     else:
         paths = extract_file_paths(event)
         findings = [finding for path in paths for finding in scan_file_write(path)]
-        if tool_name == "apply_patch" and not paths:
+        if tool_requires_known_file_target(tool_name) and not paths:
             findings.append(Finding(
-                code="unknown_patch_target",
+                code="unknown_write_target",
                 action="deny",
-                reason="Refusing an apply_patch operation whose file target cannot be determined.",
+                reason="Refusing a mutating file tool whose target cannot be determined.",
             ))
         finding = strongest_finding(findings)
 
+    hook_event = event_name(event, args.event)
+    emit_hook_trace(
+        hook="guard_file_write.py",
+        agent=args.agent,
+        event=hook_event,
+        tool=tool_name or "unknown",
+        decision=finding.action if finding is not None else "allow",
+        code=finding.code if finding is not None else None,
+    )
     if finding is None:
         return 0
 
     if args.agent == "claude":
-        return emit_claude_decision(event_name(event, args.event), finding.reason)
+        return emit_claude_decision(hook_event, finding.action, finding.reason)
 
-    return emit_codex_decision(finding.reason)
+    return emit_codex_decision(finding.action, finding.reason)
 
 
 if __name__ == "__main__":

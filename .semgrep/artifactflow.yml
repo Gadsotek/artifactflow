@@ -114,3 +114,13 @@ rules:
       include:
         - /app/**
     pattern-regex: "(payload|metadata)\\s*:\\s*\\[[\\s\\S]{0,800}['\"]content['\"]\\s*=>"
+
+  - id: artifactflow.no-external-share-credentials-in-traceability
+    languages:
+      - generic
+    severity: ERROR
+    message: External-share secrets, session credentials, and window proofs must never enter domain-event or audit metadata.
+    paths:
+      include:
+        - /app/**
+    pattern-regex: "(payload|metadata)\\s*:\\s*\\[[^\\]]{0,800}['\"](secret|secret_hash|credential|credential_hash|window_token)['\"]\\s*=>"
