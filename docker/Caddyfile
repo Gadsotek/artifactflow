@@ -25,8 +25,18 @@
 		max_size 25MB
 	}
 
+	# The artifact origin is deliberately cookieless. This role-scoped edge
+	# control also catches framework responses that return before route
+	# middleware, including Laravel's maintenance-secret bypass response.
+	@artifactHostRuntime expression `{env.APP_RUNTIME_ROLE} == "artifact-host"`
+	header @artifactHostRuntime -Set-Cookie
+
 	header {
 		X-Content-Type-Options nosniff
+		# Sandbox anything Caddy emits without reaching PHP: static files, redirects,
+		# and synthetic responses. The conditional prefix preserves the
+		# route-specific policies already set by ArtifactFlow's PHP responders.
+		?Content-Security-Policy "default-src 'none'; sandbox"
 		?Referrer-Policy strict-origin-when-cross-origin
 		?Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 		# HSTS fallback for responses Caddy serves without invoking PHP (e.g. static
@@ -45,4 +55,6 @@
 	}
 
 	php_server
+
+	import Caddyfile.security-errors
 }

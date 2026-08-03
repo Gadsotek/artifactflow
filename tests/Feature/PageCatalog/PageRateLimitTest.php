@@ -160,8 +160,20 @@ final class PageRateLimitTest extends TestCase
         $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.40'])
             ->get($paths[1])
             ->assertNotFound();
-        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.40'])
-            ->get($paths[2])
-            ->assertTooManyRequests();
+        $throttled = $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.40'])
+            ->get($paths[2]);
+
+        $throttled
+            ->assertTooManyRequests()
+            ->assertHeader('X-Frame-Options', 'DENY')
+            ->assertHeader('Content-Security-Policy');
+        $this->assertStringContainsString(
+            "default-src 'none'",
+            (string) $throttled->headers->get('Content-Security-Policy'),
+        );
+        $this->assertStringContainsString(
+            'sandbox',
+            (string) $throttled->headers->get('Content-Security-Policy'),
+        );
     }
 }

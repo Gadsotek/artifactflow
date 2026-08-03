@@ -19,7 +19,7 @@ final readonly class VerifyTwoFactorCode
     ) {
     }
 
-    public function verifyTotpAndAdvance(User $user, string $code, ?int $expectedAuthRevision = null): bool
+    public function verifyTotpAndAdvance(User $user, string $code, int $expectedAuthRevision): bool
     {
         if (preg_match('/^\s*\d{6}\s*$/', $code) !== 1) {
             return false;
@@ -67,7 +67,7 @@ final readonly class VerifyTwoFactorCode
         }
     }
 
-    public function consumeRecoveryCode(User $user, string $code, ?int $expectedAuthRevision = null): bool
+    public function consumeRecoveryCode(User $user, string $code, int $expectedAuthRevision): bool
     {
         $normalizedCode = $this->recoveryCodes->normalize($code);
 
@@ -121,8 +121,8 @@ final readonly class VerifyTwoFactorCode
         return max(0, $window);
     }
 
-    private function authRevisionMatches(User $user, ?int $expectedAuthRevision): bool
+    private function authRevisionMatches(User $user, int $expectedAuthRevision): bool
     {
-        return $expectedAuthRevision === null || $user->auth_revision === $expectedAuthRevision;
+        return $user->auth_revision === $expectedAuthRevision;
     }
 }

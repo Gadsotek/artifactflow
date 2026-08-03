@@ -10,9 +10,9 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-final class RequireRecentSystemAdminPasswordConfirmation
+final class RequireRecentSystemAdminTwoFactorConfirmation
 {
-    public const string SESSION_KEY = 'auth.system_admin_password_confirmed_at';
+    public const string SESSION_KEY = 'auth.system_admin_two_factor_confirmed_at';
 
     /**
      * @param Closure(Request): Response $next
@@ -23,6 +23,12 @@ final class RequireRecentSystemAdminPasswordConfirmation
 
         if (!$user instanceof User || !$user->is_system_admin) {
             abort(403);
+        }
+
+        if (!$user->hasEnabledTwoFactor()) {
+            return redirect()
+                ->route('settings.two-factor.index')
+                ->with('status', 'Enable two-factor authentication before entering Administration.');
         }
 
         if ($this->confirmationIsFresh($request)) {
@@ -52,7 +58,7 @@ final class RequireRecentSystemAdminPasswordConfirmation
 
     private function timeoutSeconds(): int
     {
-        $value = config('auth.admin_password_timeout', 900);
+        $value = config('auth.admin_two_factor_timeout', 900);
         $timeout = is_int($value) || is_string($value) ? (int) $value : 900;
 
         return max(60, $timeout);
@@ -65,6 +71,6 @@ final class RequireRecentSystemAdminPasswordConfirmation
             $request->isMethod('GET') ? $request->getRequestUri() : route('admin.users.index', absolute: false),
         );
 
-        return redirect()->route('admin.password.confirm');
+        return redirect()->route('admin.two-factor.confirm');
     }
 }

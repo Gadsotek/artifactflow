@@ -1,0 +1,14 @@
+{
+  "$schema": "https://www.schemastore.org/package.json",
+  "name": "artifactflow-mcp-remote-bridge",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Integrity-locked mcp-remote runtime used by ArtifactFlow's Claude connector.",
+  "license": "AGPL-3.0-or-later",
+  "engines": {
+    "node": ">=20.18.1"
+  },
+  "dependencies": {
+    "mcp-remote": "0.1.38"
+  }
+}

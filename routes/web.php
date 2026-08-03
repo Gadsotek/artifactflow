@@ -35,7 +35,7 @@ use App\Http\Controllers\PageVersionInspectionController;
 use App\Http\Controllers\PageWorkspaceController;
 use App\Http\Controllers\PasswordConfirmationController;
 use App\Http\Controllers\SwitchWorkspaceController;
-use App\Http\Controllers\SystemAdminPasswordConfirmationController;
+use App\Http\Controllers\SystemAdminTwoFactorConfirmationController;
 use App\Http\Controllers\SystemUserController;
 use App\Http\Controllers\ThemePreferenceController;
 use App\Http\Controllers\TwoFactorSettingsController;
@@ -50,7 +50,7 @@ use App\Http\Middleware\EnforceTwoFactorEnrollment;
 use App\Http\Middleware\RejectArtifactHostRuntime;
 use App\Http\Middleware\RequireArtifactHostRuntime;
 use App\Http\Middleware\RequireRecentPasswordConfirmation;
-use App\Http\Middleware\RequireRecentSystemAdminPasswordConfirmation;
+use App\Http\Middleware\RequireRecentSystemAdminTwoFactorConfirmation;
 use App\Http\Middleware\RequireValidTurnstileConfiguration;
 use Illuminate\Support\Facades\Route;
 
@@ -377,12 +377,12 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
         // here inherits the system-admin guard instead of relying on a re-typed
         // is_system_admin check inside the controller (SystemAdminGateTest locks this in).
         Route::middleware('can:administer-system')->group(function (): void {
-            Route::get('/admin/confirm-password', [SystemAdminPasswordConfirmationController::class, 'create'])
-                ->name('admin.password.confirm');
-            Route::post('/admin/confirm-password', [SystemAdminPasswordConfirmationController::class, 'store'])
-                ->middleware('throttle:artifactflow-admin-step-up')
-                ->name('admin.password.confirm.store');
-            Route::middleware(RequireRecentSystemAdminPasswordConfirmation::class)->group(function (): void {
+            Route::get('/admin/confirm-two-factor', [SystemAdminTwoFactorConfirmationController::class, 'create'])
+                ->name('admin.two-factor.confirm');
+            Route::post('/admin/confirm-two-factor', [SystemAdminTwoFactorConfirmationController::class, 'store'])
+                ->middleware('throttle:artifactflow-admin-two-factor')
+                ->name('admin.two-factor.confirm.store');
+            Route::middleware(RequireRecentSystemAdminTwoFactorConfirmation::class)->group(function (): void {
                 Route::get('/admin/users', [SystemUserController::class, 'index'])->name('admin.users.index');
                 Route::post('/admin/users', [SystemUserController::class, 'store'])->name('admin.users.store');
                 Route::get('/admin/settings', [InstallationSettingsController::class, 'edit'])

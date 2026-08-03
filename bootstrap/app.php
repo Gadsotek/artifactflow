@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Middleware\AddSecurityHeaders;
 use App\Http\Middleware\EnforceCurrentAuthenticationRevision;
 use App\Http\Middleware\EnforceMcpOrigin;
+use App\Http\Middleware\EnforceOptionsRuntimeRoleSurface;
 use App\Http\Middleware\EnforceRuntimeRoleSurface;
 use App\Http\Middleware\EnforceTwoFactorEnrollment;
 use App\Http\Middleware\RefreshScopedServicesForHttpRequest;
@@ -14,6 +15,7 @@ use App\Http\Middleware\ThrottleMcpRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\HandleCors;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -70,6 +72,11 @@ return Application::configure(basePath: dirname(__DIR__))
                 | Request::HEADER_X_FORWARDED_PORT
                 | Request::HEADER_X_FORWARDED_PROTO,
         );
+        // Laravel's CORS middleware can synthesize OPTIONS responses before
+        // route middleware runs. Replace it in place so trusted proxy
+        // normalization has already happened and the runtime-role/host boundary
+        // still runs before any configured preflight can return early.
+        $middleware->replace(HandleCors::class, EnforceOptionsRuntimeRoleSurface::class);
         // Role/host enforcement must remain first so the artifact origin never
         // exposes app setup state. Installation readiness then runs before
         // Laravel's database-backed StartSession middleware.

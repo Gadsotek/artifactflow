@@ -165,7 +165,7 @@ The installation settings record gains:
   request boundary.
 
 Enabling or changing the policy requires System Admin authority and recent
-password confirmation, and records non-secret events and audit entries. The
+live two-factor confirmation, and records non-secret events and audit entries. The
 global disable switch blocks creation and new sessions without deleting
 inventory.
 

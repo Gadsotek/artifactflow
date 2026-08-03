@@ -306,6 +306,7 @@ JSON;
     ): array {
         $home = $this->makeTempHome();
         $codexHome = $home . '/.codex';
+        $bridgeToolPath = $this->makeBridgeToolPath($home);
 
         if ($existingCodexConfig !== null) {
             mkdir($codexHome, 0700, true);
@@ -333,10 +334,8 @@ JSON;
             'MCP_TOKEN' => 'af_mcp_test_token_value',
             'HOME' => $home,
             'CODEX_HOME' => $codexHome,
-            // The dev/test image intentionally ships without Node.js. These tests
-            // pin the plaintext-loopback guard; the Node runtime check has its own
-            // coverage in ConnectMcpNodeRuntimeGuardTest.
-            'MCP_SKIP_NODE_CHECK' => '1',
+            'PATH' => $bridgeToolPath . PATH_SEPARATOR . ((string) getenv('PATH')),
+            'FAKE_NPM_LOG' => $home . '/npm-invocation.log',
         ];
 
         if ($targets !== null) {
@@ -355,6 +354,44 @@ JSON;
         $process->run();
 
         return [$process, $home, $codexHome];
+    }
+
+    private function makeBridgeToolPath(string $home): string
+    {
+        $directory = $home . '/.test-bin';
+        mkdir($directory, 0700, true);
+        file_put_contents(
+            $directory . '/node',
+            "#!/bin/sh\nif [ \"\${1:-}\" = \"--version\" ]; then printf 'v20.18.1\\n'; else printf '994897fb2252976d5b29427609224b4453f3ca60ef75c3aa0ab2fc6f6c0dd9e2'; fi\n",
+        );
+        chmod($directory . '/node', 0700);
+
+        $npm = <<<'SH'
+#!/bin/sh
+set -eu
+[ -z "${MCP_TOKEN+x}" ] || exit 92
+printf '%s\n' "$*" > "$FAKE_NPM_LOG"
+prefix=""
+previous=""
+for argument in "$@"; do
+    if [ "$previous" = "--prefix" ]; then
+        prefix="$argument"
+        break
+    fi
+    case "$argument" in --prefix=*) prefix="${argument#--prefix=}"; break ;; esac
+    previous="$argument"
+done
+[ -n "$prefix" ] || exit 91
+mkdir -p "$prefix/node_modules/.bin" "$prefix/node_modules/mcp-remote/dist"
+printf '#!/bin/sh\nexit 0\n' > "$prefix/node_modules/.bin/mcp-remote"
+chmod 700 "$prefix/node_modules/.bin/mcp-remote"
+printf '{"name":"mcp-remote","version":"0.1.38"}\n' > "$prefix/node_modules/mcp-remote/package.json"
+printf 'process.exit(0);\n' > "$prefix/node_modules/mcp-remote/dist/proxy.js"
+SH;
+        file_put_contents($directory . '/npm', $npm);
+        chmod($directory . '/npm', 0700);
+
+        return $directory;
     }
 
     /**

@@ -37,7 +37,7 @@
   <text class="t" x="278" y="167">EnforceRuntimeRoleSurface (app vs artifact-host)</text>
   <text class="t" x="278" y="183">Reject/RequireArtifactHostRuntime · ThrottleMcpRequests</text>
   <text class="t" x="278" y="199">AddSecurityHeaders (nonce-CSP, HSTS, XFO)</text>
-  <text class="t" x="278" y="215">EnforceTwoFactorEnrollment · step-up confirmation ×2</text>
+  <text class="t" x="278" y="215">EnforceTwoFactorEnrollment · password + admin-2FA step-up</text>
   <rect class="box" x="598" y="128" width="166" height="104" stroke="#93c5fd"/>
   <text class="h" x="610" y="148">Controllers ×25</text>
   <text class="t" x="610" y="167">Page · Version · Lifecycle</text>

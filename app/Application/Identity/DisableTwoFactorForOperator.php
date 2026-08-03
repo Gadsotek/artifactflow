@@ -74,6 +74,7 @@ final readonly class DisableTwoFactorForOperator
                 'two_factor_recovery_codes' => null,
                 'two_factor_last_used_timestep' => null,
                 'two_factor_required' => false,
+                'auth_revision' => $lockedUser->auth_revision + 1,
             ])->save();
 
             $event = $this->events->record(

@@ -12,7 +12,7 @@ use App\Application\PageCatalog\CreatePageCommand;
 use App\Application\PageCatalog\UpdatePageContent;
 use App\Application\PageCatalog\UpdatePageContentCommand;
 use App\Domain\PageCatalog\PageType;
-use App\Http\Middleware\RequireRecentSystemAdminPasswordConfirmation;
+use App\Http\Middleware\RequireRecentSystemAdminTwoFactorConfirmation;
 use App\Models\DomainEvent;
 use App\Models\InstallationSettings;
 use App\Models\PageVersion;
@@ -55,7 +55,7 @@ final class RealtimeFoundationGatingTest extends TestCase
         $admin = $this->createSystemAdmin();
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', $this->validSettingsPayload([
                 'realtime_enabled' => '1',
             ]))
@@ -72,7 +72,7 @@ final class RealtimeFoundationGatingTest extends TestCase
         $admin = $this->createSystemAdmin();
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', $this->validSettingsPayload([
                 'realtime_enabled' => '1',
             ]))

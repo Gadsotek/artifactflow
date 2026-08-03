@@ -18,6 +18,12 @@ return [
     'mcp_per_minute' => (int) env('MCP_RATE_LIMIT_PER_MINUTE', 60),
     'mcp_writes_per_minute' => (int) env('MCP_WRITE_RATE_LIMIT_PER_MINUTE', 20),
     'admin_step_up_per_minute' => (int) env('ADMIN_STEP_UP_RATE_LIMIT_PER_MINUTE', 5),
+    'admin_two_factor_per_minute' => (int) env(
+        'ADMIN_TWO_FACTOR_RATE_LIMIT_PER_MINUTE',
+        env('ADMIN_STEP_UP_RATE_LIMIT_PER_MINUTE', 5),
+    ),
+    'admin_two_factor_account_per_hour' => (int) env('ADMIN_TWO_FACTOR_ACCOUNT_RATE_LIMIT_PER_HOUR', 30),
+    'admin_two_factor_ip_per_minute' => (int) env('ADMIN_TWO_FACTOR_IP_RATE_LIMIT_PER_MINUTE', 20),
     'login_ip_per_minute' => (int) env('LOGIN_IP_RATE_LIMIT_PER_MINUTE', 20),
     'login_account_per_hour' => (int) env('LOGIN_ACCOUNT_RATE_LIMIT_PER_HOUR', 20),
     'password_resets_per_hour' => (int) env('PASSWORD_RESETS_PER_HOUR', 5),

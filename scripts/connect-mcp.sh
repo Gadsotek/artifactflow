@@ -5,15 +5,15 @@ set -euo pipefail
 #
 # Point Claude Desktop, Claude Code, and Codex clients at an ArtifactFlow MCP
 # server. The script discovers standard and existing per-instance user configs,
-# asks which ones to update, and writes the connection through the `mcp-remote`
-# stdio<->HTTP bridge.
+# asks which ones to update, and writes each supported connection through the
+# same `mcp-remote` stdio<->HTTP bridge. Using the shared stdio form preserves
+# compatibility with Claude's JSON config and older Codex releases.
 #
 # Pure bash: needs only standard tools (awk/sed/grep; curl is optional, used for
-# a best-effort token check). No app, Docker, make, artisan, python, or jq
-# required to run it. The clients themselves launch the connection through
-# `npx mcp-remote`, so the script checks for Node.js (npx) up front and stops
-# with install guidance when it is missing; set MCP_SKIP_NODE_CHECK=1 to write
-# configs on a machine where Node.js will be installed later.
+# a best-effort token check). No app, Docker, make, artisan, python, or jq is
+# required. Selected targets also require Node.js and npm: the script installs
+# the exact reviewed mcp-remote dependency graph from the committed integrity
+# lock, then configures the client to run its absolute entrypoint with Node.js.
 #
 # Mint the af_mcp_ token yourself in the app (Settings > MCP tokens). The token
 # is never printed; it is written only into the client config files (chmod 600),
@@ -28,6 +28,14 @@ set -euo pipefail
 SERVER_NAME="artifactflow"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+MCP_REMOTE_VERSION="0.1.38"
+MCP_REMOTE_MIN_NODE_VERSION="20.18.1"
+MCP_REMOTE_LOCK_SHA256="994897fb2252976d5b29427609224b4453f3ca60ef75c3aa0ab2fc6f6c0dd9e2"
+BRIDGE_SOURCE_DIR="$SCRIPT_DIR/mcp-remote-bridge"
+BRIDGE_ROOT=""
+BRIDGE_HOME=""
+BRIDGE_NODE=""
+BRIDGE_ENTRYPOINT=""
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 info() { printf '%s\n' "$1"; }
@@ -44,33 +52,6 @@ usage() {
 case "${1:-}" in
     -h|--help) usage; exit 0 ;;
 esac
-
-# --- Node.js runtime check ---
-# The script itself runs without Node, but every config it writes launches the
-# `npx mcp-remote` bridge, so a machine without Node.js would receive a
-# connection that can never start. Refuse early, before any prompt, token
-# read, or config write. MCP_SKIP_NODE_CHECK=1 opts into config-only
-# provisioning for machines where Node.js arrives later.
-if ! command -v npx >/dev/null 2>&1; then
-    if [ "${MCP_SKIP_NODE_CHECK:-}" = "1" ]; then
-        warn "'npx' not found; writing configs anyway (MCP_SKIP_NODE_CHECK=1). Install Node.js before using the connection."
-    else
-        {
-            printf 'error: Node.js (npx) was not found on this computer.\n'
-            printf '\n'
-            printf 'The Claude and Codex apps start this MCP connection through a small\n'
-            printf 'bridge program (mcp-remote) that needs Node.js. The config files this\n'
-            printf 'script writes would not work until Node.js is installed.\n'
-            printf '\n'
-            printf '  1. Install Node.js LTS from https://nodejs.org\n'
-            printf '  2. Re-run this script.\n'
-            printf '\n'
-            printf 'To write the config files anyway and install Node.js later, re-run\n'
-            printf 'with MCP_SKIP_NODE_CHECK=1.\n'
-        } >&2
-        exit 1
-    fi
-fi
 
 # --- Gather the two inputs: URL and token ---
 URL="${MCP_URL:-}"
@@ -93,9 +74,8 @@ case "$URL" in
     [Hh][Tt][Tt][Pp][Ss]://*) URL="https://${URL#*://}" ;;
     [Hh][Tt][Tt][Pp]://*) URL="http://${URL#*://}" ;;
 esac
-# mcp-remote needs a full URL with an explicit scheme; a scheme-less value
-# (e.g. "localhost:18080") is rejected before the MCP handshake. Default to
-# http for loopback hosts (local non-TLS dev) and https for everything else.
+# MCP clients need a full URL with an explicit scheme. Default to http for
+# loopback hosts (local non-TLS dev) and https for everything else.
 case "$URL" in
     http://*|https://*) ;;
     localhost|localhost:*|127.0.0.1|127.0.0.1:*|\[::1\]|\[::1\]:*) URL="http://$URL" ;;
@@ -298,6 +278,132 @@ discover_targets
 [ "${#TARGET_PATHS[@]}" -gt 0 ] || die "no supported Claude or Codex user config targets found"
 select_targets
 
+bridge_target_selected() {
+    local index=0
+    while [ "$index" -lt "${#TARGET_PATHS[@]}" ]; do
+        if [ "${TARGET_SELECTED[$index]}" = "1" ]; then
+            case "${TARGET_KINDS[$index]}" in
+                claude-desktop|claude-code|codex|codex-profile) return 0 ;;
+            esac
+        fi
+        index=$((index + 1))
+    done
+
+    return 1
+}
+
+node_version_is_supported() {
+    local version major minor patch minimum_major minimum_minor minimum_patch
+    version="$("$BRIDGE_NODE" --version 2>/dev/null)" || return 1
+
+    if [[ ! "$version" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+        return 1
+    fi
+
+    major="${BASH_REMATCH[1]}"
+    minor="${BASH_REMATCH[2]}"
+    patch="${BASH_REMATCH[3]}"
+
+    if [[ ! "$MCP_REMOTE_MIN_NODE_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+        return 2
+    fi
+
+    minimum_major="${BASH_REMATCH[1]}"
+    minimum_minor="${BASH_REMATCH[2]}"
+    minimum_patch="${BASH_REMATCH[3]}"
+
+    [ "$major" -gt "$minimum_major" ] \
+        || { [ "$major" -eq "$minimum_major" ] && [ "$minor" -gt "$minimum_minor" ]; } \
+        || { [ "$major" -eq "$minimum_major" ] \
+            && [ "$minor" -eq "$minimum_minor" ] \
+            && [ "$patch" -ge "$minimum_patch" ]; }
+}
+
+bridge_install_is_current() {
+    local installed_version
+
+    [ -f "$BRIDGE_HOME/package.json" ] \
+        && [ -f "$BRIDGE_HOME/package-lock.json" ] \
+        && [ -f "$BRIDGE_HOME/node_modules/mcp-remote/package.json" ] \
+        && [ -f "$BRIDGE_ENTRYPOINT" ] \
+        && cmp -s "$BRIDGE_SOURCE_DIR/package.json" "$BRIDGE_HOME/package.json" \
+        && cmp -s "$BRIDGE_SOURCE_DIR/package-lock.json" "$BRIDGE_HOME/package-lock.json" \
+        || return 1
+
+    installed_version="$(
+        sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+            "$BRIDGE_HOME/node_modules/mcp-remote/package.json" \
+            | head -n1
+    )"
+
+    [ "$installed_version" = "$MCP_REMOTE_VERSION" ]
+}
+
+install_bridge() {
+    local actual_lock_sha256 node_version_status
+
+    if ! command -v node >/dev/null 2>&1 \
+        || ! command -v npm >/dev/null 2>&1; then
+        die "selected MCP targets require Node.js $MCP_REMOTE_MIN_NODE_VERSION or newer (node and npm); install the current Node.js LTS from https://nodejs.org and re-run this script."
+    fi
+    BRIDGE_NODE="$(command -v node)"
+    case "$BRIDGE_NODE" in
+        /*) ;;
+        *) die "could not resolve Node.js to an absolute executable path" ;;
+    esac
+    if node_version_is_supported; then
+        :
+    else
+        node_version_status=$?
+        if [ "$node_version_status" -eq 2 ]; then
+            die "the connector declares an invalid minimum Node.js version: $MCP_REMOTE_MIN_NODE_VERSION"
+        fi
+        die "selected MCP targets require Node.js $MCP_REMOTE_MIN_NODE_VERSION or newer; upgrade Node.js from https://nodejs.org and re-run this script."
+    fi
+    [ -f "$BRIDGE_SOURCE_DIR/package.json" ] \
+        && [ -f "$BRIDGE_SOURCE_DIR/package-lock.json" ] \
+        || die "the locked MCP bridge manifest is missing from $BRIDGE_SOURCE_DIR"
+    actual_lock_sha256="$(
+        env -u MCP_TOKEN "$BRIDGE_NODE" -e \
+            'const { createHash } = require("node:crypto"); const { readFileSync } = require("node:fs"); process.stdout.write(createHash("sha256").update(readFileSync(process.argv[1])).digest("hex"));' \
+            "$BRIDGE_SOURCE_DIR/package-lock.json"
+    )" || die "could not fingerprint the locked MCP bridge manifest"
+    [ "$actual_lock_sha256" = "$MCP_REMOTE_LOCK_SHA256" ] \
+        || die "the MCP bridge lock fingerprint changed; review the lock and update MCP_REMOTE_LOCK_SHA256 before installing it"
+
+    if [ -n "${MCP_BRIDGE_HOME:-}" ]; then
+        BRIDGE_ROOT="$MCP_BRIDGE_HOME"
+    else
+        case "$(uname -s)" in
+            Darwin) BRIDGE_ROOT="$HOME/Library/Application Support/ArtifactFlow/mcp-remote" ;;
+            *) BRIDGE_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/artifactflow/mcp-remote" ;;
+        esac
+    fi
+
+    [ -L "$BRIDGE_ROOT" ] && die "refusing to install the MCP bridge through symlink $BRIDGE_ROOT"
+    mkdir -p "$BRIDGE_ROOT"
+    BRIDGE_HOME="$BRIDGE_ROOT/$MCP_REMOTE_VERSION-$MCP_REMOTE_LOCK_SHA256"
+    BRIDGE_ENTRYPOINT="$BRIDGE_HOME/node_modules/mcp-remote/dist/proxy.js"
+    [ -L "$BRIDGE_HOME" ] && die "refusing to install the MCP bridge through symlink $BRIDGE_HOME"
+    if bridge_install_is_current; then
+        return 0
+    fi
+
+    info "Installing integrity-locked mcp-remote@$MCP_REMOTE_VERSION for selected MCP targets..."
+    mkdir -p "$BRIDGE_HOME"
+    cp "$BRIDGE_SOURCE_DIR/package.json" "$BRIDGE_HOME/package.json"
+    cp "$BRIDGE_SOURCE_DIR/package-lock.json" "$BRIDGE_HOME/package-lock.json"
+    env -u MCP_TOKEN npm ci --engine-strict --ignore-scripts --omit=dev --no-audit --no-fund --prefix "$BRIDGE_HOME"
+    bridge_install_is_current \
+        || die "npm completed without producing the expected locked mcp-remote@$MCP_REMOTE_VERSION bridge"
+}
+
+# Resolve and install the bridge before reading the bearer token. npm therefore
+# never receives the secret in its environment, even during a first install.
+if bridge_target_selected; then
+    install_bridge
+fi
+
 TOKEN="${MCP_TOKEN:-}"
 if [ -z "$TOKEN" ]; then
     [ -t 0 ] || die "no token provided (set MCP_TOKEN or run interactively)"
@@ -338,6 +444,8 @@ fi
 json_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 ESC_ENDPOINT="$(json_escape "$ENDPOINT")"
 ESC_BEARER="$(json_escape "Bearer $TOKEN")"
+ESC_BRIDGE_NODE="$(json_escape "$BRIDGE_NODE")"
+ESC_BRIDGE_ENTRYPOINT="$(json_escape "$BRIDGE_ENTRYPOINT")"
 
 backup_if_present() {
     [ -f "$1" ] || return 0
@@ -355,10 +463,9 @@ claude_entry() {
         "--allow-http",'
     cat <<JSON
 {
-      "command": "npx",
+      "command": "$ESC_BRIDGE_NODE",
       "args": [
-        "-y",
-        "mcp-remote",
+        "$ESC_BRIDGE_ENTRYPOINT",
         "$ESC_ENDPOINT",$allow_line
         "--header",
         "Authorization:\${AUTH_HEADER}"
@@ -538,8 +645,9 @@ configure_codex_config() {
     local end="# <<< $SERVER_NAME mcp (managed by scripts/connect-mcp.sh) <<<"
     local block tmp allow_arg=""
     [ "$ALLOW_HTTP" = "1" ] && allow_arg=', "--allow-http"'
-    block="$(printf '%s\n[mcp_servers.%s]\ncommand = "npx"\nargs = ["-y", "mcp-remote", "%s"%s, "--header", "Authorization:${AUTH_HEADER}"]\nenv = { AUTH_HEADER = "%s" }\n%s' \
-        "$begin" "$SERVER_NAME" "$ESC_ENDPOINT" "$allow_arg" "$ESC_BEARER" "$end")"
+    block="$(printf '%s\n[mcp_servers.%s]\ncommand = "%s"\nargs = ["%s", "%s"%s, "--header", "Authorization:${AUTH_HEADER}"]\nenv = { AUTH_HEADER = "%s" }\n%s' \
+        "$begin" "$SERVER_NAME" "$ESC_BRIDGE_NODE" "$ESC_BRIDGE_ENTRYPOINT" \
+        "$ESC_ENDPOINT" "$allow_arg" "$ESC_BEARER" "$end")"
 
     [ -L "$cfg" ] && warn "$label: refusing to replace symlink $cfg" && return 0
     mkdir -p "$(dirname "$cfg")"

@@ -7,7 +7,7 @@ namespace Tests\Feature\Auth;
 use App\Application\Administration\InstallationLimitSettings;
 use App\Application\Identity\CreatePersonalWorkspaceForUser;
 use App\Http\Middleware\RequireRecentPasswordConfirmation;
-use App\Http\Middleware\RequireRecentSystemAdminPasswordConfirmation;
+use App\Http\Middleware\RequireRecentSystemAdminTwoFactorConfirmation;
 use App\Models\InstallationSettings;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -136,7 +136,7 @@ final class TwoFactorEnforcementTest extends TestCase
             ->assertRedirect('/settings/two-factor');
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', $this->settingsPayload(twoFactorRequiredForAllUsers: true))
             ->assertRedirect('/admin/settings');
 

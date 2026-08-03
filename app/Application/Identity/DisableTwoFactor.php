@@ -10,6 +10,7 @@ use App\Application\Mcp\McpAccessTokenRevoker;
 use App\Domain\Events\DomainEventType;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 final readonly class DisableTwoFactor
 {
@@ -20,13 +21,23 @@ final readonly class DisableTwoFactor
     ) {
     }
 
-    public function handle(User $actor): void
+    /**
+     * @throws ValidationException
+     */
+    public function handle(User $actor, int $expectedAuthRevision): User
     {
-        DB::transaction(function () use ($actor): void {
+        return DB::transaction(function () use ($actor, $expectedAuthRevision): User {
             $user = User::query()
                 ->where('uid', $actor->uid)
                 ->lockForUpdate()
                 ->sole();
+
+            if ($user->auth_revision !== $expectedAuthRevision) {
+                throw ValidationException::withMessages([
+                    'code' => 'Your authentication state changed. Sign in again before disabling two-factor authentication.',
+                ]);
+            }
+
             $trustedDevicesRevoked = DB::table('trusted_devices')->where('user_uid', $user->uid)->delete();
             $mcpTokensRevoked = $this->mcpTokens->revokeActiveForPrincipal(
                 principal: $user,
@@ -35,12 +46,14 @@ final readonly class DisableTwoFactor
                 reason: 'two_factor_disabled',
             );
 
+            $committedAuthRevision = $expectedAuthRevision + 1;
             $user->forceFill([
                 'two_factor_secret' => null,
                 'two_factor_secret_created_at' => null,
                 'two_factor_confirmed_at' => null,
                 'two_factor_recovery_codes' => null,
                 'two_factor_last_used_timestep' => null,
+                'auth_revision' => $committedAuthRevision,
             ])->save();
 
             $event = $this->events->record(
@@ -66,6 +79,8 @@ final readonly class DisableTwoFactor
                     'mcp_tokens_revoked' => $mcpTokensRevoked,
                 ],
             );
+
+            return $user;
         });
     }
 }

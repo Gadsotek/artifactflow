@@ -142,9 +142,9 @@
   <rect class="band" x="28" y="730" width="636" height="300" fill="#eef2ff" stroke="#c7d2fe"/>
   <text class="bl" x="44" y="754" fill="#4f46e5">D · Privileged actions: admin step-up (“sudo”)</text>
   <rect class="step" x="44" y="770" width="576" height="60" stroke="#a5b4fc"/>
-  <text class="sh" x="56" y="790">1 · /admin/* gated by RequireRecentSystemAdminPasswordConfirmation</text>
-  <text class="st" x="56" y="808">non-system-admin → 403 (fail-closed) · stale confirmation → re-prompt password</text>
-  <text class="st" x="56" y="824">throttle:artifactflow-admin-step-up · SafeIntendedRedirect (no open-redirect)</text>
+  <text class="sh" x="56" y="790">1 · /admin/* gated by RequireRecentSystemAdminTwoFactorConfirmation</text>
+  <text class="st" x="56" y="808">non-system-admin → 403 (fail-closed) · stale confirmation → re-prompt 2FA</text>
+  <text class="st" x="56" y="824">throttle:artifactflow-admin-two-factor · SafeIntendedRedirect (no open-redirect)</text>
   <rect class="step" x="44" y="842" width="576" height="58" stroke="#a5b4fc"/>
   <text class="sh" x="56" y="862">2 · InstallationSettingsController → UpdateInstallationLimits</text>
   <text class="st" x="56" y="880">authorize ×4 (mw · request · controller · handler) · forceFill (no mass-assign)</text>

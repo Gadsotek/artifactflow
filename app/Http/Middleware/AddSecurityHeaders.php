@@ -52,7 +52,7 @@ final class AddSecurityHeaders
 
     private function applyResponse(Request $request, Response $response, bool $includeDatabaseConfiguration): Response
     {
-        if ($this->isArtifactHostRuntime()) {
+        if ($this->usesArtifactHostPolicy($request)) {
             $isArtifactPreview = $request->is(
                 'artifact-previews/*',
                 'external-artifact-previews/*',
@@ -353,5 +353,17 @@ final class AddSecurityHeaders
     private function isArtifactHostRuntime(): bool
     {
         return $this->stringConfig('app.runtime_role') === 'artifact-host';
+    }
+
+    private function usesArtifactHostPolicy(Request $request): bool
+    {
+        if ($this->isArtifactHostRuntime()) {
+            return true;
+        }
+
+        $artifactHost = OriginNormalizer::tryHost($this->stringConfig('app.artifact_url'));
+        $requestHost = OriginNormalizer::tryHost($request->getHost());
+
+        return $artifactHost !== null && $requestHost === $artifactHost;
     }
 }

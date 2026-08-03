@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Auth;
 
+use App\Application\Identity\ConfirmTwoFactorEnrollment;
 use App\Application\Identity\CreatePersonalWorkspaceForUser;
+use App\Application\Identity\DisableTwoFactor;
+use App\Application\Identity\RegenerateTwoFactorRecoveryCodes;
 use App\Application\Identity\ResetUserPassword;
+use App\Application\Identity\StartTwoFactorEnrollment;
 use App\Application\Identity\TrustedDeviceManager;
 use App\Application\Identity\TwoFactorPendingChallenge;
 use App\Application\Mcp\McpAccessTokenIssuer;
 use App\Http\Middleware\RequireRecentPasswordConfirmation;
+use App\Http\Middleware\RequireRecentSystemAdminTwoFactorConfirmation;
+use App\Http\Support\AuthenticationSessionRevision;
 use App\Models\AuditEntry;
 use App\Models\DomainEvent;
 use App\Models\McpAccessToken;
@@ -17,12 +23,15 @@ use App\Models\TrustedDevice;
 use App\Models\User;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Cookie\CookieValuePrefix;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use PragmaRX\Google2FA\Google2FA;
 use Tests\TestCase;
 
@@ -36,7 +45,6 @@ final class TwoFactorAuthenticationTest extends TestCase
     {
         config([
             'auth.password_timeout' => 60,
-            'auth.admin_password_timeout' => 900,
             'auth.two_factor_enrollment_password_timeout' => 60,
         ]);
 
@@ -245,6 +253,128 @@ final class TwoFactorAuthenticationTest extends TestCase
         ));
     }
 
+    public function test_system_admin_enrollment_counts_as_a_fresh_admin_second_factor(): void
+    {
+        $admin = $this->createUser('Enrollment Admin', 'enrollment-admin@example.test');
+        $admin->forceFill(['is_system_admin' => true])->save();
+        $originalAuthRevision = $admin->auth_revision;
+
+        $this->actingAs($admin)
+            ->withSession([RequireRecentPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->post('/settings/two-factor/enroll')
+            ->assertRedirect('/settings/two-factor');
+
+        $secret = (string) $admin->refresh()->two_factor_secret;
+        $preEnrollmentSessionId = $this->app['session']->getId();
+
+        $this->post('/settings/two-factor/confirm', [
+            'code' => $this->currentOtp($secret),
+        ])
+            ->assertRedirect('/settings/two-factor')
+            ->assertSessionHas(RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY);
+
+        $admin->refresh();
+        $this->assertSame($originalAuthRevision + 1, $admin->auth_revision);
+        $this->assertSame($admin->auth_revision, session(AuthenticationSessionRevision::SESSION_KEY));
+        $this->assertNotSame($preEnrollmentSessionId, $this->app['session']->getId());
+
+        $this->actingAs($admin)
+            ->get('/admin/users')
+            ->assertOk();
+    }
+
+    public function test_start_enrollment_cannot_write_pending_state_after_a_password_reset_wins(): void
+    {
+        $user = $this->createUser('Stale Enrollment Start User', 'stale-enrollment-start@example.test');
+        $expectedAuthRevision = $user->auth_revision;
+
+        app(ResetUserPassword::class)->handle($user, 'new secure password');
+
+        try {
+            app(StartTwoFactorEnrollment::class)->handle($user, $expectedAuthRevision);
+            $this->fail('A stale request must not start two-factor enrollment.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('code', $exception->errors());
+        }
+
+        $user->refresh();
+        $this->assertNull($user->two_factor_secret);
+        $this->assertSame($expectedAuthRevision + 1, $user->auth_revision);
+    }
+
+    public function test_enrollment_cannot_adopt_a_password_reset_revision_that_won_after_request_authentication(): void
+    {
+        $user = $this->createUser('Stale Enrollment User', 'stale-enrollment@example.test');
+        $expectedAuthRevision = $user->auth_revision;
+        $user->forceFill([
+            'two_factor_secret' => self::SECRET,
+            'two_factor_secret_created_at' => now(),
+        ])->save();
+        $passwordConfirmedAt = now()->getTimestamp();
+
+        app(ResetUserPassword::class)->handle($user, 'new secure password');
+
+        try {
+            app(ConfirmTwoFactorEnrollment::class)->handle(
+                $user,
+                $this->currentOtp(self::SECRET),
+                $passwordConfirmedAt,
+                $expectedAuthRevision,
+            );
+            $this->fail('A stale enrollment request must not adopt the password-reset revision.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('code', $exception->errors());
+        }
+
+        $user->refresh();
+        $this->assertFalse($user->hasEnabledTwoFactor());
+        $this->assertSame($expectedAuthRevision + 1, $user->auth_revision);
+    }
+
+    public function test_enrollment_binds_only_its_committed_revision_when_a_password_reset_follows_the_update(): void
+    {
+        $user = $this->createUser('Enrollment Bind Race User', 'enrollment-bind-race@example.test');
+        $originalAuthRevision = $user->auth_revision;
+        $user->forceFill([
+            'two_factor_secret' => self::SECRET,
+            'two_factor_secret_created_at' => now(),
+        ])->save();
+        $resetTriggered = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$resetTriggered, $user): void {
+            $sql = strtolower($query->sql);
+
+            if (
+                $resetTriggered
+                || !str_starts_with($sql, 'update "users"')
+                || !str_contains($sql, '"two_factor_confirmed_at"')
+                || !str_contains($sql, '"auth_revision"')
+            ) {
+                return;
+            }
+
+            $resetTriggered = true;
+            app(ResetUserPassword::class)->handle($user, 'password reset after enrollment update');
+        });
+
+        $this->actingAs($user)
+            ->withSession([RequireRecentPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->post('/settings/two-factor/confirm', [
+                'code' => $this->currentOtp(self::SECRET),
+            ])
+            ->assertRedirect('/settings/two-factor');
+
+        $this->assertTrue($resetTriggered);
+        $this->assertSame($originalAuthRevision + 2, $user->refresh()->auth_revision);
+        $this->assertSame(
+            $originalAuthRevision + 1,
+            session(AuthenticationSessionRevision::SESSION_KEY),
+        );
+
+        Auth::forgetGuards();
+        $this->get('/dashboard')->assertRedirect('/login');
+    }
+
     public function test_expired_enrollment_requires_password_confirmation_and_a_fresh_secret(): void
     {
         $user = $this->createUser('Confirm Step Up User', 'confirm-step-up@example.test');
@@ -356,6 +486,7 @@ final class TwoFactorAuthenticationTest extends TestCase
 
         // Regenerating recovery codes now also requires a live second factor;
         // authorize it with one of the enrolled recovery codes.
+        $preRecoveryRotationSessionId = $this->app['session']->getId();
         $this->followingRedirects()
             ->post('/settings/two-factor/recovery-codes', ['recovery_code' => 'ABCD2-EFGH3'])
             ->assertOk()
@@ -364,6 +495,8 @@ final class TwoFactorAuthenticationTest extends TestCase
         $recoveryCodeHashes = $user->refresh()->two_factor_recovery_codes;
         $this->assertIsArray($recoveryCodeHashes);
         $this->assertCount(10, $recoveryCodeHashes);
+        $this->assertSame($user->auth_revision, session(AuthenticationSessionRevision::SESSION_KEY));
+        $this->assertNotSame($preRecoveryRotationSessionId, $this->app['session']->getId());
 
         // Disabling requires a live second factor too; a current authenticator
         // code proves possession (the recovery code above did not advance the
@@ -387,10 +520,14 @@ final class TwoFactorAuthenticationTest extends TestCase
     {
         $user = $this->createUser('Second Factor User', 'second-factor-required@example.test');
         $this->enableTwoFactor($user);
+        $originalAuthRevision = $user->auth_revision;
 
         // A recent password confirmation is present but is deliberately not
         // enough on its own: the request carries no live second factor.
-        $confirmedSession = [RequireRecentPasswordConfirmation::SESSION_KEY => now()->getTimestamp()];
+        $confirmedSession = [
+            RequireRecentPasswordConfirmation::SESSION_KEY => now()->getTimestamp(),
+            RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp(),
+        ];
 
         $this->actingAs($user)
             ->withSession($confirmedSession)
@@ -411,12 +548,246 @@ final class TwoFactorAuthenticationTest extends TestCase
             ->assertSessionHasErrors('code');
 
         // A valid authenticator code finally authorizes the disable.
+        $preDisableSessionId = $this->app['session']->getId();
         $this->actingAs($user)
             ->withSession($confirmedSession)
             ->post('/settings/two-factor/disable', ['code' => $this->currentOtp(self::SECRET)])
             ->assertRedirect('/settings/two-factor')
-            ->assertSessionHas('status', 'Two-factor authentication disabled.');
-        $this->assertFalse($user->refresh()->hasEnabledTwoFactor());
+            ->assertSessionHas('status', 'Two-factor authentication disabled.')
+            ->assertSessionMissing(RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY);
+        $user->refresh();
+        $this->assertFalse($user->hasEnabledTwoFactor());
+        $this->assertSame($originalAuthRevision + 1, $user->auth_revision);
+        $this->assertSame($user->auth_revision, session(AuthenticationSessionRevision::SESSION_KEY));
+        $this->assertNotSame($preDisableSessionId, $this->app['session']->getId());
+
+        $this->actingAs($user)
+            ->withSession([
+                AuthenticationSessionRevision::SESSION_KEY => $originalAuthRevision,
+                RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp(),
+            ])
+            ->get('/dashboard')
+            ->assertRedirect('/login');
+    }
+
+    public function test_disable_cannot_mutate_two_factor_state_after_a_password_reset_wins(): void
+    {
+        $user = $this->createUser('Stale Disable User', 'stale-disable@example.test');
+        $this->enableTwoFactor($user);
+        $expectedAuthRevision = $user->auth_revision;
+
+        app(ResetUserPassword::class)->handle($user, 'new secure password');
+
+        try {
+            app(DisableTwoFactor::class)->handle($user, $expectedAuthRevision);
+            $this->fail('A stale request must not disable two-factor authentication.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('code', $exception->errors());
+        }
+
+        $user->refresh();
+        $this->assertTrue($user->hasEnabledTwoFactor());
+        $this->assertSame($expectedAuthRevision + 1, $user->auth_revision);
+    }
+
+    public function test_disable_binds_only_its_committed_revision_when_a_password_reset_follows_the_update(): void
+    {
+        $user = $this->createUser('Disable Bind Race User', 'disable-bind-race@example.test');
+        $this->enableTwoFactor($user);
+        $originalAuthRevision = $user->auth_revision;
+        $resetTriggered = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$resetTriggered, $user): void {
+            $sql = strtolower($query->sql);
+
+            if (
+                $resetTriggered
+                || !str_starts_with($sql, 'update "users"')
+                || !str_contains($sql, '"two_factor_secret"')
+                || !str_contains($sql, '"auth_revision"')
+            ) {
+                return;
+            }
+
+            $resetTriggered = true;
+            app(ResetUserPassword::class)->handle($user, 'password reset after disable update');
+        });
+
+        $this->actingAs($user)
+            ->withSession([RequireRecentPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->post('/settings/two-factor/disable', ['code' => $this->currentOtp(self::SECRET)])
+            ->assertRedirect('/settings/two-factor');
+
+        $this->assertTrue($resetTriggered);
+        $this->assertSame($originalAuthRevision + 2, $user->refresh()->auth_revision);
+        $this->assertSame(
+            $originalAuthRevision + 1,
+            session(AuthenticationSessionRevision::SESSION_KEY),
+        );
+
+        Auth::forgetGuards();
+        $this->get('/dashboard')->assertRedirect('/login');
+    }
+
+    public function test_password_reset_between_totp_proof_and_disable_blocks_the_state_change(): void
+    {
+        $user = $this->createUser('Disable Proof Race User', 'disable-proof-race@example.test');
+        $this->enableTwoFactor($user);
+        $resetTriggered = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$resetTriggered, $user): void {
+            $sql = strtolower($query->sql);
+
+            if (
+                $resetTriggered
+                || !str_starts_with($sql, 'update "users"')
+                || !str_contains($sql, '"two_factor_last_used_timestep"')
+            ) {
+                return;
+            }
+
+            $resetTriggered = true;
+            app(ResetUserPassword::class)->handle($user, 'password reset after factor proof');
+        });
+
+        $this->actingAs($user)
+            ->withSession([RequireRecentPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->post('/settings/two-factor/disable', ['code' => $this->currentOtp(self::SECRET)])
+            ->assertSessionHasErrors('code');
+
+        $this->assertTrue($resetTriggered);
+        $this->assertTrue($user->refresh()->hasEnabledTwoFactor());
+        $this->assertSame(
+            0,
+            DomainEvent::query()->where('event_type', 'user.two_factor.disabled')->count(),
+        );
+    }
+
+    public function test_recovery_code_rotation_cannot_mutate_state_after_a_password_reset_wins(): void
+    {
+        $user = $this->createUser('Stale Recovery User', 'stale-recovery@example.test');
+        $this->enableTwoFactor($user);
+        $expectedAuthRevision = $user->auth_revision;
+        $originalRecoveryCodes = $user->two_factor_recovery_codes;
+
+        app(ResetUserPassword::class)->handle($user, 'new secure password');
+
+        try {
+            app(RegenerateTwoFactorRecoveryCodes::class)->handle($user, $expectedAuthRevision);
+            $this->fail('A stale request must not rotate two-factor recovery codes.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('code', $exception->errors());
+        }
+
+        $user->refresh();
+        $this->assertSame($originalRecoveryCodes, $user->two_factor_recovery_codes);
+        $this->assertSame($expectedAuthRevision + 1, $user->auth_revision);
+    }
+
+    public function test_password_reset_between_totp_proof_and_recovery_rotation_blocks_the_state_change(): void
+    {
+        $user = $this->createUser('Recovery Proof Race User', 'recovery-proof-race@example.test');
+        $this->enableTwoFactor($user);
+        $originalRecoveryCodes = $user->two_factor_recovery_codes;
+        $resetTriggered = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$resetTriggered, $user): void {
+            $sql = strtolower($query->sql);
+
+            if (
+                $resetTriggered
+                || !str_starts_with($sql, 'update "users"')
+                || !str_contains($sql, '"two_factor_last_used_timestep"')
+            ) {
+                return;
+            }
+
+            $resetTriggered = true;
+            app(ResetUserPassword::class)->handle($user, 'password reset before recovery rotation');
+        });
+
+        $this->actingAs($user)
+            ->withSession([RequireRecentPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->post('/settings/two-factor/recovery-codes', ['code' => $this->currentOtp(self::SECRET)])
+            ->assertSessionHasErrors('code');
+
+        $this->assertTrue($resetTriggered);
+        $this->assertSame($originalRecoveryCodes, $user->refresh()->two_factor_recovery_codes);
+        $this->assertSame(
+            0,
+            DomainEvent::query()->where('event_type', 'user.two_factor.recovery_codes_regenerated')->count(),
+        );
+    }
+
+    public function test_recovery_rotation_binds_only_its_committed_revision_when_a_password_reset_follows_the_update(): void
+    {
+        $user = $this->createUser('Recovery Bind Race User', 'recovery-bind-race@example.test');
+        $this->enableTwoFactor($user);
+        $originalAuthRevision = $user->auth_revision;
+        $resetTriggered = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$resetTriggered, $user): void {
+            $sql = strtolower($query->sql);
+
+            if (
+                $resetTriggered
+                || !str_starts_with($sql, 'update "users"')
+                || !str_contains($sql, '"two_factor_recovery_codes"')
+                || !str_contains($sql, '"auth_revision"')
+            ) {
+                return;
+            }
+
+            $resetTriggered = true;
+            app(ResetUserPassword::class)->handle($user, 'password reset after recovery update');
+        });
+
+        $this->actingAs($user)
+            ->withSession([RequireRecentPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->post('/settings/two-factor/recovery-codes', ['code' => $this->currentOtp(self::SECRET)])
+            ->assertRedirect('/settings/two-factor');
+
+        $this->assertTrue($resetTriggered);
+        $this->assertSame($originalAuthRevision + 2, $user->refresh()->auth_revision);
+        $this->assertSame(
+            $originalAuthRevision + 1,
+            session(AuthenticationSessionRevision::SESSION_KEY),
+        );
+
+        Auth::forgetGuards();
+        $this->get('/dashboard')->assertRedirect('/login');
+    }
+
+    public function test_only_one_recovery_rotation_can_commit_after_concurrent_valid_proofs(): void
+    {
+        $user = $this->createUser('Concurrent Recovery User', 'concurrent-recovery@example.test');
+        $this->enableTwoFactor($user);
+        $expectedAuthRevision = $user->auth_revision;
+        $verifier = app(\App\Application\Identity\VerifyTwoFactorCode::class);
+
+        $this->assertTrue($verifier->consumeRecoveryCode($user, 'ABCD2-EFGH3', $expectedAuthRevision));
+        $this->assertTrue($verifier->consumeRecoveryCode($user, 'JKLM4-NPQR5', $expectedAuthRevision));
+
+        $firstRotation = app(RegenerateTwoFactorRecoveryCodes::class)->handle(
+            $user,
+            $expectedAuthRevision,
+        );
+
+        try {
+            app(RegenerateTwoFactorRecoveryCodes::class)->handle($user, $expectedAuthRevision);
+            $this->fail('Only the first recovery-code rotation from an authentication revision may commit.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('code', $exception->errors());
+        }
+
+        $storedHashes = $user->refresh()->two_factor_recovery_codes;
+        $this->assertIsArray($storedHashes);
+        $this->assertSame($expectedAuthRevision + 1, $user->auth_revision);
+        $this->assertSame($user->auth_revision, $firstRotation->authRevision);
+        $this->assertCount(count($firstRotation->recoveryCodes), $storedHashes);
+        foreach ($firstRotation->recoveryCodes as $index => $plainCode) {
+            $this->assertTrue(Hash::check($plainCode, $storedHashes[$index]));
+        }
     }
 
     public function test_two_factor_management_second_factor_attempts_have_a_dedicated_rate_limit(): void
@@ -448,6 +819,7 @@ final class TwoFactorAuthenticationTest extends TestCase
     {
         $user = $this->createUser('Device Management User', 'device-management@example.test');
         $this->enableTwoFactor($user);
+        $originalAuthRevision = $user->auth_revision;
         $firstDevice = $this->createTrustedDevice($user, 'first-device');
         $this->createTrustedDevice($user, 'second-device');
 
@@ -459,13 +831,18 @@ final class TwoFactorAuthenticationTest extends TestCase
 
         $this->assertSame(1, TrustedDevice::query()->where('user_uid', $user->uid)->count());
 
+        $preRevokeAllSessionId = $this->app['session']->getId();
         $this->actingAs($user)
             ->withSession([RequireRecentPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->delete('/settings/two-factor/trusted-devices')
             ->assertRedirect('/settings/two-factor')
             ->assertSessionHas('status', 'Trusted devices revoked.');
 
+        $user->refresh();
         $this->assertSame(0, TrustedDevice::query()->where('user_uid', $user->uid)->count());
+        $this->assertSame($originalAuthRevision + 1, $user->auth_revision);
+        $this->assertSame($user->auth_revision, session(AuthenticationSessionRevision::SESSION_KEY));
+        $this->assertNotSame($preRevokeAllSessionId, $this->app['session']->getId());
         $this->assertSame(
             1,
             DomainEvent::query()->where('event_type', 'user.two_factor.trusted_device_revoked')->count(),
@@ -473,6 +850,193 @@ final class TwoFactorAuthenticationTest extends TestCase
         $this->assertSame(
             1,
             DomainEvent::query()->where('event_type', 'user.two_factor.trusted_devices_revoked_all')->count(),
+        );
+
+        $this->get('/settings/two-factor')->assertOk();
+
+        $this->actingAs($user)
+            ->withSession([AuthenticationSessionRevision::SESSION_KEY => $originalAuthRevision])
+            ->get('/dashboard')
+            ->assertRedirect('/login');
+    }
+
+    public function test_single_trusted_device_revocation_locks_the_user_before_the_device(): void
+    {
+        $user = $this->createUser('Device Lock Order User', 'device-lock-order@example.test');
+        $this->enableTwoFactor($user);
+        $trustedDevice = $this->createTrustedDevice($user, 'locked-device');
+        $lockedTables = [];
+
+        DB::listen(static function (QueryExecuted $query) use (&$lockedTables): void {
+            $sql = strtolower($query->sql);
+            if (!str_contains($sql, 'for update')) {
+                return;
+            }
+
+            if (str_contains($sql, 'from "users"')) {
+                $lockedTables[] = 'users';
+            } elseif (str_contains($sql, 'from "trusted_devices"')) {
+                $lockedTables[] = 'trusted_devices';
+            }
+        });
+
+        app(TrustedDeviceManager::class)->revoke($user, $trustedDevice);
+
+        $this->assertSame(['users', 'trusted_devices'], $lockedTables);
+        $this->assertDatabaseMissing('trusted_devices', ['uid' => $trustedDevice->uid]);
+    }
+
+    public function test_revoke_all_after_totp_proof_prevents_stale_trusted_device_issuance(): void
+    {
+        $user = $this->createUser('Revoke All Race User', 'revoke-all-race@example.test');
+        $this->enableTwoFactor($user);
+        $this->createTrustedDevice($user, 'existing-device');
+        $expectedAuthRevision = $user->auth_revision;
+        $trustedDevicesRevoked = null;
+
+        Event::listen(Login::class, function (Login $event) use (
+            &$trustedDevicesRevoked,
+            $expectedAuthRevision,
+            $user,
+        ): void {
+            if ($trustedDevicesRevoked !== null || $event->user->getAuthIdentifier() !== $user->uid) {
+                return;
+            }
+
+            $revocation = app(TrustedDeviceManager::class)->revokeAll($user, $expectedAuthRevision);
+            $trustedDevicesRevoked = $revocation->trustedDevicesRevoked;
+        });
+
+        $this->post('/login', [
+            'email' => 'revoke-all-race@example.test',
+            'password' => 'correct horse battery staple',
+        ])->assertRedirect('/login/two-factor-challenge');
+
+        $response = $this->post('/login/two-factor-challenge', [
+            'code' => $this->currentOtp(self::SECRET),
+            'remember_device' => '1',
+        ])->assertRedirect('/dashboard');
+
+        $this->assertSame(1, $trustedDevicesRevoked);
+        $response->assertCookieMissing(TrustedDeviceManager::COOKIE_NAME);
+        $this->assertSame(0, TrustedDevice::query()->where('user_uid', $user->uid)->count());
+        $this->assertSame(
+            0,
+            DomainEvent::query()->where('event_type', 'user.two_factor.trusted_device_added')->count(),
+        );
+        $this->assertSame(
+            0,
+            AuditEntry::query()->where('action', 'user.two_factor.trusted_device_added')->count(),
+        );
+        $this->assertSame(
+            1,
+            DomainEvent::query()->where('event_type', 'user.two_factor.trusted_devices_revoked_all')->count(),
+        );
+    }
+
+    public function test_revoke_all_rejects_a_stale_authentication_revision_without_deleting_devices(): void
+    {
+        $user = $this->createUser('Stale Revoke All User', 'stale-revoke-all@example.test');
+        $this->enableTwoFactor($user);
+        $this->createTrustedDevice($user, 'surviving-device');
+        $expectedAuthRevision = $user->auth_revision;
+        $user->forceFill(['auth_revision' => $expectedAuthRevision + 1])->save();
+
+        try {
+            app(TrustedDeviceManager::class)->revokeAll($user, $expectedAuthRevision);
+            $this->fail('A stale request must not revoke trusted devices or adopt a newer authentication revision.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('trusted_devices', $exception->errors());
+        }
+
+        $this->assertSame($expectedAuthRevision + 1, $user->refresh()->auth_revision);
+        $this->assertSame(1, TrustedDevice::query()->where('user_uid', $user->uid)->count());
+        $this->assertSame(
+            0,
+            DomainEvent::query()->where('event_type', 'user.two_factor.trusted_devices_revoked_all')->count(),
+        );
+    }
+
+    public function test_revoke_all_binds_only_its_committed_revision_when_a_password_reset_follows(): void
+    {
+        $user = $this->createUser('Revoke All Bind Race User', 'revoke-all-bind-race@example.test');
+        $this->enableTwoFactor($user);
+        $this->createTrustedDevice($user, 'revoked-device');
+        $originalAuthRevision = $user->auth_revision;
+        $resetTriggered = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$resetTriggered, $user): void {
+            $sql = strtolower($query->sql);
+
+            if (
+                $resetTriggered
+                || !str_starts_with($sql, 'update "users"')
+                || !str_contains($sql, '"auth_revision"')
+            ) {
+                return;
+            }
+
+            $resetTriggered = true;
+            app(ResetUserPassword::class)->handle($user, 'password reset after revoke all update');
+        });
+
+        $this->actingAs($user)
+            ->withSession([RequireRecentPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->delete('/settings/two-factor/trusted-devices')
+            ->assertRedirect('/settings/two-factor');
+
+        $this->assertTrue($resetTriggered);
+        $this->assertSame($originalAuthRevision + 2, $user->refresh()->auth_revision);
+        $this->assertSame(
+            $originalAuthRevision + 1,
+            session(AuthenticationSessionRevision::SESSION_KEY),
+        );
+
+        Auth::forgetGuards();
+        $this->get('/dashboard')->assertRedirect('/login');
+    }
+
+    public function test_recovery_rotation_after_totp_proof_prevents_stale_trusted_device_issuance(): void
+    {
+        $user = $this->createUser('Trusted Device Race User', 'trusted-device-race@example.test');
+        $this->enableTwoFactor($user);
+        $expectedAuthRevision = $user->auth_revision;
+        $rotationTriggered = false;
+
+        Event::listen(Login::class, function (Login $event) use (
+            &$rotationTriggered,
+            $expectedAuthRevision,
+            $user,
+        ): void {
+            if ($rotationTriggered || $event->user->getAuthIdentifier() !== $user->uid) {
+                return;
+            }
+
+            $rotationTriggered = true;
+            app(RegenerateTwoFactorRecoveryCodes::class)->handle($user, $expectedAuthRevision);
+        });
+
+        $this->post('/login', [
+            'email' => 'trusted-device-race@example.test',
+            'password' => 'correct horse battery staple',
+        ])->assertRedirect('/login/two-factor-challenge');
+
+        $response = $this->post('/login/two-factor-challenge', [
+            'code' => $this->currentOtp(self::SECRET),
+            'remember_device' => '1',
+        ])->assertRedirect('/dashboard');
+
+        $this->assertTrue($rotationTriggered);
+        $this->assertSame($expectedAuthRevision + 1, $user->refresh()->auth_revision);
+        $response->assertCookieMissing(TrustedDeviceManager::COOKIE_NAME);
+        $this->assertSame(0, TrustedDevice::query()->where('user_uid', $user->uid)->count());
+        $this->assertSame(
+            0,
+            DomainEvent::query()->where('event_type', 'user.two_factor.trusted_device_added')->count(),
+        );
+        $this->assertSame(
+            0,
+            AuditEntry::query()->where('action', 'user.two_factor.trusted_device_added')->count(),
         );
     }
 

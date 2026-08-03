@@ -851,6 +851,10 @@ final class PageCreationHttpTest extends TestCase
             ->assertSee('can only be viewed inside ArtifactFlow')
             ->assertSee('http://localhost:18080/pages/' . $page->uid, false);
         $this->assertSame('Sec-Fetch-Dest', $topLevel->headers->get('Vary'));
+        $this->assertSame('', $this->cspDirective(
+            (string) $topLevel->headers->get('Content-Security-Policy'),
+            'sandbox',
+        ));
 
         // Any other explicit non-iframe destination is refused too.
         $this->get($url, ['Sec-Fetch-Dest' => 'empty'])->assertForbidden();
@@ -1800,6 +1804,10 @@ final class PageCreationHttpTest extends TestCase
     {
         foreach (explode(';', $csp) as $part) {
             $trimmedPart = trim($part);
+
+            if ($trimmedPart === $directive) {
+                return '';
+            }
 
             if (str_starts_with($trimmedPart, "{$directive} ")) {
                 return trim(substr($trimmedPart, strlen($directive)));

@@ -94,18 +94,20 @@ final readonly class TwoFactorChallengeController
 
         $redirect = redirect()->intended(route('dashboard', absolute: false));
         if ($rememberDevice) {
-            $trustedDevice = $this->trustedDevices->remember($user, $request);
-            $redirect->withCookie(cookie(
-                name: TrustedDeviceManager::COOKIE_NAME,
-                value: $trustedDevice['token'],
-                minutes: $this->trustedDeviceMinutes(),
-                path: null,
-                domain: null,
-                secure: (bool) config('session.secure', false),
-                httpOnly: true,
-                raw: false,
-                sameSite: $this->trustedDeviceSameSite(),
-            ));
+            $trustedDevice = $this->trustedDevices->remember($user, $request, $authRevision);
+            if ($trustedDevice !== null) {
+                $redirect->withCookie(cookie(
+                    name: TrustedDeviceManager::COOKIE_NAME,
+                    value: $trustedDevice['token'],
+                    minutes: $this->trustedDeviceMinutes(),
+                    path: null,
+                    domain: null,
+                    secure: (bool) config('session.secure', false),
+                    httpOnly: true,
+                    raw: false,
+                    sameSite: $this->trustedDeviceSameSite(),
+                ));
+            }
         }
 
         return $redirect;
