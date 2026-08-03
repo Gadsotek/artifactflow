@@ -151,7 +151,7 @@ final class McpToolArguments
     /**
      * @return list<string>
      */
-    public function stringList(string $key): array
+    public function stringList(string $key, ?int $maximum = null): array
     {
         $value = $this->arguments[$key] ?? [];
 
@@ -173,7 +173,17 @@ final class McpToolArguments
             }
         }
 
-        return array_values(array_unique($strings));
+        $strings = array_values(array_unique($strings));
+
+        if ($maximum !== null && count($strings) > $maximum) {
+            throw new DomainRuleViolation(sprintf(
+                'Argument [%s] must contain at most %d distinct non-blank strings.',
+                $key,
+                $maximum,
+            ));
+        }
+
+        return $strings;
     }
 
     public function requiredPageType(string $key): PageType

@@ -78,7 +78,17 @@ jobs:
       - name: npm audit
         run: |
           node scripts/verify-dompurify.mjs
+          node scripts/verify-mcp-remote.mjs
           npm audit --audit-level=moderate
+          npm audit --package-lock-only --prefix scripts/mcp-remote-bridge --audit-level=moderate
+
+      - name: Locked MCP bridge install and direct-entrypoint smoke
+        run: |
+          bridge_install_cache="$(mktemp -d)"
+          bridge_smoke_cwd="$(mktemp -d)"
+          NPM_CONFIG_CACHE="$bridge_install_cache" npm ci --prefix scripts/mcp-remote-bridge --engine-strict --ignore-scripts --no-audit --no-fund
+          node scripts/verify-mcp-remote.mjs --installed
+          MCP_BRIDGE_SMOKE_CWD="$bridge_smoke_cwd" node scripts/smoke-mcp-remote.mjs
 
       - name: Cache Trivy database
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -91,6 +101,9 @@ jobs:
           make build-prod \
             DOCKER_BUILD='docker buildx build --load' \
             DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha,scope=production --cache-to type=gha,scope=production,mode=max,ignore-error=true'
+
+      - name: Verify artifact Caddy sandbox headers
+        run: sh scripts/verify-artifact-caddy-headers.sh artifactflow-app:production
 
       - name: Scan production image (Trivy)
         run: make scan-image

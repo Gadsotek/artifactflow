@@ -69,6 +69,7 @@ compose.local.yml
 # Dependencies
 /vendor/
 /node_modules/
+/scripts/mcp-remote-bridge/node_modules/
 
 # Python runtime output
 __pycache__/

@@ -137,8 +137,9 @@ Accounts support TOTP two-factor authentication with single-use, one-way-hashed 
 codes and revocable trusted devices (opaque hashed cookie tokens). TOTP secrets are
 `APP_KEY`-encrypted at rest. Two-factor is required for System Admins by default and can be
 enforced for all users through installation settings; enrollment is gated by the
-`EnforceTwoFactorEnrollment` middleware. Sensitive actions require a recent password
-confirmation (step-up), and minting an MCP token additionally requires a fresh TOTP code.
+`EnforceTwoFactorEnrollment` middleware. Account-security actions require a recent password
+confirmation (step-up), entering Administration requires a live authenticator or single-use
+recovery code, and minting an MCP token additionally requires a fresh TOTP code.
 
 ## MCP Server
 
@@ -343,7 +344,7 @@ Examples of traceable actions:
 
 ## Installation Limits
 
-System Admins can adjust runtime limits for content size, artifact read size, workspace storage, page storage, page versions, and tag counts. The UI is guarded by recent password confirmation and server-side authorization. Installation-wide counts and bytes are aggregate; named workspace/page usage rows appear only for workspaces the System Admin has joined through normal membership. Limit writes are transactional, audited, event-recorded, and bounded by hard ceilings so the UI cannot silently disable memory/storage protections.
+System Admins can adjust runtime limits for content size, artifact read size, workspace storage, page storage, page versions, and tag counts. The Administration UI is guarded by recent live two-factor confirmation and server-side authorization; a password or trusted-device cookie cannot satisfy that prompt. Installation-wide counts and bytes are aggregate; named workspace/page usage rows appear only for workspaces the System Admin has joined through normal membership. Limit writes are transactional, audited, event-recorded, and bounded by hard ceilings so the UI cannot silently disable memory/storage protections.
 
 ## Locking And Realtime
 

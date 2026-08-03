@@ -112,7 +112,7 @@ final readonly class ArtifactSandboxResponder
     {
         return response($this->topLevelNoticeHtml($openInAppUrl), 403, [
             'Cache-Control' => 'no-store, private',
-            'Content-Security-Policy' => "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            'Content-Security-Policy' => "default-src 'none'; sandbox; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             'Content-Type' => 'text/html; charset=UTF-8',
             'Referrer-Policy' => 'no-referrer',
             'Vary' => 'Sec-Fetch-Dest',

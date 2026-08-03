@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Security;
 
 use App\Application\PageCatalog\ArtifactDraftPreviewCapabilities;
+use App\Http\Middleware\RequireCompletedInstallation;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
@@ -61,9 +62,50 @@ final class RuntimeRoleHostBindingTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_app_runtime_refuses_framework_generated_options_on_the_artifact_hostname(): void
+    {
+        $this->configureOrigins('app');
+
+        $response = $this->options(self::ARTIFACT_ORIGIN . '/login');
+
+        $response->assertNotFound();
+        $this->assertStringContainsString(
+            'sandbox',
+            (string) $response->headers->get('Content-Security-Policy'),
+        );
+    }
+
+    public function test_app_runtime_refuses_cors_preflight_before_the_cors_middleware_can_short_circuit(): void
+    {
+        $this->configureOrigins('app');
+        config([
+            'cors.paths' => ['api/*'],
+            'cors.allowed_methods' => ['*'],
+            'cors.allowed_origins' => ['*'],
+            'cors.allowed_origins_patterns' => [],
+            'cors.allowed_headers' => ['*'],
+            'cors.exposed_headers' => [],
+            'cors.max_age' => 0,
+            'cors.supports_credentials' => false,
+        ]);
+
+        $response = $this->call('OPTIONS', self::ARTIFACT_ORIGIN . '/api/probe', server: [
+            'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'POST',
+            'HTTP_ORIGIN' => 'https://attacker.example',
+        ]);
+
+        $response->assertNotFound();
+        $response->assertHeaderMissing('Access-Control-Allow-Origin');
+        $this->assertStringContainsString(
+            'sandbox',
+            (string) $response->headers->get('Content-Security-Policy'),
+        );
+    }
+
     public function test_app_runtime_serves_application_routes_on_the_application_hostname(): void
     {
         $this->configureOrigins('app');
+        $this->withoutMiddleware(RequireCompletedInstallation::class);
 
         $this->get(self::APP_ORIGIN . '/login')->assertOk();
     }
@@ -119,6 +161,19 @@ final class RuntimeRoleHostBindingTest extends TestCase
         $this
             ->get(sprintf('%s/artifact-previews/%s/versions/%s?expires=1&signature=x', self::APP_ORIGIN, $pageUid, $versionUid))
             ->assertNotFound();
+    }
+
+    public function test_artifact_runtime_refuses_framework_generated_options_for_a_valid_artifact_route(): void
+    {
+        $this->configureOrigins('artifact-host');
+
+        $response = $this->options(self::ARTIFACT_ORIGIN . '/artifact-previews/draft');
+
+        $response->assertNotFound();
+        $this->assertStringContainsString(
+            'sandbox',
+            (string) $response->headers->get('Content-Security-Policy'),
+        );
     }
 
     public function test_artifact_runtime_refuses_a_valid_draft_preview_on_the_application_hostname(): void

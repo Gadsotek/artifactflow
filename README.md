@@ -74,7 +74,7 @@ The artifact's JavaScript really *runs*, but in an opaque origin with no cookies
 - TOTP two‑factor auth with single‑use recovery codes and revocable trusted devices; required for admins by default, enforceable for all users. A fresh password login opens a visible three-minute first-enrollment window; expiry returns to password confirmation and invalidates the pending QR/secret so restarting produces a fresh one. Recovery-code sign-in is an explicit alternate mode.
 - Login is protected by per-email/IP, per-IP, and account-global rate limits, while password recovery has its own email/IP limit. Internet-facing operators may additionally configure Cloudflare Turnstile on login and both password-recovery forms; it is absent by default, appears automatically when both keys are supplied, and remains defense in depth rather than a replacement for rate limiting.
 - Optimistic concurrency (409 on stale writes) so concurrent edits never silently clobber.
-- Step‑up password confirmation on sensitive actions, plus a fresh TOTP for MCP token creation; server‑side authorization everywhere; durable domain events + audit trail that never log secrets or raw content.
+- Step‑up password confirmation on account-security actions; entering Administration instead requires a live authenticator or single-use recovery code, and MCP token creation requires both the current password and a fresh TOTP. Server-side authorization applies everywhere, with durable domain events and an audit trail that never log secrets or raw content.
 - Self‑hosted from day one: a production image with separate runtime roles, per‑install storage/limit controls, backup & restore tooling, and production boot that **fails closed** on misconfiguration.
 
 ## Local quickstart

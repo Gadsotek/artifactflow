@@ -7,6 +7,7 @@ namespace Tests\Feature\Identity;
 use App\Application\Identity\CreatePersonalWorkspaceForUser;
 use App\Application\Identity\DisableTwoFactorForOperator;
 use App\Application\Mcp\McpAccessTokenIssuer;
+use App\Http\Middleware\RequireRecentSystemAdminTwoFactorConfirmation;
 use App\Models\AuditEntry;
 use App\Models\DomainEvent;
 use App\Models\InstallationSettings;
@@ -26,6 +27,7 @@ final class TwoFactorOperatorRecoveryTest extends TestCase
     public function test_operator_break_glass_clears_two_factor_and_enforcement_without_secrets(): void
     {
         $admin = $this->createLockedAdmin();
+        $originalAuthRevision = $admin->auth_revision;
         $secret = (string) $admin->two_factor_secret;
         $recoveryCodeHashes = $admin->two_factor_recovery_codes;
         $this->assertIsArray($recoveryCodeHashes);
@@ -52,6 +54,7 @@ final class TwoFactorOperatorRecoveryTest extends TestCase
         $this->assertNull($admin->two_factor_recovery_codes);
         $this->assertNull($admin->two_factor_last_used_timestep);
         $this->assertFalse($admin->two_factor_required);
+        $this->assertSame($originalAuthRevision + 1, $admin->auth_revision);
         $this->assertSame(0, TrustedDevice::query()->where('user_uid', $admin->uid)->count());
         $this->assertNotNull($mcpToken->refresh()->revoked_at);
         $this->assertSame(1, McpAccessToken::query()->where('principal_user_uid', $admin->uid)->count());
@@ -86,9 +89,9 @@ final class TwoFactorOperatorRecoveryTest extends TestCase
         $this->assertAuthenticatedAs($admin);
 
         $this->actingAs($admin)
-            ->withSession(['auth.system_admin_password_confirmed_at' => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->get('/admin/users')
-            ->assertOk();
+            ->assertRedirect('/settings/two-factor');
     }
 
     public function test_break_glass_handler_refuses_http_context_and_no_network_route_exists(): void

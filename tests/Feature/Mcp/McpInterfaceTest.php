@@ -1587,6 +1587,9 @@ final class McpInterfaceTest extends TestCase
         $this->assertContains('create_tag', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_external_share', array_column($toolDefinitions, 'name'));
         $this->assertContains('update_description', array_column($toolDefinitions, 'name'));
+        $search = collect($toolDefinitions)->firstWhere('name', 'search');
+        $this->assertIsArray($search);
+        $this->assertNull(data_get($search, 'inputSchema.properties.tag_uids.maxItems'));
         $createExternalShare = collect($toolDefinitions)->firstWhere('name', 'create_external_share');
         $this->assertIsArray($createExternalShare);
         $this->assertSame(
@@ -1742,6 +1745,18 @@ final class McpInterfaceTest extends TestCase
         $this->assertSame('invalid_request', $this->toolErrorPayload($this->callTool($searchOnlyToken, 'search', [
             'tag_uids' => ['ok', 123],
         ]))['type']);
+        $this->successfulToolPayload($this->callTool($searchOnlyToken, 'search', [
+            'tag_uids' => ['not-a-ulid'],
+        ]));
+        $this->successfulToolPayload($this->callTool($searchOnlyToken, 'search', [
+            'tag_uids' => [...array_fill(0, 21, $workspace->uid), '', '   '],
+        ]));
+        $this->successfulToolPayload($this->callTool($searchOnlyToken, 'search', [
+            'tag_uids' => array_map(
+                static fn (int $index): string => 'tag-' . $index,
+                range(1, 21),
+            ),
+        ]));
         $this->assertSame('invalid_request', $this->toolErrorPayload($this->callTool($searchOnlyToken, 'search', [
             'query' => ['structured'],
         ]))['type']);

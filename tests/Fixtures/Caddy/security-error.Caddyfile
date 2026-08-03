@@ -1,0 +1,10 @@
+{
+	skip_install_trust
+	auto_https off
+}
+
+:8080 {
+	header Set-Cookie "artifactflow_edge_probe=present; Path=/; HttpOnly"
+	import /var/www/html/docker/Caddyfile.security-errors
+	error 413
+}

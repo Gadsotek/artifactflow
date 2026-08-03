@@ -11,7 +11,7 @@ use App\Application\PageCatalog\CreatePage;
 use App\Application\PageCatalog\CreatePageCommand;
 use App\Domain\Identity\WorkspaceRole;
 use App\Domain\PageCatalog\PageType;
-use App\Http\Middleware\RequireRecentSystemAdminPasswordConfirmation;
+use App\Http\Middleware\RequireRecentSystemAdminTwoFactorConfirmation;
 use App\Models\AuditEntry;
 use App\Models\DomainEvent;
 use App\Models\InstallationSettings;
@@ -54,7 +54,7 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         ));
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->get('/admin/settings')
             ->assertOk()
             ->assertSee('Storage and limits')
@@ -63,7 +63,7 @@ final class SystemAdminInstallationSettingsTest extends TestCase
             ->assertSee('5 B');
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', [
                 'max_markdown_bytes' => '32',
                 'max_html_bytes' => '64',
@@ -114,7 +114,7 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         $this->assertSame(20, $audit->metadata['max_workspace_storage_bytes']);
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->get('/admin/settings')
             ->assertOk()
             ->assertSee('20 B')
@@ -163,7 +163,7 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         ));
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->get('/admin/settings')
             ->assertOk()
             ->assertSee('name="max_markdown_bytes_amount"', false)
@@ -185,7 +185,7 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         $admin = $this->createUser('System Admin', 'external-policy-admin@example.test', true);
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', [
                 'max_markdown_bytes' => '32',
                 'max_html_bytes' => '64',
@@ -208,7 +208,7 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         $admin = $this->createUser('System Admin', 'readable-units-admin@example.test', true);
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', [
                 'max_markdown_bytes_amount' => '1.5',
                 'max_markdown_bytes_unit' => 'KiB',
@@ -244,7 +244,7 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         $admin = $this->createUser('System Admin', 'invalid-readable-units-admin@example.test', true);
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', [
                 'max_markdown_bytes_amount' => '1',
                 'max_markdown_bytes_unit' => 'TB',
@@ -271,15 +271,15 @@ final class SystemAdminInstallationSettingsTest extends TestCase
 
         $this->actingAs($admin)
             ->get('/admin/settings')
-            ->assertRedirect('/admin/confirm-password');
+            ->assertRedirect('/admin/confirm-two-factor');
 
         $this->actingAs($user)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->get('/admin/settings')
             ->assertForbidden();
 
         $this->actingAs($user)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', [
                 'max_markdown_bytes' => '32',
             ])
@@ -291,7 +291,7 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         $admin = $this->createUser('System Admin', 'invalid-settings-admin@example.test', true);
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', [
                 'max_markdown_bytes' => '0',
                 'max_html_bytes' => '-1',
@@ -314,7 +314,7 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         $admin = $this->createUser('System Admin', 'sign-prefixed-settings-admin@example.test', true);
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', [
                 'max_markdown_bytes' => '32',
                 'max_html_bytes' => '64',
@@ -339,7 +339,7 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         $admin = $this->createUser('System Admin', 'read-write-settings-admin@example.test', true);
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', [
                 'max_markdown_bytes' => '32',
                 'max_html_bytes' => '2048',
@@ -360,7 +360,7 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         $admin = $this->createUser('System Admin', 'markdown-read-settings-admin@example.test', true);
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', [
                 'max_markdown_bytes' => '2048',
                 'max_html_bytes' => '32',
@@ -381,7 +381,7 @@ final class SystemAdminInstallationSettingsTest extends TestCase
         $admin = $this->createUser('System Admin', 'huge-settings-admin@example.test', true);
 
         $this->actingAs($admin)
-            ->withSession([RequireRecentSystemAdminPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->getTimestamp()])
             ->put('/admin/settings', [
                 'max_markdown_bytes' => (string) (5 * 1024 * 1024 + 1),
                 'max_html_bytes' => (string) (5 * 1024 * 1024 + 1),

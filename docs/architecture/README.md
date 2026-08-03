@@ -24,7 +24,7 @@ Accepted security-sensitive architecture decisions:
 
 **Layered, modular, two-origin Laravel app.**
 
-- **HTTP** (`app/Http`): thin controllers (parse → authorize → delegate → respond), a middleware pipeline that enforces the runtime-role split + security headers + sudo step-up, and FormRequests for validation.
+- **HTTP** (`app/Http`): thin controllers (parse → authorize → delegate → respond), a middleware pipeline that enforces the runtime-role split + security headers + password/admin-2FA sudo step-up, and FormRequests for validation.
 - **Application** (`app/Application`): where the logic lives, as `command → handler` use-cases:
   - `Identity/`: users, workspaces (Personal/Shared), memberships (Admin/Editor/Reader), invitations.
   - `PageCatalog/` ★ (the core): pages (Markdown | HtmlArtifact), immutable versions, access grants, categories/tags, search, rendering, the artifact-preview signing/serving.
@@ -44,7 +44,7 @@ Untrusted AI-generated HTML is contained by **isolation, not sanitisation**:
 - **Artifact-host origin** (`APP_RUNTIME_ROLE=artifact-host`): cookieless, `RequireArtifactHostRuntime`, serves untrusted artifact bytes with `sandbox allow-scripts; connect-src 'none'; default-src 'none'`. The artifact's JS *runs* here: in an opaque origin with no cookies, no network, and no reach back to the app origin.
 - They're the **same codebase**; `runtime_role` (config) flips the behaviour. Saved versions cross the boundary through short-lived **HMAC-signed URLs**; unsaved drafts use short-lived HMAC capabilities bound to the exact content. Both load into an `<iframe sandbox="allow-scripts">` (no `allow-same-origin`).
 
-See `workflows.svg` for the full create-page write pipeline, the cross-origin preview flow, the admin step-up, and the outbox.
+See `workflows.svg` for the full create-page write pipeline, the cross-origin preview flow, the admin 2FA step-up, and the outbox.
 
 ## Current cleanup state
 

@@ -218,7 +218,7 @@ COPY app ./app
 COPY bootstrap ./bootstrap
 COPY config ./config
 COPY database ./database
-COPY docker/Caddyfile docker/healthcheck-app.sh docker/start-production.sh docker/start-worker.sh docker/start-scheduler.sh ./docker/
+COPY docker/Caddyfile docker/Caddyfile.security-errors docker/healthcheck-app.sh docker/start-production.sh docker/start-worker.sh docker/start-scheduler.sh ./docker/
 COPY public ./public
 COPY resources/views ./resources/views
 COPY resources/js/artifact-preview-guard.js ./resources/js/artifact-preview-guard.js

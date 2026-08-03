@@ -1,0 +1,19 @@
+# Deferred conditional headers do not run when a Caddy handler returns an
+# error, such as a request-body limit failure. Render those responses through
+# an explicit inert policy as well. This fragment is imported by the production
+# Caddyfile and by the production-image security probe.
+handle_errors {
+	# Error routes are a separate Caddy handler chain, so repeat the cookieless
+	# artifact-host invariant here instead of relying on the main route handler.
+	@artifactHostRuntimeError expression `{env.APP_RUNTIME_ROLE} == "artifact-host"`
+	header @artifactHostRuntimeError -Set-Cookie
+
+	header {
+		Content-Security-Policy "default-src 'none'; sandbox"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Strict-Transport-Security "{$CADDY_HSTS:max-age=63072000}"
+	}
+	respond "" {err.status_code}
+}

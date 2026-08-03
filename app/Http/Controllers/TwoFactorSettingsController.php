@@ -14,13 +14,16 @@ use App\Application\Identity\TwoFactorEnrollmentFreshness;
 use App\Application\Identity\TwoFactorQrCode;
 use App\Application\Identity\VerifyTwoFactorCode;
 use App\Http\Middleware\RequireRecentPasswordConfirmation;
+use App\Http\Middleware\RequireRecentSystemAdminTwoFactorConfirmation;
 use App\Http\Requests\Identity\ConfirmTwoFactorEnrollmentRequest;
 use App\Http\Requests\Identity\ConfirmTwoFactorSecurityActionRequest;
+use App\Http\Support\AuthenticationSessionRevision;
 use App\Models\TrustedDevice;
 use App\Models\User;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -33,6 +36,7 @@ final readonly class TwoFactorSettingsController
         private VerifyTwoFactorCode $verifyTwoFactorCode,
         private PasswordConfirmationFreshness $passwordConfirmationFreshness,
         private TwoFactorEnrollmentFreshness $enrollmentFreshness,
+        private AuthenticationSessionRevision $sessionRevision,
     ) {
     }
 
@@ -93,7 +97,8 @@ final readonly class TwoFactorSettingsController
 
     public function enroll(Request $request, StartTwoFactorEnrollment $startEnrollment): RedirectResponse
     {
-        $startEnrollment->handle($this->authenticatedUser($request));
+        $user = $this->authenticatedUser($request);
+        $startEnrollment->handle($user, $user->auth_revision);
 
         return redirect()
             ->route('settings.two-factor.index')
@@ -104,16 +109,28 @@ final readonly class TwoFactorSettingsController
         ConfirmTwoFactorEnrollmentRequest $request,
         ConfirmTwoFactorEnrollment $confirmEnrollment,
     ): RedirectResponse {
-        $codes = $confirmEnrollment->handle(
-            $this->authenticatedUser($request),
+        $user = $this->authenticatedUser($request);
+        $confirmation = $confirmEnrollment->handle(
+            $user,
             $request->code(),
             $request->session()->get(RequireRecentPasswordConfirmation::SESSION_KEY),
+            $user->auth_revision,
         );
+        $request->session()->regenerate();
+        Auth::guard('web')->setUser($confirmation->user);
+        $this->sessionRevision->bindRevision($request, $confirmation->authRevision);
+        if ($confirmation->user->is_system_admin) {
+            $request->session()->put(
+                RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY,
+                now()->getTimestamp(),
+            );
+        }
+        $request->session()->regenerateToken();
 
         return redirect()
             ->route('settings.two-factor.index')
             ->with('status', 'Two-factor authentication enabled.')
-            ->with('two_factor_recovery_codes', $codes);
+            ->with('two_factor_recovery_codes', $confirmation->recoveryCodes);
     }
 
     public function disable(
@@ -121,8 +138,14 @@ final readonly class TwoFactorSettingsController
         DisableTwoFactor $disableTwoFactor,
     ): RedirectResponse {
         $user = $this->authenticatedUser($request);
-        $this->confirmSecondFactor($request, $user);
-        $disableTwoFactor->handle($user);
+        $expectedAuthRevision = $user->auth_revision;
+        $this->confirmSecondFactor($request, $user, $expectedAuthRevision);
+        $disabledUser = $disableTwoFactor->handle($user, $expectedAuthRevision);
+        $request->session()->regenerate();
+        Auth::guard('web')->setUser($disabledUser);
+        $this->sessionRevision->bindRevision($request, $disabledUser->auth_revision);
+        $request->session()->forget(RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY);
+        $request->session()->regenerateToken();
 
         return redirect()
             ->route('settings.two-factor.index')
@@ -134,13 +157,18 @@ final readonly class TwoFactorSettingsController
         RegenerateTwoFactorRecoveryCodes $regenerateRecoveryCodes,
     ): RedirectResponse {
         $user = $this->authenticatedUser($request);
-        $this->confirmSecondFactor($request, $user);
-        $codes = $regenerateRecoveryCodes->handle($user);
+        $expectedAuthRevision = $user->auth_revision;
+        $this->confirmSecondFactor($request, $user, $expectedAuthRevision);
+        $rotation = $regenerateRecoveryCodes->handle($user, $expectedAuthRevision);
+        $request->session()->regenerate();
+        Auth::guard('web')->setUser($rotation->user);
+        $this->sessionRevision->bindRevision($request, $rotation->authRevision);
+        $request->session()->regenerateToken();
 
         return redirect()
             ->route('settings.two-factor.index')
             ->with('status', 'Two-factor recovery codes regenerated.')
-            ->with('two_factor_recovery_codes', $codes);
+            ->with('two_factor_recovery_codes', $rotation->recoveryCodes);
     }
 
     /**
@@ -153,8 +181,11 @@ final readonly class TwoFactorSettingsController
      *
      * @throws ValidationException
      */
-    private function confirmSecondFactor(ConfirmTwoFactorSecurityActionRequest $request, User $user): void
-    {
+    private function confirmSecondFactor(
+        ConfirmTwoFactorSecurityActionRequest $request,
+        User $user,
+        int $expectedAuthRevision,
+    ): void {
         if (!$user->hasEnabledTwoFactor()) {
             return;
         }
@@ -166,8 +197,8 @@ final readonly class TwoFactorSettingsController
         $candidate = $request->candidate();
 
         $verified = $candidate !== '' && (
-            $this->verifyTwoFactorCode->verifyTotpAndAdvance($user, $candidate)
-            || $this->verifyTwoFactorCode->consumeRecoveryCode($user, $candidate)
+            $this->verifyTwoFactorCode->verifyTotpAndAdvance($user, $candidate, $expectedAuthRevision)
+            || $this->verifyTwoFactorCode->consumeRecoveryCode($user, $candidate, $expectedAuthRevision)
         );
 
         if (!$verified) {
@@ -193,7 +224,12 @@ final readonly class TwoFactorSettingsController
         Request $request,
         TrustedDeviceManager $trustedDevices,
     ): RedirectResponse {
-        $trustedDevices->revokeAll($this->authenticatedUser($request));
+        $user = $this->authenticatedUser($request);
+        $revocation = $trustedDevices->revokeAll($user, $user->auth_revision);
+        $request->session()->regenerate();
+        Auth::guard('web')->setUser($revocation->user);
+        $this->sessionRevision->bindRevision($request, $revocation->authRevision);
+        $request->session()->regenerateToken();
 
         return redirect()
             ->route('settings.two-factor.index')

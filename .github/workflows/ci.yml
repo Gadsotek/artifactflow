@@ -181,7 +181,9 @@ jobs:
       - name: npm audit
         run: |
           node scripts/verify-dompurify.mjs
+          node scripts/verify-mcp-remote.mjs
           npm audit --audit-level=moderate
+          npm audit --package-lock-only --prefix scripts/mcp-remote-bridge --audit-level=moderate
 
       - name: PHP test and coverage gates
         run: |
@@ -230,6 +232,9 @@ jobs:
           make build-prod \
             DOCKER_BUILD='docker buildx build --load' \
             DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha,scope=production --cache-to type=gha,scope=production,mode=max,ignore-error=true'
+
+      - name: Verify artifact Caddy sandbox headers
+        run: sh scripts/verify-artifact-caddy-headers.sh artifactflow-app:production
 
       - name: Assert production image excludes dev bootstrap files
         run: |

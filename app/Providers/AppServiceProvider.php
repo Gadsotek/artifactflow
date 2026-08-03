@@ -254,6 +254,22 @@ final class AppServiceProvider extends ServiceProvider
             return Limit::perMinute($this->configuredRateLimit('rate_limits.admin_step_up_per_minute', 5))
                 ->by($this->rateLimitKey($request));
         });
+
+        RateLimiter::for('artifactflow-admin-two-factor', function (Request $request): array {
+            $accountKey = $this->rateLimitKey($request);
+            $ip = $request->ip() ?? 'unknown';
+
+            return [
+                Limit::perMinute($this->configuredRateLimit('rate_limits.admin_two_factor_per_minute', 5))
+                    ->by('admin-two-factor-account:' . $accountKey),
+                Limit::perHour($this->configuredRateLimit(
+                    'rate_limits.admin_two_factor_account_per_hour',
+                    30,
+                ))->by('admin-two-factor-account-hour:' . $accountKey),
+                Limit::perMinute($this->configuredRateLimit('rate_limits.admin_two_factor_ip_per_minute', 20))
+                    ->by('admin-two-factor-ip:' . $ip),
+            ];
+        });
     }
 
     private function configuredRateLimit(string $key, int $default): int

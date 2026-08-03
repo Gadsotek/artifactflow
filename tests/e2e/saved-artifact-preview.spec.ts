@@ -641,6 +641,23 @@ test('saved HTML artifact executes only inside the controller-served sandbox @ar
   expect(initialPreviewUrl).not.toBeNull();
   expect(artifactFrame).toBeDefined();
 
+  // A signed preview opened as a real top-level document receives only the
+  // fixed server-rendered 403 notice. Its bare CSP sandbox must remain present,
+  // while a deliberate click can still navigate that top-level tab back to the
+  // trusted app origin without granting artifact documents a top-navigation
+  // sandbox token.
+  const noticePage = await page.context().newPage();
+  const noticeResponse = await noticePage.goto(initialPreviewUrl ?? '', {
+    waitUntil: 'domcontentloaded',
+  });
+  expect(noticeResponse?.status()).toBe(403);
+  const noticeCsp = await noticeResponse?.headerValue('content-security-policy');
+  expect(noticeCsp).toMatch(/(?:^|;)\s*sandbox\s*(?:;|$)/u);
+  expect(noticeCsp).not.toContain('allow-top-navigation');
+  await noticePage.getByRole('link', { name: 'Open it inside ArtifactFlow' }).click();
+  await expect(noticePage).toHaveURL(/\/pages\/[0-9a-hjkmnp-tv-z]{26}$/u);
+  await noticePage.close();
+
   // Observe navigation from the authenticated parent. Waiting on content in the
   // artifact document is racy because reload/self-navigation can replace that
   // document after Playwright has already resolved a locator against the old one.

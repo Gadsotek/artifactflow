@@ -105,6 +105,8 @@ docker compose exec -T \
 
 Fresh installs require System Admins to enroll TOTP 2FA by default. The password they just used to sign in counts as confirmation for `TWO_FACTOR_ENROLLMENT_PASSWORD_TIMEOUT_SECONDS` (default 180 seconds); the security screen shows the live deadline, and both starting and confirming enrollment must occur inside it. At expiry the browser returns to password confirmation, the pending QR/secret becomes unusable, and restarting enrollment after confirmation generates a fresh one. A System Admin can require 2FA for all users from the installation settings screen. If an operator loses the only admin's second factor, use the console-only break-glass path:
 
+Entering Administration requires a live authenticator code or an unused recovery code; the account password and a trusted-device cookie do not bypass this prompt. A successful proof is cached only for `AUTH_ADMIN_TWO_FACTOR_TIMEOUT` (900 seconds by default). Enabling or disabling two-factor authentication, rotating recovery codes, or revoking all trusted devices advances the account authentication revision and rotates the acting browser session; other sessions fail closed on their next request.
+
 ```sh
 docker compose exec -T app php artisan artifactflow:disable-2fa \
   --email="admin@example.test" \
@@ -188,7 +190,11 @@ To configure local clients with a token, run:
 
 The connector discovers the standard Claude Desktop config, the active Claude Code user config (including `CLAUDE_CONFIG_DIR`), conventional sibling Claude Code config directories, the active/default Codex user config (including `CODEX_HOME`), conventional sibling Codex homes, and existing Codex profile overlays. It prints every discovered or creatable target and requires an explicit choice of target numbers or `all`; no config is silently selected. Existing files are backed up and merged, and each result is restricted to mode `0600`. For automation, set `MCP_URL`, `MCP_TOKEN`, and `MCP_TARGETS` (`all` or the comma-separated target numbers printed by the script).
 
-Every written config launches the connection through the `npx mcp-remote` bridge, so the client machine needs Node.js at runtime. The connector checks for `npx` up front and stops with install guidance (Node.js LTS from nodejs.org) before any prompt, token read, or config write when it is missing. Set `MCP_SKIP_NODE_CHECK=1` to write configs anyway on a machine where Node.js will be installed later.
+Codex connects to the authenticated Streamable HTTP endpoint directly. Claude configs continue to use `npx mcp-remote` because the supported Desktop JSON path cannot supply ArtifactFlow's static bearer token natively; the connector keeps one compatible Claude entry across Desktop and Code. When a Claude target is selected, the connector requires Node.js 20.18.1 or newer (`node`, `npm`, and `npx`), verifies the committed lock's reviewed SHA-256 fingerprint, and installs the complete npm integrity lock with `npm ci --engine-strict --ignore-scripts`. Each lock fingerprint gets its own user-data directory, so a failed upgrade cannot destroy the install referenced by existing Claude configs. The generated config fixes the reviewed directory as its working directory and runs the exact `mcp-remote@0.1.38` package with `npx --offline --no-install` plus a dedicated empty runtime cache; a missing local package therefore fails closed instead of resolving mutable `latest`, searching the active project, or executing an independently cached graph. Nightly automation audits the lock, verifies every registry integrity entry, performs a real authenticated loopback MCP exchange, and proves the missing-local-package case fails. Set `MCP_BRIDGE_HOME` only when the versioned locked-bridge root needs a non-standard user-data location.
+
+The reviewed bridge version and primary tarball integrity are pinned in `scripts/verify-mcp-remote.mjs`, every locked registry package must carry SHA-512 integrity, the nested dependency graph is included in npm audit and Dependabot coverage, and the nightly audit performs a clean locked install plus a real offline `npx` initialize/`tools/list` exchange with an authenticated local MCP fixture. Bridge upgrades are deliberate review changes: update the exact version, regenerate the lock, review the package delta, and update the expected integrity before merging.
+
+This control makes installation reproducible; it does not turn `mcp-remote` into trusted first-party code. The bridge remains an experimental third-party process that receives the MCP bearer token. Keep the token narrowly scoped and short-lived, review proposed bridge upgrades, and remove the bridge when the Claude Desktop path can supply the required authorization natively or ArtifactFlow adopts a compatible first-party authorization flow.
 
 The connector intentionally does not offer project `.mcp.json` or `.codex/config.toml` files. Its generated bridge contains the bearer token, so writing it into repository-level configuration would create a commit and collaborator-disclosure risk. Use the selectable user-level configs instead.
 
@@ -331,6 +337,8 @@ both the env var and the command:
 | `worker` | `worker` | `sh /var/www/html/docker/start-worker.sh` | none |
 | `scheduler` | `scheduler` | `sh /var/www/html/docker/start-scheduler.sh` | none |
 
+To preserve the cookieless artifact-origin boundary, use only plain `php artisan down` for an artifact-host HTTP role. The `--secret`, `--redirect`, and `--render` variants return directly from Laravel's global maintenance middleware before ArtifactFlow's route security middleware; `--secret` also attempts to set a `laravel_maintenance` cookie on the artifact origin. The artifact-host Caddy role strips every `Set-Cookie` header, including from its separate error-handler chain, so that bypass cookie cannot reach a browser; the app role keeps its legitimate session cookies. Prefer draining or stopping the artifact role through the orchestrator when practical, and never rely on those maintenance variants there.
+
 Run the separately built `image-parser` image as its own service. Give it only
 `IMAGE_PARSER_SHARED_SECRET` and `IMAGE_PARSER_MAX_CLOCK_SKEW_SECONDS`. Each authenticated request
 signs the app's input-byte, output-byte, pixel, and dimension limits; the parser validates them
@@ -421,6 +429,8 @@ the bare parser listener to a shared or public network.
 PostgreSQL transport must verify the server identity in production. Set `DB_SSLMODE=verify-full` and mount a trusted CA bundle or database CA, then point `DB_SSLROOTCERT` at that file. The production boot guard rejects `disable`, `allow`, `prefer`, `require`, and `verify-ca` because those modes either permit cleartext fallback or skip hostname verification.
 
 If you set `SESSION_DOMAIN`, it must not cover the artifact host. A broad parent domain such as `.example.internal` can send app cookies to `artifacts.example.internal`; use a host-only app session cookie or an app-only domain instead.
+
+Any outer TLS proxy, CDN, or ingress must also leave `Set-Cookie` absent on the artifact hostname. The artifact-role Caddy process removes cookies produced by Caddy, PHP, and its error-handler chain, but it cannot remove a header appended by a downstream edge after the response leaves the container.
 
 HTTP Strict Transport Security is sent on every response with a two-year `max-age` (tune with `HSTS_MAX_AGE`). The `includeSubDomains` and `preload` directives are **opt-in** because both reach past the app host and are hard to undo — a preload submission is a near-permanent commitment that forces HTTPS on every sibling subdomain, including the artifact host. Enable them only once every subdomain is HTTPS-only: set `HSTS_INCLUDE_SUBDOMAINS=true` and `HSTS_PRELOAD=true` for the app's (PHP) responses, and mirror the same value into `CADDY_HSTS` (for example `max-age=63072000; includeSubDomains; preload`) so the Caddy fallback used for static files matches. Left unset, both default to a safe host-scoped policy.
 
@@ -558,7 +568,10 @@ Rate limits:
 | `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` | 300 | MCP requests per IP before authentication |
 | `MCP_RATE_LIMIT_PER_MINUTE` | 60 | MCP requests per token |
 | `MCP_WRITE_RATE_LIMIT_PER_MINUTE` | 20 | MCP write tool calls per token |
-| `ADMIN_STEP_UP_RATE_LIMIT_PER_MINUTE` | 5 | Step-up confirmations per user |
+| `ADMIN_STEP_UP_RATE_LIMIT_PER_MINUTE` | 5 | Password confirmations and MCP-token creation attempts per user; also the compatibility fallback for the renamed admin-2FA minute limit |
+| `ADMIN_TWO_FACTOR_RATE_LIMIT_PER_MINUTE` | 5 | Administration 2FA confirmations per account per minute |
+| `ADMIN_TWO_FACTOR_ACCOUNT_RATE_LIMIT_PER_HOUR` | 30 | Administration 2FA confirmations per account across source IPs per hour |
+| `ADMIN_TWO_FACTOR_IP_RATE_LIMIT_PER_MINUTE` | 20 | Administration 2FA confirmations per source IP per minute |
 | `LOGIN_IP_RATE_LIMIT_PER_MINUTE` | 20 | Login attempts per IP |
 | `LOGIN_ACCOUNT_RATE_LIMIT_PER_HOUR` | 20 | Login attempts per account |
 | `PASSWORD_RESETS_PER_HOUR` | 5 | Password reset requests per email+IP |
@@ -573,6 +586,7 @@ Authentication freshness:
 | --- | --- | --- |
 | `TWO_FACTOR_ENROLLMENT_PASSWORD_TIMEOUT_SECONDS` | 180 | Time to start and finish initial 2FA enrollment using the just-validated login password |
 | `AUTH_PASSWORD_TIMEOUT` | 900 | Freshness window after an explicit account password confirmation for other 2FA settings actions |
+| `AUTH_ADMIN_TWO_FACTOR_TIMEOUT` | 900 | Freshness window after a live authenticator or recovery-code proof for Administration; falls back to the former `AUTH_ADMIN_PASSWORD_TIMEOUT` value on upgrade |
 
 Content and storage limits:
 

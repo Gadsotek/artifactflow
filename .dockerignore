@@ -26,6 +26,7 @@ docker-compose.override.yml
 
 /vendor/
 /node_modules/
+/scripts/mcp-remote-bridge/node_modules/
 /public/build/
 /public/hot
 

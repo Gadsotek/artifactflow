@@ -54,7 +54,7 @@ final readonly class EnforceTwoFactorEnrollment
         return $request->routeIs(
             'settings.two-factor.*',
             'settings.password.*',
-            'admin.password.*',
+            'admin.two-factor.*',
             'logout',
             'settings.theme',
         );

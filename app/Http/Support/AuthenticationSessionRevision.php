@@ -13,7 +13,12 @@ final readonly class AuthenticationSessionRevision
 
     public function bind(Request $request, User $user): void
     {
-        $request->session()->put(self::SESSION_KEY, $user->auth_revision);
+        $this->bindRevision($request, $user->auth_revision);
+    }
+
+    public function bindRevision(Request $request, int $authRevision): void
+    {
+        $request->session()->put(self::SESSION_KEY, $authRevision);
     }
 
     public function isCurrent(Request $request, User $user): bool

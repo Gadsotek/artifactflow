@@ -25,18 +25,27 @@ final readonly class ConfirmTwoFactorEnrollment
     }
 
     /**
-     * @return list<string>
-     *
      * @throws ValidationException
      */
-    public function handle(User $actor, string $code, mixed $passwordConfirmedAt): array
-    {
+    public function handle(
+        User $actor,
+        string $code,
+        mixed $passwordConfirmedAt,
+        int $expectedAuthRevision,
+    ): TwoFactorEnrollmentConfirmation {
         try {
-            return DB::transaction(function () use ($actor, $code, $passwordConfirmedAt): array {
+            return DB::transaction(function () use (
+                $actor,
+                $code,
+                $expectedAuthRevision,
+                $passwordConfirmedAt,
+            ): TwoFactorEnrollmentConfirmation {
                 $user = User::query()
                     ->where('uid', $actor->uid)
                     ->lockForUpdate()
                     ->sole();
+
+                $this->assertExpectedAuthRevision($user, $expectedAuthRevision);
 
                 if (!$this->enrollmentFreshness->isCurrent($user->two_factor_secret_created_at, $passwordConfirmedAt)) {
                     throw ValidationException::withMessages([
@@ -65,11 +74,13 @@ final readonly class ConfirmTwoFactorEnrollment
                 }
 
                 $plainRecoveryCodes = $this->recoveryCodes->generatePlainCodes();
+                $committedAuthRevision = $expectedAuthRevision + 1;
                 $user->forceFill([
                     'two_factor_confirmed_at' => now(),
                     'two_factor_secret_created_at' => null,
                     'two_factor_recovery_codes' => $this->recoveryCodes->hashCodes($plainRecoveryCodes),
                     'two_factor_last_used_timestep' => $timestamp,
+                    'auth_revision' => $committedAuthRevision,
                 ])->save();
 
                 $event = $this->events->record(
@@ -94,13 +105,31 @@ final readonly class ConfirmTwoFactorEnrollment
                     ],
                 );
 
-                return $plainRecoveryCodes;
+                return new TwoFactorEnrollmentConfirmation(
+                    recoveryCodes: $plainRecoveryCodes,
+                    authRevision: $committedAuthRevision,
+                    user: $user,
+                );
             });
         } catch (DecryptException) {
             throw ValidationException::withMessages([
                 'code' => 'The two-factor secret is unreadable. Use a recovery code or contact an operator.',
             ]);
         }
+    }
+
+    /**
+     * @throws ValidationException
+     */
+    private function assertExpectedAuthRevision(User $user, int $expectedAuthRevision): void
+    {
+        if ($user->auth_revision === $expectedAuthRevision) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'code' => 'Your authentication state changed. Sign in again before enabling two-factor authentication.',
+        ]);
     }
 
     private function driftWindow(): int

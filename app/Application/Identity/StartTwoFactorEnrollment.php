@@ -6,6 +6,7 @@ namespace App\Application\Identity;
 
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use PragmaRX\Google2FA\Google2FA;
 
 final readonly class StartTwoFactorEnrollment
@@ -15,13 +16,22 @@ final readonly class StartTwoFactorEnrollment
     ) {
     }
 
-    public function handle(User $user): string
+    /**
+     * @throws ValidationException
+     */
+    public function handle(User $user, int $expectedAuthRevision): string
     {
-        return DB::transaction(function () use ($user): string {
+        return DB::transaction(function () use ($expectedAuthRevision, $user): string {
             $lockedUser = User::query()
                 ->where('uid', $user->uid)
                 ->lockForUpdate()
                 ->sole();
+
+            if ($lockedUser->auth_revision !== $expectedAuthRevision) {
+                throw ValidationException::withMessages([
+                    'code' => 'Your authentication state changed. Sign in again before starting two-factor enrollment.',
+                ]);
+            }
 
             if ($lockedUser->hasEnabledTwoFactor() && is_string($lockedUser->two_factor_secret)) {
                 return $lockedUser->two_factor_secret;

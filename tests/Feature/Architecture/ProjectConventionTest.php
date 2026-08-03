@@ -61,6 +61,27 @@ final class ProjectConventionTest extends TestCase
         }
     }
 
+    public function test_admin_step_up_environment_templates_use_the_two_factor_timeout(): void
+    {
+        foreach ([base_path('.env.example'), base_path('.env.production.example')] as $configurationFile) {
+            $source = $this->source($configurationFile);
+
+            $this->assertStringContainsString('AUTH_ADMIN_TWO_FACTOR_TIMEOUT=900', $source);
+            $this->assertStringNotContainsString('AUTH_ADMIN_PASSWORD_TIMEOUT', $source);
+        }
+
+        $this->assertStringContainsString(
+            "env('AUTH_ADMIN_PASSWORD_TIMEOUT', 900)",
+            $this->source(config_path('auth.php')),
+            'Existing deployments retain their configured step-up duration during the rename.',
+        );
+        $this->assertStringContainsString(
+            "'ADMIN_TWO_FACTOR_RATE_LIMIT_PER_MINUTE',\n        env('ADMIN_STEP_UP_RATE_LIMIT_PER_MINUTE', 5)",
+            $this->source(config_path('rate_limits.php')),
+            'Existing deployments retain their configured admin confirmation rate during the rename.',
+        );
+    }
+
     public function test_draft_preview_has_a_route_specific_edge_body_limit(): void
     {
         $caddyfile = $this->source(base_path('docker/Caddyfile'));
@@ -73,6 +94,82 @@ final class ProjectConventionTest extends TestCase
             'max_size {$ARTIFACT_DRAFT_PREVIEW_MAX_BODY:6MB}',
             $caddyfile,
         );
+    }
+
+    public function test_caddy_sandboxes_responses_that_do_not_reach_php(): void
+    {
+        $caddyfile = $this->source(base_path('docker/Caddyfile'));
+        $errorPolicy = $this->source(base_path('docker/Caddyfile.security-errors'));
+
+        $this->assertStringContainsString(
+            '?Content-Security-Policy "default-src \'none\'; sandbox"',
+            $caddyfile,
+            'The conditional prefix must preserve stricter PHP-generated artifact policies.',
+        );
+        $this->assertStringContainsString('import Caddyfile.security-errors', $caddyfile);
+        $this->assertStringContainsString('handle_errors {', $errorPolicy);
+        $this->assertStringContainsString(
+            "Content-Security-Policy \"default-src 'none'; sandbox\"",
+            $errorPolicy,
+            'Caddy handler errors occur before deferred conditional headers are applied.',
+        );
+        $this->assertStringContainsString('respond "" {err.status_code}', $errorPolicy);
+    }
+
+    public function test_artifact_host_maintenance_mode_avoids_direct_cookie_bypass_responses(): void
+    {
+        foreach ([
+            base_path('docker/Caddyfile') => '@artifactHostRuntime',
+            base_path('docker/Caddyfile.security-errors') => '@artifactHostRuntimeError',
+        ] as $configurationFile => $matcher) {
+            $source = $this->source($configurationFile);
+
+            $this->assertStringContainsString(
+                $matcher . ' expression `{env.APP_RUNTIME_ROLE} == "artifact-host"`',
+                $source,
+            );
+            $this->assertStringContainsString('header ' . $matcher . ' -Set-Cookie', $source);
+        }
+
+        $operations = $this->source(base_path('docs/OPERATIONS.md'));
+
+        $this->assertStringContainsString(
+            'use only plain `php artisan down` for an artifact-host HTTP role',
+            $operations,
+        );
+        $this->assertStringContainsString('`--secret`, `--redirect`, and `--render`', $operations);
+        $this->assertStringContainsString('`laravel_maintenance` cookie', $operations);
+    }
+
+    public function test_production_caddy_header_probe_runs_in_ci_and_nightly(): void
+    {
+        $probe = $this->source(base_path('scripts/verify-artifact-caddy-headers.sh'));
+
+        $this->assertStringContainsString('assert_cookie_absent artifact-cookie-strip', $probe);
+        $this->assertStringContainsString('assert_cookie_present app-cookie-preserved', $probe);
+        $this->assertStringContainsString('assert_cookie_absent handler-error', $probe);
+
+        foreach ([
+            base_path('.github/workflows/ci.yml'),
+            base_path('.github/workflows/nightly-audit.yml'),
+        ] as $workflow) {
+            $this->assertStringContainsString(
+                'sh scripts/verify-artifact-caddy-headers.sh artifactflow-app:production',
+                $this->source($workflow),
+            );
+        }
+    }
+
+    public function test_nightly_mcp_bridge_smoke_rejects_bearer_token_echo_on_both_output_streams(): void
+    {
+        $smoke = $this->source(base_path('scripts/smoke-mcp-remote.mjs'));
+
+        $this->assertStringContainsString("spawn(\n  process.execPath,", $smoke);
+        $this->assertStringContainsString('cwd: smokeWorkingDirectory', $smoke);
+        $this->assertStringNotContainsString("'npx'", $smoke);
+        $this->assertStringNotContainsString('spawnSync', $smoke);
+        $this->assertStringContainsString('stderr.includes(BEARER_TOKEN)', $smoke);
+        $this->assertStringContainsString('stdout.includes(BEARER_TOKEN)', $smoke);
     }
 
     /**

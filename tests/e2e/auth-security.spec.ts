@@ -100,6 +100,45 @@ test('two-factor recovery login is an explicit alternate mode', async ({ page })
   await page.mouse.up();
 });
 
+test('admin two-factor recovery mode works without a trusted-device control', async ({ page }) => {
+  await page.goto(`${baseUrl}/up`, { waitUntil: 'domcontentloaded' });
+  await page.setContent(`
+    <!doctype html>
+    <html data-theme="light">
+      <body>
+        <form data-two-factor-challenge>
+          <div data-two-factor-authenticator-panel>
+            <label for="admin-code">Authentication code</label>
+            <input id="admin-code" data-two-factor-authenticator-input>
+          </div>
+          <div data-two-factor-recovery-panel hidden id="admin-two-factor-recovery-panel">
+            <label for="admin-recovery-code">Recovery code</label>
+            <input id="admin-recovery-code" data-two-factor-recovery-input disabled>
+          </div>
+          <button type="button" data-two-factor-mode-toggle aria-controls="admin-two-factor-recovery-panel" aria-expanded="false">Use a recovery code</button>
+        </form>
+        <script type="module" src="${appAsset}"></script>
+      </body>
+    </html>
+  `);
+
+  const authenticatorPanel = page.locator('[data-two-factor-authenticator-panel]');
+  const authenticatorInput = page.locator('[data-two-factor-authenticator-input]');
+  const recoveryPanel = page.locator('[data-two-factor-recovery-panel]');
+  const recoveryInput = page.locator('[data-two-factor-recovery-input]');
+  const toggle = page.locator('[data-two-factor-mode-toggle]');
+
+  await toggle.click();
+  await expect(authenticatorPanel).toBeHidden();
+  await expect(authenticatorInput).toBeDisabled();
+  await expect(recoveryPanel).toBeVisible();
+  await expect(recoveryInput).toBeEnabled();
+  await expect(recoveryInput).toBeFocused();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(toggle).toHaveText('Use an authenticator code');
+  await expect(page.locator('[data-two-factor-remember-device]')).toHaveCount(0);
+});
+
 test('two-factor enrollment countdown sends an expired setup to password confirmation', async ({
   page,
 }) => {

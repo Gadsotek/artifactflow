@@ -55,7 +55,7 @@
                             <span>Security</span>
                         </a>
                         @if ($authenticatedUser->is_system_admin)
-                            <a class="af-nav-item {{ request()->routeIs('admin.users.*', 'admin.password.*') ? 'is-active' : '' }}" href="{{ route('admin.users.index') }}">
+                            <a class="af-nav-item {{ request()->routeIs('admin.users.*', 'admin.two-factor.*') ? 'is-active' : '' }}" href="{{ route('admin.users.index') }}">
                                 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V7l-8-4Zm0 5v4m0 4h.01"/></svg>
                                 <span>Administration</span>
                             </a>

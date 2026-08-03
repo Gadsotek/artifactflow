@@ -14,8 +14,6 @@ if (form instanceof HTMLFormElement) {
     authenticatorInput instanceof HTMLInputElement &&
     recoveryPanel instanceof HTMLElement &&
     recoveryInput instanceof HTMLInputElement &&
-    rememberDevice instanceof HTMLElement &&
-    rememberDeviceInput instanceof HTMLInputElement &&
     toggle instanceof HTMLButtonElement
   ) {
     let recoveryMode = false;
@@ -27,8 +25,12 @@ if (form instanceof HTMLFormElement) {
       recoveryPanel.hidden = !recoveryMode;
       recoveryInput.disabled = !recoveryMode;
       recoveryInput.required = recoveryMode;
-      rememberDevice.hidden = recoveryMode;
-      rememberDeviceInput.disabled = recoveryMode;
+      if (rememberDevice instanceof HTMLElement) {
+        rememberDevice.hidden = recoveryMode;
+      }
+      if (rememberDeviceInput instanceof HTMLInputElement) {
+        rememberDeviceInput.disabled = recoveryMode;
+      }
       toggle.setAttribute('aria-expanded', recoveryMode ? 'true' : 'false');
       toggle.textContent = recoveryMode ? 'Use an authenticator code' : 'Use a recovery code';
 
