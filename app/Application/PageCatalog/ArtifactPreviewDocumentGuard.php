@@ -266,6 +266,9 @@ final class ArtifactPreviewDocumentGuard
             // maintained as a separate alternate: the ordinary foreign path
             // preserves inert CDATA, while the frameset path independently
             // neutralizes live <frame> tokens inside the same bytes.
+            $selectStartsAtMathTextIntegrationPoint = $tag['name'] === 'select'
+                && $openSelects === 0
+                && $foreignContent->currentElementIsMathTextIntegrationPoint();
             $usesHtmlTokenizer = $openSelects > 0
                 ? true
                 : $foreignContent->consumeStartTag(
@@ -304,10 +307,15 @@ final class ArtifactPreviewDocumentGuard
 
             if ($usesHtmlTokenizer) {
                 if ($tag['name'] === 'select') {
-                    if ($openFramesets === 0) {
+                    if ($openFramesets === 0 && !$selectStartsAtMathTextIntegrationPoint) {
                         // In "in select", another select start tag closes the
                         // active select instead of opening a nested one. In
-                        // "in frameset" it is ignored altogether.
+                        // "in frameset" it is ignored altogether. A select
+                        // token at a MathML text integration point has
+                        // divergent maintained-engine behavior, so keep
+                        // scanning the foreign-content interpretation instead
+                        // of allowing a false script RAWTEXT state to hide
+                        // later markup.
                         $openSelects += $openSelects > 0 ? -1 : 1;
                     }
                 }
