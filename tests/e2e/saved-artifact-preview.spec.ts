@@ -790,9 +790,11 @@ test('historical HTML versions stay inside the artifact-origin sandbox @artifact
   await expect(createEditor).toHaveAttribute('data-editor-ready', 'true');
   await page.locator('select[name="type"]').selectOption('html_artifact');
   await page.locator('select[name="mode"]').selectOption('html_paste');
-  await page.locator('input[name="title"]').fill(title);
   await expect(createEditor).toHaveAttribute('data-editor-language', 'html');
   await expect(createEditor).toHaveAttribute('data-editor-ready', 'true');
+  const titleInput = page.locator('input[name="title"]');
+  await titleInput.fill(title);
+  await expect(titleInput).toHaveValue(title);
 
   const createSource = page.locator('[data-source-editor-mount] .cm-content');
   await createSource.click();

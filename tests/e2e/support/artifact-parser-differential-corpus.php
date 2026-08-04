@@ -149,6 +149,9 @@ $mandatoryCases = [
     'regression/select-script' =>
         '<!doctype html><select><script>/*</select>*/</script><plaintext></select>'
         . '<iframe id="af-parser-select"></iframe>',
+    'regression/math-mtext-select-script-engine-differential' =>
+        '<!doctype html><math><mtext><select><desc><p><svg><script></select>'
+        . '<iframe id="af-parser-math-select-script"></iframe>',
     'regression/select-ignored-frameset-noframes' =>
         '<!doctype html><select><option><frameset>--><noframes></select>'
         . '<iframe data-decoy=">" id="af-parser-ignored-frameset"></iframe>',
