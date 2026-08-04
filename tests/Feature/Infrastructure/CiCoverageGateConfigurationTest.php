@@ -152,7 +152,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('npm audit --audit-level=moderate', $workflow);
         $this->assertStringContainsString('npm audit --audit-level=moderate', $nightly);
         $this->assertStringContainsString('TRIVY_IMAGE ?= aquasec/trivy:0.72.0@sha256:', $makefile);
-        $this->assertStringContainsString('FROM php:8.5.8-cli-trixie@sha256:', $dockerfile);
+        $this->assertStringContainsString('FROM php:8.5.9-cli-trixie@sha256:', $dockerfile);
         $this->assertStringContainsString('FROM node:26-alpine@sha256:', $dockerfile);
         $this->assertStringContainsString('FROM dunglas/frankenphp:1-php8.5-alpine@sha256:', $dockerfile);
         $this->assertStringContainsString('COPY --from=composer:2.9@sha256:', $dockerfile);

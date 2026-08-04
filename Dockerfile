@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM php:8.5.8-cli-trixie@sha256:58b996c35ce0511cdbaa1fc0476a194fd0221097d721ff7df5af0b6f1a3d0202 AS php-base
+FROM php:8.5.9-cli-trixie@sha256:f5d2b71350cdc3c2fc807d6679f5bdac2898d7558945105e46308e4659fb37ac AS php-base
 
 ARG INSTALL_XDEBUG=0
 
@@ -126,7 +126,7 @@ CMD ["sh", "/var/www/html/docker/start-local.sh"]
 
 # Native raster decoding lives in a separate minimal image. It receives no
 # application source, database client, credentials, or artifact storage.
-FROM php:8.5.8-cli-alpine3.24@sha256:8d7090ce03736b6ecfd739d87a46ab59b5d1d0d837f1ac7c5d2702f1d312f5a0 AS image-parser
+FROM php:8.5.9-cli-alpine3.24@sha256:0554eb53778b5316f6b9a3447c9dfa3cf2141c0c02ff816c42cdc9aa240a34aa AS image-parser
 
 RUN apk add --no-cache --virtual .image-parser-build-deps \
         $PHPIZE_DEPS \
