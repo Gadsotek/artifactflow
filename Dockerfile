@@ -69,7 +69,7 @@ RUN composer install \
 # Keep this digest in sync with the vite service in docker-compose.yml
 # (Dependabot only tracks this pin) so local dev and production assets build
 # on the same Node.
-FROM node:26-alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66 AS frontend-build
+FROM node:26-alpine@sha256:233761595746769ebfdb6090f44fc7cdf818ae0ce62d2b37e0367723b9823e36 AS frontend-build
 
 WORKDIR /app
 
