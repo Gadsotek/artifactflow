@@ -335,6 +335,7 @@ final class TwoFactorAuthenticationTest extends TestCase
     {
         $user = $this->createUser('Enrollment Bind Race User', 'enrollment-bind-race@example.test');
         $originalAuthRevision = $user->auth_revision;
+        $passwordConfirmedAt = now()->getTimestamp();
         $user->forceFill([
             'two_factor_secret' => self::SECRET,
             'two_factor_secret_created_at' => now(),
@@ -358,7 +359,7 @@ final class TwoFactorAuthenticationTest extends TestCase
         });
 
         $this->actingAs($user)
-            ->withSession([RequireRecentPasswordConfirmation::SESSION_KEY => now()->getTimestamp()])
+            ->withSession([RequireRecentPasswordConfirmation::SESSION_KEY => $passwordConfirmedAt])
             ->post('/settings/two-factor/confirm', [
                 'code' => $this->currentOtp(self::SECRET),
             ])

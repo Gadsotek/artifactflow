@@ -90,6 +90,15 @@ final class ArtifactPreviewForeignContentState
         return $this->elements[array_key_last($this->elements)]['integration'] !== null;
     }
 
+    public function currentElementIsMathTextIntegrationPoint(): bool
+    {
+        if ($this->elements === []) {
+            return false;
+        }
+
+        return $this->elements[array_key_last($this->elements)]['integration'] === 'math_text';
+    }
+
     public function startTagUsesHtmlTokenizer(string $name, string $tagText): bool
     {
         if ($this->elements === []) {
