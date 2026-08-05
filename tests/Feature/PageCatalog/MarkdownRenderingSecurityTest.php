@@ -83,4 +83,14 @@ final class MarkdownRenderingSecurityTest extends TestCase
         $this->assertStringNotContainsString('href="data:', $html);
         $this->assertStringNotContainsString('javascript:alert(1)', $html);
     }
+
+    public function test_pathological_inline_delimiters_fail_to_a_fixed_safe_rendering_notice(): void
+    {
+        $payload = str_repeat('[[a]]', 12_501);
+
+        $html = app(MarkdownPageRenderer::class)->render($payload);
+
+        $this->assertStringContainsString('data-artifactflow-markdown-rendering-limited', $html);
+        $this->assertStringNotContainsString($payload, $html);
+    }
 }

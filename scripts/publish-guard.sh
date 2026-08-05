@@ -13,6 +13,7 @@ public_paths=(
     "docs/architecture/external-sharing.md"
     "docs/architecture/overview.svg"
     "docs/architecture/workflows.svg"
+    "docs/operations/artifact-host-database-grants.sql"
     "THREAT-MODEL.md"
 )
 
@@ -24,6 +25,7 @@ published_docs=(
     "docs/architecture/external-sharing.md"
     "docs/architecture/overview.svg"
     "docs/architecture/workflows.svg"
+    "docs/operations/artifact-host-database-grants.sql"
 )
 
 if ! git check-ignore --no-index -q -- docs/internal; then

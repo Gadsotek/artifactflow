@@ -219,6 +219,9 @@ final class DeploymentDoctorTest extends TestCase
                 $this->hardenedProductionConfig(),
                 [
                     'app.runtime_role' => $runtimeRole,
+                    'cache.limiter' => $runtimeRole === 'artifact-host'
+                        ? 'database_artifact_limiter'
+                        : 'database_limiter',
                     'image_parser.url' => '',
                     'image_parser.shared_secret' => '',
                 ],
@@ -282,6 +285,8 @@ final class DeploymentDoctorTest extends TestCase
         foreach (['array', 'null', 'file'] as $store) {
             $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
                 'cache.default' => $store,
+                'cache.limiter' => null,
+                'cache.app_limiter' => null,
             ]))))->run();
 
             $check = $this->check($report->checks, 'cache_store');
@@ -313,6 +318,60 @@ final class DeploymentDoctorTest extends TestCase
         $this->assertFalse($report->passed());
         $this->assertSame(DoctorCheckStatus::Fail, $check->status);
         $this->assertStringContainsString('does not provide shared counters', $check->detail);
+    }
+
+    public function test_production_fails_when_artifact_and_application_limiters_share_a_database_table(): void
+    {
+        $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
+            'cache.limiter' => 'database_limiter',
+            'cache.app_limiter' => 'database_limiter',
+            'cache.artifact_limiter' => 'database_artifact_limiter',
+            'cache.stores.database_limiter' => [
+                'driver' => 'database',
+                'connection' => 'application_connection',
+                'table' => 'rate_limit_cache',
+            ],
+            'cache.stores.database_artifact_limiter' => [
+                'driver' => 'database',
+                'connection' => 'artifact_connection',
+                'table' => 'rate_limit_cache',
+            ],
+        ]))))->run();
+
+        $check = $this->check($report->checks, 'cache_store');
+
+        $this->assertFalse($report->passed());
+        $this->assertSame(DoctorCheckStatus::Fail, $check->status);
+        $this->assertStringContainsString('isolated from application security counters', $check->detail);
+    }
+
+    public function test_production_fails_closed_for_unproven_artifact_limiter_aliases(): void
+    {
+        foreach (['redis', 'memcached', 'dynamodb'] as $driver) {
+            $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
+                'cache.limiter' => 'application_limiter',
+                'cache.app_limiter' => 'application_limiter',
+                'cache.artifact_limiter' => 'artifact_limiter',
+                'cache.stores.application_limiter' => [
+                    'driver' => $driver,
+                    'connection' => 'shared',
+                    'prefix' => 'shared:',
+                    'table' => 'shared_rate_limits',
+                ],
+                'cache.stores.artifact_limiter' => [
+                    'driver' => $driver,
+                    'connection' => 'shared',
+                    'prefix' => 'shared:',
+                    'table' => 'shared_rate_limits',
+                ],
+            ]))))->run();
+
+            $check = $this->check($report->checks, 'cache_store');
+
+            $this->assertFalse($report->passed(), $driver);
+            $this->assertSame(DoctorCheckStatus::Fail, $check->status, $driver);
+            $this->assertStringContainsString('isolated from application security counters', $check->detail);
+        }
     }
 
     public function test_production_warns_but_still_passes_when_trusting_the_immediate_peer(): void
@@ -861,8 +920,21 @@ final class DeploymentDoctorTest extends TestCase
             'app.create_user_password' => '',
             'app.reset_user_password' => '',
             'cache.default' => 'database',
+            'cache.app_limiter' => 'database_limiter',
+            'cache.artifact_limiter' => 'database_artifact_limiter',
+            'cache.limiter' => 'database_limiter',
             'cache.stores.array.driver' => 'array',
             'cache.stores.database.driver' => 'database',
+            'cache.stores.database_limiter' => [
+                'driver' => 'database',
+                'connection' => null,
+                'table' => 'rate_limit_cache',
+            ],
+            'cache.stores.database_artifact_limiter' => [
+                'driver' => 'database',
+                'connection' => null,
+                'table' => 'artifact_rate_limit_cache',
+            ],
             'mail.default' => 'smtp',
             'mail.mailers' => [
                 'smtp' => ['transport' => 'smtp'],

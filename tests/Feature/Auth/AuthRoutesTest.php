@@ -165,7 +165,7 @@ final class AuthRoutesTest extends TestCase
             ->assertTooManyRequests();
     }
 
-    public function test_account_failure_bucket_does_not_block_a_correct_password(): void
+    public function test_account_failure_bucket_blocks_password_validation_across_source_ips(): void
     {
         config([
             'rate_limits.login_ip_per_minute' => 10,
@@ -192,6 +192,15 @@ final class AuthRoutesTest extends TestCase
                 'password' => 'wrong password',
             ])
             ->assertTooManyRequests();
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.34'])
+            ->post('/login', [
+                'email' => 'lockout-target@example.test',
+                'password' => 'correct horse battery staple',
+            ])
+            ->assertTooManyRequests();
+
+        $this->travel(3601)->seconds();
 
         $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.34'])
             ->post('/login', [

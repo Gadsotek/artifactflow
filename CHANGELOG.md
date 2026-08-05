@@ -6,6 +6,10 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+### Security
+
+- Closed eight adversarial resource- and boundary-control gaps: exhausted account-wide login budgets now apply before credential validation; anonymous share traffic has a selector-independent source ceiling and indexed, cursor-based database-counter retention; Markdown and artifact-preview parsing have deterministic complexity limits with fixed safe fallbacks; duplicate declarative-shadow attributes rewrite in linear time; one-time MCP tokens and 2FA bootstrap material are explicitly non-cacheable; and artifact-host PostgreSQL grants now isolate its limiter table from application login, 2FA, reset, MCP, and write counters. The production gate requires distinct database limiter table names regardless of connection aliases and fails closed for Redis, Memcached, and DynamoDB limiter aliases whose physical credential/namespace boundary cannot be proven from cache configuration.
+
 ### Added
 
 - Added alpha external page sharing through one-time or expiring bearer links, with fragment-only secret bootstrap, explicit one-time redemption, window-bound anonymous viewing, live page/policy revalidation, isolated Markdown/HTML/image presentation, authorized inventory and revocation, and the dedicated MCP `mcp:share` scope for owned editable pages in opted-in workspaces.
@@ -18,6 +22,7 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ### Changed
 
+- Production upgrade: run the new migrations before serving traffic to create the indexed `rate_limit_cache*` and `artifact_rate_limit_cache*` tables; set `CACHE_LIMITER=database_limiter` and `ARTIFACT_CACHE_LIMITER=database_artifact_limiter` on every app, artifact-host, worker, and scheduler runtime; and give artifact-host its own `DB_USERNAME`/`DB_PASSWORD` PostgreSQL role with the reviewed `docs/operations/artifact-host-database-grants.sql` grants applied after migration. Keep the scheduler running so expired database counters are pruned nightly. The table names can be overridden with `DB_RATE_LIMIT_CACHE_TABLE`, `DB_RATE_LIMIT_CACHE_LOCK_TABLE`, `DB_ARTIFACT_RATE_LIMIT_CACHE_TABLE`, and `DB_ARTIFACT_RATE_LIMIT_CACHE_LOCK_TABLE`, but the application and artifact table names must remain distinct. `EXTERNAL_SHARE_PUBLIC_IP_RATE_LIMIT_PER_MINUTE` is also new and defaults to `60`.
 - MCP discovery now tells AI clients to generate single-file, self-contained HTML artifacts with inline dependencies and no CDN or network-dependent behavior.
 - Simplified the login screen by removing the operator-facing public-registration and rate-limiting note; the authentication controls remain documented and unchanged.
 

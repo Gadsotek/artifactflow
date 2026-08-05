@@ -114,6 +114,33 @@ final class PageCreationTest extends TestCase
         $this->assertSame(0, Page::query()->where('title', 'Too Many Tags')->count());
     }
 
+    public function test_page_creation_rejects_markdown_that_exceeds_the_safe_rendering_budget(): void
+    {
+        Storage::fake('artifacts');
+        $editor = $this->createUser('Complex Markdown User', 'complex-markdown@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($editor, 'Complex Markdown Team');
+
+        try {
+            app(CreatePage::class)->handle($editor, new CreatePageCommand(
+                workspaceUid: $workspace->uid,
+                type: PageType::Markdown,
+                title: 'Pathological Markdown',
+                description: null,
+                content: str_repeat('[[a]]', 12_501),
+            ));
+            $this->fail('Expected pathological Markdown to be rejected before persistence.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame(
+                'Markdown content exceeds safe rendering complexity limits.',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertFalse(Page::query()->where('title', 'Pathological Markdown')->exists());
+        $this->assertSame(0, PageVersion::query()->count());
+        Storage::disk('artifacts')->assertDirectoryEmpty('pages');
+    }
+
     public function test_tag_vocabulary_is_global_across_workspaces(): void
     {
         Storage::fake('artifacts');

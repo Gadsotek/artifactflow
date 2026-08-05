@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\PageCatalog;
 
+use App\Application\PageCatalog\ArtifactPreviewComplexityExceeded;
 use App\Application\PageCatalog\ArtifactPreviewDocumentGuard;
+use App\Http\Support\ArtifactSandboxResponder;
 use ReflectionProperty;
 use RuntimeException;
 use Tests\TestCase;
@@ -1315,5 +1317,53 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
             $hardened,
         );
         $this->assertStringContainsString('window.fallbackRan=true', $hardened);
+    }
+
+    public function test_recursive_foreign_cdata_alternates_are_bounded_before_stack_exhaustion(): void
+    {
+        $depth = 66;
+        $html = '<!doctype html>'
+            . str_repeat('<svg><foreignObject><![CDATA[>', $depth)
+            . '<iframe srcdoc="blocked"></iframe>'
+            . str_repeat(']]></foreignObject></svg>', $depth);
+
+        $this->expectException(ArtifactPreviewComplexityExceeded::class);
+
+        app(ArtifactPreviewDocumentGuard::class)->harden($html);
+    }
+
+    public function test_foreign_element_stack_is_bounded(): void
+    {
+        $html = '<!doctype html>' . str_repeat('<svg>', 16_385);
+
+        $this->expectException(ArtifactPreviewComplexityExceeded::class);
+
+        app(ArtifactPreviewDocumentGuard::class)->harden($html);
+    }
+
+    public function test_duplicate_declarative_shadow_root_attributes_are_bounded(): void
+    {
+        $html = '<!doctype html><template '
+            . str_repeat('shadowrootmode="open" ', 4_097)
+            . '><p>inert</p></template>';
+
+        $this->expectException(ArtifactPreviewComplexityExceeded::class);
+
+        app(ArtifactPreviewDocumentGuard::class)->harden($html);
+    }
+
+    public function test_sandbox_responder_returns_a_fixed_response_for_excessive_parser_complexity(): void
+    {
+        $marker = 'must-not-be-reflected-' . bin2hex(random_bytes(8));
+        $html = '<!doctype html><template '
+            . str_repeat('shadowrootmode="open" ', 4_097)
+            . '>' . $marker . '</template>';
+
+        $response = app(ArtifactSandboxResponder::class)->document($html);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame('no-store, private', $response->headers->get('Cache-Control'));
+        $this->assertStringContainsString('could not be rendered safely', (string) $response->getContent());
+        $this->assertStringNotContainsString($marker, (string) $response->getContent());
     }
 }

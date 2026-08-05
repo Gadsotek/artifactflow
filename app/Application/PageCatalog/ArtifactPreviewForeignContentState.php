@@ -13,6 +13,8 @@ namespace App\Application\PageCatalog;
  */
 final class ArtifactPreviewForeignContentState
 {
+    private const int MAX_OPEN_ELEMENTS = 16_384;
+
     /**
      * @var list<string>
      */
@@ -230,6 +232,13 @@ final class ArtifactPreviewForeignContentState
     private function push(string $name, string $namespace, ?string $integration): void
     {
         $position = count($this->elements);
+
+        if ($position >= self::MAX_OPEN_ELEMENTS) {
+            throw new ArtifactPreviewComplexityExceeded(
+                'Artifact preview foreign-content nesting exceeds the safe rendering limit.',
+            );
+        }
+
         $this->elements[] = [
             'integration' => $integration,
             'name' => $name,

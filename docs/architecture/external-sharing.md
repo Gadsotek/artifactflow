@@ -172,9 +172,12 @@ inventory.
 Operator configuration bounds active shares to 20 per page and 10,000 per
 installation. These are hard ceilings rather than recipient-visible product
 settings. Creation locks the page before both counts are rechecked. Rate limits
-apply per actor/page for creation and per source/selector bucket for exchange
-and open; limit responses remain indistinguishable from other unavailable
-states on the public surface.
+apply per actor/page for creation, per source/selector/operation for exchange
+and open, and per source across every selector and public operation. Limit
+responses remain indistinguishable from other unavailable states on the public
+surface. When the limiter uses the database cache store, the scheduler prunes
+expired counter rows nightly so attacker-chosen selectors cannot leave
+unbounded stale cache rows.
 
 The creation form mirrors the configured expiry ceiling through the native
 date-time control's maximum so recipients cannot select a known-invalid

@@ -376,11 +376,12 @@ the shared mount private and outside the image's public web root.
 
 The `worker` runs `queue:work` (outbound mail is the only queued work today) and the
 `scheduler` runs `schedule:work`, which drives `artifactflow:dispatch-domain-events` (the
-outbox relay) and the nightly `prune-domain-events` / `prune-credentials` jobs. Skipping
-the scheduler halts outbox dispatch and journal/credential retention (records accumulate
-undispatched rather than being lost); skipping the worker leaves invitation and
-password-reset emails queued but never delivered. The local `docker-compose.yml` `worker`
-and `scheduler` services show the exact `command:` override to mirror. See
+outbox relay) and the nightly `prune-domain-events`, `prune-credentials`,
+`prune-external-shares`, and `prune-rate-limit-cache` jobs. Skipping the scheduler halts
+outbox dispatch and retention (records accumulate undispatched or expired rather than
+being lost); skipping the worker leaves invitation and password-reset emails queued but
+never delivered. The local `docker-compose.yml` `worker` and `scheduler` services show
+the exact `command:` override to mirror. See
 [Mail Delivery](#mail-delivery) for why the worker is required in practice.
 
 Production must use separate origins for the app and artifact host. Do not serve uploaded artifact HTML from the main app origin.
@@ -436,12 +437,56 @@ HTTP Strict Transport Security is sent on every response with a two-year `max-ag
 
 `TRUSTED_PROXIES` must name the real TLS edge so the app derives the client IP from `X-Forwarded-For` rather than the proxy's own address. Set it to the edge's address(es) or CIDR; the boot gate rejects an empty value, `*`, and address-space-wide ranges (`0.0.0.0/0`, the default Docker `172.16.0.0/12`). The special value `REMOTE_ADDR` trusts whatever connects directly — the immediate peer — as the proxy, which is safe **only** when the app port is reachable exclusively through the edge. If the app is directly reachable by untrusted clients under `REMOTE_ADDR`, any of them can forge `X-Forwarded-For` and defeat the IP-keyed rate limiters and audit trail; `php artisan artifactflow:doctor` emits a warning whenever production trusts `REMOTE_ADDR` so that network-isolation assumption is a deliberate choice.
 
-`CACHE_STORE` (or a dedicated `cache.limiter`) must use a counter backend shared by every app
-replica. The production boot gate accepts database, Redis, Memcached, or DynamoDB drivers and rejects
-`array`, `null`, `file`, undefined, and unknown drivers. The default `database` store is shared and
-requires the migrated cache tables. A node-local file cache is not acceptable even when it persists
-across requests: round-robin traffic would receive an independent login, 2FA, reset, preview, and MCP
-budget on every replica.
+`CACHE_STORE` must be shared by every app replica. Database, Redis, Memcached, and DynamoDB are
+shared-capable for ordinary application caching; `array`, `null`, `file`, undefined, and unknown
+drivers are not. Rate limiting has a stricter cross-runtime credential boundary: the shipped
+production configuration currently supports only the dedicated database limiter stores described
+below. A node-local file cache is not acceptable even when it persists across requests: round-robin
+traffic would receive an independent login, 2FA, reset, preview, and MCP budget on every replica.
+
+The anonymous external-share surface has both a per-source/per-selector/per-operation budget and a
+separate per-source ceiling across all selectors and operations. Rotating random selectors therefore cannot create an
+unbounded stream of fresh limiter buckets. Database cache stores do not eagerly delete expired
+rows, so the scheduler runs `artifactflow:prune-rate-limit-cache` nightly. It prunes the configured
+application and artifact-host database limiter stores using the `(expiration, key)` indexes and a
+matching forward cursor; non-database stores are skipped. Preview with `--dry-run`.
+
+Production defaults `CACHE_LIMITER=database_limiter` for app, worker, and scheduler processes, and
+`ARTIFACT_CACHE_LIMITER=database_artifact_limiter` for `APP_RUNTIME_ROLE=artifact-host`. They use the
+same PostgreSQL database but separate `rate_limit_cache*` and `artifact_rate_limit_cache*` tables.
+The production boot gate refuses an artifact runtime that selects the application store and rejects
+database limiter aliases using the same table name, regardless of their connection alias. Redis,
+Memcached, and DynamoDB cache aliases
+fail closed for rate limiting even when their names or prefixes differ: Laravel configuration cannot
+prove Redis ACL key patterns, Memcached network/credential isolation, or DynamoDB IAM scope. Supporting
+one of those limiter backends requires a future backend-specific runtime proof. Changing request
+fingerprints does not substitute for isolating the counter store from the artifact-host credential.
+
+When upgrading an existing production deployment, apply migrations before serving traffic with the
+new image. The migration creates both limiter tables, both lock tables, and their `(expiration, key)`
+indexes. Set `CACHE_LIMITER=database_limiter` and
+`ARTIFACT_CACHE_LIMITER=database_artifact_limiter` on every runtime. The optional
+`DB_RATE_LIMIT_CACHE_TABLE`, `DB_RATE_LIMIT_CACHE_LOCK_TABLE`,
+`DB_ARTIFACT_RATE_LIMIT_CACHE_TABLE`, and `DB_ARTIFACT_RATE_LIMIT_CACHE_LOCK_TABLE` overrides retain
+the names shown in `.env.production.example` by default; application and artifact table names must
+remain distinct. After migration, apply the grant manifest below as the database owner. Inject the
+resulting restricted role through the artifact-host container's existing `DB_USERNAME` and
+`DB_PASSWORD` variables only; app, worker, and scheduler keep the application-role credentials.
+
+### Artifact-host database grants
+
+Use a distinct PostgreSQL role for `APP_RUNTIME_ROLE=artifact-host`. The exact reviewed grant
+manifest is [`docs/operations/artifact-host-database-grants.sql`](operations/artifact-host-database-grants.sql).
+The role reads only `pages`, `page_versions`, external-share/session state, and installation policy.
+External-share resolution deliberately holds `SELECT FOR UPDATE` locks through response
+materialization so a concurrent revocation cannot commit before stale bytes are served; PostgreSQL
+therefore needs column-level `UPDATE (updated_at)` privilege on those three locked tables even though
+the artifact-host code never issues an update. Its limiter needs read/write access to
+`artifact_rate_limit_cache`. It does not need the application `cache` or `rate_limit_cache` tables,
+either limiter lock table, queues, sessions, users, workspaces, audit/event tables,
+schema creation, or sequence privileges. Grant database `CONNECT` separately according to your
+database naming and role-management policy, keep this as a standalone role with no broader role
+memberships, and keep the artifact volume mounted read-only.
 
 Realtime broadcasting is optional and disabled by default. To run it, deploy the Reverb runtime, set `BROADCAST_CONNECTION=reverb`, configure `REVERB_APP_ID`, `REVERB_APP_KEY`, a dedicated `REVERB_APP_SECRET` of at least 32 bytes, set `REVERB_PUBLIC_URL` to the app origin, keep `REVERB_APP_RATE_LIMITING_ENABLED=true`, and set a bounded `REVERB_APP_MAX_CONNECTIONS`. In local Compose, the Reverb service is behind the `realtime` profile and binds to `127.0.0.1:${REVERB_PORT:-8080}`.
 
@@ -614,6 +659,7 @@ Content and storage limits:
 | `EXTERNAL_SHARE_MAX_VIEW_SESSIONS_PER_SHARE` | 100 | Maximum concurrent window-lived viewer sessions retained for one expiring share; opening another evicts the oldest |
 | `EXTERNAL_SHARE_CREATE_RATE_LIMIT_PER_MINUTE` | 10 | External-share creations per actor and page per minute |
 | `EXTERNAL_SHARE_PUBLIC_RATE_LIMIT_PER_MINUTE` | 20 | Anonymous exchange/open attempts per source, selector, and operation per minute |
+| `EXTERNAL_SHARE_PUBLIC_IP_RATE_LIMIT_PER_MINUTE` | 60 | Anonymous attempts per source across every selector and operation per minute |
 | `WORKSPACE_INVITATION_TTL_DAYS` | 7 | Invitation validity |
 | `WORKSPACE_RENAME_COOLDOWN_SECONDS` | 60 | Cooldown between workspace renames |
 

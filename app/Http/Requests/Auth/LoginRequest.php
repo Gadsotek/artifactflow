@@ -93,10 +93,6 @@ final class LoginRequest extends AppFormRequest
      */
     private function failAuthentication(): never
     {
-        if (RateLimiter::tooManyAttempts($this->accountThrottleKey(), $this->accountMaxAttempts())) {
-            abort(429);
-        }
-
         RateLimiter::hit($this->throttleKey(), self::DECAY_SECONDS);
         RateLimiter::hit($this->sourceIpThrottleKey(), self::DECAY_SECONDS);
         RateLimiter::hit($this->accountThrottleKey(), self::ACCOUNT_DECAY_SECONDS);
@@ -148,6 +144,14 @@ final class LoginRequest extends AppFormRequest
     private function ensureIsNotRateLimited(): void
     {
         if (RateLimiter::tooManyAttempts($this->sourceIpThrottleKey(), $this->sourceIpMaxAttempts())) {
+            abort(429);
+        }
+
+        // This bucket is IP-independent by design. Check it before retrieving
+        // or validating credentials so distributed guesses cannot bypass the
+        // advertised account-wide ceiling by eventually presenting the right
+        // password from a fresh source address.
+        if (RateLimiter::tooManyAttempts($this->accountThrottleKey(), $this->accountMaxAttempts())) {
             abort(429);
         }
 

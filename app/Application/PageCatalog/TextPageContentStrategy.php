@@ -17,6 +17,7 @@ final readonly class TextPageContentStrategy implements PageContentStrategy
         private InstallationLimitSettings $limits,
         private PageContentScanner $scanner,
         private PageTextExtractor $textExtractor,
+        private MarkdownRenderComplexity $markdownComplexity,
     ) {
     }
 
@@ -48,6 +49,10 @@ final readonly class TextPageContentStrategy implements PageContentStrategy
 
         if (strlen($content) > $limit) {
             throw new DomainRuleViolation('Page content exceeds the configured size limit.');
+        }
+
+        if ($type === PageType::Markdown) {
+            $this->markdownComplexity->ensureSafe($content);
         }
     }
 

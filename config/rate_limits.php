@@ -13,6 +13,7 @@ return [
     'draft_preview_capabilities_per_minute' => (int) env('DRAFT_PREVIEW_CAPABILITY_RATE_LIMIT_PER_MINUTE', 30),
     'external_share_creates_per_minute' => (int) env('EXTERNAL_SHARE_CREATE_RATE_LIMIT_PER_MINUTE', 10),
     'external_share_public_per_minute' => (int) env('EXTERNAL_SHARE_PUBLIC_RATE_LIMIT_PER_MINUTE', 20),
+    'external_share_public_ip_per_minute' => (int) env('EXTERNAL_SHARE_PUBLIC_IP_RATE_LIMIT_PER_MINUTE', 60),
     'artifact_previews_per_minute' => (int) env('ARTIFACT_PREVIEWS_PER_MINUTE', 60),
     'mcp_pre_auth_per_minute' => (int) env('MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE', 300),
     'mcp_per_minute' => (int) env('MCP_RATE_LIMIT_PER_MINUTE', 60),

@@ -212,22 +212,32 @@ final class AppServiceProvider extends ServiceProvider
             ))->by($this->rateLimitKey($request) . ':page:' . $pageUid);
         });
 
-        RateLimiter::for('artifactflow-external-share-public', function (Request $request): Limit {
+        RateLimiter::for('artifactflow-external-share-public', function (Request $request): array {
             $selector = $request->route('externalShareUid');
             $selectorKey = is_string($selector) ? $selector : 'missing';
             $ip = $request->ip() ?? 'unknown';
             $operation = $request->route()?->getName() ?? 'unknown';
+            $unavailable = static fn (Request $request, array $headers): SymfonyResponse => app(
+                ExternalShareResponses::class,
+            )->unavailableForRateLimitedRequest($request, $headers);
 
-            return Limit::perMinute($this->configuredRateLimit(
-                'rate_limits.external_share_public_per_minute',
-                20,
-            ))
-                ->by('external-share-public:' . hash('sha256', $ip . '|' . $selectorKey . '|' . $operation))
-                ->response(
-                    static fn (Request $request, array $headers): SymfonyResponse => app(
-                        ExternalShareResponses::class,
-                    )->unavailableForRateLimitedRequest($request, $headers),
-                );
+            return [
+                Limit::perMinute($this->configuredRateLimit(
+                    'rate_limits.external_share_public_ip_per_minute',
+                    60,
+                ))
+                    ->by('external-share-public-ip:' . hash('sha256', $ip))
+                    ->response($unavailable),
+                Limit::perMinute($this->configuredRateLimit(
+                    'rate_limits.external_share_public_per_minute',
+                    20,
+                ))
+                    ->by('external-share-public-selector:' . hash(
+                        'sha256',
+                        $ip . '|' . $selectorKey . '|' . $operation,
+                    ))
+                    ->response($unavailable),
+            ];
         });
 
         RateLimiter::for('artifact-previews', function (Request $request): array {

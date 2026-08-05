@@ -9,16 +9,18 @@ use App\Application\Identity\TurnstileConfiguration;
 use App\Application\PageCatalog\ImageArtifactLimits;
 use App\Application\PageCatalog\ImageNormalizationConfiguration;
 use App\Application\PageCatalog\ImageParserTimeouts;
+use App\Infrastructure\Cache\RateLimiterCacheConfiguration;
 use Illuminate\Contracts\Config\Repository;
 use RuntimeException;
 
 final readonly class ProductionSecurityConfiguration
 {
-    // The non-trivial invariant DECISIONS are defined once in SecurityInvariants
-    // (and origins in OriginNormalizer); both this boot gate and the read-only
-    // DeploymentDoctor preflight consume them, so a tightened rule updates both,
-    // and DeploymentDoctorTest asserts the two stay in lockstep. Presentation --
-    // throw-on-first here, graded punch list there -- stays with each consumer.
+    // The non-trivial invariant DECISIONS are defined once in SecurityInvariants,
+    // RateLimiterCacheConfiguration (and origins in OriginNormalizer); both this
+    // boot gate and the read-only DeploymentDoctor preflight consume them, so a
+    // tightened rule updates both, and DeploymentDoctorTest asserts the two stay
+    // in lockstep. Presentation -- throw-on-first here, graded punch list there --
+    // stays with each consumer.
     public const int DEFAULT_BCRYPT_ROUNDS = 12;
 
     /**
@@ -28,6 +30,8 @@ final readonly class ProductionSecurityConfiguration
 
     public function __construct(
         private Repository $config,
+        private RateLimiterCacheConfiguration $rateLimiterCache,
+        private SecurityInvariants $invariants,
     ) {
     }
 
@@ -89,7 +93,7 @@ final readonly class ProductionSecurityConfiguration
             throw new RuntimeException('Artifact storage must be private.');
         }
 
-        if (!SecurityInvariants::artifactStorageRootIsOutsidePublicPath(
+        if (!$this->invariants->artifactStorageRootIsOutsidePublicPath(
             $this->string('filesystems.disks.artifacts.root'),
             public_path(),
         )) {
@@ -159,7 +163,7 @@ final readonly class ProductionSecurityConfiguration
             'Application key must be a non-placeholder 32-byte secret.',
         );
 
-        if (SecurityInvariants::signingKeyReusesApplicationKey(
+        if ($this->invariants->signingKeyReusesApplicationKey(
             $signingKeySecret,
             $applicationSecret,
             $this->previousApplicationKeys(),
@@ -192,7 +196,7 @@ final readonly class ProductionSecurityConfiguration
             $comparisonSecrets[] = $signingSecret;
         }
 
-        if ($secret === null || SecurityInvariants::secretReusesAny($secret, $comparisonSecrets)) {
+        if ($secret === null || $this->invariants->secretReusesAny($secret, $comparisonSecrets)) {
             throw new RuntimeException('Image parser shared secret must be strong and dedicated.');
         }
 
@@ -261,7 +265,7 @@ final readonly class ProductionSecurityConfiguration
             throw new RuntimeException('Dummy password hash is required in production.');
         }
 
-        $hashCost = SecurityInvariants::bcryptHashCost($dummyHash);
+        $hashCost = $this->invariants->bcryptHashCost($dummyHash);
 
         if ($hashCost === null) {
             throw new RuntimeException('Dummy password hash must be a valid bcrypt hash.');
@@ -306,7 +310,7 @@ final readonly class ProductionSecurityConfiguration
         // Route SESSION_DOMAIN through the single origin parser rather than a raw
         // strtolower/ltrim, so a non-ASCII/IDN spelling a browser would IDNA-canonicalise
         // cannot slip past the coverage test and scope the app cookie over the artifact host.
-        $coverage = SecurityInvariants::sessionCookieDomainCoverage($this->string('session.domain'), $artifactHost);
+        $coverage = $this->invariants->sessionCookieDomainCoverage($this->string('session.domain'), $artifactHost);
 
         if ($coverage === 'invalid') {
             throw new RuntimeException('Session domain must be a canonical ASCII host.');
@@ -321,19 +325,19 @@ final readonly class ProductionSecurityConfiguration
     {
         $trustedProxies = $this->string('trustedproxy.raw');
 
-        if (!SecurityInvariants::trustedProxiesAreConfigured($trustedProxies)) {
+        if (!$this->invariants->trustedProxiesAreConfigured($trustedProxies)) {
             throw new RuntimeException('Trusted proxies must be explicitly configured for production.');
         }
 
-        if (SecurityInvariants::trustedProxiesUseBroadDockerCidr($trustedProxies)) {
+        if ($this->invariants->trustedProxiesUseBroadDockerCidr($trustedProxies)) {
             throw new RuntimeException('Trusted proxies must not use the broad development Docker CIDR in production.');
         }
 
-        if (SecurityInvariants::trustedProxiesUseWildcard($trustedProxies)) {
+        if ($this->invariants->trustedProxiesUseWildcard($trustedProxies)) {
             throw new RuntimeException('Trusted proxies must not use a wildcard in production.');
         }
 
-        if (SecurityInvariants::trustedProxiesUseAllAddressesCidr($trustedProxies)) {
+        if ($this->invariants->trustedProxiesUseAllAddressesCidr($trustedProxies)) {
             throw new RuntimeException('Trusted proxies must not use an all-addresses CIDR (for example 0.0.0.0/0 or ::/0) in production.');
         }
     }
@@ -381,7 +385,7 @@ final readonly class ProductionSecurityConfiguration
             'Artifact preview signing key must be a non-placeholder 32-byte secret.',
         );
 
-        if (SecurityInvariants::secretReusesAny(
+        if ($this->invariants->secretReusesAny(
             $reverbSecret,
             [$applicationSecret, $signingSecret, ...$this->previousApplicationKeys()],
         )) {
@@ -493,7 +497,7 @@ final readonly class ProductionSecurityConfiguration
 
     private function ensureDatabaseDriver(): void
     {
-        if (!SecurityInvariants::isSupportedDatabaseDriver($this->string('database.default'))) {
+        if (!$this->invariants->isSupportedDatabaseDriver($this->string('database.default'))) {
             throw new RuntimeException('Database connection must be PostgreSQL (pgsql) in production.');
         }
     }
@@ -502,41 +506,33 @@ final readonly class ProductionSecurityConfiguration
     {
         $password = $this->string('database.connections.pgsql.password');
 
-        if (!SecurityInvariants::databasePasswordIsAcceptable($password)) {
+        if (!$this->invariants->databasePasswordIsAcceptable($password)) {
             throw new RuntimeException('Database password must be a real, non-placeholder secret in production.');
         }
 
-        if (SecurityInvariants::databasePasswordIsPublishedFixture($password)) {
+        if ($this->invariants->databasePasswordIsPublishedFixture($password)) {
             throw new RuntimeException('Database password must not be a published development default in production.');
         }
     }
 
     private function ensureSharedRateLimiterCacheStore(): void
     {
-        if (!SecurityInvariants::cacheStoreSharesRateLimiting(
-            $this->string('cache.limiter'),
-            $this->string('cache.default'),
-            $this->cacheStores(),
-        )) {
+        if (!$this->rateLimiterCache->sharesCountersAcrossReplicas()) {
             throw new RuntimeException(
                 'Cache store must share rate-limit counters across production app replicas. The rate limiter store (cache.limiter or cache.default) must resolve to a defined database, Redis, Memcached, or DynamoDB cache driver.',
             );
         }
-    }
 
-    /**
-     * @return array<array-key, mixed>
-     */
-    private function cacheStores(): array
-    {
-        $stores = $this->config->get('cache.stores');
-
-        return is_array($stores) ? $stores : [];
+        if (!$this->rateLimiterCache->artifactStoreIsIsolated()) {
+            throw new RuntimeException(
+                'Artifact-host rate limiting must use a dedicated cache namespace isolated from application security counters.',
+            );
+        }
     }
 
     private function ensureMailTransportIsDeliverable(): void
     {
-        if (!SecurityInvariants::mailTransportIsDeliverable(
+        if (!$this->invariants->mailTransportIsDeliverable(
             $this->string('mail.default'),
             $this->configuredMailers(),
             $this->string('services.resend.key'),
@@ -551,7 +547,7 @@ final readonly class ProductionSecurityConfiguration
     {
         $queue = $this->string('queue.default');
 
-        if (!SecurityInvariants::invitationQueueIsTransactional(
+        if (!$this->invariants->invitationQueueIsTransactional(
             driver: $this->string(sprintf('queue.connections.%s.driver', $queue)),
             queueDatabaseConnection: $this->string(sprintf('queue.connections.%s.connection', $queue)),
             primaryDatabaseConnection: $this->string('database.default'),
@@ -581,7 +577,7 @@ final readonly class ProductionSecurityConfiguration
             return;
         }
 
-        if (!SecurityInvariants::postgresSslModeIsVerifyFull($this->string('database.connections.pgsql.sslmode'))) {
+        if (!$this->invariants->postgresSslModeIsVerifyFull($this->string('database.connections.pgsql.sslmode'))) {
             throw new RuntimeException('PostgreSQL sslmode must be verify-full in production.');
         }
 
@@ -591,7 +587,7 @@ final readonly class ProductionSecurityConfiguration
             throw new RuntimeException('PostgreSQL verify-full requires an explicit root certificate in production.');
         }
 
-        if (!SecurityInvariants::postgresRootCertIsReadable($rootCertificate)) {
+        if (!$this->invariants->postgresRootCertIsReadable($rootCertificate)) {
             throw new RuntimeException('PostgreSQL verify-full requires a readable root certificate file in production.');
         }
     }
@@ -695,7 +691,7 @@ final readonly class ProductionSecurityConfiguration
 
     private function configuredBcryptRounds(): int
     {
-        $rounds = SecurityInvariants::configuredBcryptRounds($this->config);
+        $rounds = $this->invariants->configuredBcryptRounds();
 
         if ($rounds === null) {
             throw new RuntimeException('Configured bcrypt rounds must be an integer.');

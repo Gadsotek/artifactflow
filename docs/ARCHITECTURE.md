@@ -37,7 +37,7 @@ write transaction, not on the worker; see [Events And Audit](#events-and-audit) 
 | `app` | Authenticated web UI, sessions, CSRF, page/workspace management, MCP endpoint, search, saved-preview URL issuance, and Editor-authorized content-bound draft-capability issuance. |
 | `artifact-host` | Cookieless artifact origin: serves immutable saved HTML versions via signed URLs and verifies short-lived capabilities before reflecting a non-persisted pre-save draft (`POST /artifact-previews/draft`). |
 | `worker` | Queue worker (`queue:work`). The only queued work today is outbound mail (invitations, membership notices, password resets). |
-| `scheduler` | Laravel scheduler (`schedule:work`): runs the outbox relay `artifactflow:dispatch-domain-events` every minute and the nightly `prune-domain-events` / `prune-credentials` retention jobs. |
+| `scheduler` | Laravel scheduler (`schedule:work`): runs the outbox relay `artifactflow:dispatch-domain-events` every minute and the nightly `prune-domain-events`, `prune-credentials`, `prune-external-shares`, and `prune-rate-limit-cache` retention jobs. |
 | `db` | PostgreSQL for app data, search vectors, queues, audit entries, and durable domain events. |
 | `edge` | Optional Caddy reverse proxy for local named-host development or production ingress examples. |
 
@@ -307,6 +307,7 @@ Do not add `allow-same-origin`, top navigation, forms, external scripts, outboun
 Markdown and Mermaid source are untrusted user content.
 
 - Markdown renders in the app origin only after sanitization.
+- A linear delimiter budget rejects pathological link-heavy source at write and preview boundaries; the renderer independently fails closed to fixed application-owned text if that budget is exceeded.
 - Raw HTML and JavaScript inside Markdown must not execute.
 - Mermaid renders with strict security settings and without external network calls.
 - Wiki-style links resolve only to authorized same-workspace pages.

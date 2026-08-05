@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\PageCatalog;
 
+use App\Domain\DomainRuleViolation;
 use App\Models\Page;
 use App\Models\User;
 use DOMDocument;
@@ -16,11 +17,20 @@ final readonly class MarkdownPageRenderer
 {
     public function __construct(
         private MarkdownWikiLinkResolver $wikiLinks,
+        private MarkdownRenderComplexity $complexity,
     ) {
     }
 
     public function render(string $markdown): string
     {
+        try {
+            $this->complexity->ensureSafe($markdown);
+        } catch (DomainRuleViolation) {
+            return '<p data-artifactflow-markdown-rendering-limited>'
+                . 'This Markdown could not be rendered safely because its syntax is too complex.'
+                . '</p>';
+        }
+
         $html = Str::markdown($markdown, [
             'allow_unsafe_links' => false,
             'html_input' => 'strip',

@@ -89,6 +89,7 @@ final class McpTokenSettingsTest extends TestCase
             ]);
 
         $response->assertOk();
+        $response->assertHeader('Cache-Control', 'no-store, private');
         $response->assertSee('af_mcp_');
         $this->assertSame(1, McpAccessToken::query()->count());
         $this->assertSame([$workspace->uid], McpAccessToken::query()->sole()->workspaceUids());

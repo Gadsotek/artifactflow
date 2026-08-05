@@ -15,7 +15,7 @@ use Illuminate\Contracts\Config\Repository;
  * at once and they cannot drift on the decision itself. Presentation — terse
  * boot-gate exceptions versus the doctor's punch list — stays with each caller.
  */
-final class SecurityInvariants
+final readonly class SecurityInvariants
 {
     /**
      * Database passwords published in this repository's compose and example
@@ -46,9 +46,17 @@ final class SecurityInvariants
      * non-negative integer. The boot gate treats null as a hard failure; the
      * doctor falls back to the default. An absent key resolves to the default.
      */
-    public static function configuredBcryptRounds(Repository $config): ?int
+    public function __construct(
+        private Repository $config,
+    ) {
+    }
+
+    public function configuredBcryptRounds(): ?int
     {
-        $rounds = $config->get('hashing.bcrypt.rounds', ProductionSecurityConfiguration::DEFAULT_BCRYPT_ROUNDS);
+        $rounds = $this->config->get(
+            'hashing.bcrypt.rounds',
+            ProductionSecurityConfiguration::DEFAULT_BCRYPT_ROUNDS,
+        );
 
         if (is_int($rounds)) {
             return $rounds;
@@ -65,7 +73,7 @@ final class SecurityInvariants
      * Bcrypt cost embedded in a hash, or null when the value is not a bcrypt
      * hash. Used to prove the login-timing dummy hash matches the live rounds.
      */
-    public static function bcryptHashCost(string $hash): ?int
+    public function bcryptHashCost(string $hash): ?int
     {
         $info = password_get_info($hash);
         $options = $info['options'] ?? null;
@@ -78,19 +86,19 @@ final class SecurityInvariants
         return $cost;
     }
 
-    public static function trustedProxiesAreConfigured(string $raw): bool
+    public function trustedProxiesAreConfigured(string $raw): bool
     {
         return trim($raw) !== '';
     }
 
-    public static function trustedProxiesUseBroadDockerCidr(string $raw): bool
+    public function trustedProxiesUseBroadDockerCidr(string $raw): bool
     {
-        return str_contains(self::normalizedProxies($raw), '172.16.0.0/12');
+        return str_contains($this->normalizedProxies($raw), '172.16.0.0/12');
     }
 
-    public static function trustedProxiesUseWildcard(string $raw): bool
+    public function trustedProxiesUseWildcard(string $raw): bool
     {
-        $normalized = self::normalizedProxies($raw);
+        $normalized = $this->normalizedProxies($raw);
 
         return $normalized === '*' || $normalized === '**';
     }
@@ -100,9 +108,9 @@ final class SecurityInvariants
      * so trusting it is equivalent to the wildcard: any client could then spoof
      * X-Forwarded-For and defeat the IP-keyed rate limiters and audit trail.
      */
-    public static function trustedProxiesUseAllAddressesCidr(string $raw): bool
+    public function trustedProxiesUseAllAddressesCidr(string $raw): bool
     {
-        return preg_match('#/0+(?:,|$)#', self::normalizedProxies($raw)) === 1;
+        return preg_match('#/0+(?:,|$)#', $this->normalizedProxies($raw)) === 1;
     }
 
     /**
@@ -111,17 +119,17 @@ final class SecurityInvariants
      * only when the app port is reachable exclusively through the edge; a directly
      * exposed app would let any client spoof X-Forwarded-For.
      */
-    public static function trustedProxiesTrustImmediatePeer(string $raw): bool
+    public function trustedProxiesTrustImmediatePeer(string $raw): bool
     {
-        return str_contains(self::normalizedProxies($raw), 'remote_addr');
+        return str_contains($this->normalizedProxies($raw), 'remote_addr');
     }
 
-    public static function postgresSslModeIsVerifyFull(string $sslmode): bool
+    public function postgresSslModeIsVerifyFull(string $sslmode): bool
     {
         return strtolower(trim($sslmode)) === 'verify-full';
     }
 
-    public static function postgresRootCertIsReadable(string $rootcert): bool
+    public function postgresRootCertIsReadable(string $rootcert): bool
     {
         $path = trim($rootcert);
 
@@ -134,10 +142,10 @@ final class SecurityInvariants
      * by their physical target while a configured leaf that has not been created
      * yet is still checked lexically. Invalid or unresolvable paths fail closed.
      */
-    public static function artifactStorageRootIsOutsidePublicPath(string $artifactRoot, string $publicPath): bool
+    public function artifactStorageRootIsOutsidePublicPath(string $artifactRoot, string $publicPath): bool
     {
-        $resolvedArtifactRoot = self::resolvedFilesystemPath($artifactRoot);
-        $resolvedPublicPath = self::resolvedFilesystemPath($publicPath);
+        $resolvedArtifactRoot = $this->resolvedFilesystemPath($artifactRoot);
+        $resolvedPublicPath = $this->resolvedFilesystemPath($publicPath);
 
         if ($resolvedArtifactRoot === null || $resolvedPublicPath === null) {
             return false;
@@ -148,42 +156,6 @@ final class SecurityInvariants
     }
 
     /**
-     * Whether the cache store the rate limiters actually use shares counters across
-     * requests AND production app replicas. Every limiter (login, 2FA challenge,
-     * password reset, MCP, artifact previews, admin step-up) is weakened when its
-     * counter disappears between requests or is isolated per replica. Laravel
-     * resolves that store as `cache.limiter ?? cache.default` and reads its driver
-     * from `cache.stores`, so validate the resolved DRIVER, not the store name.
-     * Database, Redis, Memcached, and DynamoDB are shared backends; array/null do not
-     * persist and file is node-local. Unknown/custom drivers fail closed because the
-     * boot gate cannot prove that they coordinate replicas.
-     *
-     * @param array<array-key, mixed> $cacheStores
-     */
-    public static function cacheStoreSharesRateLimiting(
-        string $limiterStore,
-        string $defaultStore,
-        array $cacheStores,
-    ): bool {
-        $store = trim($limiterStore) !== '' ? trim($limiterStore) : trim($defaultStore);
-
-        if ($store === '') {
-            return false;
-        }
-
-        $definition = $cacheStores[$store] ?? null;
-
-        if (!is_array($definition)) {
-            return false;
-        }
-
-        $driver = $definition['driver'] ?? null;
-        $normalizedDriver = is_string($driver) ? strtolower(trim($driver)) : '';
-
-        return in_array($normalizedDriver, ['database', 'redis', 'memcached', 'dynamodb'], true);
-    }
-
-    /**
      * Whether the artifact preview signing key collides with the application
      * key or any retired application key. A shared signing key would let anyone
      * who learns APP_KEY forge preview URLs, so it must be dedicated. Secrets
@@ -191,12 +163,12 @@ final class SecurityInvariants
      *
      * @param list<string> $previousApplicationSecrets
      */
-    public static function signingKeyReusesApplicationKey(
+    public function signingKeyReusesApplicationKey(
         string $signingSecret,
         string $applicationSecret,
         array $previousApplicationSecrets,
     ): bool {
-        return self::secretReusesAny(
+        return $this->secretReusesAny(
             $signingSecret,
             [$applicationSecret, ...$previousApplicationSecrets],
         );
@@ -205,7 +177,7 @@ final class SecurityInvariants
     /**
      * @param list<string> $comparisonSecrets
      */
-    public static function secretReusesAny(string $secret, array $comparisonSecrets): bool
+    public function secretReusesAny(string $secret, array $comparisonSecrets): bool
     {
         foreach ($comparisonSecrets as $comparisonSecret) {
             if ($comparisonSecret !== '' && hash_equals($comparisonSecret, $secret)) {
@@ -216,7 +188,7 @@ final class SecurityInvariants
         return false;
     }
 
-    public static function isSupportedDatabaseDriver(string $driver): bool
+    public function isSupportedDatabaseDriver(string $driver): bool
     {
         return $driver === 'pgsql';
     }
@@ -229,7 +201,7 @@ final class SecurityInvariants
      *
      * @param array<array-key, mixed> $configuredMailers the config('mail.mailers') map
      */
-    public static function mailTransportIsDeliverable(
+    public function mailTransportIsDeliverable(
         string $mailer,
         array $configuredMailers,
         string $resendApiKey,
@@ -262,7 +234,7 @@ final class SecurityInvariants
      * a secondary database or after-commit dispatch can lose delivery after the
      * invitation has already committed.
      */
-    public static function invitationQueueIsTransactional(
+    public function invitationQueueIsTransactional(
         string $driver,
         string $queueDatabaseConnection,
         string $primaryDatabaseConnection,
@@ -281,7 +253,7 @@ final class SecurityInvariants
      * A shipped or empty password is a hard failure: verify-full TLS protects the
      * link, not a guessable credential reachable on the database port.
      */
-    public static function databasePasswordIsAcceptable(string $password): bool
+    public function databasePasswordIsAcceptable(string $password): bool
     {
         return trim($password) !== '' && !SecretStrength::isPlaceholder($password);
     }
@@ -291,7 +263,7 @@ final class SecurityInvariants
      * source tree (compose defaults, .env examples). Consumed only by the
      * production boot gate, so the local/test harness keeps using these.
      */
-    public static function databasePasswordIsPublishedFixture(string $password): bool
+    public function databasePasswordIsPublishedFixture(string $password): bool
     {
         $candidate = trim($password);
 
@@ -322,13 +294,13 @@ final class SecurityInvariants
      *
      * @return 'unset'|'invalid'|'covers'|'safe'
      */
-    public static function sessionCookieDomainCoverage(string $sessionDomain, string $artifactHost): string
+    public function sessionCookieDomainCoverage(string $sessionDomain, string $artifactHost): string
     {
-        if (self::strippedSessionDomain($sessionDomain) === '') {
+        if ($this->strippedSessionDomain($sessionDomain) === '') {
             return 'unset';
         }
 
-        $sessionHost = self::normalizedSessionCookieHost($sessionDomain);
+        $sessionHost = $this->normalizedSessionCookieHost($sessionDomain);
 
         if ($sessionHost === null) {
             return 'invalid';
@@ -346,19 +318,19 @@ final class SecurityInvariants
      * origin parser (leading cookie-domain dot stripped). Null when unset or when the parser
      * rejects the spelling (non-ASCII/IDN, percent, backslash, or non-canonical IPv4).
      */
-    public static function normalizedSessionCookieHost(string $sessionDomain): ?string
+    public function normalizedSessionCookieHost(string $sessionDomain): ?string
     {
-        $candidate = self::strippedSessionDomain($sessionDomain);
+        $candidate = $this->strippedSessionDomain($sessionDomain);
 
         return $candidate === '' ? null : OriginNormalizer::tryHost($candidate);
     }
 
-    private static function strippedSessionDomain(string $sessionDomain): string
+    private function strippedSessionDomain(string $sessionDomain): string
     {
         return ltrim(trim($sessionDomain), '.');
     }
 
-    private static function resolvedFilesystemPath(string $path): ?string
+    private function resolvedFilesystemPath(string $path): ?string
     {
         $candidate = rtrim(trim($path), DIRECTORY_SEPARATOR);
 
@@ -397,7 +369,7 @@ final class SecurityInvariants
         return rtrim($resolved, DIRECTORY_SEPARATOR);
     }
 
-    private static function normalizedProxies(string $raw): string
+    private function normalizedProxies(string $raw): string
     {
         return strtolower(str_replace(' ', '', $raw));
     }

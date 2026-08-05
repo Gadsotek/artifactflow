@@ -19,3 +19,7 @@ Schedule::command('artifactflow:prune-credentials')
 Schedule::command('artifactflow:prune-external-shares')
     ->dailyAt('03:30')
     ->withoutOverlapping();
+
+Schedule::command('artifactflow:prune-rate-limit-cache')
+    ->dailyAt('03:40')
+    ->withoutOverlapping();

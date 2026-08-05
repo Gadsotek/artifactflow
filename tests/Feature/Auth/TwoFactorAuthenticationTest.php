@@ -438,6 +438,7 @@ final class TwoFactorAuthenticationTest extends TestCase
         $user->refresh();
         $this->get('/settings/two-factor')
             ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('data:image/svg+xml;base64')
             ->assertSee((string) $user->two_factor_secret);
 
@@ -446,6 +447,7 @@ final class TwoFactorAuthenticationTest extends TestCase
                 'code' => $this->currentOtp((string) $user->two_factor_secret),
             ])
             ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('Recovery codes');
 
         $this->assertTrue($user->refresh()->hasEnabledTwoFactor());
