@@ -560,6 +560,14 @@ at most once per five minutes. Redeemed one-time inventory rows separately repor
 server-stored window session still exists, so the active-share count does not hide the remaining
 revocation target.
 
+Anonymous exchange and open requests are bounded twice: once per source, selector, and operation,
+and again per source across every selector and public operation. The second budget prevents
+attacker-chosen selector rotation from manufacturing an unbounded request allowance. The nightly
+rate-limit-cache prune removes expired database-backed counters so those attacker-controlled keys
+do not accumulate indefinitely. The production database limiter uses dedicated tables, preventing
+the artifact-host role from reading or altering app-cache authentication state; unavailable and
+throttled responses remain externally uniform.
+
 Presentation does not create a new rendering bypass:
 
 - Markdown uses the sanitized renderer with authorization-sensitive wiki links disabled;
@@ -586,8 +594,10 @@ a browser security boundary.
 ## 14. Optional Turnstile and authentication abuse
 
 Password login always has three server-side rate-limit dimensions: email+IP per minute, source IP
-per minute, and an IP-independent account bucket per hour. These remain the credential-stuffing
-boundary. Password recovery is separately bounded by an email/IP hourly limit. Cloudflare
+per minute, and an IP-independent account bucket per hour. The account bucket is checked before
+credential validation, so neither a correct password nor a fresh source IP bypasses an already
+exhausted account budget. These remain the credential-stuffing boundary. Password recovery is
+separately bounded by an email/IP hourly limit. Cloudflare
 Turnstile is optional defense in depth for internet-facing deployments, not a replacement for
 those controls. With both keys absent, no widget is rendered, no Cloudflare CSP source is allowed,
 and no Cloudflare request occurs.

@@ -17,7 +17,10 @@ Set tester expectations explicitly:
 - Confirm the authenticated app origin and artifact origin both resolve over HTTPS in the target environment.
 - Confirm the two origins are distinct and match `APP_URL`, `ARTIFACT_URL`, `ARTIFACT_FRAME_ANCESTORS`, and `REVERB_ALLOWED_ORIGINS`.
 - Set `TRUSTED_PROXIES` to the actual TLS-terminating edge or reverse-proxy addresses. Do not trust forwarded headers from arbitrary clients.
-- Use a database, Redis, Memcached, or DynamoDB rate-limiter cache shared by every app replica; never use the node-local `file` driver in production.
+- Apply migrations before serving the new image so the indexed application and artifact-host rate-limiter tables exist.
+- Set `CACHE_LIMITER=database_limiter` and `ARTIFACT_CACHE_LIMITER=database_artifact_limiter` on every runtime; keep their configured table names distinct.
+- Give artifact-host separate `DB_USERNAME`/`DB_PASSWORD` credentials and apply `docs/operations/artifact-host-database-grants.sql` after migration; never give that role access to the application limiter table.
+- Keep the scheduler role running so expired database rate-limit counters are pruned nightly.
 - Redact `/join/*`, password-reset paths, signed preview query strings, cookies, and authorization headers from edge, load-balancer, WAF, and APM logs.
 - Set `DB_SSLMODE=verify-full` for PostgreSQL and set `DB_SSLROOTCERT` to the mounted database CA or trusted CA bundle.
 - Set `SESSION_SECURE_COOKIE=true` in production.

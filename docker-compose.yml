@@ -256,6 +256,10 @@ services:
       E2E_TURNSTILE_APP_PORT: ${E2E_TURNSTILE_APP_PORT:-18182}
       ARTIFACT_STORAGE_ROOT: /var/www/html/storage/app/e2e_private_artifacts
       VITE_HOT_FILE: /tmp/artifactflow-e2e-no-hot
+      # All browser projects share one loopback source IP and one limiter table.
+      # Keep the suite from exhausting the cross-selector production ceiling;
+      # focused feature tests verify that ceiling with deliberately low limits.
+      EXTERNAL_SHARE_PUBLIC_IP_RATE_LIMIT_PER_MINUTE: ${E2E_EXTERNAL_SHARE_PUBLIC_IP_RATE_LIMIT_PER_MINUTE:-1000}
     command: ["sh", "/var/www/html/docker/start-e2e-app.sh"]
     ports:
       - "127.0.0.1:${E2E_APP_PORT:-18180}:8000"

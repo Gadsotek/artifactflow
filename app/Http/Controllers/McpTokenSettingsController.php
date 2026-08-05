@@ -16,6 +16,7 @@ use App\Models\McpAccessToken;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -38,7 +39,7 @@ final readonly class McpTokenSettingsController
         return $this->view($this->authenticatedUser($request));
     }
 
-    public function store(StoreMcpAccessTokenRequest $request): View
+    public function store(StoreMcpAccessTokenRequest $request): Response
     {
         $user = $this->authenticatedUser($request);
         $expectedAuthRevision = $user->auth_revision;
@@ -107,7 +108,11 @@ final readonly class McpTokenSettingsController
             ]);
         }
 
-        return $this->view($user, $issued->plainTextToken);
+        return response()->view(
+            'settings.mcp-tokens.index',
+            $this->viewData($user, $issued->plainTextToken),
+            headers: ['Cache-Control' => 'no-store, private'],
+        );
     }
 
     public function destroy(Request $request, McpAccessToken $mcpAccessToken): RedirectResponse
@@ -127,7 +132,15 @@ final readonly class McpTokenSettingsController
 
     private function view(User $user, ?string $plainTextToken = null): View
     {
-        return view('settings.mcp-tokens.index', [
+        return view('settings.mcp-tokens.index', $this->viewData($user, $plainTextToken));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function viewData(User $user, ?string $plainTextToken = null): array
+    {
+        return [
             'user' => $user,
             'tokens' => McpAccessToken::query()
                 ->where('principal_user_uid', $user->uid)
@@ -137,7 +150,7 @@ final readonly class McpTokenSettingsController
             'defaultScopes' => [McpAccessTokenIssuer::SCOPE_SEARCH, McpAccessTokenIssuer::SCOPE_READ],
             'plainTextToken' => $plainTextToken,
             'workspaceItems' => $this->workspaceContext->itemsFor($user),
-        ]);
+        ];
     }
 
     /**

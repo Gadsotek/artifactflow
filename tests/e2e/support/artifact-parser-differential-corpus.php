@@ -10,6 +10,8 @@ use RuntimeException;
 
 $repositoryRoot = dirname(__DIR__, 3);
 
+require $repositoryRoot . '/app/Application/PageCatalog/ArtifactPreviewComplexityExceeded.php';
+require $repositoryRoot . '/app/Application/PageCatalog/ArtifactPreviewRewriteBudget.php';
 require $repositoryRoot . '/app/Application/PageCatalog/ArtifactPreviewForeignContentState.php';
 require $repositoryRoot . '/app/Application/PageCatalog/ArtifactPreviewDocumentGuard.php';
 

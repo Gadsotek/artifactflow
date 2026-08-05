@@ -23,10 +23,10 @@ use App\Models\User;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Validation\ValidationException;
-use Illuminate\View\View;
 
 final readonly class TwoFactorSettingsController
 {
@@ -40,7 +40,7 @@ final readonly class TwoFactorSettingsController
     ) {
     }
 
-    public function index(Request $request, TwoFactorQrCode $qrCode): View|RedirectResponse
+    public function index(Request $request, TwoFactorQrCode $qrCode): Response|RedirectResponse
     {
         $user = $this->authenticatedUser($request);
         $recoveryCodes = $request->session()->pull('two_factor_recovery_codes', []);
@@ -71,28 +71,32 @@ final readonly class TwoFactorSettingsController
             ? null
             : max(0, $enrollmentPasswordExpiresAt - now()->getTimestamp());
 
-        return view('settings.two-factor.index', [
-            'user' => $user,
-            'pendingSecret' => $pendingSecret,
-            'enrollmentMustRestart' => $enrollmentMustRestart,
-            'enrollmentPasswordExpiresAt' => $enrollmentPasswordExpiresAt,
-            'enrollmentPasswordRemaining' => $enrollmentPasswordSecondsRemaining === null
-                ? null
-                : sprintf(
-                    '%d:%02d',
-                    intdiv($enrollmentPasswordSecondsRemaining, 60),
-                    $enrollmentPasswordSecondsRemaining % 60,
-                ),
-            'qrCodeDataUri' => $pendingSecret === null ? null : $qrCode->dataUri($user->email, $pendingSecret),
-            'recoveryCodes' => is_array($recoveryCodes) ? array_values(array_filter(
-                $recoveryCodes,
-                static fn (mixed $code): bool => is_string($code),
-            )) : [],
-            'trustedDevices' => $user->trustedDevices()
-                ->orderByDesc('last_used_at')
-                ->orderByDesc('created_at')
-                ->get(),
-        ]);
+        return response()->view(
+            'settings.two-factor.index',
+            [
+                'user' => $user,
+                'pendingSecret' => $pendingSecret,
+                'enrollmentMustRestart' => $enrollmentMustRestart,
+                'enrollmentPasswordExpiresAt' => $enrollmentPasswordExpiresAt,
+                'enrollmentPasswordRemaining' => $enrollmentPasswordSecondsRemaining === null
+                    ? null
+                    : sprintf(
+                        '%d:%02d',
+                        intdiv($enrollmentPasswordSecondsRemaining, 60),
+                        $enrollmentPasswordSecondsRemaining % 60,
+                    ),
+                'qrCodeDataUri' => $pendingSecret === null ? null : $qrCode->dataUri($user->email, $pendingSecret),
+                'recoveryCodes' => is_array($recoveryCodes) ? array_values(array_filter(
+                    $recoveryCodes,
+                    static fn (mixed $code): bool => is_string($code),
+                )) : [],
+                'trustedDevices' => $user->trustedDevices()
+                    ->orderByDesc('last_used_at')
+                    ->orderByDesc('created_at')
+                    ->get(),
+            ],
+            headers: ['Cache-Control' => 'no-store, private'],
+        );
     }
 
     public function enroll(Request $request, StartTwoFactorEnrollment $startEnrollment): RedirectResponse

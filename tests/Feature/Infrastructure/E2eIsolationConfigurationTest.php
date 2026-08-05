@@ -40,6 +40,10 @@ final class E2eIsolationConfigurationTest extends TestCase
             $compose,
         );
         $this->assertStringContainsString('VITE_HOT_FILE: /tmp/artifactflow-e2e-no-hot', $compose);
+        $this->assertStringContainsString(
+            'EXTERNAL_SHARE_PUBLIC_IP_RATE_LIMIT_PER_MINUTE: ${E2E_EXTERNAL_SHARE_PUBLIC_IP_RATE_LIMIT_PER_MINUTE:-1000}',
+            $compose,
+        );
         $this->assertStringContainsString('e2e-artifacts:', $compose);
     }
 

@@ -64,6 +64,21 @@ final class SchemaHardeningIndexTest extends TestCase
         $this->assertStringContainsStringIgnoringCase('accepted_at is null', $definition);
     }
 
+    public function test_rate_limit_expiration_pruning_can_seek_and_cursor_by_expiration_and_key(): void
+    {
+        foreach ([
+            'rate_limit_cache',
+            'rate_limit_cache_locks',
+            'artifact_rate_limit_cache',
+            'artifact_rate_limit_cache_locks',
+        ] as $table) {
+            $this->assertTrue(
+                $this->hasIndexOnColumns($table, ['expiration', 'key']),
+                sprintf('%s should carry an (expiration, key) index for bounded retention scans.', $table),
+            );
+        }
+    }
+
     /**
      * @param list<string> $columns
      */

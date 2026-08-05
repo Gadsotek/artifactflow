@@ -76,9 +76,16 @@ Honest boundaries a self-hoster should understand before relying on ArtifactFlow
   controls are: token workspace-scope + hard Editor cap, a fresh-TOTP step-up to mint a token,
   per-token rate limiting, the unconditional on-save content scanner, and the audit trail. A
   different MCP client may not prompt a human before writing.
-- **Run the app and artifact host with distinct database grants.** They share one image today; give
-  the artifact host a least-privilege (ideally read-only, pages/page_versions-scoped) DB role and
-  network-segment it, so a compromise of the untrusted-content surface cannot write app data.
+- **Run the app and artifact host with distinct database grants.** They share one image today, but
+  the artifact host needs more than read-only `pages`/`page_versions`: external preview validation
+  reads share/session/policy rows and uses row locks, while its database-backed rate limiter writes
+  only `artifact_rate_limit_cache`. Application security counters remain in the separately granted
+  `rate_limit_cache`; a better request fingerprint cannot replace this credential boundary. Use the
+  reviewed manifest in
+  [`docs/operations/artifact-host-database-grants.sql`](docs/operations/artifact-host-database-grants.sql)
+  and network-segment the role. The production gate currently fails closed for Redis, Memcached, and
+  DynamoDB limiter aliases because their ACL, network, or IAM boundary cannot be proven from Laravel
+  cache configuration. Do not grant general application-table writes.
 - **Hard account/workspace deletion is not supported.** User-authorship foreign keys
   (page/version/grant authors and owners) have no `ON DELETE` action, so the database
   refuses to drop a user that still authored content, and there is no application

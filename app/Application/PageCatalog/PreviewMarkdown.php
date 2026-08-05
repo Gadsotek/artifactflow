@@ -16,6 +16,7 @@ final readonly class PreviewMarkdown
         private PageAccess $access,
         private MarkdownPageRenderer $renderer,
         private InstallationLimitSettings $limits,
+        private MarkdownRenderComplexity $complexity,
     ) {
     }
 
@@ -41,6 +42,8 @@ final readonly class PreviewMarkdown
         if (strlen($command->content) > $this->limits->integer('pages.max_markdown_bytes')) {
             throw new DomainRuleViolation('Markdown preview exceeds the configured size limit.');
         }
+
+        $this->complexity->ensureSafe($command->content);
 
         return $this->renderer->renderForPage($actor, $page, $command->content);
     }

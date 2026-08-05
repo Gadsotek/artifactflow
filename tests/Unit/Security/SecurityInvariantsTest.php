@@ -10,61 +10,70 @@ use PHPUnit\Framework\TestCase;
 
 final class SecurityInvariantsTest extends TestCase
 {
+    private SecurityInvariants $invariants;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->invariants = new SecurityInvariants(new Repository([]));
+    }
+
     public function test_configured_bcrypt_rounds_reads_integers_numeric_strings_and_defaults(): void
     {
-        $this->assertSame(13, SecurityInvariants::configuredBcryptRounds(new Repository(['hashing' => ['bcrypt' => ['rounds' => 13]]])));
-        $this->assertSame(14, SecurityInvariants::configuredBcryptRounds(new Repository(['hashing' => ['bcrypt' => ['rounds' => '14']]])));
-        $this->assertSame(12, SecurityInvariants::configuredBcryptRounds(new Repository([])));
-        $this->assertNull(SecurityInvariants::configuredBcryptRounds(new Repository(['hashing' => ['bcrypt' => ['rounds' => ['nope']]]])));
+        $this->assertSame(13, $this->invariants(['hashing' => ['bcrypt' => ['rounds' => 13]]])->configuredBcryptRounds());
+        $this->assertSame(14, $this->invariants(['hashing' => ['bcrypt' => ['rounds' => '14']]])->configuredBcryptRounds());
+        $this->assertSame(12, $this->invariants->configuredBcryptRounds());
+        $this->assertNull($this->invariants(['hashing' => ['bcrypt' => ['rounds' => ['nope']]]])->configuredBcryptRounds());
     }
 
     public function test_bcrypt_hash_cost_extracts_cost_only_from_bcrypt_hashes(): void
     {
         $hash = password_hash('secret', PASSWORD_BCRYPT, ['cost' => 4]);
-        $this->assertSame(4, SecurityInvariants::bcryptHashCost($hash));
-        $this->assertNull(SecurityInvariants::bcryptHashCost('not-a-hash'));
-        $this->assertNull(SecurityInvariants::bcryptHashCost(''));
+        $this->assertSame(4, $this->invariants->bcryptHashCost($hash));
+        $this->assertNull($this->invariants->bcryptHashCost('not-a-hash'));
+        $this->assertNull($this->invariants->bcryptHashCost(''));
     }
 
     public function test_trusted_proxies_configured_and_wildcard_detection(): void
     {
-        $this->assertFalse(SecurityInvariants::trustedProxiesAreConfigured(''));
-        $this->assertFalse(SecurityInvariants::trustedProxiesAreConfigured('   '));
-        $this->assertTrue(SecurityInvariants::trustedProxiesAreConfigured('REMOTE_ADDR'));
+        $this->assertFalse($this->invariants->trustedProxiesAreConfigured(''));
+        $this->assertFalse($this->invariants->trustedProxiesAreConfigured('   '));
+        $this->assertTrue($this->invariants->trustedProxiesAreConfigured('REMOTE_ADDR'));
 
-        $this->assertTrue(SecurityInvariants::trustedProxiesUseWildcard('*'));
-        $this->assertTrue(SecurityInvariants::trustedProxiesUseWildcard(' ** '));
-        $this->assertFalse(SecurityInvariants::trustedProxiesUseWildcard('203.0.113.7'));
+        $this->assertTrue($this->invariants->trustedProxiesUseWildcard('*'));
+        $this->assertTrue($this->invariants->trustedProxiesUseWildcard(' ** '));
+        $this->assertFalse($this->invariants->trustedProxiesUseWildcard('203.0.113.7'));
     }
 
     public function test_trusted_proxies_reject_broad_docker_and_all_addresses_cidrs(): void
     {
-        $this->assertTrue(SecurityInvariants::trustedProxiesUseBroadDockerCidr('127.0.0.1, 172.16.0.0/12'));
-        $this->assertFalse(SecurityInvariants::trustedProxiesUseBroadDockerCidr('10.0.0.0/24'));
+        $this->assertTrue($this->invariants->trustedProxiesUseBroadDockerCidr('127.0.0.1, 172.16.0.0/12'));
+        $this->assertFalse($this->invariants->trustedProxiesUseBroadDockerCidr('10.0.0.0/24'));
 
         foreach (['0.0.0.0/0', '::/0', '10.0.0.1, ::/0', '127.0.0.1,0.0.0.0/0'] as $trustEverything) {
-            $this->assertTrue(SecurityInvariants::trustedProxiesUseAllAddressesCidr($trustEverything), $trustEverything);
+            $this->assertTrue($this->invariants->trustedProxiesUseAllAddressesCidr($trustEverything), $trustEverything);
         }
 
-        $this->assertFalse(SecurityInvariants::trustedProxiesUseAllAddressesCidr('203.0.113.7,2001:db8::/32,10.0.0.0/24'));
+        $this->assertFalse($this->invariants->trustedProxiesUseAllAddressesCidr('203.0.113.7,2001:db8::/32,10.0.0.0/24'));
     }
 
     public function test_postgres_tls_predicates(): void
     {
-        $this->assertTrue(SecurityInvariants::postgresSslModeIsVerifyFull('verify-full'));
-        $this->assertTrue(SecurityInvariants::postgresSslModeIsVerifyFull(' VERIFY-FULL '));
-        $this->assertFalse(SecurityInvariants::postgresSslModeIsVerifyFull('require'));
-        $this->assertFalse(SecurityInvariants::postgresSslModeIsVerifyFull(''));
+        $this->assertTrue($this->invariants->postgresSslModeIsVerifyFull('verify-full'));
+        $this->assertTrue($this->invariants->postgresSslModeIsVerifyFull(' VERIFY-FULL '));
+        $this->assertFalse($this->invariants->postgresSslModeIsVerifyFull('require'));
+        $this->assertFalse($this->invariants->postgresSslModeIsVerifyFull(''));
 
         $fixture = sys_get_temp_dir() . '/artifactflow-root-cert-' . bin2hex(random_bytes(8));
         file_put_contents($fixture, 'test certificate fixture');
 
         try {
-            $this->assertTrue(SecurityInvariants::postgresRootCertIsReadable($fixture));
-            $this->assertFalse(SecurityInvariants::postgresRootCertIsReadable($fixture . '.missing'));
-            $this->assertFalse(SecurityInvariants::postgresRootCertIsReadable(sys_get_temp_dir()));
-            $this->assertFalse(SecurityInvariants::postgresRootCertIsReadable(''));
-            $this->assertFalse(SecurityInvariants::postgresRootCertIsReadable('   '));
+            $this->assertTrue($this->invariants->postgresRootCertIsReadable($fixture));
+            $this->assertFalse($this->invariants->postgresRootCertIsReadable($fixture . '.missing'));
+            $this->assertFalse($this->invariants->postgresRootCertIsReadable(sys_get_temp_dir()));
+            $this->assertFalse($this->invariants->postgresRootCertIsReadable(''));
+            $this->assertFalse($this->invariants->postgresRootCertIsReadable('   '));
         } finally {
             unlink($fixture);
         }
@@ -74,16 +83,16 @@ final class SecurityInvariantsTest extends TestCase
     {
         $publicRoot = '/srv/artifactflow/public';
 
-        $this->assertFalse(SecurityInvariants::artifactStorageRootIsOutsidePublicPath(
+        $this->assertFalse($this->invariants->artifactStorageRootIsOutsidePublicPath(
             '/srv/artifactflow/public/artifacts',
             $publicRoot,
         ));
-        $this->assertFalse(SecurityInvariants::artifactStorageRootIsOutsidePublicPath($publicRoot, $publicRoot));
-        $this->assertTrue(SecurityInvariants::artifactStorageRootIsOutsidePublicPath(
+        $this->assertFalse($this->invariants->artifactStorageRootIsOutsidePublicPath($publicRoot, $publicRoot));
+        $this->assertTrue($this->invariants->artifactStorageRootIsOutsidePublicPath(
             '/srv/artifactflow/storage/app/private_artifacts',
             $publicRoot,
         ));
-        $this->assertTrue(SecurityInvariants::artifactStorageRootIsOutsidePublicPath(
+        $this->assertTrue($this->invariants->artifactStorageRootIsOutsidePublicPath(
             '/srv/artifactflow/public-artifacts',
             $publicRoot,
         ));
@@ -99,7 +108,7 @@ final class SecurityInvariantsTest extends TestCase
 
         try {
             $this->assertTrue(symlink($publicRoot, $artifactLink));
-            $this->assertFalse(SecurityInvariants::artifactStorageRootIsOutsidePublicPath(
+            $this->assertFalse($this->invariants->artifactStorageRootIsOutsidePublicPath(
                 $artifactLink . '/not-created-yet',
                 $publicRoot,
             ));
@@ -113,47 +122,22 @@ final class SecurityInvariantsTest extends TestCase
         }
     }
 
-    public function test_rate_limiter_cache_store_must_resolve_to_a_shared_driver(): void
-    {
-        $stores = [
-            'array' => ['driver' => 'array'],
-            'database' => ['driver' => 'database'],
-            'file' => ['driver' => 'file'],
-            'redis' => ['driver' => 'redis'],
-            'nullable' => ['driver' => 'null'],
-            'aliased_array' => ['driver' => 'array'],
-            'driverless' => ['serialize' => false],
-        ];
-
-        // With no dedicated limiter store, the default store's driver decides.
-        $this->assertTrue(SecurityInvariants::cacheStoreSharesRateLimiting('', 'database', $stores));
-        $this->assertTrue(SecurityInvariants::cacheStoreSharesRateLimiting('', 'redis', $stores));
-        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'file', $stores));
-
-        // A dedicated limiter store overrides the default in both directions.
-        $this->assertTrue(SecurityInvariants::cacheStoreSharesRateLimiting('database', 'array', $stores));
-        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('array', 'database', $stores));
-
-        // The array/null drivers never persist -- not even behind a custom alias.
-        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'array', $stores));
-        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'nullable', $stores));
-        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'aliased_array', $stores));
-
-        // An undefined store, a driverless store, and an empty selection cannot resolve a backend.
-        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'undefined', $stores));
-        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'driverless', $stores));
-        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', '', $stores));
-        $this->assertFalse(SecurityInvariants::cacheStoreSharesRateLimiting('', 'database', []));
-    }
-
     public function test_signing_key_reuse_detects_current_and_retired_application_keys(): void
     {
         $signing = str_repeat('s', 32);
 
-        $this->assertTrue(SecurityInvariants::signingKeyReusesApplicationKey($signing, $signing, []));
-        $this->assertTrue(SecurityInvariants::signingKeyReusesApplicationKey($signing, 'other', [str_repeat('p', 32), $signing]));
-        $this->assertFalse(SecurityInvariants::signingKeyReusesApplicationKey($signing, 'other', [str_repeat('p', 32)]));
+        $this->assertTrue($this->invariants->signingKeyReusesApplicationKey($signing, $signing, []));
+        $this->assertTrue($this->invariants->signingKeyReusesApplicationKey($signing, 'other', [str_repeat('p', 32), $signing]));
+        $this->assertFalse($this->invariants->signingKeyReusesApplicationKey($signing, 'other', [str_repeat('p', 32)]));
         // An empty application secret must not match a signing key.
-        $this->assertFalse(SecurityInvariants::signingKeyReusesApplicationKey($signing, '', []));
+        $this->assertFalse($this->invariants->signingKeyReusesApplicationKey($signing, '', []));
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    private function invariants(array $config): SecurityInvariants
+    {
+        return new SecurityInvariants(new Repository($config));
     }
 }

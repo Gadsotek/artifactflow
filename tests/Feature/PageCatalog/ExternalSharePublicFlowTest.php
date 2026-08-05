@@ -494,6 +494,38 @@ final class ExternalSharePublicFlowTest extends TestCase
         $this->assertSame($responses[0]->getContent(), $responses[1]->getContent());
     }
 
+    public function test_rotating_unknown_selectors_cannot_bypass_the_source_ip_ceiling(): void
+    {
+        config([
+            'rate_limits.external_share_public_per_minute' => 20,
+            'rate_limits.external_share_public_ip_per_minute' => 2,
+        ]);
+        $ip = '203.0.113.15';
+
+        foreach ([
+            ['/exchange', ['secret' => str_repeat('1', 43)]],
+            ['/open', ['pending_session_credential' => str_repeat('2', 43), 'open_csrf' => str_repeat('3', 43)]],
+        ] as [$path, $payload]) {
+            $this->withHeaders($this->sameOriginHeaders())
+                ->withServerVariables(['REMOTE_ADDR' => $ip])
+                ->postJson('/external-shares/' . Str::ulid() . $path, $payload)
+                ->assertNotFound()
+                ->assertExactJson(['state' => 'unavailable']);
+        }
+
+        $limited = $this->withHeaders($this->sameOriginHeaders())
+            ->withServerVariables(['REMOTE_ADDR' => $ip])
+            ->postJson('/external-shares/' . Str::ulid() . '/exchange', [
+                'secret' => str_repeat('3', 43),
+            ]);
+
+        $limited->assertNotFound()
+            ->assertHeader('X-RateLimit-Limit', '2')
+            ->assertHeader('X-RateLimit-Remaining', '0')
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertExactJson(['state' => 'unavailable']);
+    }
+
     public function test_external_share_routes_use_dedicated_creation_and_public_limiters(): void
     {
         foreach ([

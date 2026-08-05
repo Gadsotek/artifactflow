@@ -557,6 +557,84 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_artifact_host_limiter_cannot_share_the_application_database_table(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'cache.limiter' => 'database_limiter',
+            'cache.app_limiter' => 'database_limiter',
+            'cache.artifact_limiter' => 'database_artifact_limiter',
+            'cache.stores.database_limiter' => [
+                'driver' => 'database',
+                'connection' => 'application_connection',
+                'table' => 'rate_limit_cache',
+            ],
+            'cache.stores.database_artifact_limiter' => [
+                'driver' => 'database',
+                'connection' => 'artifact_connection',
+                'table' => 'rate_limit_cache',
+            ],
+        ]);
+
+        $this->assertUnsafeConfiguration(
+            'Artifact-host rate limiting must use a dedicated cache namespace isolated from application security counters.',
+        );
+    }
+
+    public function test_artifact_host_runtime_must_select_its_dedicated_limiter_store(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'app.runtime_role' => 'artifact-host',
+            'image_parser.shared_secret' => null,
+            'cache.limiter' => 'database_limiter',
+            'cache.app_limiter' => 'database_limiter',
+            'cache.artifact_limiter' => 'database_artifact_limiter',
+            'cache.stores.database_limiter' => [
+                'driver' => 'database',
+                'connection' => null,
+                'table' => 'rate_limit_cache',
+            ],
+            'cache.stores.database_artifact_limiter' => [
+                'driver' => 'database',
+                'connection' => null,
+                'table' => 'artifact_rate_limit_cache',
+            ],
+        ]);
+
+        $this->assertUnsafeConfiguration(
+            'Artifact-host rate limiting must use a dedicated cache namespace isolated from application security counters.',
+        );
+    }
+
+    public function test_artifact_limiter_aliases_without_a_proven_physical_boundary_are_rejected(): void
+    {
+        foreach (['redis', 'memcached', 'dynamodb'] as $driver) {
+            $this->configureSafeProductionValues();
+            config([
+                'cache.limiter' => 'application_limiter',
+                'cache.app_limiter' => 'application_limiter',
+                'cache.artifact_limiter' => 'artifact_limiter',
+                'cache.stores.application_limiter' => [
+                    'driver' => $driver,
+                    'connection' => 'shared',
+                    'prefix' => 'shared:',
+                    'table' => 'shared_rate_limits',
+                ],
+                'cache.stores.artifact_limiter' => [
+                    'driver' => $driver,
+                    'connection' => 'shared',
+                    'prefix' => 'shared:',
+                    'table' => 'shared_rate_limits',
+                ],
+            ]);
+
+            $this->assertUnsafeConfiguration(
+                'Artifact-host rate limiting must use a dedicated cache namespace isolated from application security counters.',
+            );
+        }
+    }
+
     public function test_reverb_secret_is_required_when_reverb_broadcasting_is_enabled(): void
     {
         foreach (['', 'replace-with-reverb-secret', 'short-secret'] as $secret) {
@@ -890,6 +968,9 @@ final class ProductionSecurityConfigurationTest extends TestCase
             $this->configureSafeProductionValues();
             config([
                 'app.runtime_role' => $role,
+                'cache.limiter' => $role === 'artifact-host'
+                    ? 'database_artifact_limiter'
+                    : 'database_limiter',
                 'image_parser.url' => '',
                 'image_parser.shared_secret' => '',
             ]);

@@ -9,6 +9,7 @@ use App\Application\Identity\TurnstileConfiguration;
 use App\Application\PageCatalog\ImageArtifactLimits;
 use App\Application\PageCatalog\ImageNormalizationConfiguration;
 use App\Application\PageCatalog\ImageParserTimeouts;
+use App\Infrastructure\Cache\RateLimiterCacheConfiguration;
 use App\Infrastructure\Security\OriginNormalizer;
 use App\Infrastructure\Security\PreviousApplicationKeyConfiguration;
 use App\Infrastructure\Security\ProductionSecurityConfiguration;
@@ -26,9 +27,16 @@ use Illuminate\Contracts\Config\Repository;
  */
 final readonly class DeploymentDoctor
 {
+    private RateLimiterCacheConfiguration $rateLimiterCache;
+    private SecurityInvariants $invariants;
+
     public function __construct(
         private Repository $config,
+        ?RateLimiterCacheConfiguration $rateLimiterCache = null,
+        ?SecurityInvariants $invariants = null,
     ) {
+        $this->rateLimiterCache = $rateLimiterCache ?? new RateLimiterCacheConfiguration($config);
+        $this->invariants = $invariants ?? new SecurityInvariants($config);
     }
 
     public function run(): DoctorReport
@@ -68,9 +76,7 @@ final readonly class DeploymentDoctor
 
     private function cacheStoreCheck(bool $production): DoctorCheck
     {
-        $limiterStore = $this->string('cache.limiter');
-        $defaultStore = $this->string('cache.default');
-        $store = $limiterStore !== '' ? $limiterStore : $defaultStore;
+        $store = $this->rateLimiterCache->effectiveStoreName();
         $label = $store === '' ? '(unset)' : $store;
 
         if (!$production) {
@@ -81,7 +87,7 @@ final readonly class DeploymentDoctor
             );
         }
 
-        if (!SecurityInvariants::cacheStoreSharesRateLimiting($limiterStore, $defaultStore, $this->cacheStores())) {
+        if (!$this->rateLimiterCache->sharesCountersAcrossReplicas()) {
             return $this->fail(
                 'cache_store',
                 'Cache store',
@@ -89,6 +95,14 @@ final readonly class DeploymentDoctor
                     "Rate limiter cache store '%s' does not provide shared counters; point CACHE_STORE (or cache.limiter) at a defined database, Redis, Memcached, or DynamoDB store so login, 2FA, and MCP limits hold across replicas.",
                     $label,
                 ),
+            );
+        }
+
+        if (!$this->rateLimiterCache->artifactStoreIsIsolated()) {
+            return $this->fail(
+                'cache_store',
+                'Cache store',
+                'Artifact-host rate limiting must use a dedicated cache namespace isolated from application security counters.',
             );
         }
 
@@ -172,7 +186,7 @@ final readonly class DeploymentDoctor
         }
 
         $dedicated = $secret !== null
-            && !SecurityInvariants::secretReusesAny($secret, $comparisonSecrets);
+            && !$this->invariants->secretReusesAny($secret, $comparisonSecrets);
 
         if (!SecretStrength::isProductionSafe($configured) || !$dedicated) {
             return $this->fail(
@@ -221,16 +235,6 @@ final readonly class DeploymentDoctor
         );
     }
 
-    /**
-     * @return array<array-key, mixed>
-     */
-    private function cacheStores(): array
-    {
-        $stores = $this->config->get('cache.stores');
-
-        return is_array($stores) ? $stores : [];
-    }
-
     private function mailTransportCheck(bool $production): DoctorCheck
     {
         $mailer = $this->string('mail.default');
@@ -244,7 +248,7 @@ final readonly class DeploymentDoctor
             );
         }
 
-        if (!SecurityInvariants::mailTransportIsDeliverable(
+        if (!$this->invariants->mailTransportIsDeliverable(
             $mailer,
             $this->configuredMailers(),
             $this->string('services.resend.key'),
@@ -287,7 +291,7 @@ final readonly class DeploymentDoctor
             );
         }
 
-        if (!SecurityInvariants::invitationQueueIsTransactional(
+        if (!$this->invariants->invitationQueueIsTransactional(
             driver: $driver,
             queueDatabaseConnection: $connection,
             primaryDatabaseConnection: $this->string('database.default'),
@@ -332,7 +336,7 @@ final readonly class DeploymentDoctor
             return $this->fail('dummy_password_hash', 'Login-timing dummy hash', 'Set AUTH_DUMMY_PASSWORD_HASH (or keep the shipped default) in production.');
         }
 
-        $hashCost = SecurityInvariants::bcryptHashCost($dummyHash);
+        $hashCost = $this->invariants->bcryptHashCost($dummyHash);
 
         if ($hashCost === null) {
             return $this->fail('dummy_password_hash', 'Login-timing dummy hash', 'The dummy password hash must be a valid bcrypt hash.');
@@ -341,7 +345,7 @@ final readonly class DeploymentDoctor
         // The boot gate aborts when BCRYPT_ROUNDS is present but not an integer.
         // Grade the same failure here instead of silently falling back to the
         // default rounds and blessing a hash-cost match the boot gate never reaches.
-        if (SecurityInvariants::configuredBcryptRounds($this->config) === null) {
+        if ($this->invariants->configuredBcryptRounds() === null) {
             return $this->fail('dummy_password_hash', 'Login-timing dummy hash', 'BCRYPT_ROUNDS must be an integer so the dummy hash cost can be matched.');
         }
 
@@ -369,11 +373,11 @@ final readonly class DeploymentDoctor
 
         // Same single-parser decision the boot gate enforces, so the doctor cannot bless a
         // non-ASCII SESSION_DOMAIN the browser would canonicalise to cover the artifact host.
-        return match (SecurityInvariants::sessionCookieDomainCoverage($sessionDomain, $artifactHost)) {
+        return match ($this->invariants->sessionCookieDomainCoverage($sessionDomain, $artifactHost)) {
             'unset' => $this->pass('session_domain', 'Session cookie domain', 'No shared session cookie domain is configured.'),
             'invalid' => $this->fail('session_domain', 'Session cookie domain', 'SESSION_DOMAIN must be a canonical ASCII host; a raw IDN/unicode spelling is IDNA-canonicalised by browsers and can cover the artifact host unseen.'),
             'covers' => $this->fail('session_domain', 'Session cookie domain', 'SESSION_DOMAIN must not cover the artifact origin, or app cookies leak onto the artifact host.'),
-            'safe' => $this->pass('session_domain', 'Session cookie domain', sprintf('Session domain %s does not cover the artifact host.', (string) SecurityInvariants::normalizedSessionCookieHost($sessionDomain))),
+            'safe' => $this->pass('session_domain', 'Session cookie domain', sprintf('Session domain %s does not cover the artifact host.', (string) $this->invariants->normalizedSessionCookieHost($sessionDomain))),
         };
     }
 
@@ -408,7 +412,7 @@ final readonly class DeploymentDoctor
 
         if (
             $reverbSecret !== null
-            && SecurityInvariants::secretReusesAny($reverbSecret, $comparisonSecrets)
+            && $this->invariants->secretReusesAny($reverbSecret, $comparisonSecrets)
         ) {
             return $this->fail('reverb', 'Reverb realtime', 'REVERB_APP_SECRET must be dedicated and different from application signing keys.');
         }
@@ -710,7 +714,7 @@ final readonly class DeploymentDoctor
             );
         }
 
-        if ($signingSecret !== null && SecurityInvariants::signingKeyReusesApplicationKey(
+        if ($signingSecret !== null && $this->invariants->signingKeyReusesApplicationKey(
             $signingSecret,
             $appSecret ?? '',
             $previousApplicationSecrets,
@@ -855,7 +859,7 @@ final readonly class DeploymentDoctor
     {
         $driver = $this->string('database.default');
 
-        if (SecurityInvariants::isSupportedDatabaseDriver($driver)) {
+        if ($this->invariants->isSupportedDatabaseDriver($driver)) {
             return $this->pass('database_driver', 'Database driver', 'Using PostgreSQL.');
         }
 
@@ -874,7 +878,7 @@ final readonly class DeploymentDoctor
 
         $password = $this->string('database.connections.pgsql.password');
 
-        if (!SecurityInvariants::databasePasswordIsAcceptable($password)) {
+        if (!$this->invariants->databasePasswordIsAcceptable($password)) {
             return $this->fail('database_password', 'Database password', 'Set DB_PASSWORD to a real, non-placeholder secret in production.');
         }
 
@@ -882,7 +886,7 @@ final readonly class DeploymentDoctor
         // which also rejects the passwords published in this repository's compose and
         // example files. Without this the doctor would grade green on a config the
         // production boot then aborts on.
-        if (SecurityInvariants::databasePasswordIsPublishedFixture($password)) {
+        if ($this->invariants->databasePasswordIsPublishedFixture($password)) {
             return $this->fail('database_password', 'Database password', 'Set DB_PASSWORD to a value not published in this repository; the boot gate rejects the development defaults.');
         }
 
@@ -896,8 +900,8 @@ final readonly class DeploymentDoctor
         }
 
         $sslmode = strtolower($this->string('database.connections.pgsql.sslmode'));
-        $enforced = SecurityInvariants::postgresSslModeIsVerifyFull($sslmode)
-            && SecurityInvariants::postgresRootCertIsReadable($this->string('database.connections.pgsql.sslrootcert'));
+        $enforced = $this->invariants->postgresSslModeIsVerifyFull($sslmode)
+            && $this->invariants->postgresRootCertIsReadable($this->string('database.connections.pgsql.sslrootcert'));
 
         if (!$production) {
             return $this->skipped('database_tls', 'Database TLS', sprintf('sslmode=%s; production requires verify-full with a root certificate.', $sslmode === '' ? 'unset' : $sslmode));
@@ -928,10 +932,10 @@ final readonly class DeploymentDoctor
     private function trustedProxiesCheck(bool $production): DoctorCheck
     {
         $raw = $this->string('trustedproxy.raw');
-        $valid = SecurityInvariants::trustedProxiesAreConfigured($raw)
-            && !SecurityInvariants::trustedProxiesUseWildcard($raw)
-            && !SecurityInvariants::trustedProxiesUseBroadDockerCidr($raw)
-            && !SecurityInvariants::trustedProxiesUseAllAddressesCidr($raw);
+        $valid = $this->invariants->trustedProxiesAreConfigured($raw)
+            && !$this->invariants->trustedProxiesUseWildcard($raw)
+            && !$this->invariants->trustedProxiesUseBroadDockerCidr($raw)
+            && !$this->invariants->trustedProxiesUseAllAddressesCidr($raw);
 
         if (!$production) {
             return $this->skipped('trusted_proxies', 'Trusted proxies', 'Development proxy defaults apply; production must name the real TLS edge.');
@@ -941,7 +945,7 @@ final readonly class DeploymentDoctor
             return $this->fail('trusted_proxies', 'Trusted proxies', 'Set TRUSTED_PROXIES to the real edge; no wildcard or broad Docker CIDR.');
         }
 
-        if (SecurityInvariants::trustedProxiesTrustImmediatePeer($raw)) {
+        if ($this->invariants->trustedProxiesTrustImmediatePeer($raw)) {
             return $this->warn(
                 'trusted_proxies',
                 'Trusted proxies',
@@ -955,7 +959,7 @@ final readonly class DeploymentDoctor
     private function artifactStoragePrivateCheck(bool $production): DoctorCheck
     {
         $private = $this->string('filesystems.disks.artifacts.visibility') === 'private';
-        $outsidePublicPath = SecurityInvariants::artifactStorageRootIsOutsidePublicPath(
+        $outsidePublicPath = $this->invariants->artifactStorageRootIsOutsidePublicPath(
             $this->string('filesystems.disks.artifacts.root'),
             public_path(),
         );
@@ -1033,7 +1037,7 @@ final readonly class DeploymentDoctor
 
     private function configuredBcryptRounds(): int
     {
-        return SecurityInvariants::configuredBcryptRounds($this->config)
+        return $this->invariants->configuredBcryptRounds()
             ?? ProductionSecurityConfiguration::DEFAULT_BCRYPT_ROUNDS;
     }
 

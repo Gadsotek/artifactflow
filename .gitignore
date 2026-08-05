@@ -125,6 +125,7 @@ pnpm-debug.log*
 *.mysql
 *.sqlite
 *.sqlite3
+!docs/operations/artifact-host-database-grants.sql
 /database/dumps/
 /backups/
 /scripts/backups/

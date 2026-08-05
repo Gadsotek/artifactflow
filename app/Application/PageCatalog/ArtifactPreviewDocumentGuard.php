@@ -8,6 +8,10 @@ use RuntimeException;
 
 final class ArtifactPreviewDocumentGuard
 {
+    private const int MAX_REWRITE_DEPTH = 64;
+
+    private const int MAX_SHADOW_ROOT_ATTRIBUTES_PER_TAG = 4_096;
+
     /**
      * Canonical guard body injected by the shared sandbox responder into both
      * saved artifacts and pre-save draft previews. Edit the guard logic there,
@@ -54,7 +58,10 @@ final class ArtifactPreviewDocumentGuard
      */
     public function harden(string $html, bool $recoveryEnabled = false): string
     {
-        $html = $this->rewriteDangerousMarkup($html);
+        $html = $this->rewriteDangerousMarkup(
+            $html,
+            rewriteBudget: new ArtifactPreviewRewriteBudget(strlen($html)),
+        );
         $guard = $this->guardScript($recoveryEnabled);
         $withDoctypeGuard = $this->injectAfterPattern($html, '/^\s*<!doctype\s+html\b[^>]*>/i', $guard);
 
@@ -79,8 +86,21 @@ final class ArtifactPreviewDocumentGuard
         return "<script data-artifactflow-preview-guard{$recoveryAttribute}>\n" . self::$guardBody . "\n</script>";
     }
 
-    private function rewriteDangerousMarkup(string $html, bool $scriptingEnabled = true): string
-    {
+    private function rewriteDangerousMarkup(
+        string $html,
+        bool $scriptingEnabled = true,
+        int $rewriteDepth = 0,
+        ?ArtifactPreviewRewriteBudget $rewriteBudget = null,
+    ): string {
+        if ($rewriteDepth > self::MAX_REWRITE_DEPTH) {
+            throw new ArtifactPreviewComplexityExceeded(
+                'Artifact preview alternate parser nesting exceeds the safe rendering limit.',
+            );
+        }
+
+        $rewriteBudget ??= new ArtifactPreviewRewriteBudget(strlen($html));
+        $rewriteBudget->consume(strlen($html));
+
         $length = strlen($html);
         $offset = 0;
         $result = '';
@@ -104,7 +124,12 @@ final class ArtifactPreviewDocumentGuard
                     $interior = substr($html, $offset);
 
                     if ($rawTextTag === 'noscript') {
-                        $interior = $this->rewriteDangerousMarkup($interior, scriptingEnabled: false);
+                        $interior = $this->rewriteDangerousMarkup(
+                            $interior,
+                            scriptingEnabled: false,
+                            rewriteDepth: $rewriteDepth + 1,
+                            rewriteBudget: $rewriteBudget,
+                        );
                     }
 
                     return $result . $this->relocatedRawText($interior, $rawTextTag);
@@ -117,7 +142,12 @@ final class ArtifactPreviewDocumentGuard
                     // noscript is raw text. A second, scripting-disabled pass over
                     // only its interior covers the browser mode where those same
                     // bytes are live markup.
-                    $interior = $this->rewriteDangerousMarkup($interior, scriptingEnabled: false);
+                    $interior = $this->rewriteDangerousMarkup(
+                        $interior,
+                        scriptingEnabled: false,
+                        rewriteDepth: $rewriteDepth + 1,
+                        rewriteBudget: $rewriteBudget,
+                    );
                 }
 
                 $result .= $this->relocatedRawText($interior, $rawTextTag);
@@ -173,6 +203,8 @@ final class ArtifactPreviewDocumentGuard
                         $scriptingEnabled,
                         $foreignContent->currentElementIsHtmlIntegrationPoint(),
                         $openFramesets > 0,
+                        $rewriteDepth,
+                        $rewriteBudget,
                     );
                     $result .= $cdata['rewritten'];
                     $offset = $cdata['end'] + 1;
@@ -517,6 +549,8 @@ final class ArtifactPreviewDocumentGuard
         bool $scriptingEnabled,
         bool $maintainBogusCommentInterpretation,
         bool $maintainFramesetInterpretation,
+        int $rewriteDepth,
+        ArtifactPreviewRewriteBudget $rewriteBudget,
     ): array {
         $terminator = strpos($html, ']]>', $tagOffset + 9);
         $sectionEnd = $terminator === false ? strlen($html) - 1 : $terminator + 2;
@@ -541,7 +575,12 @@ final class ArtifactPreviewDocumentGuard
         $alternateLength = $sectionEnd - $bogusCommentEnd;
         $alternateMarkup = substr($html, $bogusCommentEnd + 1, $alternateLength);
         $rewrittenAlternate = $maintainBogusCommentInterpretation
-            ? $this->rewriteDangerousMarkup($alternateMarkup, $scriptingEnabled)
+            ? $this->rewriteDangerousMarkup(
+                $alternateMarkup,
+                $scriptingEnabled,
+                $rewriteDepth + 1,
+                $rewriteBudget,
+            )
             : $this->rewriteFramesetAlternateMarkup($alternateMarkup);
 
         return [
@@ -1124,6 +1163,12 @@ final class ArtifactPreviewDocumentGuard
                             && strtolower(substr($tag, $attributeNameStart, $cursor - $attributeNameStart))
                                 === 'shadowrootmode'
                         ) {
+                            if (count($ranges) >= self::MAX_SHADOW_ROOT_ATTRIBUTES_PER_TAG) {
+                                throw new ArtifactPreviewComplexityExceeded(
+                                    'Artifact preview attribute volume exceeds the safe rendering limit.',
+                                );
+                            }
+
                             $ranges[] = [
                                 'length' => $cursor - $attributeNameStart,
                                 'start' => $attributeNameStart,
@@ -1269,17 +1314,23 @@ final class ArtifactPreviewDocumentGuard
             }
         }
 
-        for ($rangeIndex = count($ranges) - 1; $rangeIndex >= 0; --$rangeIndex) {
-            $range = $ranges[$rangeIndex];
-            $tag = substr_replace(
-                $tag,
-                'data-artifactflow-blocked-shadow-root',
-                $range['start'],
-                $range['length'],
-            );
+        if ($ranges === []) {
+            return $tag;
         }
 
-        return $tag;
+        // Rebuild once from ordered ranges. Repeated substr_replace calls copy
+        // the growing tag on every duplicate attribute and turn a bounded HTML
+        // upload into quadratic CPU and allocation work.
+        $rewritten = '';
+        $copyOffset = 0;
+
+        foreach ($ranges as $range) {
+            $rewritten .= substr($tag, $copyOffset, $range['start'] - $copyOffset);
+            $rewritten .= 'data-artifactflow-blocked-shadow-root';
+            $copyOffset = $range['start'] + $range['length'];
+        }
+
+        return $rewritten . substr($tag, $copyOffset);
     }
 
     private function isAsciiWhitespace(string $character): bool
