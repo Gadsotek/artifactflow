@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-$applicationLimiter = env('CACHE_LIMITER');
+$applicationLimiter = env('CACHE_LIMITER') ?: null;
 $artifactLimiter = env('ARTIFACT_CACHE_LIMITER', 'database_artifact_limiter');
 
 return [

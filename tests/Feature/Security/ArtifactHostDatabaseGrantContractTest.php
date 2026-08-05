@@ -93,4 +93,30 @@ final class ArtifactHostDatabaseGrantContractTest extends TestCase
         $this->assertTrue($probe->isSuccessful(), $probe->getErrorOutput());
         $this->assertSame('database_artifact_limiter', $probe->getOutput());
     }
+
+    public function test_blank_application_limiter_uses_the_default_store_at_clean_boot(): void
+    {
+        $probe = new Process(
+            [
+                PHP_BINARY,
+                '-r',
+                'require "vendor/autoload.php"; $app = require "bootstrap/app.php"; $app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); $store = config("cache.limiter"); echo $store === null ? "default:" . config("cache.default") : (string) $store;',
+            ],
+            base_path(),
+            [
+                'APP_ENV' => 'testing',
+                'APP_RUNTIME_ROLE' => 'app',
+                'CACHE_STORE' => 'file',
+                'CACHE_LIMITER' => '',
+                'ARTIFACT_CACHE_LIMITER' => 'database_artifact_limiter',
+            ],
+            null,
+            10,
+        );
+
+        $probe->run();
+
+        $this->assertTrue($probe->isSuccessful(), $probe->getErrorOutput());
+        $this->assertSame('default:file', $probe->getOutput());
+    }
 }
