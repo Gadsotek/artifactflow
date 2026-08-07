@@ -62,7 +62,7 @@ final class MermaidRendererSecurityTest extends TestCase
         $this->assertIsArray($package);
         $dependencies = $package['dependencies'] ?? null;
         $this->assertIsArray($dependencies);
-        $this->assertSame('11.16.0', $dependencies['mermaid'] ?? null);
+        $this->assertSame('11.16.1', $dependencies['mermaid'] ?? null);
 
         $renderer = (string) file_get_contents(base_path('resources/js/mermaid-renderer.js'));
 
