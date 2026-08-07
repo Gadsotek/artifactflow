@@ -34,6 +34,9 @@ The artifact parser differential fuzzer is part of the tagged security corpus. I
 feeds seeded tokenizer/tree-builder mutations through the exact server-side response rewriter, and
 Playwright parses both the raw and rewritten bytes without the runtime JavaScript guard. Every
 rewritten document must report `window.frames.length === 0` in Chromium, Firefox, and WebKit.
+Inputs that deliberately exhaust the bounded rewrite budget are reported as rejected rather than
+returned as partially hardened HTML; the PHP responder suite separately verifies that production
+turns those rejections into a fixed, non-reflective 422 response.
 CI derives the seed from `GITHUB_SHA`; local runs use a stable fallback. A failure prints a complete
 reproducer. Run a focused or expanded corpus with:
 

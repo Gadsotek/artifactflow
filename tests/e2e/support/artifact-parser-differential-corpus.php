@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\E2E\Support;
 
+use App\Application\PageCatalog\ArtifactPreviewComplexityExceeded;
 use App\Application\PageCatalog\ArtifactPreviewDocumentGuard;
 use ReflectionMethod;
 use RuntimeException;
@@ -88,20 +89,40 @@ $random = new ArtifactParserCorpusRandom($seed);
 $guard = new ArtifactPreviewDocumentGuard();
 $rewrite = new ReflectionMethod($guard, 'rewriteDangerousMarkup');
 
-/** @var list<array{index: int, id: string, payload: string, hardened: string}> $cases */
+/**
+ * @var list<array{
+ *     index: int,
+ *     id: string,
+ *     payload: string,
+ *     outcome: 'rewritten'|'rejected',
+ *     hardened: string|null,
+ * }> $cases
+ */
 $cases = [];
 
 $appendCase = static function (string $id, string $payload) use (&$cases, $guard, $rewrite): void {
-    $hardened = $rewrite->invoke($guard, $payload);
+    try {
+        $rewritten = $rewrite->invoke($guard, $payload);
 
-    if (!is_string($hardened)) {
-        throw new RuntimeException('The artifact preview rewriter returned an invalid result.');
+        if (!is_string($rewritten)) {
+            throw new RuntimeException('The artifact preview rewriter returned an invalid result.');
+        }
+
+        $outcome = 'rewritten';
+        $hardened = $rewritten;
+    } catch (ArtifactPreviewComplexityExceeded) {
+        // Production converts this deliberate fail-closed outcome into a fixed
+        // 422 response. The differential corpus calls the private rewriter
+        // directly, so preserve the rejection without inventing hardened HTML.
+        $outcome = 'rejected';
+        $hardened = null;
     }
 
     $cases[] = [
         'index' => count($cases),
         'id' => $id,
         'payload' => $payload,
+        'outcome' => $outcome,
         'hardened' => $hardened,
     ];
 };

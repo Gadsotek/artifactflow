@@ -2,12 +2,23 @@ import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-type ArtifactParserCase = {
+type RewrittenArtifactParserCase = {
   index: number;
   id: string;
   payload: string;
+  outcome: 'rewritten';
   hardened: string;
 };
+
+type RejectedArtifactParserCase = {
+  index: number;
+  id: string;
+  payload: string;
+  outcome: 'rejected';
+  hardened: null;
+};
+
+type ArtifactParserCase = RewrittenArtifactParserCase | RejectedArtifactParserCase;
 
 type ArtifactParserCorpus = {
   seed: number;
@@ -110,6 +121,12 @@ test('artifact parser differential fuzz corpus @artifact-security', async ({ pag
       casesWithLiveRawFrames += 1;
     }
 
+    if (parserCase.outcome === 'rejected') {
+      expect(parserCase.hardened).toBeNull();
+      continue;
+    }
+
+    expect(parserCase.outcome).toBe('rewritten');
     await page.setContent(parserCase.hardened, { waitUntil: 'domcontentloaded' });
     const hardenedFrames = await page.evaluate(() => window.frames.length);
     const reproduction =
