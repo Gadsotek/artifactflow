@@ -27,7 +27,7 @@ final readonly class McpCreateTagTool
 
             return McpToolResult::success([
                 'uid' => $tag->uid,
-                'workspace_uid' => $workspaceUid,
+                'authority_workspace_uid' => $workspaceUid,
                 'name' => McpDataEnvelope::text($tag->name),
                 'slug' => McpDataEnvelope::text($tag->slug),
             ]);

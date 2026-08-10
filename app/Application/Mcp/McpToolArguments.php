@@ -46,11 +46,27 @@ final class McpToolArguments
         return $value;
     }
 
+    public function has(string $key): bool
+    {
+        return array_key_exists($key, $this->arguments);
+    }
+
     public function requiredString(string $key): string
     {
         $value = $this->nullableString($key);
 
         if ($value === null) {
+            throw new DomainRuleViolation(sprintf('Argument [%s] is required.', $key));
+        }
+
+        return $value;
+    }
+
+    public function requiredRawString(string $key): string
+    {
+        $value = $this->arguments[$key] ?? null;
+
+        if (!is_string($value) || $value === '') {
             throw new DomainRuleViolation(sprintf('Argument [%s] is required.', $key));
         }
 

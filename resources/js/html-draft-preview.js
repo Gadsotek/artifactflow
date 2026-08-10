@@ -1,4 +1,4 @@
-import { creationModeForPageType, pageTypeForCreationMode } from './page-creation-selection';
+import { creationModeForPageType } from './page-creation-selection';
 
 // The draft preview renders on the isolated artifact origin, exactly like a
 // saved artifact: we POST the unsaved HTML into the sandbox iframe (form target)
@@ -165,13 +165,6 @@ function initialiseHtmlDraftPreview(form) {
     updateVisibility();
   });
   mode.addEventListener('change', () => {
-    const nextType = pageTypeForCreationMode(mode.value);
-
-    if (type.value !== nextType) {
-      type.value = nextType;
-      type.dispatchEvent(new Event('change'));
-    }
-
     updateVisibility();
   });
 

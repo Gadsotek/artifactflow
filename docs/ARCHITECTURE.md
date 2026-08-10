@@ -192,16 +192,23 @@ envelope. `create` can attach tag names and either select or create a category a
 the page; standalone taxonomy creation uses the same category/tag handlers, `mcp:create` scope,
 write throttling, live Editor authority, and token workspace ceiling.
 
-`create` and `update` accept optional producer provenance. An AI assertion requires a normalized
-provider key and exact provider-defined model ID. MCP-supplied assertions are always
+Content-version write tools accept optional producer provenance. An AI assertion retains every
+safe known field independently: a reported provider is stored beside its normalized search key,
+while an exact provider-defined model ID, a model family/label, a provider version, a generation
+timestamp, typed references, and bounded identity extensions remain independently optional. At
+least one meaningful fact is required, but missing exactness never discards another valid field.
+MCP-supplied assertions are always
 `self_reported`; callers cannot select stronger evidence. The client name/version reported during
 MCP initialization is stored as unverified submitter metadata and never interpreted as a
 provider/model or attested implementation identity. Every retained provenance string is checked
-for the same obvious credential patterns that block artifact writes.
+for the same obvious credential patterns that block artifact writes. Extension keys also reject
+prompt/reasoning, credential, authorization, URL, and content-payload classes; values are bounded
+and URLs must use typed external references.
 `read` returns ingest facts, page-origin producers, direct-version producers, and effective
 byte-origin lineage. Restore writes resolve the root content-origin UID so reads need at most one
 origin lookup regardless of lineage depth. All declared strings use the existing untrusted-data
-envelope.
+envelope. Successful MCP content writes return a `stored_provenance` receipt with the persisted
+direct assertions and computed `none`, `partial`, or `complete` state.
 
 ## Artifact Security Boundary
 
@@ -377,7 +384,7 @@ Production boot rejects unsafe deployments, including:
 - missing System Admin bootstrap path;
 - artifact frame ancestors that do not match the configured app origin;
 - a non-deliverable mail transport (`log`/`array`), which would silently drop invitation and password-reset mail;
-- a node-local, transient, undefined, or unknown rate-limiter cache driver; production counters must use a shared database, Redis, Memcached, or DynamoDB store;
+- a node-local, transient, undefined, or unknown rate-limiter cache driver; ordinary application caching may use any shared-capable driver, but production rate limiting currently supports only the dedicated database limiter stores so app and artifact-host credentials remain isolated;
 - an empty, wildcard, or address-space-wide `TRUSTED_PROXIES` value;
 - Reverb production mode without client-event rate limiting or a bounded connection limit.
 

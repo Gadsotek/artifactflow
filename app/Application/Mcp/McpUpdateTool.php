@@ -23,6 +23,7 @@ final readonly class McpUpdateTool
         private UpdatePageContent $updatePageContent,
         private McpToolErrorMapper $errors,
         private McpProvenanceArguments $provenance,
+        private McpStoredProvenancePayload $storedProvenance,
     ) {
     }
 
@@ -39,12 +40,13 @@ final readonly class McpUpdateTool
                 throw new DomainRuleViolation('Image content must be replaced through an authenticated PNG/JPEG upload.');
             }
 
+            $declaredProvenance = $this->provenance->fromArguments($arguments);
             $version = $this->updatePageContent->handle($actor, new UpdatePageContentCommand(
                 pageUid: $page->uid,
                 content: $arguments->requiredString('content'),
                 source: PageVersionSource::Mcp,
                 baseVersionUid: $arguments->nullableString('base_version_uid'),
-                provenance: $this->provenance->fromArguments($arguments),
+                provenance: $declaredProvenance,
                 changeSummary: $arguments->requiredString('change_summary'),
             ));
 
@@ -52,7 +54,7 @@ final readonly class McpUpdateTool
                 'page_uid' => $page->uid,
                 'version_uid' => $version->uid,
                 'current_version_uid' => $version->uid,
-            ]);
+            ] + $this->storedProvenance->forVersion($version));
         });
     }
 }

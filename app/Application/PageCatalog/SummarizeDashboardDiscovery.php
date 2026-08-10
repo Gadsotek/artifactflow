@@ -18,6 +18,7 @@ final class SummarizeDashboardDiscovery
     {
         $draftPageCount = 0;
         $deprecatedPageCount = 0;
+        /** @var array<string, array{name: string, count: int}> $tagCounts */
         $tagCounts = [];
 
         foreach ($pages as $page) {
@@ -30,20 +31,25 @@ final class SummarizeDashboardDiscovery
             }
 
             foreach ($page->tags as $tag) {
-                $tagCounts[$tag->name] = ($tagCounts[$tag->name] ?? 0) + 1;
+                $tagCounts[$tag->uid] ??= ['name' => $tag->name, 'count' => 0];
+                ++$tagCounts[$tag->uid]['count'];
             }
         }
 
-        $tagNames = array_keys($tagCounts);
+        $tagUids = array_keys($tagCounts);
         usort(
-            $tagNames,
-            static fn (string $left, string $right): int => $tagCounts[$right] <=> $tagCounts[$left]
-                ?: strcasecmp($left, $right),
+            $tagUids,
+            static fn (string $left, string $right): int => $tagCounts[$right]['count'] <=> $tagCounts[$left]['count']
+                ?: strcasecmp($tagCounts[$left]['name'], $tagCounts[$right]['name']),
         );
         $popularTags = [];
 
-        foreach (array_slice($tagNames, 0, self::POPULAR_TAG_LIMIT) as $tagName) {
-            $popularTags[] = new DashboardPopularTag($tagName, $tagCounts[$tagName]);
+        foreach (array_slice($tagUids, 0, self::POPULAR_TAG_LIMIT) as $tagUid) {
+            $popularTags[] = new DashboardPopularTag(
+                uid: $tagUid,
+                name: $tagCounts[$tagUid]['name'],
+                pageCount: $tagCounts[$tagUid]['count'],
+            );
         }
 
         return new DashboardDiscoverySummary(

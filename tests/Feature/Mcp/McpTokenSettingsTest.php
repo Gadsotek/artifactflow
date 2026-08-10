@@ -405,6 +405,8 @@ final class McpTokenSettingsTest extends TestCase
             ->assertSee(McpAccessTokenIssuer::SCOPE_READ)
             ->assertSee(McpAccessTokenIssuer::SCOPE_CREATE)
             ->assertSee(McpAccessTokenIssuer::SCOPE_UPDATE)
+            ->assertSee(McpAccessTokenIssuer::SCOPE_ORGANIZE)
+            ->assertSee(McpAccessTokenIssuer::SCOPE_UPLOAD)
             ->assertSee(McpAccessTokenIssuer::SCOPE_SHARE)
             ->assertSee('returned external link as a bearer secret')
             ->assertSee('pages you own and can still edit')

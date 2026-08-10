@@ -519,7 +519,7 @@ final readonly class ProductionSecurityConfiguration
     {
         if (!$this->rateLimiterCache->sharesCountersAcrossReplicas()) {
             throw new RuntimeException(
-                'Cache store must share rate-limit counters across production app replicas. The rate limiter store (cache.limiter or cache.default) must resolve to a defined database, Redis, Memcached, or DynamoDB cache driver.',
+                'Production rate limiting requires the dedicated database limiter stores. Set CACHE_LIMITER=database_limiter and ARTIFACT_CACHE_LIMITER=database_artifact_limiter so counters are shared across replicas and runtime credentials stay isolated.',
             );
         }
 

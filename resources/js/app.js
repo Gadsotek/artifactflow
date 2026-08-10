@@ -12,6 +12,14 @@ if (document.querySelector('[data-create-page-category]')) {
   void import('./create-page-category');
 }
 
+if (document.querySelector('[data-multi-select]')) {
+  void import('./multi-select');
+}
+
+if (document.querySelector('[data-taggable-input]')) {
+  void import('./taggable-input');
+}
+
 if (document.querySelector('[data-workspace-tabs]')) {
   void import('./workspace-tabs');
 }
@@ -50,6 +58,10 @@ if (document.querySelector('[data-two-factor-enrollment-timer]')) {
 
 if (document.querySelector('[data-realtime-enabled="true"][data-realtime-config]')) {
   void import('./realtime').then(() => {
+    if (document.querySelector('[data-live-page-catalog]')) {
+      void import('./page-catalog-live');
+    }
+
     if (document.querySelector('[data-page-presence]')) {
       void import('./page-presence');
     }

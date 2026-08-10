@@ -9,10 +9,12 @@ use PHPUnit\Framework\TestCase;
 
 final class McpWriteScopeTest extends TestCase
 {
-    public function test_create_update_and_share_scopes_are_write_scopes(): void
+    public function test_create_update_organize_upload_and_share_scopes_are_write_scopes(): void
     {
         $this->assertTrue(McpAccessTokenIssuer::includesWriteScope([McpAccessTokenIssuer::SCOPE_CREATE]));
         $this->assertTrue(McpAccessTokenIssuer::includesWriteScope([McpAccessTokenIssuer::SCOPE_UPDATE]));
+        $this->assertTrue(McpAccessTokenIssuer::includesWriteScope([McpAccessTokenIssuer::SCOPE_ORGANIZE]));
+        $this->assertTrue(McpAccessTokenIssuer::includesWriteScope([McpAccessTokenIssuer::SCOPE_UPLOAD]));
         $this->assertTrue(McpAccessTokenIssuer::includesWriteScope([McpAccessTokenIssuer::SCOPE_SHARE]));
         $this->assertTrue(McpAccessTokenIssuer::includesWriteScope([
             McpAccessTokenIssuer::SCOPE_READ,

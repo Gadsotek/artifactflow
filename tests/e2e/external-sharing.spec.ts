@@ -90,7 +90,7 @@ async function createImagePage(page: Page, title: string): Promise<void> {
     'data-create-page-mode-ready',
     'true',
   );
-  await page.locator('select[name="mode"]').selectOption('image_upload');
+  await page.locator('select[name="type"]').selectOption('image');
   await page.locator('input[name="title"]').fill(title);
   await page.locator('input[name="image_file"]').setInputFiles({
     name: 'external-share.png',

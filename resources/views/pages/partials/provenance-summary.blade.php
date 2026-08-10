@@ -41,6 +41,9 @@
                     <div>
                         <p class="af-eyebrow">{{ strtoupper($producer->kind->value) }} producer</p>
                         <h3 class="font-semibold text-zinc-950 dark:text-zinc-50">{{ $producer->displayName() }}</h3>
+                        @if ($producer->kind === \App\Domain\Provenance\ProducerKind::Ai && !$producer->isIdentified())
+                            <p class="mt-1 text-xs text-amber-700 dark:text-amber-300">Partial identity</p>
+                        @endif
                     </div>
                     <span class="af-role-badge">{{ ucfirst(str_replace('_', ' ', $producer->evidenceType->value)) }}</span>
                 </div>
@@ -48,7 +51,7 @@
                     @if ($producer->providerKey !== null)
                         <div>
                             <dt class="font-semibold text-zinc-950 dark:text-zinc-50">Provider</dt>
-                            <dd>{{ $producer->providerKey }}</dd>
+                            <dd>{{ $producer->reportedProvider ?? $producer->providerKey }}</dd>
                         </div>
                     @endif
                     @if ($producer->modelId !== null)
@@ -70,6 +73,16 @@
                         </div>
                     @endif
                 </dl>
+                @if ($producer->claimExtensions !== [])
+                    <dl class="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                        @foreach ($producer->claimExtensions as $extension)
+                            <div>
+                                <dt class="font-semibold text-zinc-950 dark:text-zinc-50">{{ $extension->key }}</dt>
+                                <dd>{{ $extension->value }}</dd>
+                            </div>
+                        @endforeach
+                    </dl>
+                @endif
                 @if ($producer->references !== [])
                     <ul class="mt-4 space-y-2 text-sm">
                         @foreach ($producer->references as $reference)

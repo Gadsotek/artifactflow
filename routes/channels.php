@@ -21,3 +21,8 @@ Broadcast::channel('page.{pageUid}', static function (User $user, string $pageUi
         'name' => $user->name,
     ];
 });
+
+Broadcast::channel(
+    'user.{userUid}.page-catalog',
+    static fn (User $user, string $userUid): bool => hash_equals($user->uid, $userUid),
+);

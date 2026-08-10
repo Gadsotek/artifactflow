@@ -89,9 +89,17 @@ final readonly class ProvenanceReadModel
 
         foreach ($assertions as $assertion) {
             $references = [];
+            $claimExtensions = [];
 
             foreach ($assertion->references->whereNull('redacted_at')->sortBy('created_at') as $reference) {
                 $references[] = $this->referenceView($reference);
+            }
+
+            foreach ($assertion->claim_extensions as $extension) {
+                $claimExtensions[] = new ProducerClaimExtension(
+                    key: $extension['key'],
+                    value: $extension['value'],
+                );
             }
 
             $views[] = new ProducerAssertionView(
@@ -106,6 +114,8 @@ final readonly class ProvenanceReadModel
                 generatedAt: $assertion->generated_at,
                 evidenceType: $assertion->evidence_type,
                 references: $references,
+                reportedProvider: $assertion->reported_provider,
+                claimExtensions: $claimExtensions,
             );
         }
 

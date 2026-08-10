@@ -92,7 +92,7 @@ final readonly class DeploymentDoctor
                 'cache_store',
                 'Cache store',
                 sprintf(
-                    "Rate limiter cache store '%s' does not provide shared counters; point CACHE_STORE (or cache.limiter) at a defined database, Redis, Memcached, or DynamoDB store so login, 2FA, and MCP limits hold across replicas.",
+                    "Rate limiter cache store '%s' is unsupported for production security counters; set CACHE_LIMITER=database_limiter and ARTIFACT_CACHE_LIMITER=database_artifact_limiter so counters are shared across replicas and runtime credentials stay isolated.",
                     $label,
                 ),
             );

@@ -83,10 +83,18 @@ final readonly class RecordPageVersionProvenance
             'producer_kind' => $producer->kind,
             'producer_name' => $producer->producerName,
             'producer_version' => $producer->producerVersion,
+            'reported_provider' => $producer->reportedProvider,
             'provider_key' => $producer->providerKey,
             'model_id' => $producer->modelId,
             'model_label' => $producer->modelLabel,
             'model_version' => $producer->modelVersion,
+            'claim_extensions' => array_map(
+                static fn (ProducerClaimExtension $extension): array => [
+                    'key' => $extension->key,
+                    'value' => $extension->value,
+                ],
+                $producer->claimExtensions,
+            ),
             'generated_at' => $producer->generatedAt,
             'evidence_type' => ProvenanceEvidenceType::SelfReported,
             'asserted_by_user_uid' => $actorUid,

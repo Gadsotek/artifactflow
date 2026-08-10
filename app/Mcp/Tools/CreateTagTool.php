@@ -42,7 +42,7 @@ final class CreateTagTool extends ArtifactFlowTool
     {
         return $this->invoke(
             $request,
-            McpAccessTokenIssuer::SCOPE_CREATE,
+            McpAccessTokenIssuer::SCOPE_ORGANIZE,
             true,
             fn (User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult => $this->handler->handle($actor, $arguments),
         );

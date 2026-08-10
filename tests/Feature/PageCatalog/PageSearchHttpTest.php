@@ -10,6 +10,8 @@ use App\Application\PageCatalog\CreatePageCommand;
 use App\Application\PageCatalog\GrantPageAccess;
 use App\Application\PageCatalog\GrantPageAccessCommand;
 use App\Application\PageCatalog\PageSearchVectorUpdater;
+use App\Application\PageCatalog\UpdatePageContent;
+use App\Application\PageCatalog\UpdatePageContentCommand;
 use App\Application\Provenance\ProducerAssertionInput;
 use App\Application\Provenance\VersionProvenanceInput;
 use App\Domain\Identity\WorkspaceRole;
@@ -22,6 +24,7 @@ use App\Models\Tag;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceMembership;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -321,7 +324,7 @@ final class PageSearchHttpTest extends TestCase
             ->assertDontSee('Private body phrase.');
     }
 
-    public function test_page_list_filters_by_workspace_type_status_category_tag_and_owner_uid(): void
+    public function test_page_list_filters_by_workspace_type_multi_status_category_tag_and_owner_uid(): void
     {
         Storage::fake('artifacts');
 
@@ -395,8 +398,9 @@ final class PageSearchHttpTest extends TestCase
 
         $this->actingAs($editor)
             ->get(sprintf(
-                '/pages?workspace_uid=%s&type=markdown&status=approved&category_uid=%s&tag_uid=%s&owner_user_uid=%s',
+                '/pages?workspace_uid=%s&type=markdown&statuses[]=%s&category_uids[]=%s&tag_uids[]=%s&owner_user_uid=%s',
                 $workspace->uid,
+                PageStatus::Approved->value,
                 $category->uid,
                 $releaseTag->uid,
                 $editor->uid,
@@ -409,7 +413,7 @@ final class PageSearchHttpTest extends TestCase
             ->assertDontSee('Other Workspace Runbook');
     }
 
-    public function test_page_list_filters_by_all_selected_tags_and_keeps_the_active_tags_visible(): void
+    public function test_page_list_multi_select_filters_match_any_selected_tag_and_keep_active_tags_visible(): void
     {
         Storage::fake('artifacts');
 
@@ -453,11 +457,52 @@ final class PageSearchHttpTest extends TestCase
             ))
             ->assertOk()
             ->assertSee('Release Security Runbook')
-            ->assertDontSee('Release Only Runbook')
-            ->assertDontSee('Security Only Runbook');
+            ->assertSee('Release Only Runbook')
+            ->assertSee('Security Only Runbook');
 
         $response->assertSee(sprintf('value="%s" selected', $releaseTag->uid), false);
         $response->assertSee(sprintf('value="%s" selected', $securityTag->uid), false);
+    }
+
+    public function test_page_list_multi_select_categories_and_statuses_match_any_selected_value(): void
+    {
+        Storage::fake('artifacts');
+
+        $editor = $this->createUser('Facet Editor', 'facet-editor@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($editor, 'Facet Team');
+        $runbooks = $this->createCategory($workspace, $editor, 'Runbooks');
+        $design = $this->createCategory($workspace, $editor, 'Design');
+        $excluded = $this->createCategory($workspace, $editor, 'Excluded');
+
+        foreach ([
+            ['Draft Runbook', $runbooks, PageStatus::Draft],
+            ['Approved Design', $design, PageStatus::Approved],
+            ['Excluded Draft', $excluded, PageStatus::Draft],
+        ] as [$title, $category, $status]) {
+            app(CreatePage::class)->handle($editor, new CreatePageCommand(
+                workspaceUid: $workspace->uid,
+                type: PageType::Markdown,
+                title: $title,
+                description: null,
+                content: '# ' . $title,
+                status: $status,
+                categoryUid: $category->uid,
+            ));
+        }
+
+        $this->actingAs($editor)
+            ->get(sprintf(
+                '/pages?workspace_uid=%s&category_uids[]=%s&category_uids[]=%s&statuses[]=draft&statuses[]=approved',
+                $workspace->uid,
+                $runbooks->uid,
+                $design->uid,
+            ))
+            ->assertOk()
+            ->assertSee('Draft Runbook')
+            ->assertSee('Approved Design')
+            ->assertDontSee('Excluded Draft')
+            ->assertSee(sprintf('value="%s" selected', $runbooks->uid), false)
+            ->assertSee(sprintf('value="%s" selected', $design->uid), false);
     }
 
     public function test_page_list_filters_ai_provenance_without_disclosing_inaccessible_pages(): void
@@ -497,6 +542,27 @@ final class PageSearchHttpTest extends TestCase
             description: null,
             content: '# Human',
         ));
+        app(CreatePage::class)->handle($editor, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Visible Partial GPT Artifact',
+            description: null,
+            content: '# Partial GPT',
+            provenance: new VersionProvenanceInput([
+                new ProducerAssertionInput(
+                    kind: ProducerKind::Ai,
+                    producerName: null,
+                    producerVersion: null,
+                    providerKey: 'openai',
+                    modelId: null,
+                    modelLabel: 'GPT-5 family',
+                    modelVersion: null,
+                    generatedAt: null,
+                    references: [],
+                    reportedProvider: 'OpenAI',
+                ),
+            ]),
+        ));
         app(CreatePage::class)->handle($otherOwner, new CreatePageCommand(
             workspaceUid: $otherWorkspace->uid,
             type: PageType::Markdown,
@@ -507,14 +573,30 @@ final class PageSearchHttpTest extends TestCase
         ));
 
         $this->actingAs($editor)
-            ->get('/pages?workspace_uid=all&ai_provider=Anthropic&ai_model_query=opus&provenance_scope=page_origin')
+            ->get('/pages?workspace_uid=all&ai_providers[]=anthropic&ai_model_ids[]=claude-opus-5-2-20260715&provenance_scope=page_origin')
             ->assertOk()
             ->assertSee('Visible Opus Artifact')
             ->assertDontSee('Visible Human Artifact')
             ->assertDontSee('Hidden Opus Artifact')
-            ->assertSee('name="ai_provider"', false)
-            ->assertSee('name="ai_model_query"', false)
+            ->assertSee('name="ai_providers[]"', false)
+            ->assertSee('name="ai_model_ids[]"', false)
+            ->assertSee('value="anthropic" selected', false)
+            ->assertSee('value="claude-opus-5-2-20260715" selected', false)
+            ->assertSee('Claude Opus 5.2 — claude-opus-5-2-20260715')
             ->assertSee('name="provenance_scope"', false);
+
+        $this->actingAs($editor)
+            ->get('/pages?' . http_build_query([
+                'workspace_uid' => 'all',
+                'ai_providers' => ['openai'],
+                'ai_model_ids' => ['GPT-5 family'],
+                'provenance_scope' => 'page_origin',
+            ]))
+            ->assertOk()
+            ->assertSee('Visible Partial GPT Artifact')
+            ->assertDontSee('Visible Human Artifact')
+            ->assertSee('OpenAI')
+            ->assertSee('value="GPT-5 family" selected', false);
 
         $this->actingAs($editor)
             ->get('/pages?workspace_uid=all&q=Opus')
@@ -527,6 +609,74 @@ final class PageSearchHttpTest extends TestCase
             ->get('/pages?workspace_uid=all&q=20260715')
             ->assertOk()
             ->assertDontSee('Visible Opus Artifact');
+    }
+
+    public function test_provenance_facets_deduplicate_historical_assertions_in_sql(): void
+    {
+        Storage::fake('artifacts');
+
+        $editor = $this->createUser('Facet Provenance Editor', 'facet-provenance@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($editor, 'Facet Provenance Team');
+        $provenance = new VersionProvenanceInput([
+            new ProducerAssertionInput(
+                kind: ProducerKind::Ai,
+                producerName: null,
+                producerVersion: null,
+                providerKey: 'openai',
+                modelId: 'gpt-5.2',
+                modelLabel: 'GPT-5.2',
+                modelVersion: null,
+                generatedAt: null,
+                references: [],
+                reportedProvider: 'OpenAI',
+            ),
+        ]);
+        $page = app(CreatePage::class)->handle($editor, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Versioned Provenance Facet',
+            description: null,
+            content: '# Version one',
+            provenance: $provenance,
+        ));
+        $baseVersionUid = $page->current_version_uid;
+
+        foreach ([2, 3] as $version) {
+            $createdVersion = app(UpdatePageContent::class)->handle($editor, new UpdatePageContentCommand(
+                pageUid: $page->uid,
+                content: '# Version ' . $version,
+                baseVersionUid: $baseVersionUid,
+                provenance: $provenance,
+            ));
+            $baseVersionUid = $createdVersion->uid;
+        }
+
+        /** @var list<string> $facetQueries */
+        $facetQueries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$facetQueries): void {
+            $sql = strtolower($query->sql);
+
+            if (
+                str_contains($sql, 'from "producer_assertions"')
+                && str_contains($sql, 'join "page_version_ingests"')
+            ) {
+                $facetQueries[] = $sql;
+            }
+        });
+
+        $response = $this->actingAs($editor)
+            ->get("/pages?workspace_uid={$workspace->uid}")
+            ->assertOk();
+        $content = $response->getContent();
+
+        $this->assertIsString($content);
+        $this->assertSame(1, substr_count($content, 'value="openai"'));
+        $this->assertSame(1, substr_count($content, 'value="gpt-5.2"'));
+        $this->assertNotEmpty($facetQueries);
+
+        foreach ($facetQueries as $query) {
+            $this->assertStringContainsString('select distinct', $query);
+        }
     }
 
     public function test_cross_workspace_filters_use_global_tags_and_qualified_authorized_categories(): void
@@ -568,7 +718,11 @@ final class PageSearchHttpTest extends TestCase
             ->assertSee('Empty but Available — Platform Team')
             ->assertDontSee('Secret Category')
             ->assertDontSee('Hidden Empty Category')
-            ->assertDontSee('secret-taxonomy');
+            ->assertDontSee('secret-taxonomy')
+            ->assertSee('data-library-workspace-filter', false)
+            ->assertSee('name="category_uids[]"', false)
+            ->assertSee('name="tag_uids[]"', false)
+            ->assertSee('data-searchable-multi-select', false);
 
         $responseContent = $allVisible->getContent();
         $this->assertIsString($responseContent);
@@ -579,7 +733,9 @@ final class PageSearchHttpTest extends TestCase
             ->assertOk()
             ->assertSee('>Runbooks</option>', false)
             ->assertDontSee('Runbooks — Platform Team')
-            ->assertDontSee('Runbooks — Research Team');
+            ->assertDontSee('Runbooks — Research Team')
+            ->assertDontSee('data-library-workspace-filter', false)
+            ->assertSee('name="workspace_uid" type="hidden"', false);
     }
 
     public function test_archived_pages_are_hidden_by_default_and_can_be_explicitly_included(): void
@@ -612,16 +768,18 @@ final class PageSearchHttpTest extends TestCase
             ->assertDontSee('Archived Search Notes');
 
         $this->actingAs($editor)
-            ->get("/pages?workspace_uid={$workspace->uid}&q=Notes&status=archived")
+            ->get("/pages?workspace_uid={$workspace->uid}&q=Notes&statuses[]=archived")
             ->assertOk()
             ->assertDontSee('Live Archive Notes')
             ->assertSee('Archived Search Notes');
 
         $this->actingAs($editor)
-            ->get("/pages?workspace_uid={$workspace->uid}&q=Notes&include_archived=1")
+            ->get("/pages?workspace_uid={$workspace->uid}&q=Notes&statuses[]=draft&statuses[]=archived")
             ->assertOk()
             ->assertSee('Live Archive Notes')
-            ->assertSee('Archived Search Notes');
+            ->assertSee('Archived Search Notes')
+            ->assertSee('name="statuses[]"', false)
+            ->assertDontSee('name="include_archived"', false);
     }
 
     public function test_page_list_can_sort_visible_results_by_title_or_recent_update(): void
@@ -651,13 +809,16 @@ final class PageSearchHttpTest extends TestCase
             ->get("/pages?workspace_uid={$workspace->uid}&sort=title")
             ->assertOk()
             ->assertSeeInOrder(['Alpha Runbook', 'Zebra Runbook'])
-            ->assertSee('<option value="title" selected>', false);
+            ->assertSee('value="title">Title</button>', false)
+            ->assertSee('data-sort-active="true"', false)
+            ->assertDontSee('<select class="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" name="sort">', false);
 
         $this->actingAs($editor)
             ->get("/pages?workspace_uid={$workspace->uid}&sort=recently_updated")
             ->assertOk()
             ->assertSeeInOrder(['Zebra Runbook', 'Alpha Runbook'])
-            ->assertSee('<option value="recently_updated" selected>', false);
+            ->assertSee('value="recently_updated">Recently updated</button>', false)
+            ->assertSee('data-library-sort-switches', false);
     }
 
     public function test_page_list_nests_visible_descendants_beneath_their_parent(): void

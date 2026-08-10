@@ -13,6 +13,7 @@ final readonly class PageSearchResult
         public ?string $snippet,
         public float $rank,
         public ?string $workspaceName,
+        public bool $isNew,
     ) {
     }
 }

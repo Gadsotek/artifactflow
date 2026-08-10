@@ -71,7 +71,7 @@ final class PageVersioningTest extends TestCase
                         producerVersion: null,
                         providerKey: null,
                         modelId: null,
-                        modelLabel: 'Guessed model',
+                        modelLabel: null,
                         modelVersion: null,
                         generatedAt: null,
                         references: [],
@@ -81,7 +81,7 @@ final class PageVersioningTest extends TestCase
             $this->fail('Expected invalid provenance to be rejected.');
         } catch (DomainRuleViolation $exception) {
             $this->assertSame(
-                'AI provenance requires a normalized provider key and exact model ID.',
+                'AI provenance must contain at least one known producer fact.',
                 $exception->getMessage(),
             );
         }

@@ -78,7 +78,7 @@ final readonly class McpTokenSettingsController
 
         // An explicit "all workspaces" choice mints the unrestricted (present and
         // future) scope; an empty individual selection is still a deny, never all.
-        // Write scopes are permitted at this breadth: every create/update still runs
+        // Write scopes are permitted at this breadth: every write still runs
         // through the same per-workspace policies as a human (the token is capped at
         // Editor authority), so it can only write where the account already may, and
         // the shorter write-token TTL enforced above keeps the exposure window tight.

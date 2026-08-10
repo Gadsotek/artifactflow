@@ -35,13 +35,14 @@ abstract class ArtifactFlowTool extends Tool
 
     /**
      * @param Closure(User, McpAccessToken, McpToolArguments): McpToolResult $run
+     * @param string|list<string> $scopes
      *
      * @throws AuthenticationException
      * @throws JsonException
      */
     final protected function invoke(
         Request $request,
-        string $scope,
+        string|array $scopes,
         bool $rateLimited,
         Closure $run,
     ): Response|ResponseFactory {
@@ -74,7 +75,7 @@ abstract class ArtifactFlowTool extends Tool
             try {
                 $result = $this->guard->run(
                     $token,
-                    $scope,
+                    $scopes,
                     $rateLimited,
                     static fn (): McpToolResult => $run($actor, $token, $arguments),
                 );

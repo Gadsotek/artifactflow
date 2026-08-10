@@ -14,6 +14,7 @@ use App\Application\PageCatalog\DeprecatePageCommand;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
 use App\Models\Category;
+use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -132,6 +133,89 @@ final class DashboardDiscoveryTest extends TestCase
                 'Overview Child',
             ])
             ->assertSee('data-page-hierarchy-depth="1"', false);
+    }
+
+    public function test_dashboard_popular_tags_and_categories_link_to_library_filters(): void
+    {
+        Storage::fake('artifacts');
+
+        $user = $this->createUser('Taxonomy User', 'dashboard-taxonomy@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($user, 'Taxonomy Team');
+        $category = Category::query()->create([
+            'workspace_uid' => $workspace->uid,
+            'name' => 'Architecture',
+            'slug' => 'architecture',
+            'created_by_user_uid' => $user->uid,
+        ]);
+        app(CreatePage::class)->handle($user, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Filterable Page',
+            description: null,
+            content: '# Filterable Page',
+            categoryUid: $category->uid,
+            tagNames: ['Security'],
+        ));
+        $tag = Tag::query()->where('slug', 'security')->sole();
+
+        $response = $this->actingAs($user)
+            ->withSession(['current_workspace_uid' => $workspace->uid])
+            ->get('/dashboard');
+
+        $response
+            ->assertOk()
+            ->assertSee(route('pages.index', [
+                'workspace_uid' => $workspace->uid,
+                'tag_uids' => [$tag->uid],
+            ]))
+            ->assertSee(route('pages.index', [
+                'workspace_uid' => $workspace->uid,
+                'category_uids' => [$category->uid],
+            ]));
+    }
+
+    public function test_dashboard_and_library_mark_only_pages_created_within_the_last_hour_as_new(): void
+    {
+        Storage::fake('artifacts');
+
+        $user = $this->createUser('New Page User', 'dashboard-new-page@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($user, 'New Page Team');
+        $oldPage = app(CreatePage::class)->handle($user, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Established Page',
+            description: null,
+            content: '# Established Page',
+        ));
+        $oldPage->forceFill([
+            'created_at' => now()->subHour()->subSecond(),
+            'updated_at' => now()->subHour()->subSecond(),
+        ])->save();
+        $newPage = app(CreatePage::class)->handle($user, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Markdown,
+            title: 'Brand New Page',
+            description: null,
+            content: '# Brand New Page',
+        ));
+
+        foreach (['/dashboard', "/pages?workspace_uid={$workspace->uid}"] as $url) {
+            $response = $this->actingAs($user)
+                ->withSession(['current_workspace_uid' => $workspace->uid])
+                ->get($url);
+
+            $response
+                ->assertOk()
+                ->assertSee(
+                    'data-page-new="true" data-page-uid="' . $newPage->uid . '"',
+                    false,
+                )
+                ->assertSee(
+                    'data-page-new="false" data-page-uid="' . $oldPage->uid . '"',
+                    false,
+                );
+            $this->assertSame(1, substr_count((string) $response->getContent(), 'data-page-new-indicator'));
+        }
     }
 
     private function createUser(string $name, string $email): User

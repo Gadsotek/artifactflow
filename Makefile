@@ -267,6 +267,10 @@ verify-reverb-origin:
 		export SESSION_SAME_SITE=lax; \
 		export TRUSTED_PROXIES=REMOTE_ADDR; \
 		export MAIL_MAILER=smtp; \
+		export REVERB_CACHE_STORE=array; \
+		export CACHE_LIMITER=database_limiter; \
+		export ARTIFACT_CACHE_LIMITER=database_artifact_limiter; \
+		export REVERB_SMOKE_DB_PASSWORD="$$(openssl rand -hex 32)"; \
 		export BROADCAST_CONNECTION=reverb; \
 		export REVERB_APP_ID=artifactflow-smoke-test; \
 		export REVERB_APP_KEY="$$smoke_reverb_key"; \

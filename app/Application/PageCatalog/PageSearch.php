@@ -10,6 +10,7 @@ use App\Domain\Provenance\ProvenanceSearchScope;
 use App\Models\Page;
 use App\Models\PageVersion;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Str;
@@ -38,6 +39,7 @@ final class PageSearch
         private readonly PageAccess $access,
         private readonly McpEffectiveAuthority $mcpAuthority,
         private readonly PageVisibilityQuery $visibility,
+        private readonly PageNewness $pageNewness,
     ) {
     }
 
@@ -70,6 +72,7 @@ final class PageSearch
             ->values();
 
         $results = [];
+        $now = CarbonImmutable::now();
 
         foreach ($pages as $page) {
             $searchRank = $page->getAttribute('search_rank');
@@ -83,6 +86,7 @@ final class PageSearch
                 )
                     ? $page->workspace->name
                     : null,
+                isNew: $this->pageNewness->isNew($page, $now),
             );
         }
 
@@ -98,29 +102,25 @@ final class PageSearch
             $query->where('workspace_uid', $filters->workspaceUid);
         }
 
-        if (!$filters->includeArchived && $filters->status !== PageStatus::Archived) {
-            $query->where('status', '!=', PageStatus::Archived);
-        }
-
         if ($filters->type !== null) {
             $query->where('type', $filters->type);
         }
 
-        if ($filters->status !== null) {
-            $query->where('status', $filters->status);
+        if (count($filters->statuses) < count(PageStatus::cases())) {
+            $query->whereIn('status', $filters->statuses);
         }
 
-        if ($filters->categoryUid !== null) {
-            $query->where('category_uid', $filters->categoryUid);
+        if ($filters->categoryUids !== []) {
+            $query->whereIn('category_uid', $filters->categoryUids);
         }
 
         if ($filters->ownerUserUid !== null) {
             $query->where('owner_user_uid', $filters->ownerUserUid);
         }
 
-        foreach ($filters->tagUids as $tagUid) {
-            $query->whereHas('tags', static function (Builder $query) use ($tagUid): void {
-                $query->where('tags.uid', $tagUid);
+        if ($filters->tagUids !== []) {
+            $query->whereHas('tags', static function (Builder $query) use ($filters): void {
+                $query->whereIn('tags.uid', $filters->tagUids);
             });
         }
 
@@ -132,17 +132,22 @@ final class PageSearch
      */
     private function applyProvenanceFilters(Builder $query, PageSearchFilters $filters): void
     {
-        $provider = $filters->aiProvider === null ? null : Str::slug($filters->aiProvider);
+        $providers = array_values(array_unique(array_filter(array_map(
+            static fn (string $provider): string => Str::slug($provider),
+            $filters->aiProviders,
+        ))));
+        $modelIds = array_values(array_unique(array_filter(array_map('trim', $filters->aiModelIds))));
         $modelQuery = $this->normalizedSearch($filters->aiModelQuery);
 
-        if ($provider === null && $modelQuery === null) {
+        if ($providers === [] && $modelIds === [] && $modelQuery === null) {
             return;
         }
 
         $query->whereExists(static function (QueryBuilder $provenance) use (
             $filters,
+            $modelIds,
             $modelQuery,
-            $provider,
+            $providers,
         ): void {
             $provenance
                 ->selectRaw('1')
@@ -170,8 +175,16 @@ final class PageSearch
                 $provenance->whereColumn('matching_ingests.page_version_uid', 'pages.current_version_uid');
             }
 
-            if ($provider !== null) {
-                $provenance->where('matching_assertions.provider_key', $provider);
+            if ($providers !== []) {
+                $provenance->whereIn('matching_assertions.provider_key', $providers);
+            }
+
+            if ($modelIds !== []) {
+                $provenance->where(static function (QueryBuilder $models) use ($modelIds): void {
+                    $models
+                        ->whereIn('matching_assertions.model_id', $modelIds)
+                        ->orWhereIn('matching_assertions.model_label', $modelIds);
+                });
             }
 
             if ($modelQuery !== null) {

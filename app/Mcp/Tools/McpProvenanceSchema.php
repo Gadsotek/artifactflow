@@ -14,6 +14,14 @@ final readonly class McpProvenanceSchema
 {
     public function make(JsonSchema $schema): ObjectType
     {
+        $extension = $schema->object([
+            'key' => $schema->string()
+                ->description('Lowercase namespaced identity-metadata key; prompts, credentials, authorization data, URLs, and content payloads are forbidden.')
+                ->required(),
+            'value' => $schema->string()
+                ->description('Short scalar identity-metadata value; use references for HTTPS URLs.')
+                ->required(),
+        ])->withoutAdditionalProperties();
         $reference = $schema->object([
             'kind' => $schema->string()->enum(ExternalReferenceKind::class)->required(),
             'ref' => $schema->string()->description('Optional opaque external reference.'),
@@ -24,10 +32,11 @@ final readonly class McpProvenanceSchema
             'kind' => $schema->string()->enum(ProducerKind::class)->required(),
             'name' => $schema->string()->description('Required for software; optional for a human.'),
             'version' => $schema->string()->description('Optional software version.'),
-            'provider' => $schema->string()->description('Required when kind is ai.'),
+            'provider' => $schema->string()->description('Best-known AI provider name; an exact model ID is not required.'),
             'model_id' => $schema->string()
-                ->description('Exact provider-defined model identifier; required when kind is ai.'),
-            'model_label' => $schema->string()->description('Optional human-readable model label.'),
+                ->description('Exact provider-defined model identifier when known; never guess this value.'),
+            'model_label' => $schema->string()
+                ->description('Best-known human-readable model name, family, or label when an exact model ID is unavailable.'),
             'model_version' => $schema->string()->description('Optional provider-exposed model snapshot/version.'),
             'generated_at' => $schema->string()->description(
                 'Optional exact RFC 3339 generation timestamp with up to six fractional-second digits.',
@@ -35,6 +44,10 @@ final readonly class McpProvenanceSchema
             'references' => $schema->array()
                 ->items($reference)
                 ->max(VersionProvenanceRules::MAX_REFERENCES_PER_PRODUCER),
+            'extensions' => $schema->array()
+                ->description('Bounded forward-compatible identity metadata. Never place prompts, reasoning, credentials, authorization data, signed URLs, or content/blob payloads here.')
+                ->items($extension)
+                ->max(VersionProvenanceRules::MAX_CLAIM_EXTENSIONS_PER_PRODUCER),
         ])->withoutAdditionalProperties();
 
         return $schema->object([
@@ -43,8 +56,9 @@ final readonly class McpProvenanceSchema
                 ->max(VersionProvenanceRules::MAX_PRODUCERS),
         ])
             ->description(
-                'Optional self-reported content provenance. Omit it when the producer is not known; '
-                . 'ArtifactFlow never infers a model from the MCP client.',
+                'Optional self-reported content provenance. Supply every safe producer fact you know, '
+                . 'even when identity is partial; never invent missing precision. ArtifactFlow never '
+                . 'infers a model from the MCP client.',
             )
             ->withoutAdditionalProperties();
     }

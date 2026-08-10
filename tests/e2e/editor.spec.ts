@@ -24,6 +24,7 @@ const cssAsset = `${baseUrl}/build/${manifest['resources/css/app.css'].file}`;
 const appAsset = `${baseUrl}/build/${manifest['resources/js/app.js'].file}`;
 const editorAsset = `${baseUrl}/build/${manifest['resources/js/content-editor.js'].file}`;
 const htmlDraftPreviewAsset = `${baseUrl}/build/${manifest['resources/js/html-draft-preview.js'].file}`;
+const pageCatalogLiveAsset = `${baseUrl}/build/${manifest['resources/js/page-catalog-live.js'].file}`;
 const artifactBaseUrl = (process.env.E2E_ARTIFACT_URL ?? 'http://127.0.0.1:18181').replace(
   /\/$/u,
   '',
@@ -1262,10 +1263,10 @@ test('upload creation mode swaps content for the file input but keeps the organi
             <option value="image">Image</option>
           </select>
           <select name="mode">
-            <option value="markdown" selected>Markdown</option>
-            <option value="html_paste">Paste HTML</option>
-            <option value="html_upload">Upload HTML</option>
-            <option value="image_upload">Upload image</option>
+            <option data-create-page-mode-type="markdown" value="markdown" selected>Markdown</option>
+            <option data-create-page-mode-type="html_artifact" value="html_paste">Paste HTML</option>
+            <option data-create-page-mode-type="html_artifact" value="html_upload">Upload HTML</option>
+            <option data-create-page-mode-type="image" value="image_upload">Upload image</option>
           </select>
           <section data-create-page-essential-fields>Essential</section>
           <section data-create-page-optional-fields>Optional metadata</section>
@@ -1287,8 +1288,15 @@ test('upload creation mode swaps content for the file input but keeps the organi
     'data-create-page-mode-ready',
     'true',
   );
+  await expect(page.locator('select[name="mode"] option[value="markdown"]')).toBeEnabled();
+  await expect(page.locator('option[value="html_upload"]')).toBeDisabled();
+  await expect(page.locator('option[value="image_upload"]')).toBeDisabled();
   await page.locator('select[name="type"]').selectOption('html_artifact');
-  await page.locator('select[name="mode"]').selectOption('html_upload');
+  await expect(page.locator('select[name="mode"] option[value="markdown"]')).toBeDisabled();
+  await expect(page.locator('option[value="html_paste"]')).toBeEnabled();
+  await expect(page.locator('option[value="html_upload"]')).toBeEnabled();
+  await expect(page.locator('option[value="image_upload"]')).toBeDisabled();
+  await expect(page.locator('select[name="mode"]')).toHaveValue('html_upload');
 
   await expect(page.locator('[data-create-page-essential-fields]')).toBeVisible();
   // The organize metadata (tags, category, status, ...) stays available for uploads.
@@ -1304,9 +1312,12 @@ test('upload creation mode swaps content for the file input but keeps the organi
 
   await expect(page.locator('input[name="title"]')).toHaveValue('Release dashboard');
 
-  await page.locator('select[name="mode"]').selectOption('image_upload');
+  await page.locator('select[name="type"]').selectOption('image');
   await expect(page.locator('select[name="type"]')).toHaveValue('image');
   await expect(page.locator('select[name="mode"]')).toHaveValue('image_upload');
+  await expect(page.locator('select[name="mode"] option[value="markdown"]')).toBeDisabled();
+  await expect(page.locator('option[value="html_upload"]')).toBeDisabled();
+  await expect(page.locator('option[value="image_upload"]')).toBeEnabled();
   await expect(page.locator('[data-create-page-content-fields]')).toBeHidden();
   await expect(page.locator('[data-create-page-upload-fields]')).toBeHidden();
   await expect(page.locator('[data-create-page-image-upload-fields]')).toBeVisible();
@@ -1318,6 +1329,135 @@ test('upload creation mode swaps content for the file input but keeps the organi
   });
 
   await expect(page.locator('input[name="title"]')).toHaveValue('Incident screenshot');
+});
+
+test('catalog live updates refetch and replace only the matching workspace projection', async ({
+  page,
+}) => {
+  const cspNonce = await loadAppOriginCspNonce(page);
+
+  await page.setContent(`
+    <!doctype html>
+    <html>
+      <body>
+        <div data-live-page-catalog data-live-page-catalog-user-uid="user-1" data-live-page-catalog-workspace-uid="workspace-1">
+          <span data-live-original>Original catalog</span>
+        </div>
+        <script nonce="${cspNonce}" type="module">
+          window.__artifactflowLiveFetchCount = 0;
+          window.Echo = {
+            private(channelName) {
+              window.__artifactflowLiveChannel = channelName;
+
+              return {
+                listen(eventName, listener) {
+                  window.__artifactflowLiveEvent = eventName;
+                  window.__artifactflowLiveListener = listener;
+                },
+              };
+            },
+          };
+          window.fetch = async () => {
+            window.__artifactflowLiveFetchCount += 1;
+
+            return new Response(
+              '<div data-live-page-catalog data-live-page-catalog-user-uid="user-1" data-live-page-catalog-workspace-uid="workspace-1"><span data-live-refreshed>Refreshed catalog</span></div>',
+              { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } },
+            );
+          };
+          import('${pageCatalogLiveAsset}').then(() => {
+            window.__artifactflowLiveLoaded = true;
+          });
+        </script>
+      </body>
+    </html>
+  `);
+
+  await page.waitForFunction(() => window.__artifactflowLiveLoaded === true);
+  await expect
+    .poll(() => page.evaluate(() => window.__artifactflowLiveChannel))
+    .toBe('user.user-1.page-catalog');
+  await expect
+    .poll(() => page.evaluate(() => window.__artifactflowLiveEvent))
+    .toBe('.page.created');
+
+  await page.evaluate(() => {
+    window.__artifactflowLiveListener({
+      page_uid: 'page-1',
+      workspace_uid: 'workspace-1',
+    });
+  });
+
+  await expect(page.locator('[data-live-refreshed]')).toHaveText('Refreshed catalog');
+  await expect.poll(() => page.evaluate(() => window.__artifactflowLiveFetchCount)).toBe(1);
+
+  await page.evaluate(() => {
+    window.__artifactflowLiveListener({
+      page_uid: 'page-2',
+      workspace_uid: 'workspace-2',
+    });
+  });
+  await expect.poll(() => page.evaluate(() => window.__artifactflowLiveFetchCount)).toBe(1);
+});
+
+test('searchable multi-selects and taggable inputs support keyboard-first filtering and chips', async ({
+  page,
+}) => {
+  await page.goto(`${baseUrl}/up`, { waitUntil: 'domcontentloaded' });
+  await page.setContent(`
+    <!doctype html>
+    <html>
+      <body>
+        <form>
+          <button id="before-facets" type="button">Before facets</button>
+          <label for="facet-tags">Tags</label>
+          <select
+            data-multi-select
+            data-searchable-multi-select
+            data-placeholder="Any tag"
+            id="facet-tags"
+            name="tag_uids[]"
+            multiple
+          >
+            <option value="release">Release</option>
+            <option value="security">Security</option>
+          </select>
+          <button id="after-facets" type="button">After facets</button>
+
+          <label for="page-tags">Page tags</label>
+          <input data-taggable-input id="page-tags" name="tags" type="text" value="architecture">
+        </form>
+        <script type="module" src="${appAsset}"></script>
+      </body>
+    </html>
+  `);
+
+  const select = page.locator('[data-searchable-multi-select]');
+  await expect(select).toHaveAttribute('data-multi-select-ready', 'true');
+  const trigger = page.locator('[data-multi-select-trigger]');
+  await expect(select).toHaveAttribute('aria-hidden', 'true');
+  await expect(select).toHaveAttribute('tabindex', '-1');
+  await expect(select).not.toHaveAttribute('id', 'facet-tags');
+  await expect(trigger).toHaveAttribute('id', 'facet-tags');
+  await page.locator('#before-facets').focus();
+  await page.keyboard.press('Tab');
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await page.locator('[data-multi-select-search]').fill('sec');
+  await expect(page.locator('[data-multi-select-option][data-value="security"]')).toBeVisible();
+  await expect(page.locator('[data-multi-select-option][data-value="release"]')).toBeHidden();
+  await page.locator('[data-multi-select-option][data-value="security"] input').check();
+  await expect(select).toHaveValues(['security']);
+  await expect(trigger).toContainText('Security');
+
+  const tags = page.locator('[data-taggable-input]');
+  await expect(tags).toHaveAttribute('data-taggable-ready', 'true');
+  await expect(page.locator('[data-taggable-chip]')).toContainText('architecture');
+  await page.locator('[data-taggable-entry]').fill('runbook');
+  await page.locator('[data-taggable-entry]').press('Enter');
+  await expect(tags).toHaveValue('architecture, runbook');
+  await page.locator('[data-taggable-chip]').filter({ hasText: 'architecture' }).getByRole('button').click();
+  await expect(tags).toHaveValue('runbook');
 });
 
 test('HTML paste mode does not redispatch an unchanged type selection', async ({ page }) => {

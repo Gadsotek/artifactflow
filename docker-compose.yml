@@ -401,21 +401,22 @@ services:
       # key here because it is not present at compose-interpolation time for other commands.
       APP_KEY: ${APP_KEY}
       APP_RUNTIME_ROLE: worker
-      # verify-reverb-origin boots this worker with APP_ENV=production, so the boot gate
-      # rejects the app_local_password dev fixture that .env feeds the shared anchor's
-      # ${DB_PASSWORD:-...}. The dedicated override remains available, while the origin
-      # gate derives a non-credential sentinel from its fresh per-run Reverb secret. This
-      # worker never opens a DB connection. Do not add a repository-published fallback.
-      DB_PASSWORD: ${REVERB_SMOKE_DB_PASSWORD:-${REVERB_APP_SECRET:-}}
+      # Reverb reads its restart signal through the default cache store. Normal local
+      # operation therefore needs the same database credential as the app. The origin
+      # probe selects an in-memory restart cache and supplies a fresh non-placeholder
+      # sentinel only to satisfy the production configuration gate without connecting.
+      DB_PASSWORD: ${REVERB_SMOKE_DB_PASSWORD:-${DB_PASSWORD:-app_local_password}}
       # This worker never accepts image uploads. Do not give an unrelated runtime
       # the parser endpoint or its HMAC credential merely because it shares the
       # application environment anchor.
       IMAGE_PARSER_URL: ""
       IMAGE_PARSER_SHARED_SECRET: ""
-      # Reverb boots the production gate during the origin probe. Keep its
-      # limiter counters on the shared database instead of the anchor's
-      # node-local development file cache.
-      CACHE_STORE: database
+      # Local Reverb uses the shared database so `reverb:restart` works across
+      # processes. The isolated origin probe overrides only this restart-signal
+      # cache; its production limiter stores remain configured separately.
+      CACHE_STORE: ${REVERB_CACHE_STORE:-database}
+      CACHE_LIMITER: ${CACHE_LIMITER:-}
+      ARTIFACT_CACHE_LIMITER: ${ARTIFACT_CACHE_LIMITER:-database_artifact_limiter}
       BROADCAST_CONNECTION: reverb
       REVERB_SERVER_HOST: 0.0.0.0
       REVERB_SERVER_PORT: 8080
