@@ -1,4 +1,4 @@
-import { creationModeForPageType, pageTypeForCreationMode } from './page-creation-selection';
+import { creationModeForPageType } from './page-creation-selection';
 
 function titleFromFilename(filename) {
   return filename
@@ -39,6 +39,18 @@ function initialiseCreatePageMode(form) {
     // The "Organize" metadata (status, tags, category, parent, description) stays
     // visible for every mode -- an uploaded artifact can be categorized and tagged
     // at creation just like a written page.
+    for (const option of mode.querySelectorAll('[data-create-page-mode-type]')) {
+      if (!(option instanceof HTMLOptionElement)) {
+        continue;
+      }
+
+      const available = option.dataset.createPageModeType === type.value;
+      option.disabled = !available;
+      option.hidden = !available;
+    }
+
+    mode.value = creationModeForPageType(type.value, mode.value);
+
     const isHtmlUpload = type.value === 'html_artifact' && mode.value === 'html_upload';
     const isImageUpload = type.value === 'image' && mode.value === 'image_upload';
 
@@ -50,20 +62,9 @@ function initialiseCreatePageMode(form) {
   };
 
   type.addEventListener('change', () => {
-    mode.value = creationModeForPageType(type.value, mode.value);
-
     update();
   });
-  mode.addEventListener('change', () => {
-    const nextType = pageTypeForCreationMode(mode.value);
-
-    if (type.value !== nextType) {
-      type.value = nextType;
-      type.dispatchEvent(new Event('change'));
-    }
-
-    update();
-  });
+  mode.addEventListener('change', update);
   const suggestTitle = (fileInput) => {
     const filename = fileInput.files?.[0]?.name;
 
@@ -81,8 +82,6 @@ function initialiseCreatePageMode(form) {
 
   htmlFileInput.addEventListener('change', () => suggestTitle(htmlFileInput));
   imageFileInput.addEventListener('change', () => suggestTitle(imageFileInput));
-
-  mode.value = creationModeForPageType(type.value, mode.value);
 
   update();
   form.setAttribute('data-create-page-mode-ready', 'true');

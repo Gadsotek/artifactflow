@@ -9,6 +9,7 @@ use App\Application\PageCatalog\PageSearchFilters;
 use App\Application\PageCatalog\PageSearchResult;
 use App\Application\PageCatalog\PageSearchSort;
 use App\Domain\DomainRuleViolation;
+use App\Domain\PageCatalog\PageStatus;
 use App\Domain\Provenance\ProvenanceSearchScope;
 use App\Models\McpAccessToken;
 use App\Models\Page;
@@ -49,18 +50,26 @@ final readonly class McpSearchTool
             throw new DomainRuleViolation('Argument [provenance_scope] has an unsupported value.');
         }
 
+        $status = $arguments->pageStatus('status');
+        $statuses = $status instanceof PageStatus
+            ? [$status]
+            : ($arguments->bool('include_archived', false)
+                ? PageStatus::cases()
+                : PageSearchFilters::activeStatuses());
+        $categoryUid = $arguments->nullableString('category_uid');
+        $provider = $arguments->nullableString('ai_provider');
+
         $filters = new PageSearchFilters(
             query: $arguments->nullableString('query'),
             workspaceUid: $arguments->nullableString('workspace_uid'),
             type: $arguments->pageType('type'),
-            status: $arguments->pageStatus('status'),
-            categoryUid: $arguments->nullableString('category_uid'),
+            statuses: $statuses,
+            categoryUids: $categoryUid === null ? [] : [$categoryUid],
             tagUids: $arguments->stringList('tag_uids'),
             ownerUserUid: $arguments->nullableString('owner_user_uid'),
-            includeArchived: $arguments->bool('include_archived', false),
             sort: PageSearchSort::tryFrom($arguments->string('sort', PageSearchSort::Relevance->value))
                 ?? PageSearchSort::Relevance,
-            aiProvider: $arguments->nullableString('ai_provider'),
+            aiProviders: $provider === null ? [] : [$provider],
             aiModelQuery: $arguments->nullableString('ai_model_query'),
             provenanceScope: $provenanceScope,
         );

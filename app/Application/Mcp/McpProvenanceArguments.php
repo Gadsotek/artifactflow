@@ -6,6 +6,7 @@ namespace App\Application\Mcp;
 
 use App\Application\Provenance\ExternalOriginReferenceInput;
 use App\Application\Provenance\ProducerAssertionInput;
+use App\Application\Provenance\ProducerClaimExtension;
 use App\Application\Provenance\VersionProvenanceInput;
 use App\Application\Provenance\VersionProvenanceRules;
 use App\Domain\DomainRuleViolation;
@@ -19,6 +20,8 @@ use ValueError;
 
 final readonly class McpProvenanceArguments
 {
+    private const string SIGNED_URL_QUERY_PATTERN = '/(?:\A|&)(?:signature|sig|token|access_token|expires|x-amz-signature|x-amz-credential|x-amz-security-token|x-goog-signature|googleaccessid|key-pair-id)=/i';
+
     public function fromArguments(McpToolArguments $arguments): ?VersionProvenanceInput
     {
         $provenance = $arguments->nullableObject('provenance');
@@ -47,16 +50,13 @@ final readonly class McpProvenanceArguments
 
         $producerName = $this->boundedNullable($arguments, 'name', 191);
         $producerVersion = $this->boundedNullable($arguments, 'version', 120);
-        $provider = $this->boundedNullable($arguments, 'provider', 80);
-        $providerKey = $provider === null ? null : $this->providerKey($provider);
+        $reportedProvider = $this->boundedNullable($arguments, 'provider', 80);
+        $providerKey = $reportedProvider === null ? null : $this->providerKey($reportedProvider);
         $modelId = $this->boundedNullable($arguments, 'model_id', 191);
         $modelLabel = $this->boundedNullable($arguments, 'model_label', 191);
         $modelVersion = $this->boundedNullable($arguments, 'model_version', 120);
 
-        if ($kind === ProducerKind::Ai) {
-            $providerKey ??= $this->providerKey($this->boundedRequired($arguments, 'provider', 80));
-            $modelId ??= $this->boundedRequired($arguments, 'model_id', 191);
-        } elseif ($kind === ProducerKind::Software) {
+        if ($kind === ProducerKind::Software) {
             $producerName ??= $this->boundedRequired($arguments, 'name', 191);
         }
 
@@ -69,6 +69,18 @@ final readonly class McpProvenanceArguments
             $references[] = $this->reference($reference);
         }
 
+        $claimExtensions = [];
+
+        foreach ($arguments->objectList(
+            'extensions',
+            VersionProvenanceRules::MAX_CLAIM_EXTENSIONS_PER_PRODUCER,
+        ) as $extension) {
+            $claimExtensions[] = new ProducerClaimExtension(
+                key: $this->boundedRequired($extension, 'key', VersionProvenanceRules::MAX_EXTENSION_KEY_LENGTH),
+                value: $this->boundedRequired($extension, 'value', VersionProvenanceRules::MAX_EXTENSION_VALUE_LENGTH),
+            );
+        }
+
         return new ProducerAssertionInput(
             kind: $kind,
             producerName: $producerName,
@@ -79,6 +91,8 @@ final readonly class McpProvenanceArguments
             modelVersion: $modelVersion,
             generatedAt: $this->generatedAt($this->boundedNullable($arguments, 'generated_at', 64)),
             references: $references,
+            reportedProvider: $reportedProvider,
+            claimExtensions: $claimExtensions,
         );
     }
 
@@ -214,6 +228,13 @@ final readonly class McpProvenanceArguments
             throw new DomainRuleViolation(
                 'Provenance URLs must use HTTPS and must not contain authority credentials.',
             );
+        }
+
+        if (
+            is_string($parts['query'] ?? null)
+            && preg_match(self::SIGNED_URL_QUERY_PATTERN, rawurldecode($parts['query'])) === 1
+        ) {
+            throw new DomainRuleViolation('Provenance URLs must not be signed capability URLs.');
         }
     }
 }

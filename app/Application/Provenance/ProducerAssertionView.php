@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Provenance;
 
+use App\Domain\Provenance\ProducerIdentityPrecision;
 use App\Domain\Provenance\ProducerKind;
 use App\Domain\Provenance\ProvenanceEvidenceType;
 use Carbon\CarbonImmutable;
@@ -12,6 +13,7 @@ final readonly class ProducerAssertionView
 {
     /**
      * @param list<ExternalOriginReferenceView> $references
+     * @param list<ProducerClaimExtension> $claimExtensions
      */
     public function __construct(
         public string $uid,
@@ -25,6 +27,8 @@ final readonly class ProducerAssertionView
         public ?CarbonImmutable $generatedAt,
         public ProvenanceEvidenceType $evidenceType,
         public array $references,
+        public ?string $reportedProvider = null,
+        public array $claimExtensions = [],
     ) {
     }
 
@@ -39,9 +43,38 @@ final readonly class ProducerAssertionView
     public function displayName(): string
     {
         return match ($this->kind) {
-            ProducerKind::Ai => $this->modelLabel ?? $this->modelId ?? 'Unknown AI producer',
+            ProducerKind::Ai => $this->modelLabel
+                ?? $this->modelId
+                ?? $this->reportedProvider
+                ?? $this->providerKey
+                ?? 'Unknown AI producer',
             ProducerKind::Software => $this->producerName ?? 'Unknown software producer',
             ProducerKind::Human => $this->producerName ?? 'Anonymous human',
         };
+    }
+
+    public function identityPrecision(): ProducerIdentityPrecision
+    {
+        if ($this->kind !== ProducerKind::Ai) {
+            return $this->producerName !== null
+                ? ProducerIdentityPrecision::Named
+                : ProducerIdentityPrecision::Unspecified;
+        }
+
+        if ($this->providerKey !== null && $this->modelId !== null) {
+            return ProducerIdentityPrecision::ExactModel;
+        }
+
+        if ($this->modelId !== null) {
+            return ProducerIdentityPrecision::ModelIdOnly;
+        }
+
+        if ($this->modelLabel !== null) {
+            return ProducerIdentityPrecision::ModelLabel;
+        }
+
+        return $this->providerKey !== null
+            ? ProducerIdentityPrecision::ProviderOnly
+            : ProducerIdentityPrecision::Unspecified;
     }
 }

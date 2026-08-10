@@ -6,7 +6,6 @@ namespace App\Http\Requests\PageCatalog;
 
 use App\Application\Administration\InstallationLimitSettings;
 use App\Application\PageCatalog\PageMetadataRules;
-use App\Application\PageCatalog\PageVersionChangeSummaryRules;
 use App\Domain\PageCatalog\PageContentEncoding;
 use App\Domain\PageCatalog\PageCreationMode;
 use App\Domain\PageCatalog\PageStatus;
@@ -33,7 +32,6 @@ final class StorePageRequest extends AppFormRequest
             'mode' => ['nullable', Rule::in(array_column(PageCreationMode::cases(), 'value'))],
             'title' => ['required', 'string', new StorableText(), 'max:' . PageMetadataRules::MAX_TITLE_CHARACTERS],
             'description' => ['nullable', 'string', new StorableText(), 'max:' . PageMetadataRules::MAX_DESCRIPTION_CHARACTERS],
-            'change_summary' => ['nullable', 'string', new StorableText(), 'max:' . PageVersionChangeSummaryRules::MAX_CHARACTERS],
             'status' => ['required', Rule::in([PageStatus::Draft->value, PageStatus::Approved->value])],
             'category_uid' => ['nullable', 'string'],
             'category_name' => [
@@ -66,6 +64,12 @@ final class StorePageRequest extends AppFormRequest
 
             $type = $this->string('type')->toString();
             $mode = $this->string('mode')->toString();
+
+            if (!$this->modeBelongsToType($type, $mode)) {
+                $validator->errors()->add('mode', 'Select a content source available for this page type.');
+
+                return;
+            }
 
             if ($type === PageType::Markdown->value) {
                 $this->validateTextContent($validator, 'content', $this->installationLimit('pages.max_markdown_bytes'));
@@ -196,6 +200,20 @@ final class StorePageRequest extends AppFormRequest
         if (!PageContentEncoding::isStorable($content)) {
             $validator->errors()->add($field, 'Page content must be valid UTF-8 text without control characters.');
         }
+    }
+
+    private function modeBelongsToType(string $type, string $mode): bool
+    {
+        return match ($type) {
+            PageType::Markdown->value => in_array($mode, ['', PageCreationMode::Markdown->value], true),
+            PageType::HtmlArtifact->value => in_array(
+                $mode,
+                ['', PageCreationMode::HtmlPaste->value, PageCreationMode::HtmlUpload->value],
+                true,
+            ),
+            PageType::Image->value => $mode === PageCreationMode::ImageUpload->value,
+            default => false,
+        };
     }
 
     private function validateTags(Validator $validator): void

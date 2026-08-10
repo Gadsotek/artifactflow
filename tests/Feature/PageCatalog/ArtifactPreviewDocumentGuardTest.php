@@ -325,6 +325,20 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         $this->assertStringNotContainsString('<iframe id="after-real-style-close"', strtolower($hardened));
     }
 
+    public function test_incomplete_raw_text_closing_tag_at_eof_is_treated_as_unterminated_content(): void
+    {
+        $guard = app(ArtifactPreviewDocumentGuard::class);
+
+        foreach ([
+            '<!doctype html><script></script',
+            '<!doctype html><textarea></textarea',
+        ] as $html) {
+            $hardened = $guard->harden($html);
+
+            $this->assertStringContainsString(substr($html, 15), $hardened);
+        }
+    }
+
     public function test_plaintext_keeps_the_remaining_document_inert(): void
     {
         $literal = '<iframe id="plaintext-literal"></iframe>';

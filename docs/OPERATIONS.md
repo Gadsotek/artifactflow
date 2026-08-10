@@ -180,7 +180,7 @@ The app checks its bundled migration-file manifest before MCP authentication. If
 
 Human users create their own MCP tokens from Security -> MCP tokens. Creation requires the account to have TOTP two-factor authentication enabled, then requires the current password and a fresh authenticator code in the create request. The plaintext token is shown once. Token list and revoke are scoped to the signed-in user's own account; revocation does not require the strong create step-up so rotation stays cheap. Workspace scope is an explicit choice: select one or more workspaces to bind the token to that smaller read/write ceiling, or check "All workspaces" to grant every workspace the account can reach now and any it joins in future. An empty selection with "All workspaces" unchecked is rejected, never silently minted as an all-workspaces token.
 
-Per-user token reach follows the user's live workspace memberships and the token's optional workspace scope. A workspace-scoped token cannot discover workspaces or taxonomy, search, read, create, update content or descriptions, or revert anything outside that scope, even if the principal has broader browser access. System Admin is installation/account authority only and never grants workspace or page content access. MCP further de-elevates workspace Admin to Editor, caps Admin page grants to Editor, and removes page-admin capabilities such as manage access, archive, hard delete, change access mode, and transfer ownership.
+Per-user token reach follows the user's live workspace memberships and the token's optional workspace scope. A workspace-scoped token cannot discover workspaces or taxonomy, search, read, create, organize, upload, update content or descriptions, or revert anything outside that scope, even if the principal has broader browser access. System Admin is installation/account authority only and never grants workspace or page content access. MCP further de-elevates workspace Admin to Editor, caps Admin page grants to Editor, and removes page-admin capabilities such as manage access, archive, hard delete, change access mode, and transfer ownership. MCP cannot create or administer workspaces.
 
 To configure local clients with a token, run:
 
@@ -209,6 +209,8 @@ docker compose exec -T app php artisan artifactflow:mcp-token-create \
   --scope="mcp:read" \
   --scope="mcp:create" \
   --scope="mcp:update" \
+  --scope="mcp:organize" \
+  --scope="mcp:upload" \
   --scope="mcp:share" \
   --ttl-days=30
 ```
@@ -228,14 +230,17 @@ Available scopes:
 
 - `mcp:search` lists reachable workspaces and searchable taxonomy, and searches only pages the MCP principal can view within the token's workspace ceiling. `list_taxonomy` returns global tag UIDs visible through searchable pages and workspace-qualified category UIDs from reachable workspaces or individually granted pages; both it and search accept optional `workspace_uid` to narrow within that ceiling. Search snippets additionally require `mcp:read`. Note that `mcp:search` alone is not "harmless": it exposes page titles, taxonomy labels, types, statuses, and update times across everything the principal can reach — metadata that can itself be sensitive. Scope tokens to specific workspaces when the consumer only needs a subset.
 - `mcp:read` reads in-scope text content as an explicit untrusted data envelope. For an image page it returns normalized PNG/JPEG derivatives up to the configured `ARTIFACT_MAX_BYTES` (10 MiB by default, hard-capped at 64 MiB — the same read limit as every other page type, expanded by roughly a third once base64-framed) as a standard MCP image content block beside untrusted metadata; a retained derivative above that limit returns `content_too_large` before the bytes are read or base64-expanded. The original upload no longer exists. The server never treats read content or image pixels as authorization for a later write.
-- `mcp:create` creates Markdown or single-file HTML pages through the normal page creation handler. It can attach tag names and either select a category by UID or create a workspace-local category by name in the same operation. The same scope powers `create_category` and `create_tag`; both require live Editor authority in the supplied in-scope workspace, and standalone tag creation remains installation-wide after that authority check.
-- `mcp:update` appends a new Markdown/HTML version through the normal update handler and requires a fresh `base_version_uid`; it powers one-action revert and `update_description`. Description updates require both the fresh `current_version_uid` and separate `metadata_revision` returned by read or search, pass the normal description scanner, refresh full-text search, and cannot change title, owner, hierarchy, category, or tags.
+- `mcp:create` creates Markdown or single-file HTML pages through the normal page creation handler, including an optional visible `parent_page_uid` and an existing category UID. Creating an image instead uses `create_image` and also requires `mcp:upload`. Non-empty tag names or `category_name` additionally require `mcp:organize` because they can create taxonomy.
+- `mcp:update` appends a new Markdown/HTML version through the normal update handler and requires a fresh `base_version_uid`; it powers one-action revert and `update_description`. Description updates require both the fresh `current_version_uid` and separate `metadata_revision` returned by read or search, pass the normal description scanner, refresh full-text search, and cannot change title, owner, hierarchy, category, or tags. `replace_image` also requires `mcp:upload`. Reverting an image does not require upload authority because it copies an already retained normalized derivative without re-encoding.
+- `mcp:organize` powers `organize`, `create_category`, and `create_tag`. `organize` requires the current `metadata_revision` and can change only title, parent, category, or the complete tag set; it cannot change owner, workspace, access, lifecycle, description, or content. Categories remain workspace-local. Tags are installation-wide records, but `list_taxonomy` exposes them only through use on visible pages; the workspace supplied to `create_tag` is an Editor-authority boundary, not tag ownership.
+- `mcp:upload` permits binary ingestion only in combination with the page operation scope: `create_image` requires `mcp:create`, while `replace_image` requires `mcp:update`. Both accept canonical standard Base64 plus declared `image/png` or `image/jpeg`, reject data URLs and media mismatches, use the existing isolated normalizer, and discard submitted bytes after retaining the normalized derivative. ArtifactFlow never dereferences a client-supplied URL or filesystem path.
 - `mcp:share` creates a one-time or expiring external-share capability for an in-scope page the MCP principal owns and can still edit, only while that workspace's **Allow Editors and page owners to share pages** setting is enabled. It is not access-management authority and grants no inventory or revoke operation. Human and service-account principals follow the same rule; MCP's Editor authority ceiling means an underlying administrator cannot bypass the workspace switch through this tool. `create_external_share` returns the raw bearer URL once; store it only in the intended recipient channel and never copy it into an artifact, metadata, prompt, trace, or log.
 
 ### MCP provenance
 
-`create` and `update` may include provenance when the caller actually knows the producer. Do not
-make the object mandatory in client wrappers, and do not fill it by guessing from the MCP client
+Content-version write tools may include provenance when the caller knows any safe producer fact. Do
+not make the object mandatory in client wrappers, do not discard a known provider or model family
+merely because the exact provider model ID is unavailable, and do not fill missing fields by guessing from the MCP client
 name. `clientInfo.name=claude-code`, for example, is unverified caller-reported protocol metadata:
 it does not prove which implementation submitted the request, nor that Claude, a particular Opus
 release, or even an AI model authored the content.
@@ -246,7 +251,7 @@ per-token pruning so concurrent clients cannot bypass the cap. Evicting an older
 only client-name/version attribution for that transport session; it does not revoke the access token
 or turn the transport session identifier into authority.
 
-An AI declaration requires both `provider` and the exact provider-defined `model_id`:
+An exact AI declaration may include both `provider` and the provider-defined `model_id`:
 
 ```json
 {
@@ -268,8 +273,35 @@ An AI declaration requires both `provider` and the exact provider-defined `model
 }
 ```
 
+A partial declaration is equally valid when that is all the caller can support:
+
+```json
+{
+  "provenance": {
+    "producers": [{
+      "kind": "ai",
+      "provider": "OpenAI",
+      "model_label": "GPT-5 family",
+      "extensions": [{
+        "key": "openai.runtime_product",
+        "value": "Codex"
+      }]
+    }]
+  }
+}
+```
+
+ArtifactFlow preserves the reported provider value, derives a normalized provider key for search,
+and reports this claim as `partial`; it does not require or synthesize `model_id`. Successful MCP
+content writes return `stored_provenance` with `supplied`, computed completeness, identity precision,
+and the direct producer fields that were actually retained. MCP server instructions require the
+caller to summarize that receipt to the requesting user.
+
 MCP claims are stored as `self_reported`; the caller cannot select stronger evidence. Every retained
 provenance string is scanned for the same obvious credential patterns that block artifact writes.
+Extensions are limited to 16 lowercase namespaced key/string-value pairs. They are for short producer
+identity metadata only; prompt or chain-of-thought material, credentials, authorization data, signed
+URLs, and content/blob payloads are rejected rather than treated as provenance.
 External references are optional, HTTPS-only, never fetched, and should not contain signed URLs,
 prompt content, or personal data that does not belong in the page's authorization boundary. They
 are returned only to principals who can read the page and are excluded from logs, events, audit
@@ -291,7 +323,7 @@ that person/client as the model that produced the restored bytes.
 
 Content scanning remains advisory except for explicit secret and credential patterns, which block writes. Inline script in an HTML artifact is expected; it is recorded as a warning finding and audit trail, not held for human acknowledgement. Descriptions are scanned for obvious secrets and prompt-injection role markers before save. MCP taxonomy names and slugs are user-authored data and are therefore returned inside the same explicit untrusted-data envelope as other user-authored text.
 
-Set `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` to tune the pre-authenticated source-IP ceiling, `MCP_RATE_LIMIT_PER_MINUTE` to tune the authenticated token ceiling, and `MCP_WRITE_RATE_LIMIT_PER_MINUTE` to tune per-token create/update-description/update-content/revert/external-share write throughput. Invalid or unauthenticated bearer attempts are bucketed by source IP before token lookup so random bearer rotation cannot create fresh unauthenticated buckets. Authenticated calls are also limited after token authentication. External-share creation additionally consumes the normal per-actor/page `EXTERNAL_SHARE_CREATE_RATE_LIMIT_PER_MINUTE` budget. If many legitimate MCP clients share one NAT or proxy egress IP, size the pre-auth limit for the aggregate caller pool or route trusted clients through distinct egress identities. The official Laravel MCP transport negotiates the protocol during initialization and issues `MCP-Session-Id`; compliant clients return that non-secret identifier automatically, and ArtifactFlow records it in MCP-created version, description update, restore, and external-share audit metadata. Never place signed preview URLs, returned external-share URLs, application session cookies, or raw authorization headers in MCP client prompts or logs.
+Set `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` to tune the pre-authenticated source-IP ceiling, `MCP_RATE_LIMIT_PER_MINUTE` to tune the authenticated token ceiling, and `MCP_WRITE_RATE_LIMIT_PER_MINUTE` to tune per-token create/organize/upload/update-description/update-content/revert/external-share write throughput. Invalid or unauthenticated bearer attempts are bucketed by source IP before token lookup so random bearer rotation cannot create fresh unauthenticated buckets. Authenticated calls are also limited after token authentication. Image normalization keeps its independent parser-admission and pixel-work budgets; temporary parser saturation or unavailability returns a retryable MCP error with `retry_after`. External-share creation additionally consumes the normal per-actor/page `EXTERNAL_SHARE_CREATE_RATE_LIMIT_PER_MINUTE` budget. If many legitimate MCP clients share one NAT or proxy egress IP, size the pre-auth limit for the aggregate caller pool or route trusted clients through distinct egress identities. The official Laravel MCP transport negotiates the protocol during initialization and issues `MCP-Session-Id`; compliant clients return that non-secret identifier automatically, and ArtifactFlow records it in MCP-created version, metadata/description update, restore, and external-share audit metadata. Never place image Base64, submitted image bytes, signed preview URLs, returned external-share URLs, application session cookies, or raw authorization headers in MCP client prompts or logs.
 
 ## Mail Delivery
 

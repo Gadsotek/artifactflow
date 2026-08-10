@@ -125,16 +125,18 @@ final class E2eIsolationConfigurationTest extends TestCase
         $this->assertStringNotContainsString('APP_KEY: ${APP_KEY:-}', $compose);
     }
 
-    public function test_reverb_smoke_worker_db_password_satisfies_the_production_boot_gate(): void
+    public function test_reverb_uses_the_app_database_credential_except_for_the_connection_free_origin_probe(): void
     {
         $compose = $this->readProjectFile('docker-compose.yml');
 
         $this->assertStringContainsString(
+            'DB_PASSWORD: ${REVERB_SMOKE_DB_PASSWORD:-${DB_PASSWORD:-app_local_password}}',
+            $compose,
+        );
+        $this->assertStringNotContainsString(
             'DB_PASSWORD: ${REVERB_SMOKE_DB_PASSWORD:-${REVERB_APP_SECRET:-}}',
             $compose,
         );
-        $this->assertStringNotContainsString('reverb-smoke-${REVERB_APP_SECRET}', $compose);
-        $this->assertStringNotContainsString('reverb-origin-smoke-secret', $compose);
     }
 
     public function test_reverb_worker_does_not_receive_image_parser_credentials(): void

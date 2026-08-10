@@ -72,10 +72,10 @@
                         <label class="block">
                             <span class="text-sm font-medium text-zinc-800 dark:text-zinc-200">Content source</span>
                             <select class="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950" name="mode">
-                                <option value="{{ PageCreationMode::Markdown->value }}" @selected(old('mode', PageCreationMode::Markdown->value) === PageCreationMode::Markdown->value)>Write Markdown</option>
-                                <option value="{{ PageCreationMode::HtmlPaste->value }}" @selected(old('mode') === PageCreationMode::HtmlPaste->value)>Paste HTML</option>
-                                <option value="{{ PageCreationMode::HtmlUpload->value }}" @selected(old('mode') === PageCreationMode::HtmlUpload->value)>Upload HTML file</option>
-                                <option value="{{ PageCreationMode::ImageUpload->value }}" @selected(old('mode') === PageCreationMode::ImageUpload->value)>Upload image</option>
+                                <option data-create-page-mode-type="{{ PageType::Markdown->value }}" value="{{ PageCreationMode::Markdown->value }}" @selected(old('mode', PageCreationMode::Markdown->value) === PageCreationMode::Markdown->value) @disabled(old('type', PageType::Markdown->value) !== PageType::Markdown->value)>Write Markdown</option>
+                                <option data-create-page-mode-type="{{ PageType::HtmlArtifact->value }}" value="{{ PageCreationMode::HtmlUpload->value }}" @selected(old('mode') === PageCreationMode::HtmlUpload->value) @disabled(old('type', PageType::Markdown->value) !== PageType::HtmlArtifact->value)>Upload HTML file</option>
+                                <option data-create-page-mode-type="{{ PageType::HtmlArtifact->value }}" value="{{ PageCreationMode::HtmlPaste->value }}" @selected(old('mode') === PageCreationMode::HtmlPaste->value) @disabled(old('type', PageType::Markdown->value) !== PageType::HtmlArtifact->value)>Paste HTML</option>
+                                <option data-create-page-mode-type="{{ PageType::Image->value }}" value="{{ PageCreationMode::ImageUpload->value }}" @selected(old('mode') === PageCreationMode::ImageUpload->value) @disabled(old('type', PageType::Markdown->value) !== PageType::Image->value)>Upload image</option>
                             </select>
                         </label>
                     </div>
@@ -107,7 +107,8 @@
 
                         <label class="block">
                             <span class="text-sm font-medium text-zinc-800 dark:text-zinc-200">Tags</span>
-                            <input class="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950" name="tags" type="text" value="{{ old('tags') }}" placeholder="architecture, runbook">
+                            <input class="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950" data-taggable-input id="page-tags" name="tags" type="text" value="{{ old('tags') }}" placeholder="Add a tag">
+                            <span class="mt-1 block text-xs text-zinc-500">Type a tag and press Enter. Paste comma-separated tags to add several.</span>
                         </label>
                     </div>
 
@@ -253,8 +254,6 @@
                     @include('pages.partials.artifact-sensitive-data-warning')
                     <iframe class="h-[32rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700" data-html-draft-preview-frame name="artifactflow-html-draft-preview" sandbox="allow-scripts" allow="" referrerpolicy="no-referrer" title="Unsaved HTML draft preview"></iframe>
                 </section>
-
-                @include('pages.partials.change-summary-field')
 
                 <div class="af-create-submit">
                     <button class="af-primary-button" type="submit">Save page</button>

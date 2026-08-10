@@ -13,19 +13,23 @@ final readonly class PageSearchFilters
     public const string ALL_WORKSPACES = 'all';
 
     /**
+     * @param list<PageStatus> $statuses
+     * @param list<string> $categoryUids
      * @param list<string> $tagUids
+     * @param list<string> $aiProviders
+     * @param list<string> $aiModelIds
      */
     public function __construct(
         public ?string $query,
         public ?string $workspaceUid,
         public ?PageType $type,
-        public ?PageStatus $status,
-        public ?string $categoryUid,
+        public array $statuses,
+        public array $categoryUids,
         public array $tagUids,
         public ?string $ownerUserUid,
-        public bool $includeArchived,
         public PageSearchSort $sort,
-        public ?string $aiProvider = null,
+        public array $aiProviders = [],
+        public array $aiModelIds = [],
         public ?string $aiModelQuery = null,
         public ProvenanceSearchScope $provenanceScope = ProvenanceSearchScope::AnyVersion,
     ) {
@@ -34,5 +38,14 @@ final readonly class PageSearchFilters
     public function hasQuery(): bool
     {
         return $this->query !== null && $this->query !== '';
+    }
+
+    /** @return list<PageStatus> */
+    public static function activeStatuses(): array
+    {
+        return array_filter(
+            PageStatus::cases(),
+            static fn (PageStatus $status): bool => $status !== PageStatus::Archived,
+        );
     }
 }

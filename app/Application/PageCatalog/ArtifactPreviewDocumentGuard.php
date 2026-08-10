@@ -946,14 +946,21 @@ final class ArtifactPreviewDocumentGuard
     private function findRawTextClosingTag(string $html, string $tagName, int $offset): ?int
     {
         if ($tagName === 'script') {
-            return $this->findScriptClosingTag($html, $offset);
+            $candidate = $this->findScriptClosingTag($html, $offset);
+
+            return $candidate !== null && $this->tagAt($html, $candidate) !== null
+                ? $candidate
+                : null;
         }
 
         $needle = '</' . $tagName;
         $candidate = stripos($html, $needle, $offset);
 
         while ($candidate !== false) {
-            if ($this->hasRawTextTagBoundary($html, $candidate + strlen($needle))) {
+            if (
+                $this->hasRawTextTagBoundary($html, $candidate + strlen($needle))
+                && $this->tagAt($html, $candidate) !== null
+            ) {
                 return $candidate;
             }
 

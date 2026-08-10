@@ -60,6 +60,7 @@ final class PageCreationHttpTest extends TestCase
             ->assertSee('Markdown')
             ->assertSee('Upload HTML')
             ->assertSee('Paste HTML')
+            ->assertSeeInOrder(['Upload HTML file', 'Paste HTML'])
             ->assertDontSee('name="owner_user_uid"', false)
             ->assertSee('Preview HTML before saving')
             ->assertSee('data-html-draft-preview', false)
@@ -79,9 +80,15 @@ final class PageCreationHttpTest extends TestCase
             ->assertSee('data-editor-capabilities="rich-markdown source-code"', false)
             ->assertSee('data-rich-markdown-editor', false)
             ->assertSee('contenteditable="true"', false)
-            ->assertSee('name="change_summary"', false)
-            ->assertSee('maxlength="255"', false)
+            ->assertDontSee('name="change_summary"', false)
+            ->assertSee('data-taggable-input', false)
+            ->assertSee('data-create-page-mode-type="markdown"', false)
+            ->assertSee('data-create-page-mode-type="html_artifact"', false)
+            ->assertSee('data-create-page-mode-type="image"', false)
             ->assertSee('Rich Markdown', false);
+
+        $selection = $this->readProjectFile('resources/js/page-creation-selection.js');
+        $this->assertStringContainsString("return HTML_CREATION_MODES.has(currentMode) ? currentMode : 'html_upload';", $selection);
     }
 
     public function test_create_page_rejects_an_array_valued_parent_page_query(): void
@@ -128,10 +135,31 @@ final class PageCreationHttpTest extends TestCase
         $page = Page::query()->where('title', 'Browser Owned Page')->sole();
 
         $this->assertSame($editor->uid, $page->owner_user_uid);
-        $this->assertSame(
-            'Create the browser-owned page.',
-            PageVersion::query()->whereKey($page->current_version_uid)->sole()->change_summary,
-        );
+        $this->assertNull(PageVersion::query()->whereKey($page->current_version_uid)->sole()->change_summary);
+    }
+
+    public function test_page_creation_rejects_a_content_source_that_does_not_belong_to_the_selected_type(): void
+    {
+        Storage::fake('artifacts');
+
+        $editor = $this->createUser('Mode Boundary User', 'mode-boundary@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($editor, 'Mode Boundary Team');
+
+        $this->actingAs($editor)
+            ->from('/pages/create')
+            ->post('/pages', [
+                'workspace_uid' => $workspace->uid,
+                'type' => PageType::Markdown->value,
+                'mode' => 'html_upload',
+                'title' => 'Forged mode',
+                'status' => PageStatus::Draft->value,
+                'content' => '# Forged mode',
+                'html_file' => UploadedFile::fake()->createWithContent('forged.html', '<h1>Forged</h1>'),
+            ])
+            ->assertRedirect('/pages/create')
+            ->assertSessionHasErrors('mode');
+
+        $this->assertSame(0, Page::query()->where('title', 'Forged mode')->count());
     }
 
     public function test_page_creation_can_create_and_assign_a_workspace_category_ad_hoc(): void
@@ -1832,5 +1860,13 @@ final class PageCreationHttpTest extends TestCase
         }
 
         return $path . '?' . $query;
+    }
+
+    private function readProjectFile(string $path): string
+    {
+        $contents = file_get_contents(base_path($path));
+        $this->assertIsString($contents);
+
+        return $contents;
     }
 }

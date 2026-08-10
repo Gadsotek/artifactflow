@@ -81,6 +81,17 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('"tabWidth": 2', $prettierrc);
     }
 
+    public function test_dompurify_security_pin_is_consistent_across_the_override_lock_and_verifier(): void
+    {
+        $packageJson = $this->readProjectFile('package.json');
+        $packageLock = $this->readProjectFile('package-lock.json');
+        $verifier = $this->readProjectFile('scripts/verify-dompurify.mjs');
+
+        $this->assertStringContainsString('"dompurify": "3.4.13"', $packageJson);
+        $this->assertStringContainsString("\"node_modules/dompurify\": {\n      \"version\": \"3.4.13\"", $packageLock);
+        $this->assertStringContainsString("const EXPECTED = '3.4.13';", $verifier);
+    }
+
     public function test_ci_avoids_a_redundant_plain_suite_and_required_docs_list_both_coverage_targets(): void
     {
         $workflow = $this->readProjectFile('.github/workflows/ci.yml');
@@ -263,7 +274,19 @@ final class CiCoverageGateConfigurationTest extends TestCase
             $this->afterNeedle($makefile, 'verify-reverb-origin:'),
         );
         $this->assertStringContainsString(
-            'CACHE_STORE: database',
+            'export REVERB_CACHE_STORE=array',
+            $this->afterNeedle($makefile, 'verify-reverb-origin:'),
+        );
+        $this->assertStringContainsString(
+            'export CACHE_LIMITER=database_limiter',
+            $this->afterNeedle($makefile, 'verify-reverb-origin:'),
+        );
+        $this->assertStringContainsString(
+            'CACHE_STORE: ${REVERB_CACHE_STORE:-database}',
+            $this->afterNeedle($compose, 'reverb:'),
+        );
+        $this->assertStringContainsString(
+            'CACHE_LIMITER: ${CACHE_LIMITER:-}',
             $this->afterNeedle($compose, 'reverb:'),
         );
         $this->assertStringContainsString('$(MAKE) verify-reverb-origin', $makefile);

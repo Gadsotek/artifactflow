@@ -9,11 +9,23 @@ use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\PageContentEncoding;
 use App\Domain\PageCatalog\Security\BlockedPageContentException;
 use App\Domain\Provenance\ProducerKind;
+use Illuminate\Support\Str;
 
 final readonly class VersionProvenanceRules
 {
     public const int MAX_PRODUCERS = 8;
     public const int MAX_REFERENCES_PER_PRODUCER = 8;
+    public const int MAX_CLAIM_EXTENSIONS_PER_PRODUCER = 16;
+    public const int MAX_EXTENSION_KEY_LENGTH = 120;
+    public const int MAX_EXTENSION_VALUE_LENGTH = 512;
+
+    private const string FORBIDDEN_EXTENSION_KEY_PATTERN = '/(?:\A|[._-])(?:prompt|system[._-]prompt|chain[._-]of[._-]thought|reasoning|credential|credentials|secret|token|authorization|auth|cookie|header|signed[._-]url|url|payload|blob|content)(?:\z|[._-])/i';
+
+    private const string FORBIDDEN_COMPACT_EXTENSION_KEY_PATTERN = '/(?:prompt|chainofthought|reasoning|credentials?|secret|token|authorization|cookie|header|signedurl|payload|blob|content)/i';
+
+    private const string FORBIDDEN_EXTENSION_VALUE_PATTERN = '/(?:\A|[\r\n])\s*(?:system|developer|user|assistant|tool)\s*:|\b(?:ignore|disregard|override)\b.{0,80}\b(?:instruction|prompt|message|policy)\b|\b(?:system\s+prompt|developer\s+message|chain\s*[-_.]?\s*of\s*[-_.]?\s*thought|(?:hidden|private|internal)\s+reasoning)\b/iu';
+
+    private const string SIGNED_URL_QUERY_PATTERN = '/(?:\A|&)(?:signature|sig|token|access_token|expires|x-amz-signature|x-amz-credential|x-amz-security-token|x-goog-signature|googleaccessid|key-pair-id)=/i';
 
     public function __construct(private PageContentScanner $scanner)
     {
@@ -49,6 +61,7 @@ final readonly class VersionProvenanceRules
 
         $this->ensureOptionalText($producer->modelLabel, 'model label', 191);
         $this->ensureOptionalText($producer->modelVersion, 'model version', 120);
+        $this->ensureClaimExtensionsAreValid($producer->claimExtensions);
 
         if (count($producer->references) > self::MAX_REFERENCES_PER_PRODUCER) {
             throw new DomainRuleViolation(sprintf(
@@ -65,21 +78,46 @@ final readonly class VersionProvenanceRules
     private function ensureAiProducerIsValid(ProducerAssertionInput $producer): void
     {
         if (
-            $producer->providerKey === null
-            || $producer->modelId === null
-            || $producer->producerName !== null
+            $producer->producerName !== null
             || $producer->producerVersion !== null
         ) {
             throw new DomainRuleViolation(
-                'AI provenance requires a normalized provider key and exact model ID.',
+                'AI provenance cannot declare human or software identity fields.',
             );
         }
 
-        $this->ensureRequiredText($producer->providerKey, 'provider key', 80);
-        $this->ensureRequiredText($producer->modelId, 'model ID', 191);
+        $this->ensureOptionalText($producer->reportedProvider, 'reported provider', 80);
+        $this->ensureOptionalText($producer->providerKey, 'provider key', 80);
+        $this->ensureOptionalText($producer->modelId, 'model ID', 191);
 
-        if (preg_match('/\A[a-z0-9][a-z0-9._-]*\z/', $producer->providerKey) !== 1) {
+        if ($producer->reportedProvider !== null && $producer->providerKey === null) {
+            throw new DomainRuleViolation('A reported AI provider requires a normalized provider key.');
+        }
+
+        if (
+            $producer->reportedProvider !== null
+            && Str::slug($producer->reportedProvider) !== $producer->providerKey
+        ) {
+            throw new DomainRuleViolation('The reported AI provider must match its normalized provider key.');
+        }
+
+        if (
+            $producer->providerKey !== null
+            && preg_match('/\A[a-z0-9][a-z0-9._-]*\z/', $producer->providerKey) !== 1
+        ) {
             throw new DomainRuleViolation('AI provenance provider key must be a normalized lowercase slug.');
+        }
+
+        if (
+            $producer->providerKey === null
+            && $producer->modelId === null
+            && $producer->modelLabel === null
+            && $producer->modelVersion === null
+            && $producer->generatedAt === null
+            && $producer->references === []
+            && $producer->claimExtensions === []
+        ) {
+            throw new DomainRuleViolation('AI provenance must contain at least one known producer fact.');
         }
     }
 
@@ -140,6 +178,62 @@ final readonly class VersionProvenanceRules
             throw new DomainRuleViolation(
                 'Provenance URLs must use HTTPS and must not contain authority credentials.',
             );
+        }
+
+        if (
+            is_string($parts['query'] ?? null)
+            && preg_match(self::SIGNED_URL_QUERY_PATTERN, rawurldecode($parts['query'])) === 1
+        ) {
+            throw new DomainRuleViolation('Provenance URLs must not be signed capability URLs.');
+        }
+    }
+
+    /**
+     * @param list<ProducerClaimExtension> $extensions
+     */
+    private function ensureClaimExtensionsAreValid(array $extensions): void
+    {
+        if (count($extensions) > self::MAX_CLAIM_EXTENSIONS_PER_PRODUCER) {
+            throw new DomainRuleViolation(sprintf(
+                'A producer may contain at most %d provenance extensions.',
+                self::MAX_CLAIM_EXTENSIONS_PER_PRODUCER,
+            ));
+        }
+
+        foreach ($extensions as $extension) {
+            $this->ensureRequiredText(
+                $extension->key,
+                'extension key',
+                self::MAX_EXTENSION_KEY_LENGTH,
+            );
+            $this->ensureRequiredText(
+                $extension->value,
+                'extension value',
+                self::MAX_EXTENSION_VALUE_LENGTH,
+            );
+            $compactKey = preg_replace('/[^a-z0-9]+/i', '', $extension->key) ?? '';
+
+            if (
+                preg_match('/\A[a-z0-9][a-z0-9._-]*\z/', $extension->key) !== 1
+                || preg_match(self::FORBIDDEN_EXTENSION_KEY_PATTERN, $extension->key) === 1
+                || preg_match(self::FORBIDDEN_COMPACT_EXTENSION_KEY_PATTERN, $compactKey) === 1
+            ) {
+                throw new DomainRuleViolation('Provenance extensions may contain identity metadata only.');
+            }
+
+            if (
+                str_contains($extension->value, "\r")
+                || str_contains($extension->value, "\n")
+                || preg_match(self::FORBIDDEN_EXTENSION_VALUE_PATTERN, $extension->value) === 1
+            ) {
+                throw new DomainRuleViolation('Provenance extensions may contain identity metadata only.');
+            }
+
+            if (preg_match('#(?:https?|wss?)://#i', $extension->value) === 1) {
+                throw new DomainRuleViolation(
+                    'Provenance extension values cannot contain URLs; use a typed external reference.',
+                );
+            }
         }
     }
 

@@ -15,14 +15,17 @@ use Illuminate\Support\Facades\RateLimiter;
 final class McpToolGuard
 {
     /**
+     * @param string|list<string> $scopes
      * @param callable(): McpToolResult $run
      */
-    public function run(McpAccessToken $token, string $scope, bool $rateLimited, callable $run): McpToolResult
+    public function run(McpAccessToken $token, string|array $scopes, bool $rateLimited, callable $run): McpToolResult
     {
-        $scopeError = $this->requireScope($token, $scope);
+        foreach ((array) $scopes as $scope) {
+            $scopeError = $this->requireScope($token, $scope);
 
-        if ($scopeError instanceof McpToolResult) {
-            return $scopeError;
+            if ($scopeError instanceof McpToolResult) {
+                return $scopeError;
+            }
         }
 
         if ($rateLimited) {

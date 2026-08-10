@@ -11,6 +11,31 @@ use PHPUnit\Framework\TestCase;
 
 final class McpProvenanceArgumentsTest extends TestCase
 {
+    public function test_it_preserves_partial_ai_identity_and_bounded_extensions_without_an_exact_model_id(): void
+    {
+        $provenance = (new McpProvenanceArguments())->fromArguments(McpToolArguments::fromValue([
+            'provenance' => [
+                'producers' => [[
+                    'kind' => 'ai',
+                    'provider' => 'OpenAI',
+                    'model_label' => 'GPT-5 family',
+                    'extensions' => [[
+                        'key' => 'openai.runtime_product',
+                        'value' => 'Codex',
+                    ]],
+                ]],
+            ],
+        ], 'arguments'));
+
+        self::assertNotNull($provenance);
+        self::assertSame('OpenAI', $provenance->producers[0]->reportedProvider);
+        self::assertSame('openai', $provenance->producers[0]->providerKey);
+        self::assertNull($provenance->producers[0]->modelId);
+        self::assertSame('GPT-5 family', $provenance->producers[0]->modelLabel);
+        self::assertSame('openai.runtime_product', $provenance->producers[0]->claimExtensions[0]->key);
+        self::assertSame('Codex', $provenance->producers[0]->claimExtensions[0]->value);
+    }
+
     public function test_it_accepts_rfc3339_timestamps_with_optional_fractional_seconds(): void
     {
         foreach ([

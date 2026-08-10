@@ -143,7 +143,10 @@
                                 <span>Popular tags</span>
                                 <div class="mt-3 flex flex-wrap gap-2">
                                     @forelse ($discoverySummary->popularTags as $popularTag)
-                                        <span class="af-soft-chip">{{ $popularTag->name }} · {{ $popularTag->pageCount }}</span>
+                                        <a
+                                            class="af-soft-chip af-soft-chip-link"
+                                            href="{{ route('pages.index', ['workspace_uid' => $currentWorkspaceUid, 'tag_uids' => [$popularTag->uid]]) }}"
+                                        >{{ $popularTag->name }} · {{ $popularTag->pageCount }}</a>
                                     @empty
                                         <span class="text-sm text-zinc-500">No tags yet.</span>
                                     @endforelse
@@ -174,14 +177,22 @@
                             @else
                                 <div class="mt-3 flex flex-wrap gap-2">
                                     @foreach ($categories as $category)
-                                        <span class="af-soft-chip">{{ $category->name }}</span>
+                                        <a
+                                            class="af-soft-chip af-soft-chip-link"
+                                            href="{{ route('pages.index', ['workspace_uid' => $currentWorkspaceUid, 'category_uids' => [$category->uid]]) }}"
+                                        >{{ $category->name }}</a>
                                     @endforeach
                                 </div>
                             @endif
                         </section>
 
-                        @if ($pages === [])
-                            <div class="af-empty-state">
+                        <div
+                            data-live-page-catalog
+                            data-live-page-catalog-user-uid="{{ $user->uid }}"
+                            data-live-page-catalog-workspace-uid="{{ $currentWorkspaceUid }}"
+                        >
+                            @if ($pages === [])
+                                <div class="af-empty-state">
                                 <h3 class="text-lg font-semibold text-zinc-950 dark:text-zinc-50">No pages yet</h3>
                                 <p class="mt-2 text-sm leading-6 text-zinc-600 dark:text-zinc-400">Create the first Markdown page or HTML artifact for this workspace.</p>
                                 <div class="mt-5 flex flex-wrap gap-3">
@@ -196,9 +207,9 @@
                                 @if ($canSeedDemoContent)
                                     <p class="mt-3 text-xs leading-5 text-zinc-500 dark:text-zinc-400">Adds a Markdown page with Mermaid and an isolated HTML artifact with interactive JavaScript to your personal workspace.</p>
                                 @endif
-                            </div>
-                        @else
-                            <section class="af-recent-pages">
+                                </div>
+                            @else
+                                <section class="af-recent-pages">
                                 <div class="af-section-title-row">
                                     <div>
                                         <p class="af-eyebrow">Discovery</p>
@@ -216,6 +227,7 @@
                                                 'af-library-page-depth-'.$hierarchyItem->visualDepth => $hierarchyItem->depth > 0,
                                             ])
                                             data-page-hierarchy-depth="{{ $hierarchyItem->depth }}"
+                                            data-page-new="{{ $hierarchyItem->result->isNew ? 'true' : 'false' }}" data-page-uid="{{ $page->uid }}"
                                             href="{{ route('pages.show', $page) }}"
                                         >
                                             <div class="af-library-page-layout">
@@ -228,7 +240,12 @@
                                                     @endif
                                                     <div class="flex items-center justify-between gap-4">
                                                         <h3 class="text-base font-semibold text-zinc-950 dark:text-zinc-50">{{ $page->title }}</h3>
-                                                        <span class="text-xs font-semibold uppercase tracking-wide text-zinc-500">{{ $page->status->value }}</span>
+                                                        <span class="flex items-center gap-2">
+                                                            @if ($hierarchyItem->result->isNew)
+                                                                <span class="af-new-page-badge" data-page-new-indicator>NEW</span>
+                                                            @endif
+                                                            <span class="text-xs font-semibold uppercase tracking-wide text-zinc-500">{{ $page->status->value }}</span>
+                                                        </span>
                                                     </div>
                                                     @if ($page->description !== null)
                                                         <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{{ $page->description }}</p>
@@ -238,8 +255,9 @@
                                         </a>
                                     @endforeach
                                 </div>
-                            </section>
-                        @endif
+                                </section>
+                            @endif
+                        </div>
                     </section>
 
                     <section

@@ -293,7 +293,9 @@ final class DeploymentDoctorTest extends TestCase
 
             $this->assertFalse($report->passed());
             $this->assertSame(DoctorCheckStatus::Fail, $check->status);
-            $this->assertStringContainsString('does not provide shared counters', $check->detail);
+            $this->assertStringContainsString('unsupported for production security counters', $check->detail);
+            $this->assertStringContainsString('CACHE_LIMITER=database_limiter', $check->detail);
+            $this->assertStringContainsString('ARTIFACT_CACHE_LIMITER=database_artifact_limiter', $check->detail);
         }
     }
 
@@ -317,7 +319,9 @@ final class DeploymentDoctorTest extends TestCase
 
         $this->assertFalse($report->passed());
         $this->assertSame(DoctorCheckStatus::Fail, $check->status);
-        $this->assertStringContainsString('does not provide shared counters', $check->detail);
+        $this->assertStringContainsString('unsupported for production security counters', $check->detail);
+        $this->assertStringContainsString('CACHE_LIMITER=database_limiter', $check->detail);
+        $this->assertStringContainsString('ARTIFACT_CACHE_LIMITER=database_artifact_limiter', $check->detail);
     }
 
     public function test_production_fails_when_artifact_and_application_limiters_share_a_database_table(): void

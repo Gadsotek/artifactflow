@@ -179,6 +179,8 @@ final class PageCatalogSchemaTest extends TestCase
         $this->assertTrue(Schema::hasColumn('page_version_ingests', 'mcp_client_reported_name'));
         $this->assertTrue(Schema::hasColumn('page_version_ingests', 'mcp_client_reported_version'));
         $this->assertTrue(Schema::hasColumn('page_version_ingests', 'content_origin_version_uid'));
+        $this->assertTrue(Schema::hasColumn('producer_assertions', 'reported_provider'));
+        $this->assertTrue(Schema::hasColumn('producer_assertions', 'claim_extensions'));
         $this->assertFalse(Schema::hasColumn('page_version_ingests', 'mcp_client_name'));
         $this->assertFalse(Schema::hasColumn('page_version_ingests', 'mcp_client_version'));
 
@@ -201,6 +203,8 @@ final class PageCatalogSchemaTest extends TestCase
             'producer_assertions_evidence_check',
             'producer_assertions_shape_check',
             'producer_assertions_provider_key_check',
+            'producer_assertions_reported_provider_check',
+            'producer_assertions_claim_extensions_check',
             'external_origin_references_kind_check',
             'external_origin_references_retention_check',
             'external_origin_references_value_check',

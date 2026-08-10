@@ -24,6 +24,8 @@ final readonly class McpAccessTokenIssuer
     public const string SCOPE_READ = 'mcp:read';
     public const string SCOPE_CREATE = 'mcp:create';
     public const string SCOPE_UPDATE = 'mcp:update';
+    public const string SCOPE_ORGANIZE = 'mcp:organize';
+    public const string SCOPE_UPLOAD = 'mcp:upload';
     public const string SCOPE_SHARE = 'mcp:share';
 
     /**
@@ -34,6 +36,8 @@ final readonly class McpAccessTokenIssuer
         self::SCOPE_READ,
         self::SCOPE_CREATE,
         self::SCOPE_UPDATE,
+        self::SCOPE_ORGANIZE,
+        self::SCOPE_UPLOAD,
         self::SCOPE_SHARE,
     ];
 
@@ -43,6 +47,8 @@ final readonly class McpAccessTokenIssuer
     private const array WRITE_SCOPES = [
         self::SCOPE_CREATE,
         self::SCOPE_UPDATE,
+        self::SCOPE_ORGANIZE,
+        self::SCOPE_UPLOAD,
         self::SCOPE_SHARE,
     ];
 

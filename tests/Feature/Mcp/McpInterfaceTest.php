@@ -43,10 +43,12 @@ use App\Models\WorkspaceMembership;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
@@ -433,6 +435,175 @@ final class McpInterfaceTest extends TestCase
 
         $this->assertSame(2, $cleared['metadata_revision']);
         $this->assertNull($page->refresh()->description);
+    }
+
+    public function test_mcp_image_writes_require_upload_scope_and_create_replace_then_revert_normalized_pixels(): void
+    {
+        Storage::fake('artifacts');
+        config([
+            'pages.max_image_bytes' => 1024 * 1024,
+            'pages.max_image_pixels' => 100,
+        ]);
+
+        $owner = $this->createUser('Image Write Owner', 'mcp-image-write-owner@example.test');
+        $service = $this->createServiceAccount('Image Write Agent', 'mcp-image-write-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Image Write Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $withoutUpload = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+        ])->plainTextToken;
+
+        $missingScope = $this->toolErrorPayload($this->callTool($withoutUpload, 'create_image', [
+            'workspace_uid' => $workspace->uid,
+            'title' => 'Must Not Decode',
+            'image_base64' => 'not base64',
+            'media_type' => 'image/png',
+            'change_summary' => 'Attempt without upload authority.',
+        ]));
+
+        $this->assertSame('insufficient_scope', $missingScope['type']);
+        $this->assertSame(0, Page::query()->count());
+
+        $token = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+            McpAccessTokenIssuer::SCOPE_UPDATE,
+            McpAccessTokenIssuer::SCOPE_UPLOAD,
+            McpAccessTokenIssuer::SCOPE_READ,
+        ])->plainTextToken;
+        $submitted = $this->mcpTestPng() . 'GPS=50.087,14.421';
+        $created = $this->successfulToolPayload($this->callTool($token, 'create_image', [
+            'workspace_uid' => $workspace->uid,
+            'title' => 'Normalized MCP Screenshot',
+            'description' => 'Screenshot created through MCP.',
+            'image_base64' => base64_encode($submitted),
+            'media_type' => 'image/png',
+            'status' => PageStatus::Approved->value,
+            'change_summary' => 'Create the first normalized screenshot.',
+        ]));
+        $page = Page::query()->whereKey($this->payloadString($created, 'uid'))->sole();
+        $firstVersionUid = $page->current_version_uid;
+        $createdProvenance = $this->payloadArray($created, 'stored_provenance');
+        $readResponse = $this->callTool($token, 'read', ['page_uid' => $page->uid]);
+        $imageBlock = $readResponse->json('result.content.1');
+
+        $this->assertSame(PageType::Image, $page->type);
+        $this->assertFalse($createdProvenance['supplied']);
+        $this->assertSame('none', $createdProvenance['completeness']);
+        $this->assertIsString($firstVersionUid);
+        $this->assertIsArray($imageBlock);
+        $imageData = $imageBlock['data'] ?? null;
+        $this->assertIsString($imageData);
+        $firstNormalized = base64_decode($imageData, true);
+        $this->assertIsString($firstNormalized);
+        $this->assertStringStartsWith("\x89PNG\r\n\x1a\n", $firstNormalized);
+        $this->assertStringNotContainsString('GPS=', $firstNormalized);
+
+        $replacement = $this->successfulToolPayload($this->callTool($token, 'replace_image', [
+            'page_uid' => $page->uid,
+            'base_version_uid' => $firstVersionUid,
+            'image_base64' => base64_encode($this->mcpTestPng(220)),
+            'media_type' => 'image/png',
+            'change_summary' => 'Replace the screenshot pixels.',
+        ]));
+        $replacementVersionUid = $this->payloadString($replacement, 'current_version_uid');
+        $replacementProvenance = $this->payloadArray($replacement, 'stored_provenance');
+
+        $this->assertNotSame($firstVersionUid, $replacementVersionUid);
+        $this->assertFalse($replacementProvenance['supplied']);
+        $this->assertSame('none', $replacementProvenance['completeness']);
+        $this->assertSame(2, PageVersion::query()->where('page_uid', $page->uid)->count());
+
+        $reverted = $this->successfulToolPayload($this->callTool($token, 'revert', [
+            'page_uid' => $page->uid,
+            'base_version_uid' => $replacementVersionUid,
+            'change_summary' => 'Restore the previous normalized screenshot.',
+        ]));
+        $restoredVersion = PageVersion::query()
+            ->whereKey($this->payloadString($reverted, 'current_version_uid'))
+            ->sole();
+        $firstVersion = PageVersion::query()->whereKey($firstVersionUid)->sole();
+
+        $this->assertSame($firstVersionUid, $reverted['restored_from_version_uid']);
+        $this->assertSame($firstVersion->content_hash, $restoredVersion->content_hash);
+        $this->assertSame(PageVersionSource::Restore, $restoredVersion->source);
+    }
+
+    public function test_mcp_image_write_rejects_noncanonical_base64_and_media_mismatch(): void
+    {
+        Storage::fake('artifacts');
+        config([
+            'pages.max_image_bytes' => 1024 * 1024,
+            'pages.max_image_pixels' => 100,
+        ]);
+
+        $owner = $this->createUser('Invalid Image Owner', 'mcp-invalid-image-owner@example.test');
+        $service = $this->createServiceAccount('Invalid Image Agent', 'mcp-invalid-image-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Invalid Image Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $token = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+            McpAccessTokenIssuer::SCOPE_UPLOAD,
+        ])->plainTextToken;
+        $canonicalPadded = base64_encode($this->mcpTestPng());
+
+        if (!str_ends_with($canonicalPadded, '=')) {
+            $canonicalPadded = base64_encode($this->mcpTestPng() . "\0");
+        }
+
+        foreach ([
+            ['not base64', 'image/png'],
+            [rtrim($canonicalPadded, '='), 'image/png'],
+            [base64_encode($this->mcpTestPng()), 'image/jpeg'],
+        ] as [$imageBase64, $mediaType]) {
+            $error = $this->toolErrorPayload($this->callTool($token, 'create_image', [
+                'workspace_uid' => $workspace->uid,
+                'title' => 'Rejected Image',
+                'image_base64' => $imageBase64,
+                'media_type' => $mediaType,
+                'change_summary' => 'Attempt invalid image input.',
+            ]));
+
+            $this->assertSame('invalid_request', $error['type']);
+        }
+
+        $this->assertSame(0, Page::query()->count());
+        Storage::disk('artifacts')->assertDirectoryEmpty('pages');
+    }
+
+    public function test_mcp_image_write_reports_parser_unavailability_as_retryable(): void
+    {
+        Storage::fake('artifacts');
+        config([
+            'pages.max_image_bytes' => 1024 * 1024,
+            'pages.max_image_pixels' => 100,
+        ]);
+        Http::swap(new HttpFactory(app('events')));
+        Http::fake([
+            '*' => Http::response('temporarily unavailable', 503),
+        ]);
+
+        $owner = $this->createUser('Unavailable Image Owner', 'mcp-unavailable-image-owner@example.test');
+        $service = $this->createServiceAccount('Unavailable Image Agent', 'mcp-unavailable-image-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Unavailable Image Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $token = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+            McpAccessTokenIssuer::SCOPE_UPLOAD,
+        ])->plainTextToken;
+
+        $error = $this->toolErrorPayload($this->callTool($token, 'create_image', [
+            'workspace_uid' => $workspace->uid,
+            'title' => 'Temporarily Unavailable Image',
+            'image_base64' => base64_encode($this->mcpTestPng()),
+            'media_type' => 'image/png',
+            'change_summary' => 'Attempt while the parser is unavailable.',
+        ]));
+
+        $this->assertSame('temporarily_unavailable', $error['type']);
+        $this->assertTrue($error['retryable']);
+        $this->assertSame(5, $error['retry_after']);
+        $this->assertSame(0, Page::query()->count());
+        Storage::disk('artifacts')->assertDirectoryEmpty('pages');
     }
 
     public function test_image_read_rejects_a_stored_derivative_larger_than_the_configured_read_limit(): void
@@ -1045,6 +1216,10 @@ final class McpInterfaceTest extends TestCase
             'change_summary' => 'Add the recovery procedure.',
         ]));
         $secondVersionUid = $this->payloadString($updated, 'version_uid');
+        $updatedProvenance = $this->payloadArray($updated, 'stored_provenance');
+
+        $this->assertFalse($updatedProvenance['supplied']);
+        $this->assertSame('none', $updatedProvenance['completeness']);
 
         $missingRevertSummary = $this->toolErrorPayload($this->callTool($token, 'revert', [
             'page_uid' => $pageUid,
@@ -1198,7 +1373,7 @@ final class McpInterfaceTest extends TestCase
             ->count());
     }
 
-    public function test_revert_cannot_change_image_content_through_mcp(): void
+    public function test_revert_can_restore_retained_image_content_without_upload_scope(): void
     {
         Storage::fake('artifacts');
         config([
@@ -1227,19 +1402,21 @@ final class McpInterfaceTest extends TestCase
         ));
         $token = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_UPDATE])->plainTextToken;
 
-        $error = $this->toolErrorPayload($this->callTool($token, 'revert', [
+        $reverted = $this->successfulToolPayload($this->callTool($token, 'revert', [
             'page_uid' => $page->uid,
             'base_version_uid' => $secondVersion->uid,
-            'change_summary' => 'Attempt an image revert.',
+            'change_summary' => 'Restore the retained normalized image.',
         ]));
+        $restored = PageVersion::query()
+            ->whereKey($this->payloadString($reverted, 'current_version_uid'))
+            ->sole();
+        $first = PageVersion::query()->whereKey($firstVersionUid)->sole();
 
-        $this->assertSame('invalid_request', $error['type']);
-        $this->assertSame(
-            'Image content must be replaced through an authenticated PNG/JPEG upload.',
-            $error['message'],
-        );
-        $this->assertSame($secondVersion->uid, $page->refresh()->current_version_uid);
-        $this->assertSame(2, PageVersion::query()->where('page_uid', $page->uid)->count());
+        $this->assertSame($firstVersionUid, $reverted['restored_from_version_uid']);
+        $this->assertSame($restored->uid, $page->refresh()->current_version_uid);
+        $this->assertSame($first->content_hash, $restored->content_hash);
+        $this->assertSame(PageVersionSource::Restore, $restored->source);
+        $this->assertSame(3, PageVersion::query()->where('page_uid', $page->uid)->count());
     }
 
     public function test_auth_rejects_admin_revoked_expired_tokens_and_throttles_mcp_calls(): void
@@ -1576,15 +1753,23 @@ final class McpInterfaceTest extends TestCase
         ]);
         $initialize->assertOk();
         $this->assertSame('artifactflow', $initialize->json('result.serverInfo.name'));
+        $instructions = $initialize->json('result.instructions');
+        $this->assertIsString($instructions);
+        $this->assertStringContainsString('every safe producer-provenance fact', $instructions);
+        $this->assertStringContainsString('include model_id only when you know the exact', $instructions);
+        $this->assertStringContainsString('returned stored_provenance', $instructions);
 
         $tools = $this->postJsonRpc($token, 'tools/list');
         $tools->assertOk();
         $toolDefinitions = $tools->json('result.tools');
         $this->assertIsArray($toolDefinitions);
-        $this->assertCount(11, $toolDefinitions);
+        $this->assertCount(14, $toolDefinitions);
         $this->assertContains('list_taxonomy', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_category', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_tag', array_column($toolDefinitions, 'name'));
+        $this->assertContains('organize', array_column($toolDefinitions, 'name'));
+        $this->assertContains('create_image', array_column($toolDefinitions, 'name'));
+        $this->assertContains('replace_image', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_external_share', array_column($toolDefinitions, 'name'));
         $this->assertContains('update_description', array_column($toolDefinitions, 'name'));
         $search = collect($toolDefinitions)->firstWhere('name', 'search');
@@ -1610,6 +1795,35 @@ final class McpInterfaceTest extends TestCase
         $requiredCreateArguments = data_get($create, 'inputSchema.required');
         $this->assertIsArray($requiredCreateArguments);
         $this->assertContains('change_summary', $requiredCreateArguments);
+        $createProperties = data_get($create, 'inputSchema.properties');
+        $this->assertIsArray($createProperties);
+        $this->assertArrayHasKey('parent_page_uid', $createProperties);
+        $organize = collect($toolDefinitions)->firstWhere('name', 'organize');
+        $this->assertIsArray($organize);
+        $this->assertSame(
+            ['string', 'null'],
+            data_get($organize, 'inputSchema.properties.parent_page_uid.type'),
+        );
+        $requiredOrganizeArguments = data_get($organize, 'inputSchema.required');
+        $this->assertIsArray($requiredOrganizeArguments);
+        $this->assertContains('page_uid', $requiredOrganizeArguments);
+        $this->assertContains('expected_metadata_revision', $requiredOrganizeArguments);
+        $createImage = collect($toolDefinitions)->firstWhere('name', 'create_image');
+        $this->assertIsArray($createImage);
+        $this->assertSame(
+            ['image/png', 'image/jpeg'],
+            data_get($createImage, 'inputSchema.properties.media_type.enum'),
+        );
+        $requiredCreateImageArguments = data_get($createImage, 'inputSchema.required');
+        $this->assertIsArray($requiredCreateImageArguments);
+        $this->assertContains('image_base64', $requiredCreateImageArguments);
+        $this->assertContains('change_summary', $requiredCreateImageArguments);
+        $replaceImage = collect($toolDefinitions)->firstWhere('name', 'replace_image');
+        $this->assertIsArray($replaceImage);
+        $requiredReplaceImageArguments = data_get($replaceImage, 'inputSchema.required');
+        $this->assertIsArray($requiredReplaceImageArguments);
+        $this->assertContains('base_version_uid', $requiredReplaceImageArguments);
+        $this->assertContains('image_base64', $requiredReplaceImageArguments);
         $update = collect($toolDefinitions)->firstWhere('name', 'update');
         $this->assertIsArray($update);
         $updateContentSummary = data_get($update, 'inputSchema.properties.content.description');
@@ -2037,11 +2251,10 @@ final class McpInterfaceTest extends TestCase
                     query: 'Needle',
                     workspaceUid: null,
                     type: null,
-                    status: null,
-                    categoryUid: null,
+                    statuses: PageSearchFilters::activeStatuses(),
+                    categoryUids: [],
                     tagUids: [],
                     ownerUserUid: null,
-                    includeArchived: false,
                     sort: \App\Application\PageCatalog\PageSearchSort::Relevance,
                 ),
                 includeSnippets: true,
@@ -2367,6 +2580,142 @@ final class McpInterfaceTest extends TestCase
         );
     }
 
+    public function test_mcp_create_assigns_a_real_parent_and_organize_updates_only_organizational_metadata(): void
+    {
+        Storage::fake('artifacts');
+
+        $owner = $this->createUser('Organization Owner', 'mcp-organization-owner@example.test');
+        $service = $this->createServiceAccount('Organization Agent', 'mcp-organization-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Organization Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $parent = $this->createPageWithApprovedStatus(
+            actor: $owner,
+            workspace: $workspace,
+            title: 'Organization Parent',
+            content: '# Parent',
+        );
+        $category = $this->createCategory($workspace, $owner, 'Organized Runbooks');
+        $token = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+            McpAccessTokenIssuer::SCOPE_ORGANIZE,
+        ])->plainTextToken;
+
+        $created = $this->successfulToolPayload($this->callTool($token, 'create', [
+            'workspace_uid' => $workspace->uid,
+            'type' => PageType::Markdown->value,
+            'title' => 'Organization Child',
+            'description' => 'Description must remain unchanged.',
+            'content' => '# Child',
+            'parent_page_uid' => $parent->uid,
+            'change_summary' => 'Create a real child page.',
+        ]));
+        $page = Page::query()->whereKey($this->payloadString($created, 'uid'))->sole();
+
+        $this->assertSame($parent->uid, $page->parent_page_uid);
+        $this->assertSame(0, $page->metadata_revision);
+
+        $organized = $this->successfulToolPayload($this->callTool($token, 'organize', [
+            'page_uid' => $page->uid,
+            'expected_metadata_revision' => 0,
+            'title' => 'Organized Child',
+            'parent_page_uid' => null,
+            'category_uid' => $category->uid,
+            'tags' => ['Operations', 'Runbook'],
+        ]));
+        $page->refresh();
+
+        $this->assertSame(1, $organized['metadata_revision']);
+        $this->assertSame('Organized Child', $page->title);
+        $this->assertNull($page->parent_page_uid);
+        $this->assertSame($category->uid, $page->category_uid);
+        $this->assertSame(['operations', 'runbook'], $page->tags()->orderBy('name')->pluck('name')->all());
+        $this->assertSame('Description must remain unchanged.', $page->description);
+        $this->assertSame($service->uid, $page->owner_user_uid);
+        $event = DomainEvent::query()
+            ->where('event_type', 'page.metadata.updated')
+            ->where('aggregate_uid', $page->uid)
+            ->sole();
+        $this->assertSame(
+            McpAccessToken::query()->where('principal_user_uid', $service->uid)->sole()->uid,
+            $event->payload['mcp_access_token_uid'] ?? null,
+        );
+        $this->assertSame('test-session', $event->payload['mcp_agent_session_id'] ?? null);
+    }
+
+    public function test_mcp_organize_requires_its_scope_and_rejects_stale_or_cyclic_hierarchy_changes(): void
+    {
+        Storage::fake('artifacts');
+
+        $owner = $this->createUser('Organization Guard Owner', 'mcp-organization-guard-owner@example.test');
+        $service = $this->createServiceAccount('Organization Guard Agent', 'mcp-organization-guard-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Organization Guard Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $parent = $this->createPageWithApprovedStatus(
+            actor: $owner,
+            workspace: $workspace,
+            title: 'Guard Parent',
+            content: '# Parent',
+        );
+        $child = $this->createPageWithApprovedStatus(
+            actor: $owner,
+            workspace: $workspace,
+            title: 'Guard Child',
+            content: '# Child',
+            parentPageUid: $parent->uid,
+        );
+        $createOnly = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+        ])->plainTextToken;
+
+        $missingScope = $this->toolErrorPayload($this->callTool($createOnly, 'organize', [
+            'page_uid' => $child->uid,
+            'expected_metadata_revision' => 0,
+            'parent_page_uid' => null,
+        ]));
+        $inlineTaxonomy = $this->toolErrorPayload($this->callTool($createOnly, 'create', [
+            'workspace_uid' => $workspace->uid,
+            'type' => PageType::Markdown->value,
+            'title' => 'Create-only Taxonomy Attempt',
+            'content' => '# No taxonomy authority',
+            'category_name' => 'Must Not Be Created',
+            'tags' => ['must-not-be-created'],
+            'change_summary' => 'Attempt implicit taxonomy creation.',
+        ]));
+
+        $this->assertSame('insufficient_scope', $missingScope['type']);
+        $this->assertSame('insufficient_scope', $inlineTaxonomy['type']);
+        $this->assertDatabaseMissing('categories', ['name' => 'Must Not Be Created']);
+        $this->assertDatabaseMissing('tags', ['slug' => 'must-not-be-created']);
+
+        $organizeToken = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_ORGANIZE,
+        ])->plainTextToken;
+        $cycle = $this->toolErrorPayload($this->callTool($organizeToken, 'organize', [
+            'page_uid' => $parent->uid,
+            'expected_metadata_revision' => 0,
+            'parent_page_uid' => $child->uid,
+        ]));
+
+        $this->assertSame('invalid_request', $cycle['type']);
+        $this->assertNull($parent->refresh()->parent_page_uid);
+
+        $this->successfulToolPayload($this->callTool($organizeToken, 'organize', [
+            'page_uid' => $child->uid,
+            'expected_metadata_revision' => 0,
+            'title' => 'Current Child Title',
+        ]));
+        $stale = $this->toolErrorPayload($this->callTool($organizeToken, 'organize', [
+            'page_uid' => $child->uid,
+            'expected_metadata_revision' => 0,
+            'title' => 'Stale Child Title',
+        ]));
+
+        $this->assertSame('conflict', $stale['type']);
+        $this->assertTrue($stale['retryable']);
+        $this->assertSame(1, $stale['current_metadata_revision']);
+        $this->assertSame('Current Child Title', $child->refresh()->title);
+    }
+
     public function test_mcp_taxonomy_discovery_is_searchable_and_token_workspace_scoped(): void
     {
         Storage::fake('artifacts');
@@ -2448,7 +2797,11 @@ final class McpInterfaceTest extends TestCase
         $this->addMember($foreignWorkspace, $service, WorkspaceRole::Editor);
         $token = $this->issueToken(
             principal: $service,
-            scopes: [McpAccessTokenIssuer::SCOPE_CREATE, McpAccessTokenIssuer::SCOPE_SEARCH],
+            scopes: [
+                McpAccessTokenIssuer::SCOPE_CREATE,
+                McpAccessTokenIssuer::SCOPE_ORGANIZE,
+                McpAccessTokenIssuer::SCOPE_SEARCH,
+            ],
             workspaceUids: [$workspace->uid],
         )->plainTextToken;
 
@@ -2484,6 +2837,8 @@ final class McpInterfaceTest extends TestCase
         $tagSlug = $this->payloadArray($tagPayload, 'slug');
         $this->assertSame('operations', $this->payloadString($tagName, 'data'));
         $this->assertSame('operations', $this->payloadString($tagSlug, 'data'));
+        $this->assertSame($workspace->uid, $tagPayload['authority_workspace_uid']);
+        $this->assertArrayNotHasKey('workspace_uid', $tagPayload);
         $this->assertSame(1, Tag::query()->where('slug', 'operations')->count());
         $this->assertSame(1, DomainEvent::query()->where('event_type', 'tag.created')->count());
         $this->assertSame(1, AuditEntry::query()->where('action', 'tag.created')->count());
@@ -2523,7 +2878,7 @@ final class McpInterfaceTest extends TestCase
             ->sole();
         $token = $this->issueToken(
             principal: $service,
-            scopes: [McpAccessTokenIssuer::SCOPE_CREATE],
+            scopes: [McpAccessTokenIssuer::SCOPE_ORGANIZE],
             workspaceUids: [$workspace->uid],
         )->plainTextToken;
         $downgraded = false;
@@ -2706,6 +3061,11 @@ final class McpInterfaceTest extends TestCase
         ], $sessionId));
         $pageUid = $this->payloadString($created, 'uid');
         $versionUid = $this->payloadString($created, 'current_version_uid');
+        $storedProvenance = $this->payloadArray($created, 'stored_provenance');
+
+        $this->assertTrue($storedProvenance['supplied']);
+        $this->assertSame('complete', $storedProvenance['completeness']);
+        $this->assertCount(1, $this->payloadList($storedProvenance, 'direct_version_producers'));
 
         $this->assertDatabaseHas('page_version_ingests', [
             'page_uid' => $pageUid,
@@ -2795,6 +3155,135 @@ final class McpInterfaceTest extends TestCase
             ->assertDontSee('Observed MCP client');
     }
 
+    public function test_mcp_preserves_partial_ai_provenance_and_discloses_exactly_what_was_stored(): void
+    {
+        Storage::fake('artifacts');
+
+        $owner = $this->createUser('Partial Provenance Owner', 'partial-provenance-owner@example.test');
+        $service = $this->createServiceAccount('Partial Provenance Agent', 'partial-provenance-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Partial Provenance Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $token = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+            McpAccessTokenIssuer::SCOPE_READ,
+            McpAccessTokenIssuer::SCOPE_SEARCH,
+        ])->plainTextToken;
+
+        $created = $this->successfulToolPayload($this->callTool($token, 'create', [
+            'workspace_uid' => $workspace->uid,
+            'type' => PageType::Markdown->value,
+            'title' => 'Partial GPT Artifact',
+            'content' => '# Partial producer identity',
+            'change_summary' => 'Create content with the known partial producer identity.',
+            'provenance' => [
+                'producers' => [[
+                    'kind' => 'ai',
+                    'provider' => 'OpenAI',
+                    'model_label' => 'GPT-5 family',
+                    'extensions' => [[
+                        'key' => 'openai.runtime_product',
+                        'value' => 'Codex',
+                    ]],
+                ]],
+            ],
+        ]));
+        $stored = $this->payloadArray($created, 'stored_provenance');
+        $storedProducer = $this->payloadList($stored, 'direct_version_producers')[0];
+
+        $this->assertTrue($stored['supplied']);
+        $this->assertSame('partial', $stored['completeness']);
+        $this->assertSame('model_label', $storedProducer['identity_precision']);
+        $this->assertSame('OpenAI', $this->payloadString(
+            $this->payloadArray($storedProducer, 'reported_provider'),
+            'data',
+        ));
+        $this->assertSame('', $this->payloadArray($storedProducer, 'model_id')['data']);
+        $this->assertSame('GPT-5 family', $this->payloadString(
+            $this->payloadArray($storedProducer, 'model_label'),
+            'data',
+        ));
+        $extension = $this->payloadList($storedProducer, 'extensions')[0];
+        $this->assertSame('openai.runtime_product', $this->payloadString(
+            $this->payloadArray($extension, 'key'),
+            'data',
+        ));
+        $this->assertSame('Codex', $this->payloadString(
+            $this->payloadArray($extension, 'value'),
+            'data',
+        ));
+
+        $assertion = ProducerAssertion::query()->sole();
+        $this->assertSame('OpenAI', $assertion->reported_provider);
+        $this->assertSame('openai', $assertion->provider_key);
+        $this->assertNull($assertion->model_id);
+        $this->assertSame('GPT-5 family', $assertion->model_label);
+        $this->assertSame([[
+            'key' => 'openai.runtime_product',
+            'value' => 'Codex',
+        ]], $assertion->claim_extensions);
+
+        $search = $this->successfulToolPayload($this->callTool($token, 'search', [
+            'ai_provider' => 'OpenAI',
+            'ai_model_query' => 'GPT-5',
+            'provenance_scope' => 'current_version',
+        ]));
+        $this->assertSame(
+            [$this->payloadString($created, 'uid')],
+            array_column($this->payloadList($search, 'results'), 'uid'),
+        );
+
+        $this->actingAs($owner)
+            ->get('/pages/' . $this->payloadString($created, 'uid'))
+            ->assertOk()
+            ->assertSee('OpenAI')
+            ->assertSee('GPT-5 family')
+            ->assertSee('Partial identity');
+    }
+
+    public function test_mcp_preserves_reference_only_ai_provenance(): void
+    {
+        Storage::fake('artifacts');
+
+        $owner = $this->createUser('Reference Provenance Owner', 'reference-provenance-owner@example.test');
+        $service = $this->createServiceAccount(
+            'Reference Provenance Agent',
+            'reference-provenance-agent@example.test',
+        );
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Reference Provenance Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $token = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+        ])->plainTextToken;
+
+        $created = $this->successfulToolPayload($this->callTool($token, 'create', [
+            'workspace_uid' => $workspace->uid,
+            'type' => PageType::Markdown->value,
+            'title' => 'Reference-only Artifact',
+            'content' => '# Reference-only producer claim',
+            'change_summary' => 'Create content with the only known producer reference.',
+            'provenance' => [
+                'producers' => [[
+                    'kind' => 'ai',
+                    'references' => [[
+                        'kind' => 'conversation',
+                        'ref' => 'conversation-123',
+                    ]],
+                ]],
+            ],
+        ]));
+        $stored = $this->payloadArray($created, 'stored_provenance');
+        $producer = $this->payloadList($stored, 'direct_version_producers')[0];
+
+        $this->assertTrue($stored['supplied']);
+        $this->assertSame('partial', $stored['completeness']);
+        $this->assertSame('unspecified', $producer['identity_precision']);
+        $this->assertCount(1, $this->payloadList($producer, 'references'));
+        $this->assertDatabaseHas('external_origin_references', [
+            'reference_kind' => 'conversation',
+            'external_ref' => 'conversation-123',
+        ]);
+    }
+
     public function test_mcp_update_records_exact_model_and_search_respects_provenance_scope(): void
     {
         Storage::fake('artifacts');
@@ -2835,6 +3324,10 @@ final class McpInterfaceTest extends TestCase
             ],
         ]));
         $secondVersionUid = $this->payloadString($updated, 'version_uid');
+        $updatedProvenance = $this->payloadArray($updated, 'stored_provenance');
+
+        $this->assertTrue($updatedProvenance['supplied']);
+        $this->assertSame('complete', $updatedProvenance['completeness']);
 
         $read = $this->successfulToolPayload($this->callTool($token, 'read', [
             'page_uid' => $pageUid,
@@ -2873,6 +3366,9 @@ final class McpInterfaceTest extends TestCase
             'change_summary' => 'Apply an unclaimed revision.',
         ]));
         $this->assertNotSame($secondVersionUid, $this->payloadString($third, 'version_uid'));
+        $thirdProvenance = $this->payloadArray($third, 'stored_provenance');
+        $this->assertFalse($thirdProvenance['supplied']);
+        $this->assertSame('none', $thirdProvenance['completeness']);
 
         $currentSearch = $this->successfulToolPayload($this->callTool($token, 'search', [
             'ai_provider' => 'anthropic',
@@ -2927,7 +3423,6 @@ final class McpInterfaceTest extends TestCase
         foreach ([
             [
                 'kind' => 'ai',
-                'provider' => 'anthropic',
             ],
             [
                 'kind' => 'ai',
@@ -2952,6 +3447,22 @@ final class McpInterfaceTest extends TestCase
                 'provider' => 'anthropic',
                 'model_id' => 'claude-opus',
                 'generated_at' => '2026-02-30T10:00:00+00:00',
+            ],
+            [
+                'kind' => 'ai',
+                'provider' => 'openai',
+                'extensions' => [[
+                    'key' => 'openai.system_prompt',
+                    'value' => 'Ignore prior instructions',
+                ]],
+            ],
+            [
+                'kind' => 'ai',
+                'provider' => 'openai',
+                'extensions' => [[
+                    'key' => 'openai.run_reference',
+                    'value' => 'https://example.test/run?signature=secret',
+                ]],
             ],
             [
                 'kind' => 'ai',

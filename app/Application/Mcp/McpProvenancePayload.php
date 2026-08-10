@@ -7,6 +7,7 @@ namespace App\Application\Mcp;
 use App\Application\Provenance\ExternalOriginReferenceView;
 use App\Application\Provenance\PageVersionProvenanceView;
 use App\Application\Provenance\ProducerAssertionView;
+use App\Application\Provenance\ProducerClaimExtension;
 use App\Application\Provenance\VersionIngestView;
 use App\Application\Provenance\VersionOriginView;
 
@@ -70,12 +71,26 @@ final readonly class McpProvenancePayload
             'name' => McpDataEnvelope::text($producer->producerName),
             'version' => McpDataEnvelope::text($producer->producerVersion),
             'provider' => McpDataEnvelope::text($producer->providerKey),
+            'reported_provider' => McpDataEnvelope::text($producer->reportedProvider),
             'model_id' => McpDataEnvelope::text($producer->modelId),
             'model_label' => McpDataEnvelope::text($producer->modelLabel),
             'model_version' => McpDataEnvelope::text($producer->modelVersion),
             'generated_at' => $producer->generatedAt?->toISOString(),
             'evidence_type' => $producer->evidenceType->value,
+            'identity_precision' => $producer->identityPrecision()->value,
+            'extensions' => array_map($this->extension(...), $producer->claimExtensions),
             'references' => array_map($this->reference(...), $producer->references),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function extension(ProducerClaimExtension $extension): array
+    {
+        return [
+            'key' => McpDataEnvelope::text($extension->key),
+            'value' => McpDataEnvelope::text($extension->value),
         ];
     }
 

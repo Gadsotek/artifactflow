@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\PageCatalog;
 
+use App\Application\Administration\RealtimeConfiguration;
 use App\Application\Audit\AuditLogger;
 use App\Application\Events\DomainEventRecorder;
 use App\Application\Identity\ActorId;
@@ -14,6 +15,7 @@ use App\Domain\PageCatalog\CategoryRuleViolation;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\Security\BlockedPageContentException;
+use App\Events\AccessiblePageCreated;
 use App\Models\Page;
 use App\Models\User;
 use App\Models\Workspace;
@@ -40,6 +42,8 @@ final readonly class CreatePage
         private PageMetadataRules $metadataRules,
         private PageVersionChangeSummaryRules $changeSummaryRules,
         private CreateCategory $createCategory,
+        private RealtimeConfiguration $realtimeConfiguration,
+        private PageCatalogLiveAudience $liveAudience,
     ) {
     }
 
@@ -98,7 +102,7 @@ final readonly class CreatePage
         $closureCompleted = false;
 
         try {
-            return DB::transaction(function () use (
+            $page = DB::transaction(function () use (
                 $actorUid,
                 $actor,
                 $command,
@@ -214,6 +218,10 @@ final readonly class CreatePage
 
             throw $exception;
         }
+
+        $this->publishCatalogUpdate($page);
+
+        return $page;
     }
 
     private function ensureCategoryInputIsUnambiguous(CreatePageCommand $command): void
@@ -338,5 +346,30 @@ final readonly class CreatePage
                 'submitted_tag_count' => $submittedTagCount,
             ] + $mcpMetadata,
         );
+    }
+
+    private function publishCatalogUpdate(Page $page): void
+    {
+        if (!$this->realtimeConfiguration->enabled()) {
+            return;
+        }
+
+        try {
+            $recipientUserUids = $this->liveAudience->forWorkspace($page->workspace_uid);
+
+            if ($recipientUserUids === []) {
+                return;
+            }
+
+            event(new AccessiblePageCreated(
+                pageUid: $page->uid,
+                workspaceUid: $page->workspace_uid,
+                recipientUserUids: $recipientUserUids,
+            ));
+        } catch (Throwable $exception) {
+            // Realtime is observational. A committed page must stay successful
+            // even when recipient resolution or Reverb delivery is unavailable.
+            report($exception);
+        }
     }
 }

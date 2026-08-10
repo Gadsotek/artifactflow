@@ -13,6 +13,7 @@ use App\Application\PageCatalog\CreatePageCommand;
 use App\Application\PageCatalog\MarkdownPageRenderer;
 use App\Application\PageCatalog\PageAccess;
 use App\Application\PageCatalog\PageDetailViewData;
+use App\Application\PageCatalog\PageFilterProvenance;
 use App\Application\PageCatalog\PageFilterTaxonomy;
 use App\Application\PageCatalog\PageHierarchyPresenter;
 use App\Application\PageCatalog\PageLibraryWorkspaceOptions;
@@ -51,6 +52,7 @@ final class PageController
         private readonly PageLibraryWorkspaceOptions $libraryWorkspaceOptions,
         private readonly PagePickerOptions $pickerOptions,
         private readonly PageFilterTaxonomy $filterTaxonomy,
+        private readonly PageFilterProvenance $filterProvenance,
     ) {
     }
 
@@ -64,6 +66,7 @@ final class PageController
         $filterWorkspaceUids = $this->filterOptionWorkspaceUidsFor($currentWorkspaceUid, $membershipItems);
         $pages = $this->hierarchyPresenter->arrange($user, $this->pageSearch->search($user, $filters));
         $taxonomy = $this->filterTaxonomy->forUser($user, $filters->workspaceUid);
+        $provenance = $this->filterProvenance->forUser($user, $filters->workspaceUid);
 
         return view('pages.index', [
             'categories' => $taxonomy->categories,
@@ -72,12 +75,16 @@ final class PageController
                 $currentWorkspaceUid,
             ),
             'currentWorkspaceUid' => $currentWorkspaceUid,
+            'user' => $user,
             'filters' => $filters,
             'owners' => $this->pickerOptions->ownersFor($filterWorkspaceUids),
             'pages' => $pages,
+            'provenanceModels' => $provenance->models,
+            'provenanceProviders' => $provenance->providers,
             'pageStatuses' => PageStatus::cases(),
             'pageTypes' => PageType::cases(),
             'showCategoryWorkspaceNames' => $filters->workspaceUid === PageSearchFilters::ALL_WORKSPACES,
+            'showResultWorkspaceNames' => $filters->workspaceUid === PageSearchFilters::ALL_WORKSPACES,
             'tags' => $taxonomy->tags,
             'workspaces' => $workspaceItems,
             'workspaceInvitationRoles' => $this->workspaceInvitations->allowedInvitationRoles(
@@ -151,7 +158,7 @@ final class PageController
                 sourceFilename: $request->sourceFilename(),
                 source: $request->pageVersionSource(),
                 categoryName: $this->nullableString($request, 'category_name'),
-                changeSummary: $this->nullableString($request, 'change_summary'),
+                changeSummary: null,
             ));
         } catch (ImageNormalizationRejected $exception) {
             return ImageNormalizationRejectionResponse::make($exception);
@@ -181,7 +188,6 @@ final class PageController
     private function pageSearchFiltersFrom(Request $request, ?string $currentWorkspaceUid): PageSearchFilters
     {
         $type = $this->nullableString($request, 'type');
-        $status = $this->nullableString($request, 'status');
         $provenanceScope = ProvenanceSearchScope::tryFrom(
             $this->nullableString($request, 'provenance_scope') ?? ProvenanceSearchScope::AnyVersion->value,
         ) ?? ProvenanceSearchScope::AnyVersion;
@@ -190,43 +196,93 @@ final class PageController
             query: $this->nullableString($request, 'q'),
             workspaceUid: $this->nullableString($request, 'workspace_uid') ?? $currentWorkspaceUid,
             type: $type === null ? null : PageType::tryFrom($type),
-            status: $status === null ? null : PageStatus::tryFrom($status),
-            categoryUid: $this->nullableString($request, 'category_uid'),
-            tagUids: $this->tagUidsFrom($request),
+            statuses: $this->statusesFrom($request),
+            categoryUids: $this->stringListWithLegacy($request, 'category_uids', 'category_uid', 20),
+            tagUids: $this->stringListWithLegacy($request, 'tag_uids', 'tag_uid', 20),
             ownerUserUid: $this->nullableString($request, 'owner_user_uid'),
-            includeArchived: $request->boolean('include_archived'),
             sort: PageSearchSort::tryFrom($this->nullableString($request, 'sort') ?? '')
-                ?? PageSearchSort::Relevance,
-            aiProvider: $this->nullableString($request, 'ai_provider'),
+                ?? ($this->nullableString($request, 'q') === null
+                    ? PageSearchSort::RecentlyUpdated
+                    : PageSearchSort::Relevance),
+            aiProviders: $this->stringListWithLegacy($request, 'ai_providers', 'ai_provider', 20),
+            aiModelIds: $this->stringListFrom($request, 'ai_model_ids', 50),
             aiModelQuery: $this->nullableString($request, 'ai_model_query'),
             provenanceScope: $provenanceScope,
         );
     }
 
+    /** @return list<PageStatus> */
+    private function statusesFrom(Request $request): array
+    {
+        if (!$request->has('statuses')) {
+            $legacyStatus = $this->nullableString($request, 'status');
+
+            if ($legacyStatus !== null) {
+                $status = PageStatus::tryFrom($legacyStatus);
+
+                return $status instanceof PageStatus ? [$status] : PageSearchFilters::activeStatuses();
+            }
+
+            return $request->boolean('include_archived')
+                ? PageStatus::cases()
+                : PageSearchFilters::activeStatuses();
+        }
+
+        $statuses = [];
+
+        foreach ($this->stringListFrom($request, 'statuses', count(PageStatus::cases())) as $value) {
+            $status = PageStatus::tryFrom($value);
+
+            if ($status instanceof PageStatus) {
+                $statuses[] = $status;
+            }
+        }
+
+        return $statuses;
+    }
+
     /**
      * @return list<string>
      */
-    private function tagUidsFrom(Request $request): array
+    private function stringListWithLegacy(
+        Request $request,
+        string $field,
+        string $legacyField,
+        int $maximum,
+    ): array {
+        if ($request->has($field)) {
+            return $this->stringListFrom($request, $field, $maximum);
+        }
+
+        $legacyValue = $this->nullableString($request, $legacyField);
+
+        return $legacyValue === null ? [] : [$legacyValue];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function stringListFrom(Request $request, string $field, int $maximum): array
     {
-        $input = $request->input('tag_uids', []);
-        $tagUids = is_array($input) ? $input : [$input];
+        $input = $request->input($field, []);
+        $values = is_array($input) ? $input : [$input];
 
         $normalized = [];
 
-        foreach ($tagUids as $tagUid) {
-            if (!is_string($tagUid)) {
+        foreach ($values as $value) {
+            if (!is_string($value)) {
                 continue;
             }
 
-            $tagUid = trim($tagUid);
+            $value = trim($value);
 
-            if ($tagUid === '' || in_array($tagUid, $normalized, true)) {
+            if ($value === '' || in_array($value, $normalized, true)) {
                 continue;
             }
 
-            $normalized[] = $tagUid;
+            $normalized[] = $value;
 
-            if (count($normalized) === 20) {
+            if (count($normalized) === $maximum) {
                 break;
             }
         }

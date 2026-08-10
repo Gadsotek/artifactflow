@@ -18,10 +18,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property ProducerKind $producer_kind
  * @property string|null $producer_name
  * @property string|null $producer_version
+ * @property string|null $reported_provider
  * @property string|null $provider_key
  * @property string|null $model_id
  * @property string|null $model_label
  * @property string|null $model_version
+ * @property list<array{key: string, value: string}> $claim_extensions
  * @property \Carbon\CarbonImmutable|null $generated_at
  * @property ProvenanceEvidenceType $evidence_type
  * @property string $asserted_by_user_uid
@@ -44,6 +46,7 @@ final class ProducerAssertion extends Model
     {
         return [
             'producer_kind' => ProducerKind::class,
+            'claim_extensions' => 'array',
             'generated_at' => 'immutable_datetime',
             'evidence_type' => ProvenanceEvidenceType::class,
             'asserted_at' => 'immutable_datetime',

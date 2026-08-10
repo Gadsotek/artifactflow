@@ -157,11 +157,10 @@ final class PageTreeReattachmentTest extends TestCase
             query: null,
             workspaceUid: $workspaceUid,
             type: null,
-            status: null,
-            categoryUid: null,
+            statuses: PageSearchFilters::activeStatuses(),
+            categoryUids: [],
             tagUids: [],
             ownerUserUid: null,
-            includeArchived: false,
             sort: PageSearchSort::Title,
         );
 

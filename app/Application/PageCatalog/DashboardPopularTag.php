@@ -7,6 +7,7 @@ namespace App\Application\PageCatalog;
 final readonly class DashboardPopularTag
 {
     public function __construct(
+        public string $uid,
         public string $name,
         public int $pageCount,
     ) {

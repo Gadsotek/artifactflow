@@ -51,8 +51,11 @@ final class CreateTool extends ArtifactFlowTool
             'description' => $schema->string(),
             'status' => $schema->string()->enum(PageStatus::class)->default(PageStatus::Draft->value),
             'category_uid' => $schema->string()->description('Existing category in the target workspace.'),
-            'category_name' => $schema->string()->description('Create a target-workspace category atomically.'),
-            'tags' => $schema->array()->items($schema->string()),
+            'category_name' => $schema->string()->description('Create a target-workspace category atomically; also requires mcp:organize.'),
+            'parent_page_uid' => $schema->string()->description('Existing visible parent page in the target workspace.'),
+            'tags' => $schema->array()
+                ->description('Tag names may create global taxonomy and therefore also require mcp:organize.')
+                ->items($schema->string()),
             'source_filename' => $schema->string(),
             'provenance' => $this->provenanceSchema->make($schema),
         ];
@@ -64,7 +67,7 @@ final class CreateTool extends ArtifactFlowTool
             $request,
             McpAccessTokenIssuer::SCOPE_CREATE,
             true,
-            fn (User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult => $this->handler->handle($actor, $arguments),
+            fn (User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult => $this->handler->handle($actor, $token, $arguments),
         );
     }
 }

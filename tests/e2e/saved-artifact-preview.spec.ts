@@ -83,7 +83,7 @@ test('saved image is normalized into a scriptless isolated preview @artifact-sec
     'data-create-page-mode-ready',
     'true',
   );
-  await page.locator('select[name="mode"]').selectOption('image_upload');
+  await page.locator('select[name="type"]').selectOption('image');
   await expect(page.locator('select[name="type"]')).toHaveValue('image');
   await expect(page.locator('select[name="mode"]')).toHaveValue('image_upload');
   await page.locator('input[name="title"]').fill(title);
