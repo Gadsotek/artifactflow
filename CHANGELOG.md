@@ -6,6 +6,14 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.0.7 — 2026-08-10
+
+Major alpha feature and security release. It adds normalized image artifacts,
+external page sharing, version-level AI provenance, expanded MCP organization
+and upload capabilities, richer catalog discovery with gated realtime updates,
+and optional Turnstile protection, alongside substantial sandbox, identity,
+rate-limiter, and deployment hardening.
+
 ### Security
 
 - Closed eight adversarial resource- and boundary-control gaps: exhausted account-wide login budgets now apply before credential validation; anonymous share traffic has a selector-independent source ceiling and indexed, cursor-based database-counter retention; Markdown and artifact-preview parsing have deterministic complexity limits with fixed safe fallbacks; duplicate declarative-shadow attributes rewrite in linear time; one-time MCP tokens and 2FA bootstrap material are explicitly non-cacheable; and artifact-host PostgreSQL grants now isolate its limiter table from application login, 2FA, reset, MCP, and write counters. The production gate requires distinct database limiter table names regardless of connection aliases and fails closed for Redis, Memcached, and DynamoDB limiter aliases whose physical credential/namespace boundary cannot be proven from cache configuration.
@@ -73,6 +81,19 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 - Strip PNG text/profile metadata (`zTXt`, `iTXt`, and `iCCP`) before native decoding so high-ratio payloads cannot bypass pixel admission or OOM-kill the parser.
 - Image page and history rendering now checks binary availability without reading complete raster bodies on the app origin, and authenticated or external scriptless previews no longer enter HTML renewal or re-download paths.
 - Made parser-secret isolation fail closed for every non-app production runtime role, removed unused WebP support from the parser image, and changed its health endpoint to exercise a real one-pixel PNG decode/re-encode. Deprecated no-op GD destruction calls were replaced with reference release.
+
+## v0.0.6 — 2026-07-25
+
+Security maintenance release. It clears the nightly dependency and production-image audit findings without adding product features.
+
+### Security
+
+- Updated DOMPurify to 3.4.12 and `brace-expansion` to 5.0.8 to clear the npm audit findings. (#36)
+- Rebuilt the production FrankenPHP binary with `kin-openapi` v0.144.0 and pinned an embedded-module verification check, clearing GHSA-r277-6w6q-xmqw from the Trivy image scan. (#36)
+
+### Internal / Tooling
+
+- Made DCO trailer parsing independent of the current checkout layout so Docker-backed validation also works from linked worktrees. (#36)
 
 ## v0.0.5 — 2026-07-23
 
