@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const EXPECTED = '3.4.12';
+const EXPECTED = '3.4.13';
 
 // Read the installed manifest directly: the package restricts subpath access via
 // "exports", so module resolution (require('dompurify/package.json')) is refused.
