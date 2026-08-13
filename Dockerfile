@@ -165,7 +165,7 @@ CMD ["/srv/image-parser/start.sh"]
 
 # FrankenPHP v1.12.6 still resolves vulnerable Go dependencies. Rebuild the
 # bundled binary with patched versions until upstream ships them or newer.
-FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:5ec6e708a6f100edce3ff29a0df24e81d641d6722c31bea04aaa193b68df8e67 AS frankenphp-security-builder
+FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:cc67443b9155efe8adee9f37d1f9a9312d43fce47edca3ea7570e6dae424a20c AS frankenphp-security-builder
 
 ENV PATH="/usr/local/go/bin:${PATH}"
 
@@ -185,7 +185,7 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.144\.0'
 
-FROM dunglas/frankenphp:1-php8.5-alpine@sha256:d68f5a3bd31cfdd0a7caa878555bd86005b98bda82e2e27f0a4524babcec12a2 AS production
+FROM dunglas/frankenphp:1-php8.5-alpine@sha256:def035e964f46253cb5e46a1f9a4633370f658b8e410305e0730ce7247d0ab6a AS production
 
 COPY --from=frankenphp-security-builder /usr/local/bin/frankenphp /usr/local/bin/frankenphp
 
