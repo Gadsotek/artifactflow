@@ -175,6 +175,9 @@ $mandatoryCases = [
     'regression/math-mtext-select-script-engine-differential' =>
         '<!doctype html><math><mtext><select><desc><p><svg><script></select>'
         . '<iframe id="af-parser-math-select-script"></iframe>',
+    'regression/select-foreign-script-engine-differential' =>
+        '<!doctype html><select><option></math><desc></template><svg><script></select>'
+        . '<iframe id="af-parser-select-foreign-script"></iframe>',
     'regression/select-ignored-frameset-noframes' =>
         '<!doctype html><select><option><frameset>--><noframes></select>'
         . '<iframe data-decoy=">" id="af-parser-ignored-frameset"></iframe>',

@@ -83,6 +83,25 @@ final class ArtifactPreviewForeignContentState
         return $this->elements !== [];
     }
 
+    public function depth(): int
+    {
+        return count($this->elements);
+    }
+
+    public function hasOpenElementAtOrAfterDepth(string $name, int $depth): bool
+    {
+        $positions = $this->positions[$name] ?? [];
+
+        return $positions !== [] && $positions[array_key_last($positions)] >= $depth;
+    }
+
+    public function restoreDepth(int $depth): void
+    {
+        while (count($this->elements) > $depth) {
+            $this->pop();
+        }
+    }
+
     public function currentElementIsHtmlIntegrationPoint(): bool
     {
         if ($this->elements === []) {

@@ -19,7 +19,7 @@ final class ArtifactParserDifferentialCorpusTest extends TestCase
             PHP_BINARY,
             base_path('tests/e2e/support/artifact-parser-differential-corpus.php'),
             '--seed=3589231737',
-            '--cases=49',
+            '--cases=50',
         ]);
         $process->run();
 
@@ -29,17 +29,22 @@ final class ArtifactParserDifferentialCorpusTest extends TestCase
 
         $this->assertIsArray($corpus);
         $this->assertSame(3_589_231_737, $corpus['seed'] ?? null);
-        $this->assertSame(49, $corpus['requestedCases'] ?? null);
+        $this->assertSame(50, $corpus['requestedCases'] ?? null);
 
         $cases = $corpus['cases'] ?? null;
 
         $this->assertIsArray($cases);
-        $this->assertCount(49, $cases);
+        $this->assertCount(50, $cases);
 
-        $rejectedCase = $cases[48] ?? null;
+        $matchingCases = array_values(array_filter(
+            $cases,
+            static fn (mixed $case): bool => is_array($case)
+                && ($case['id'] ?? null) === 'generated/049/family-3',
+        ));
 
-        $this->assertIsArray($rejectedCase);
-        $this->assertSame('generated/048/family-3', $rejectedCase['id'] ?? null);
+        $this->assertCount(1, $matchingCases);
+        $rejectedCase = $matchingCases[0];
+        $this->assertSame('generated/049/family-3', $rejectedCase['id']);
         $this->assertSame('rejected', $rejectedCase['outcome'] ?? null);
         $this->assertArrayHasKey('hardened', $rejectedCase);
         $this->assertNull($rejectedCase['hardened']);

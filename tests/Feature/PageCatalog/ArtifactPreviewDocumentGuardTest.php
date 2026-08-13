@@ -714,6 +714,21 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         );
     }
 
+    public function test_select_foreign_content_cannot_hide_a_nested_context_behind_script(): void
+    {
+        $iframeId = 'select-svg-script-breakout';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><select><option></math><desc></template><svg><script></select>'
+            . '<iframe id="' . $iframeId . '"></iframe>',
+        );
+
+        $this->assertStringNotContainsString('<iframe id="' . $iframeId . '"', strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context id="' . $iframeId . '"',
+            $hardened,
+        );
+    }
+
     public function test_ignored_frameset_inside_select_does_not_enable_noframes_raw_text(): void
     {
         $iframeId = 'select-ignored-frameset-noframes-breakout';

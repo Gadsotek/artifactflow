@@ -109,6 +109,7 @@ final class ArtifactPreviewDocumentGuard
         $foreignContent = new ArtifactPreviewForeignContentState();
         $openFramesets = 0;
         $openSelects = 0;
+        $selectForeignDepth = null;
         $selectNoframesRawTextAlternate = false;
 
         while ($offset < $length) {
@@ -234,12 +235,28 @@ final class ArtifactPreviewDocumentGuard
             $offset = $tag['end'] + 1;
 
             if ($tag['closing']) {
-                if ($openSelects === 0) {
-                    $foreignContent->consumeEndTag($tag['name']);
-                }
+                if ($openSelects > 0) {
+                    $selectDepth = $selectForeignDepth ?? 0;
 
-                if ($tag['name'] === 'select' && $openSelects > 0) {
-                    --$openSelects;
+                    if ($foreignContent->hasOpenElementAtOrAfterDepth($tag['name'], $selectDepth)) {
+                        $foreignContent->consumeEndTag($tag['name']);
+                    } elseif ($tag['name'] === 'select') {
+                        $foreignContent->restoreDepth($selectDepth);
+                        --$openSelects;
+                        $selectForeignDepth = null;
+                    } elseif (in_array($tag['name'], ['option', 'optgroup'], true)) {
+                        // Closing an HTML select child implicitly pops any open
+                        // foreign descendants. Preserve the foreign ancestors
+                        // that surrounded the select itself.
+                        $foreignContent->restoreDepth($selectDepth);
+                    } elseif (
+                        in_array($tag['name'], ['br', 'p'], true)
+                        && $foreignContent->depth() > $selectDepth
+                    ) {
+                        $foreignContent->consumeEndTag($tag['name']);
+                    }
+                } else {
+                    $foreignContent->consumeEndTag($tag['name']);
                 }
 
                 if ($tag['name'] === 'frameset' && $openFramesets > 0) {
@@ -292,22 +309,15 @@ final class ArtifactPreviewDocumentGuard
                 continue;
             }
 
-            // The in-select tree-builder mode ignores foreign start tags. Do
-            // not let an element the browser never created enter the foreign
-            // stack and change later CDATA tokenization. Frameset parsing is
-            // maintained as a separate alternate: the ordinary foreign path
-            // preserves inert CDATA, while the frameset path independently
-            // neutralizes live <frame> tokens inside the same bytes.
             $selectStartsAtMathTextIntegrationPoint = $tag['name'] === 'select'
                 && $openSelects === 0
                 && $foreignContent->currentElementIsMathTextIntegrationPoint();
-            $usesHtmlTokenizer = $openSelects > 0
-                ? true
-                : $foreignContent->consumeStartTag(
-                    $tag['name'],
-                    $tagText,
-                    $tag['self_closing'],
-                );
+            $foreignDepthBeforeTag = $foreignContent->depth();
+            $usesHtmlTokenizer = $foreignContent->consumeStartTag(
+                $tag['name'],
+                $tagText,
+                $tag['self_closing'],
+            );
             $result .= $tagText;
 
             if ($tag['name'] === 'noframes' && $openSelects > 0) {
@@ -348,7 +358,14 @@ final class ArtifactPreviewDocumentGuard
                         // scanning the foreign-content interpretation instead
                         // of allowing a false script RAWTEXT state to hide
                         // later markup.
-                        $openSelects += $openSelects > 0 ? -1 : 1;
+                        if ($openSelects > 0) {
+                            $foreignContent->restoreDepth($selectForeignDepth ?? 0);
+                            --$openSelects;
+                            $selectForeignDepth = null;
+                        } else {
+                            ++$openSelects;
+                            $selectForeignDepth = $foreignDepthBeforeTag;
+                        }
                     }
                 }
 
