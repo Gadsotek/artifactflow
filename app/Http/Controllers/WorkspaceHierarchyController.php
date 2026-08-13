@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Application\Identity\ReparentWorkspace;
 use App\Application\Identity\ReparentWorkspaceCommand;
 use App\Application\Identity\ReparentWorkspaceImpactPreview;
+use App\Application\Identity\WorkspaceHierarchyTargetResolver;
 use App\Domain\DomainRuleViolation;
 use App\Http\Requests\Identity\PreviewReparentWorkspaceRequest;
 use App\Http\Requests\Identity\ReparentWorkspaceRequest;
@@ -23,10 +24,12 @@ final class WorkspaceHierarchyController
 
     public function preview(
         PreviewReparentWorkspaceRequest $request,
-        Workspace $workspace,
+        string $workspaceUid,
+        WorkspaceHierarchyTargetResolver $targets,
         ReparentWorkspace $reparentWorkspace,
     ): RedirectResponse {
         $user = $this->authenticatedUser($request);
+        $workspace = $targets->resolve($user->uid, $workspaceUid);
 
         try {
             $impact = $reparentWorkspace->preview($user, new ReparentWorkspaceCommand(
@@ -57,10 +60,12 @@ final class WorkspaceHierarchyController
 
     public function update(
         ReparentWorkspaceRequest $request,
-        Workspace $workspace,
+        string $workspaceUid,
+        WorkspaceHierarchyTargetResolver $targets,
         ReparentWorkspace $reparentWorkspace,
     ): RedirectResponse {
         $user = $this->authenticatedUser($request);
+        $workspace = $targets->resolve($user->uid, $workspaceUid);
         $expectedImpact = $this->expectedImpact($request, $workspace);
 
         try {

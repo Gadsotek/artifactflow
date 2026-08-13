@@ -355,9 +355,9 @@ final readonly class WorkspaceMemberOverview
     private function winningOriginName(
         EffectiveWorkspaceMembership $membership,
         array $originNames,
-    ): string {
+    ): ?string {
         $winningDepth = PHP_INT_MAX;
-        $name = 'parent workspace';
+        $name = null;
 
         foreach ($membership->origins as $origin) {
             if ($origin->role !== $membership->role || $origin->depth >= $winningDepth) {
@@ -365,7 +365,7 @@ final readonly class WorkspaceMemberOverview
             }
 
             $winningDepth = $origin->depth;
-            $name = $originNames[$origin->workspaceUid] ?? 'parent workspace';
+            $name = $originNames[$origin->workspaceUid] ?? null;
         }
 
         return $name;

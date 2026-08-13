@@ -79,7 +79,10 @@ final readonly class CreateSharedWorkspace
 
                 foreach ($parentAncestorRows as $ancestorRow) {
                     if ($ancestorRow->depth >= 2) {
-                        throw new DomainRuleViolation('Workspace hierarchy is limited to three levels.');
+                        throw new DomainRuleViolation($this->depthLimitMessage(
+                            $actorUid,
+                            $parentAncestorRows,
+                        ));
                     }
                 }
             }
@@ -139,5 +142,26 @@ final readonly class CreateSharedWorkspace
 
             return $workspace->refresh();
         });
+    }
+
+    /**
+     * Visible ancestry may explain the three-level limit. If any ancestor is
+     * hidden, report only that the chosen workspace is ineligible so the error
+     * cannot become a hierarchy-depth oracle.
+     *
+     * @param list<\App\Models\WorkspaceAncestry> $ancestorRows
+     */
+    private function depthLimitMessage(string $actorUid, array $ancestorRows): string
+    {
+        foreach ($ancestorRows as $ancestorRow) {
+            if (
+                $ancestorRow->depth > 0
+                && $this->workspaceAccess->role($actorUid, $ancestorRow->ancestor_workspace_uid) === null
+            ) {
+                return 'This workspace cannot contain a child workspace.';
+            }
+        }
+
+        return 'Workspace hierarchy is limited to three levels.';
     }
 }

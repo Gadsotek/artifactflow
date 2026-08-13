@@ -53,6 +53,7 @@ use App\Http\Middleware\RequireArtifactHostRuntime;
 use App\Http\Middleware\RequireRecentPasswordConfirmation;
 use App\Http\Middleware\RequireRecentSystemAdminTwoFactorConfirmation;
 use App\Http\Middleware\RequireValidTurnstileConfiguration;
+use App\Http\Middleware\ResolveWorkspaceHierarchyTarget;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/artifact-previews/{pageUid}/versions/{versionUid}', ArtifactPreviewController::class)
@@ -396,11 +397,11 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
         Route::post('/workspaces', [WorkspaceController::class, 'store'])
             ->middleware('throttle:artifactflow-workspace-creates')
             ->name('workspaces.store');
-        Route::post('/workspaces/{workspace}/hierarchy/preview', [WorkspaceHierarchyController::class, 'preview'])
-            ->middleware(['can:manage,workspace', 'throttle:artifactflow-page-writes'])
+        Route::post('/workspaces/{workspaceUid}/hierarchy/preview', [WorkspaceHierarchyController::class, 'preview'])
+            ->middleware([ResolveWorkspaceHierarchyTarget::class, 'throttle:artifactflow-page-writes'])
             ->name('workspaces.hierarchy.preview');
-        Route::put('/workspaces/{workspace}/hierarchy', [WorkspaceHierarchyController::class, 'update'])
-            ->middleware(['can:manage,workspace', 'throttle:artifactflow-page-writes'])
+        Route::put('/workspaces/{workspaceUid}/hierarchy', [WorkspaceHierarchyController::class, 'update'])
+            ->middleware([ResolveWorkspaceHierarchyTarget::class, 'throttle:artifactflow-page-writes'])
             ->name('workspaces.hierarchy.update');
         Route::put('/workspaces/{workspace}/settings', WorkspaceSettingsController::class)
             ->middleware(['can:manage,workspace', 'throttle:artifactflow-page-writes'])

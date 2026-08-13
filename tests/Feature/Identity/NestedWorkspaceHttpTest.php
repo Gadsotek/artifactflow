@@ -177,7 +177,7 @@ final class NestedWorkspaceHttpTest extends TestCase
             ->put("/workspaces/{$child->uid}/hierarchy", [
                 'parent_workspace_uid' => $root->uid,
             ])
-            ->assertForbidden();
+            ->assertNotFound();
     }
 
     public function test_actual_grandchild_is_not_offered_as_a_parent_when_its_ancestors_are_hidden(): void
@@ -195,6 +195,53 @@ final class NestedWorkspaceHttpTest extends TestCase
         $this->assertCount(1, $items);
         $this->assertSame(0, $items[0]->depth);
         $this->assertSame([], app(WorkspaceContext::class)->parentItemsFor($limitedAdmin));
+    }
+
+    public function test_hidden_ancestor_depth_is_not_disclosed_by_a_forged_child_creation(): void
+    {
+        $owner = $this->createUser('Hidden Depth Owner', 'hidden-depth-owner@example.test');
+        $limitedAdmin = $this->createUser('Hidden Depth Admin', 'hidden-depth-admin@example.test');
+        $root = app(CreateSharedWorkspace::class)->handle($owner, 'Secret Root');
+        $child = app(CreateSharedWorkspace::class)->handle($owner, 'Secret Child');
+        $grandchild = app(CreateSharedWorkspace::class)->handle($owner, 'Visible Leaf');
+        app(ReparentWorkspace::class)->handle($owner, new ReparentWorkspaceCommand($child->uid, $root->uid, true));
+        app(ReparentWorkspace::class)->handle($owner, new ReparentWorkspaceCommand($grandchild->uid, $child->uid, true));
+        $this->addMember($grandchild, $limitedAdmin, WorkspaceRole::Admin);
+
+        $this->actingAs($limitedAdmin)
+            ->withSession(['current_workspace_uid' => $grandchild->uid])
+            ->from('/dashboard')
+            ->post('/workspaces', [
+                'name' => 'Forbidden Fourth Level',
+                'parent_workspace_uid' => $grandchild->uid,
+            ])
+            ->assertRedirect('/dashboard')
+            ->assertSessionHasErrors([
+                'parent_workspace_uid' => 'This workspace cannot contain a child workspace.',
+            ]);
+
+        $this->assertFalse(Workspace::query()->where('name', 'Forbidden Fourth Level')->exists());
+    }
+
+    public function test_hidden_inheritance_origin_has_no_name_or_parent_placeholder(): void
+    {
+        $owner = $this->createUser('Hidden Origin Owner', 'hidden-origin-owner@example.test');
+        $childAdmin = $this->createUser('Child-only Admin', 'child-only-admin@example.test');
+        $inheritedMember = $this->createUser('Hidden Origin Member', 'hidden-origin-member@example.test');
+        $root = app(CreateSharedWorkspace::class)->handle($owner, 'Invisible Origin');
+        $child = app(CreateSharedWorkspace::class)->handle($owner, 'Visible Child');
+        app(ReparentWorkspace::class)->handle($owner, new ReparentWorkspaceCommand($child->uid, $root->uid, true));
+        $this->addMember($child, $childAdmin, WorkspaceRole::Admin);
+        $this->addMember($root, $inheritedMember, WorkspaceRole::Reader);
+
+        $this->actingAs($childAdmin)
+            ->withSession(['current_workspace_uid' => $child->uid])
+            ->get('/dashboard?tab=members')
+            ->assertOk()
+            ->assertSee('Hidden Origin Member')
+            ->assertSee('reader · inherited')
+            ->assertDontSee('Invisible Origin')
+            ->assertDontSee('Inherited from parent workspace');
     }
 
     public function test_member_removal_controls_use_only_pages_that_would_actually_lose_write_authority(): void

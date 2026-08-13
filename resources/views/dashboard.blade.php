@@ -298,7 +298,7 @@
                                             @endif
                                         </strong>
                                         <span>{{ $member->email }}</span>
-                                        @if ($member->isInherited)
+                                        @if ($member->isInherited && $member->originWorkspaceName !== null)
                                             <span class="text-xs text-zinc-500 dark:text-zinc-400">Inherited from {{ $member->originWorkspaceName }}</span>
                                         @elseif ($member->directRole !== null && $member->directRole !== $member->role)
                                             <span class="text-xs text-zinc-500 dark:text-zinc-400">Direct {{ $member->directRole->value }} · effective {{ $member->role->value }}</span>
