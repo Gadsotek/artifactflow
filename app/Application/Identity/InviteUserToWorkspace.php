@@ -26,6 +26,7 @@ final readonly class InviteUserToWorkspace
         private DomainEventRecorder $events,
         private AuditLogger $audit,
         private WorkspaceInvitationAccess $access,
+        private WorkspaceAuthorityImpact $authorityImpact,
     ) {
     }
 
@@ -39,6 +40,9 @@ final readonly class InviteUserToWorkspace
         $role = $command->role;
 
         return DB::transaction(function () use ($actor, $workspaceUid, $invitedEmail, $role): WorkspaceInvitation {
+            // Invitation creation must serialize with hierarchy moves that
+            // revoke invitations made redundant by inherited authority.
+            $this->authorityImpact->acquireHierarchyLock();
             $actorUid = ActorId::fromUser($actor);
             $workspace = Workspace::query()->lockForUpdate()->find($workspaceUid);
 

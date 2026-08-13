@@ -9,10 +9,18 @@ use App\Domain\Identity\WorkspaceType;
 use App\Models\Page;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Models\WorkspaceAncestry;
 use App\Models\WorkspaceMembership;
 
-final class WorkspaceMemberOverview
+final readonly class WorkspaceMemberOverview
 {
+    public function __construct(
+        private WorkspaceAccess $workspaceAccess,
+        private WorkspaceHierarchyGraph $hierarchy,
+        private EffectiveWorkspaceMembershipResolver $memberships,
+    ) {
+    }
+
     public function forWorkspace(
         User $actor,
         ?string $workspaceUid,
@@ -23,40 +31,74 @@ final class WorkspaceMemberOverview
             return new WorkspaceMemberPage([], 1, 1, $perPage, 0);
         }
 
-        $membershipQuery = WorkspaceMembership::query()
-            ->where('workspace_uid', $workspaceUid);
-        $total = $membershipQuery->count();
-        $lastPage = max(1, (int) ceil($total / $perPage));
-        $currentPage = min(max(1, $requestedPage), $lastPage);
-        $memberships = $membershipQuery
+        $ancestorWorkspaceUids = $this->ancestorWorkspaceUids($workspaceUid);
+        $membershipRows = WorkspaceMembership::query()
+            ->whereIn('workspace_uid', $ancestorWorkspaceUids)
             ->orderBy('created_at')
             ->orderBy('uid')
-            ->offset(($currentPage - 1) * $perPage)
-            ->limit($perPage)
             ->get();
+        /** @var list<string> $userUids */
+        $userUids = $membershipRows
+            ->pluck('user_uid')
+            ->unique()
+            ->values()
+            ->all();
+        $effectiveMemberships = $this->memberships->resolveUsersForWorkspace($userUids, $workspaceUid);
+        $userUids = array_values(array_filter(
+            $userUids,
+            static fn (string $userUid): bool => ($effectiveMemberships[$userUid] ?? null)?->role
+                instanceof WorkspaceRole,
+        ));
+        $total = count($userUids);
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $currentPage = min(max(1, $requestedPage), $lastPage);
+        $pageUserUids = array_slice($userUids, ($currentPage - 1) * $perPage, $perPage);
+        $users = User::query()->whereIn('uid', $pageUserUids)->get()->keyBy('uid');
+        $directMemberships = $membershipRows
+            ->where('workspace_uid', $workspaceUid)
+            ->keyBy('user_uid');
+        /** @var array<string, WorkspaceMembership> $directMembershipMap */
+        $directMembershipMap = $directMemberships->all();
+        $originNames = $this->visibleOriginNames($actor, $ancestorWorkspaceUids);
+        $pageUserUidMap = array_flip($pageUserUids);
+        $ownershipControls = $this->ownershipControls(
+            workspaceUid: $workspaceUid,
+            directMemberships: array_intersect_key($directMembershipMap, $pageUserUidMap),
+            effectiveMemberships: array_intersect_key($effectiveMemberships, $pageUserUidMap),
+        );
         $items = [];
 
-        // Batch the per-member lookups so a page of members costs a fixed number
-        // of queries instead of one User SELECT and one page COUNT per member.
-        $userUids = $memberships->pluck('user_uid')->all();
-        $users = User::query()->whereIn('uid', $userUids)->get()->keyBy('uid');
-        $ownedPageCounts = $this->ownedPageCounts($workspaceUid, $userUids);
-
-        foreach ($memberships as $membership) {
-            $user = $users->get($membership->user_uid);
+        foreach ($pageUserUids as $userUid) {
+            $user = $users->get($userUid);
 
             if (!$user instanceof User) {
                 continue;
             }
 
+            $effective = $effectiveMemberships[$userUid];
+
+            if (!$effective->role instanceof WorkspaceRole) {
+                continue;
+            }
+
+            $directMembership = $directMemberships->get($userUid);
+            $isInherited = !$directMembership instanceof WorkspaceMembership;
+            $originWorkspaceName = $isInherited
+                ? $this->winningOriginName($effective, $originNames)
+                : null;
+
             $items[] = new WorkspaceMemberItem(
-                membershipUid: $membership->uid,
+                membershipUid: $directMembership instanceof WorkspaceMembership ? $directMembership->uid : null,
                 userUid: $user->uid,
                 name: $user->name,
                 email: $user->email,
-                role: $membership->role,
+                role: $effective->role,
                 isCurrentUser: $user->uid === $actor->uid,
-                ownedPageCount: $ownedPageCounts[$user->uid] ?? 0,
+                ownedPageCount: $ownershipControls[$user->uid]['ownedPageCount'] ?? 0,
+                directRole: $directMembership instanceof WorkspaceMembership ? $directMembership->role : null,
+                isInherited: $isInherited,
+                originWorkspaceName: $originWorkspaceName,
+                ownershipCandidates: $ownershipControls[$user->uid]['candidates'] ?? [],
             );
         }
 
@@ -67,79 +109,6 @@ final class WorkspaceMemberOverview
             perPage: $perPage,
             total: $total,
         );
-    }
-
-    /**
-     * @return list<WorkspaceOwnershipCandidate>
-     */
-    public function ownershipCandidatesForWorkspace(User $actor, ?string $workspaceUid): array
-    {
-        if ($workspaceUid === null || !$this->isWorkspaceMember($actor, $workspaceUid)) {
-            return [];
-        }
-
-        $memberships = WorkspaceMembership::query()
-            ->where('workspace_uid', $workspaceUid)
-            ->whereIn('role', [WorkspaceRole::Editor->value, WorkspaceRole::Admin->value])
-            ->orderBy('created_at')
-            ->orderBy('uid')
-            ->get();
-        $candidates = [];
-
-        // Batch the candidate users into one query rather than a find() per
-        // editor/admin membership (this list is unpaginated).
-        $users = User::query()
-            ->whereIn('uid', $memberships->pluck('user_uid')->all())
-            ->get()
-            ->keyBy('uid');
-
-        foreach ($memberships as $membership) {
-            $user = $users->get($membership->user_uid);
-
-            if (!$user instanceof User) {
-                continue;
-            }
-
-            $candidates[] = new WorkspaceOwnershipCandidate(
-                userUid: $user->uid,
-                name: $user->name,
-            );
-        }
-
-        return $candidates;
-    }
-
-    /**
-     * Owned-page counts for the given users in one grouped query, keyed by user
-     * uid. Members with no owned pages are simply absent (callers default to 0).
-     *
-     * @param array<mixed> $userUids
-     * @return array<string, int>
-     */
-    private function ownedPageCounts(string $workspaceUid, array $userUids): array
-    {
-        if ($userUids === []) {
-            return [];
-        }
-
-        $counts = [];
-        $rows = Page::query()
-            ->where('workspace_uid', $workspaceUid)
-            ->whereIn('owner_user_uid', $userUids)
-            ->groupBy('owner_user_uid')
-            ->selectRaw('owner_user_uid, count(*) as owned_count')
-            ->get();
-
-        foreach ($rows as $row) {
-            $ownerUid = $row->getAttribute('owner_user_uid');
-            $ownedCount = $row->getAttribute('owned_count');
-
-            if (is_string($ownerUid) && (is_int($ownedCount) || is_string($ownedCount))) {
-                $counts[$ownerUid] = (int) $ownedCount;
-            }
-        }
-
-        return $counts;
     }
 
     public function canManageWorkspace(User $actor, ?string $workspaceUid): bool
@@ -154,18 +123,256 @@ final class WorkspaceMemberOverview
             return false;
         }
 
-        return WorkspaceMembership::query()
-            ->where('workspace_uid', $workspaceUid)
-            ->where('user_uid', $actor->uid)
-            ->where('role', WorkspaceRole::Admin)
-            ->exists();
+        return $this->workspaceAccess->role($actor->uid, $workspaceUid) === WorkspaceRole::Admin;
+    }
+
+    /**
+     * Removal controls are derived from the exact workspaces where deleting a
+     * direct membership or excluding inherited origins at this boundary would
+     * remove write authority. Retained direct descendant access therefore does
+     * not demand an unrelated page reassignment.
+     *
+     * @param array<string, WorkspaceMembership> $directMemberships
+     * @param array<string, EffectiveWorkspaceMembership> $effectiveMemberships
+     * @return array<string, array{ownedPageCount: int, candidates: list<WorkspaceOwnershipCandidate>}>
+     */
+    private function ownershipControls(
+        string $workspaceUid,
+        array $directMemberships,
+        array $effectiveMemberships,
+    ): array {
+        if ($effectiveMemberships === []) {
+            return [];
+        }
+
+        $subtreeRows = $this->hierarchy->subtreeRows($workspaceUid);
+        $descendantWorkspaceUids = array_map(
+            static fn (WorkspaceAncestry $row): string => $row->descendant_workspace_uid,
+            $subtreeRows,
+        );
+        $boundaryDepths = [];
+
+        foreach ($subtreeRows as $row) {
+            $boundaryDepths[$row->descendant_workspace_uid] = $row->depth;
+        }
+
+        $memberUserUids = array_keys($effectiveMemberships);
+        $memberAuthorities = $this->memberships->resolveUsersForWorkspaces(
+            $memberUserUids,
+            $descendantWorkspaceUids,
+        );
+        $ownedPages = Page::query()
+            ->whereIn('workspace_uid', $descendantWorkspaceUids)
+            ->whereIn('owner_user_uid', $memberUserUids)
+            ->select(['workspace_uid', 'owner_user_uid'])
+            ->selectRaw('COUNT(*) AS owned_page_count')
+            ->groupBy(['workspace_uid', 'owner_user_uid'])
+            ->get();
+        /** @var array<string, array<string, int>> $ownedCounts */
+        $ownedCounts = [];
+
+        foreach ($ownedPages as $page) {
+            $ownedPageCount = $page->getAttribute('owned_page_count');
+
+            if (!is_int($ownedPageCount) && !is_string($ownedPageCount)) {
+                continue;
+            }
+
+            $ownedCounts[$page->owner_user_uid][$page->workspace_uid] = (int) $ownedPageCount;
+        }
+
+        /** @var array<string, array{ownedPageCount: int, candidates: list<WorkspaceOwnershipCandidate>}> $controls */
+        $controls = [];
+        /** @var array<string, list<string>> $requiredWorkspaceUidsByMember */
+        $requiredWorkspaceUidsByMember = [];
+        $allRequiredWorkspaceUids = [];
+
+        foreach (array_keys($effectiveMemberships) as $memberUserUid) {
+            $requiredWorkspaceUids = [];
+            $ownedPageCount = 0;
+            $directMembership = $directMemberships[$memberUserUid] ?? null;
+
+            foreach ($descendantWorkspaceUids as $descendantWorkspaceUid) {
+                $effective = $memberAuthorities[$memberUserUid][$descendantWorkspaceUid] ?? null;
+
+                if (!$effective instanceof EffectiveWorkspaceMembership || $effective->role?->canWritePages() !== true) {
+                    continue;
+                }
+
+                $remainingRole = $directMembership instanceof WorkspaceMembership
+                    ? $this->roleWithoutMembership($effective, $directMembership->uid)
+                    : $this->roleWithoutAncestorOrigins(
+                        $effective,
+                        $boundaryDepths[$descendantWorkspaceUid],
+                    );
+
+                if ($remainingRole?->canWritePages() === true) {
+                    continue;
+                }
+
+                $count = $ownedCounts[$memberUserUid][$descendantWorkspaceUid] ?? 0;
+
+                if ($count > 0) {
+                    $requiredWorkspaceUids[] = $descendantWorkspaceUid;
+                    $ownedPageCount += $count;
+                }
+            }
+
+            $requiredWorkspaceUidsByMember[$memberUserUid] = $requiredWorkspaceUids;
+            $allRequiredWorkspaceUids = [...$allRequiredWorkspaceUids, ...$requiredWorkspaceUids];
+            $controls[$memberUserUid] = [
+                'ownedPageCount' => $ownedPageCount,
+                'candidates' => [],
+            ];
+        }
+
+        $allRequiredWorkspaceUids = array_values(array_unique($allRequiredWorkspaceUids));
+
+        if ($allRequiredWorkspaceUids === []) {
+            return $controls;
+        }
+
+        $candidateUserUids = $this->memberships->userUidsForAny(
+            $allRequiredWorkspaceUids,
+            [WorkspaceRole::Editor, WorkspaceRole::Admin],
+        );
+        $candidateAuthorities = $this->memberships->resolveUsersForWorkspaces(
+            $candidateUserUids,
+            $allRequiredWorkspaceUids,
+        );
+        $candidateUsers = User::query()
+            ->whereIn('uid', $candidateUserUids)
+            ->orderBy('name')
+            ->orderBy('uid')
+            ->get()
+            ->keyBy('uid');
+
+        foreach ($requiredWorkspaceUidsByMember as $memberUserUid => $requiredWorkspaceUids) {
+            $candidates = [];
+
+            foreach ($candidateUsers as $candidate) {
+                foreach ($requiredWorkspaceUids as $requiredWorkspaceUid) {
+                    if (
+                        ($candidateAuthorities[$candidate->uid][$requiredWorkspaceUid] ?? null)?->role?->canWritePages()
+                        !== true
+                    ) {
+                        continue 2;
+                    }
+                }
+
+                if ($requiredWorkspaceUids !== []) {
+                    $candidates[] = new WorkspaceOwnershipCandidate(
+                        userUid: $candidate->uid,
+                        name: $candidate->name,
+                    );
+                }
+            }
+
+            $control = $controls[$memberUserUid] ?? null;
+
+            if ($control === null) {
+                continue;
+            }
+
+            $controls[$memberUserUid] = [
+                'ownedPageCount' => $control['ownedPageCount'],
+                'candidates' => $candidates,
+            ];
+        }
+
+        return $controls;
+    }
+
+    private function roleWithoutMembership(
+        EffectiveWorkspaceMembership $membership,
+        string $excludedMembershipUid,
+    ): ?WorkspaceRole {
+        $role = null;
+
+        foreach ($membership->origins as $origin) {
+            if ($origin->membershipUid === $excludedMembershipUid) {
+                continue;
+            }
+
+            if (!$role instanceof WorkspaceRole || $origin->role->rank() > $role->rank()) {
+                $role = $origin->role;
+            }
+        }
+
+        return $role;
+    }
+
+    private function roleWithoutAncestorOrigins(
+        EffectiveWorkspaceMembership $membership,
+        int $boundaryDepth,
+    ): ?WorkspaceRole {
+        $role = null;
+
+        foreach ($membership->origins as $origin) {
+            if ($origin->depth > $boundaryDepth) {
+                continue;
+            }
+
+            if (!$role instanceof WorkspaceRole || $origin->role->rank() > $role->rank()) {
+                $role = $origin->role;
+            }
+        }
+
+        return $role;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function ancestorWorkspaceUids(string $workspaceUid): array
+    {
+        return array_map(
+            static fn (WorkspaceAncestry $row): string => $row->ancestor_workspace_uid,
+            $this->hierarchy->ancestorRows($workspaceUid),
+        );
+    }
+
+    /**
+     * @param list<string> $ancestorWorkspaceUids
+     * @return array<string, string>
+     */
+    private function visibleOriginNames(User $actor, array $ancestorWorkspaceUids): array
+    {
+        $names = [];
+
+        foreach (Workspace::query()->whereIn('uid', $ancestorWorkspaceUids)->get() as $workspace) {
+            if ($this->workspaceAccess->role($actor->uid, $workspace->uid) instanceof WorkspaceRole) {
+                $names[$workspace->uid] = $workspace->name;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * @param array<string, string> $originNames
+     */
+    private function winningOriginName(
+        EffectiveWorkspaceMembership $membership,
+        array $originNames,
+    ): string {
+        $winningDepth = PHP_INT_MAX;
+        $name = 'parent workspace';
+
+        foreach ($membership->origins as $origin) {
+            if ($origin->role !== $membership->role || $origin->depth >= $winningDepth) {
+                continue;
+            }
+
+            $winningDepth = $origin->depth;
+            $name = $originNames[$origin->workspaceUid] ?? 'parent workspace';
+        }
+
+        return $name;
     }
 
     private function isWorkspaceMember(User $actor, string $workspaceUid): bool
     {
-        return WorkspaceMembership::query()
-            ->where('workspace_uid', $workspaceUid)
-            ->where('user_uid', $actor->uid)
-            ->exists();
+        return $this->workspaceAccess->role($actor->uid, $workspaceUid) instanceof WorkspaceRole;
     }
 }

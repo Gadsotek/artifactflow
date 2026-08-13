@@ -30,10 +30,16 @@
                         <form method="POST" action="{{ route('workspaces.switch', $workspace->uid) }}">
                             @csrf
                             <button
-                                class="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition {{ $workspace->uid === $currentWorkspaceUid ? 'af-option-active' : 'border-zinc-200 bg-white text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100' }}"
+                                class="flex w-full items-center justify-between rounded-md border py-2 pr-3 text-left text-sm transition {{ $workspace->depth === 0 ? 'pl-3' : ($workspace->depth === 1 ? 'pl-7' : 'pl-11') }} {{ $workspace->uid === $currentWorkspaceUid ? 'af-option-active' : 'border-zinc-200 bg-white text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100' }}"
+                                data-workspace-depth="{{ $workspace->depth }}"
                                 type="submit"
                             >
-                                <span class="font-medium">{{ $workspace->name }}</span>
+                                <span class="flex min-w-0 items-center gap-2 font-medium">
+                                    @if ($workspace->depth > 0)
+                                        <span aria-hidden="true" class="text-zinc-400">↳</span>
+                                    @endif
+                                    <span class="truncate">{{ $workspace->name }}</span>
+                                </span>
                                 <span class="text-xs uppercase tracking-wide">{{ $workspace->role->value }}</span>
                             </button>
                         </form>
@@ -292,45 +298,72 @@
                                             @endif
                                         </strong>
                                         <span>{{ $member->email }}</span>
+                                        @if ($member->isInherited)
+                                            <span class="text-xs text-zinc-500 dark:text-zinc-400">Inherited from {{ $member->originWorkspaceName }}</span>
+                                        @elseif ($member->directRole !== null && $member->directRole !== $member->role)
+                                            <span class="text-xs text-zinc-500 dark:text-zinc-400">Direct {{ $member->directRole->value }} · effective {{ $member->role->value }}</span>
+                                        @endif
                                     </div>
 
                                     @if ($canManageCurrentWorkspaceMembers && $currentWorkspaceUid !== null)
                                         <div class="af-member-actions">
-                                            <form method="POST" action="{{ route('workspace-memberships.update', [$currentWorkspaceUid, $member->membershipUid]) }}">
-                                                @csrf
-                                                @method('PUT')
-                                                <label>
-                                                    <span class="sr-only">Role for {{ $member->name }}</span>
-                                                    <select name="role">
-                                                        @foreach ($workspaceMembershipRoles as $role)
-                                                            <option value="{{ $role->value }}" @selected($member->role === $role)>{{ ucfirst($role->value) }}</option>
-                                                        @endforeach
-                                                    </select>
-                                                </label>
-                                                <button type="submit">Update role</button>
-                                            </form>
-
-                                            <form method="POST" action="{{ route('workspace-memberships.destroy', [$currentWorkspaceUid, $member->membershipUid]) }}">
-                                                @csrf
-                                                @method('DELETE')
-                                                @if ($member->ownedPageCount > 0)
+                                            @if ($member->isInherited)
+                                                <span class="af-role-badge">{{ $member->role->value }} · inherited</span>
+                                                <form method="POST" action="{{ route('workspace-inherited-members.destroy', [$currentWorkspaceUid, $member->userUid]) }}">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    @if ($member->ownedPageCount > 0)
+                                                        <label>
+                                                            <span>Reassign owned pages to</span>
+                                                            <select name="replacement_owner_user_uid" required>
+                                                                <option value="">Select owner</option>
+                                                                @foreach ($member->ownershipCandidates as $replacementOwner)
+                                                                    @if ($replacementOwner->userUid !== $member->userUid)
+                                                                        <option value="{{ $replacementOwner->userUid }}">{{ $replacementOwner->name }}</option>
+                                                                    @endif
+                                                                @endforeach
+                                                            </select>
+                                                        </label>
+                                                    @endif
+                                                    <button class="af-danger-link" type="submit">Remove inherited access</button>
+                                                </form>
+                                            @elseif ($member->membershipUid !== null)
+                                                <form method="POST" action="{{ route('workspace-memberships.update', [$currentWorkspaceUid, $member->membershipUid]) }}">
+                                                    @csrf
+                                                    @method('PUT')
                                                     <label>
-                                                        <span>Reassign owned pages to</span>
-                                                        <select name="replacement_owner_user_uid" required>
-                                                            <option value="">Select owner</option>
-                                                            @foreach ($workspaceOwnershipCandidates as $replacementOwner)
-                                                                @if ($replacementOwner->userUid !== $member->userUid)
-                                                                    <option value="{{ $replacementOwner->userUid }}">{{ $replacementOwner->name }}</option>
-                                                                @endif
+                                                        <span class="sr-only">Role for {{ $member->name }}</span>
+                                                        <select name="role">
+                                                            @foreach ($workspaceMembershipRoles as $role)
+                                                                <option value="{{ $role->value }}" @selected($member->directRole === $role)>{{ ucfirst($role->value) }}</option>
                                                             @endforeach
                                                         </select>
                                                     </label>
-                                                @endif
-                                                <button class="af-danger-link" type="submit">Remove member</button>
-                                            </form>
+                                                    <button type="submit">Update role</button>
+                                                </form>
+
+                                                <form method="POST" action="{{ route('workspace-memberships.destroy', [$currentWorkspaceUid, $member->membershipUid]) }}">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    @if ($member->ownedPageCount > 0)
+                                                        <label>
+                                                            <span>Reassign owned pages to</span>
+                                                            <select name="replacement_owner_user_uid" required>
+                                                                <option value="">Select owner</option>
+                                                                @foreach ($member->ownershipCandidates as $replacementOwner)
+                                                                    @if ($replacementOwner->userUid !== $member->userUid)
+                                                                        <option value="{{ $replacementOwner->userUid }}">{{ $replacementOwner->name }}</option>
+                                                                    @endif
+                                                                @endforeach
+                                                            </select>
+                                                        </label>
+                                                    @endif
+                                                    <button class="af-danger-link" type="submit">Remove member</button>
+                                                </form>
+                                            @endif
                                         </div>
                                     @else
-                                        <span class="af-role-badge">{{ $member->role->value }}</span>
+                                        <span class="af-role-badge">{{ $member->role->value }}{{ $member->isInherited ? ' · inherited' : '' }}</span>
                                     @endif
                                 </div>
                             @endforeach
@@ -404,13 +437,62 @@
                                             <input name="allow_editor_invites" type="checkbox" value="1" @checked($currentWorkspace->allow_editor_invites)>
                                             <span><strong>Allow Editors to invite members</strong><small>Editors may invite Reader or Editor members, never Admins.</small></span>
                                         </label>
+                                        @if ($currentWorkspace->allow_editor_invites && $effectiveWorkspaceSettings !== null && !$effectiveWorkspaceSettings->allowEditorInvites)
+                                            <p class="text-xs text-amber-700 dark:text-amber-300">An ancestor workspace currently blocks Editor invitations.</p>
+                                        @endif
                                         <label class="af-setting-toggle">
                                             <input name="allow_editor_page_sharing" type="hidden" value="0">
                                             <input name="allow_editor_page_sharing" type="checkbox" value="1" @checked($currentWorkspace->allow_editor_page_sharing)>
                                             <span><strong>Allow Editors and page owners to share pages</strong><small>Admins and explicit page Admins always retain access management.</small></span>
                                         </label>
+                                        @if ($currentWorkspace->allow_editor_page_sharing && $effectiveWorkspaceSettings !== null && !$effectiveWorkspaceSettings->allowEditorPageSharing)
+                                            <p class="text-xs text-amber-700 dark:text-amber-300">An ancestor workspace currently blocks Editor page sharing.</p>
+                                        @endif
                                         <button class="af-primary-button" type="submit">Save workspace settings</button>
                                     </form>
+                                </section>
+                            @endif
+
+                            @if ($canManageCurrentWorkspaceHierarchy && $currentWorkspace !== null)
+                                <section>
+                                    <p class="af-eyebrow">Workspace hierarchy</p>
+                                    <h2>Parent workspace</h2>
+                                    <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">Move this workspace and its descendants. Membership inherited from the old parent is revoked immediately.</p>
+                                    <form class="mt-5 space-y-3" method="POST" action="{{ route('workspaces.hierarchy.preview', $currentWorkspace) }}">
+                                        @csrf
+                                        <label class="block">
+                                            <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Parent</span>
+                                            <select class="mt-2 w-full" name="parent_workspace_uid">
+                                                <option value="">No parent (top level)</option>
+                                                @foreach ($workspaceReparentOptions as $parentOption)
+                                                    <option value="{{ $parentOption->uid }}" @selected($currentWorkspace->parent_workspace_uid === $parentOption->uid)>
+                                                        {{ str_repeat('— ', $parentOption->depth) }}{{ $parentOption->name }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                        </label>
+                                        <button class="af-secondary-button" type="submit">Review impact</button>
+                                    </form>
+                                    @if ($workspaceHierarchyPreview !== null)
+                                        <div class="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100" data-workspace-hierarchy-preview>
+                                            <h3 class="font-semibold">Review hierarchy change</h3>
+                                            <ul class="mt-2 list-disc space-y-1 pl-5">
+                                                <li>{{ $workspaceHierarchyPreview['moved_workspace_count'] }} {{ $workspaceHierarchyPreview['moved_workspace_count'] === 1 ? 'workspace' : 'workspaces' }} moved</li>
+                                                <li>{{ $workspaceHierarchyPreview['affected_page_count'] }} affected pages</li>
+                                                <li>{{ $workspaceHierarchyPreview['gained_user_count'] }} {{ $workspaceHierarchyPreview['gained_user_count'] === 1 ? 'user' : 'users' }} gaining authority</li>
+                                                <li>{{ $workspaceHierarchyPreview['reduced_user_count'] }} {{ $workspaceHierarchyPreview['reduced_user_count'] === 1 ? 'user' : 'users' }} losing authority</li>
+                                            </ul>
+                                            <p class="mt-3">The impact is recalculated inside the update transaction. If it changed, confirmation is rejected and must be reviewed again.</p>
+                                            <form class="mt-4" method="POST" action="{{ route('workspaces.hierarchy.update', $currentWorkspace) }}">
+                                                @csrf
+                                                @method('PUT')
+                                                <input name="parent_workspace_uid" type="hidden" value="{{ $workspaceHierarchyPreview['new_parent_workspace_uid'] }}">
+                                                <input name="confirmed" type="hidden" value="1">
+                                                <input name="preview_id" type="hidden" value="{{ $workspaceHierarchyPreview['preview_id'] }}">
+                                                <button class="af-danger-button" type="submit">Confirm hierarchy change</button>
+                                            </form>
+                                        </div>
+                                    @endif
                                 </section>
                             @endif
 
@@ -447,6 +529,25 @@
                                         <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Workspace name</span>
                                         <input class="mt-2 w-full" name="name" type="text" placeholder="Shared workspace" required>
                                     </label>
+                                    <label class="block">
+                                        <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Parent workspace</span>
+                                        <select class="mt-2 w-full" name="parent_workspace_uid">
+                                            <option value="">No parent (top level)</option>
+                                            @foreach ($workspaceParentOptions as $parentOption)
+                                                <option value="{{ $parentOption->uid }}" @selected($currentWorkspaceUid === $parentOption->uid)>
+                                                    {{ str_repeat('— ', $parentOption->depth) }}{{ $parentOption->name }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </label>
+                                    <label class="flex items-start gap-3">
+                                        <input name="inherits_parent_memberships" type="hidden" value="0">
+                                        <input class="mt-1" name="inherits_parent_memberships" type="checkbox" value="1" checked>
+                                        <span>
+                                            <strong class="block text-sm">Inherit parent members</strong>
+                                            <small class="block text-zinc-500 dark:text-zinc-400">Give current and future parent members access. Clear this to start with only you as admin.</small>
+                                        </span>
+                                    </label>
                                     <button class="af-secondary-button" type="submit">Create workspace</button>
                                 </form>
                             </section>
@@ -471,6 +572,25 @@
                     <label>
                         <span class="text-sm font-medium">Workspace name</span>
                         <input class="mt-2 w-full" name="name" type="text" maxlength="120" placeholder="Shared workspace" required>
+                    </label>
+                    <label>
+                        <span class="text-sm font-medium">Parent workspace</span>
+                        <select class="mt-2 w-full" name="parent_workspace_uid">
+                            <option value="">No parent (top level)</option>
+                            @foreach ($workspaceParentOptions as $parentOption)
+                                <option value="{{ $parentOption->uid }}" @selected($currentWorkspaceUid === $parentOption->uid)>
+                                    {{ str_repeat('— ', $parentOption->depth) }}{{ $parentOption->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <label class="flex items-start gap-3">
+                        <input name="inherits_parent_memberships" type="hidden" value="0">
+                        <input class="mt-1" name="inherits_parent_memberships" type="checkbox" value="1" checked>
+                        <span>
+                            <strong class="block text-sm">Inherit parent members</strong>
+                            <small class="block text-zinc-500 dark:text-zinc-400">Give current and future parent members access. Clear this to start with only you as admin.</small>
+                        </span>
                     </label>
                     <div class="flex justify-end">
                         <button class="af-primary-button" type="submit">Create workspace</button>

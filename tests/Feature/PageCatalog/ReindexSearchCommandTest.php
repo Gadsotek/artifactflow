@@ -388,6 +388,10 @@ final class ReindexSearchCommandTest extends TestCase
         $snapshot = [];
 
         foreach (Storage::disk('artifacts')->allFiles() as $path) {
+            if (!is_string($path)) {
+                continue;
+            }
+
             $content = Storage::disk('artifacts')->get($path);
             $snapshot[$path] = is_string($content) ? $content : '';
         }

@@ -8,6 +8,7 @@ use App\Application\Diagnostics\DeploymentDoctor;
 use App\Application\Diagnostics\DoctorCheck;
 use App\Application\Diagnostics\DoctorCheckStatus;
 use App\Application\Identity\TurnstileConfiguration;
+use App\Application\PageCatalog\ImageNormalizationConfiguration;
 use App\Infrastructure\Security\ProductionSecurityConfiguration;
 use Illuminate\Config\Repository;
 use Illuminate\Support\Arr;
@@ -197,11 +198,17 @@ final class DeploymentDoctorTest extends TestCase
 
     public function test_production_fails_when_image_normalization_work_budgets_are_unsafe(): void
     {
+        $minimumWorkBudget = ImageNormalizationConfiguration::maximumWorkUnitsForInputBytes(1_000_000);
+
         foreach ([
             ['image_parser.user_pixel_budget_per_minute' => 16 * 1024 * 1024 - 1],
             ['image_parser.user_pixel_budget_per_minute' => 64 * 1024 * 1024 + 1],
             ['image_parser.installation_pixel_budget_per_minute' => 64 * 1024 * 1024 - 1],
             ['image_parser.installation_pixel_budget_per_minute' => 256 * 1024 * 1024 + 1],
+            ['image_parser.user_work_budget_per_minute' => $minimumWorkBudget - 1],
+            ['image_parser.user_work_budget_per_minute' => 64 * 1024 * 1024 + 1],
+            ['image_parser.installation_work_budget_per_minute' => $minimumWorkBudget - 1],
+            ['image_parser.installation_work_budget_per_minute' => 256 * 1024 * 1024 + 1],
         ] as $unsafe) {
             $report = (new DeploymentDoctor($this->config('production', array_merge(
                 $this->hardenedProductionConfig(),
@@ -961,6 +968,8 @@ final class DeploymentDoctorTest extends TestCase
             'image_parser.timeout_seconds' => 12,
             'image_parser.user_pixel_budget_per_minute' => 64 * 1024 * 1024,
             'image_parser.installation_pixel_budget_per_minute' => 256 * 1024 * 1024,
+            'image_parser.user_work_budget_per_minute' => 64 * 1024 * 1024,
+            'image_parser.installation_work_budget_per_minute' => 256 * 1024 * 1024,
             'database.default' => 'pgsql',
             'database.connections.pgsql.sslmode' => 'prefer',
             'database.connections.pgsql.sslrootcert' => '',

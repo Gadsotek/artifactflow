@@ -24,6 +24,8 @@ final readonly class AcceptWorkspaceInvitation
         private DomainEventRecorder $events,
         private AuditLogger $audit,
         private PageAccess $access,
+        private EffectiveWorkspaceMembershipResolver $memberships,
+        private WorkspaceAuthorityImpact $authorityImpact,
     ) {
     }
 
@@ -34,6 +36,7 @@ final readonly class AcceptWorkspaceInvitation
     public function handle(User $user, WorkspaceInvitation $invitation): WorkspaceMembership
     {
         $membership = DB::transaction(function () use ($user, $invitation): WorkspaceMembership {
+            $this->authorityImpact->acquireHierarchyLock();
             $userUid = ActorId::fromUser($user);
             $candidateInvitation = WorkspaceInvitation::query()
                 ->select(['uid', 'workspace_uid'])
@@ -83,9 +86,22 @@ final readonly class AcceptWorkspaceInvitation
                 throw new DomainRuleViolation('Accepted workspace invitations cannot be replayed.');
             }
 
-            $membership = $existingMembership instanceof WorkspaceMembership
-                ? $this->updateMembershipIfInvitationRoleIsStronger($existingMembership, $lockedInvitation->role)
-                : $this->createMembership($lockedInvitation, $userUid);
+            $effectiveRole = $this->memberships
+                ->resolve($userUid, $lockedInvitation->workspace_uid)
+                ->role;
+
+            if ($effectiveRole instanceof WorkspaceRole && $effectiveRole->rank() >= $lockedInvitation->role->rank()) {
+                throw new DomainRuleViolation('This invitation does not add stronger workspace access.');
+            }
+
+            if ($existingMembership instanceof WorkspaceMembership) {
+                $membership = $this->updateMembershipIfInvitationRoleIsStronger(
+                    $existingMembership,
+                    $lockedInvitation->role,
+                );
+            } else {
+                $membership = $this->createMembership($lockedInvitation, $userUid);
+            }
 
             $lockedInvitation->forceFill([
                 'accepted_by_user_uid' => $userUid,

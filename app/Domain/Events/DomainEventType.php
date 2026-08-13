@@ -62,6 +62,8 @@ enum DomainEventType: string
     case WorkspaceInvitationReactivated = 'workspace.invitation.reactivated';
     case WorkspaceInvitationRevoked = 'workspace.invitation.revoked';
     case WorkspaceInvitationRoleChanged = 'workspace.invitation.role_changed';
+    case WorkspaceHierarchyChanged = 'workspace.hierarchy.changed';
+    case WorkspaceInheritedMembershipExcluded = 'workspace.membership.inherited_excluded';
     case WorkspaceMembershipAdded = 'workspace.membership.added';
     case WorkspaceMembershipRemoved = 'workspace.membership.removed';
     case WorkspaceMembershipRoleChanged = 'workspace.membership.role_changed';

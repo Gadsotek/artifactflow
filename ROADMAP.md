@@ -2,7 +2,7 @@
 
 ArtifactFlow is a self-hosted, versioned artifact vault for deliberate outputs created with AI. It preserves the artifact, its authoritative source or original, retained versions, searchable content, ownership, permissions, previews, and audit history. It is not agent memory, a chat archive, or an AI generation platform.
 
-The first open-source alpha has shipped. Its current bounded formats are Markdown, self-contained HTML, and normalized PNG/JPEG screenshots or images. Alpha work should stay focused on security, correctness, release readiness, documentation, and deliberately scoped format slices. The active product-design focus is expanding the vault into searchable PDF and Word document artifacts without weakening its authorization, version, storage, or preview boundaries.
+The first open-source alpha has shipped. Its current bounded formats are Markdown, self-contained HTML, and normalized PNG/JPEG screenshots or images. Alpha work should stay focused on security, correctness, release readiness, documentation, and deliberately scoped feature slices. The current beta candidate adds nested shared workspaces; searchable PDF and Word document artifacts remain the next format expansions after that authorization work.
 
 This roadmap records direction, not a release promise. Every item still requires tests-first implementation and the security gates in `AGENTS.md`.
 
@@ -20,7 +20,7 @@ The alpha keeps the current model:
 - registered human accounts are installation-wide discoverable coworkers whose identifiers do not confer authority; Reader page grants may target any registered human, while Editor/Admin grants require page-workspace membership;
 - categories, storage accounting, search filters, memberships, invitations, and MCP scopes remain workspace-specific.
 
-No nested-workspace schema or effective-membership behavior should be introduced into the current alpha line; that work remains deferred to the beta candidate below.
+The released v0.0.7 alpha remains flat. Nested-workspace implementation and its required server, concurrency, and browser proof are complete in the current working tree, but the capability remains unreleased until it appears in a tagged version.
 
 ## Alpha: AI artifact provenance
 
@@ -62,11 +62,11 @@ Current image support deliberately stays small:
 
 Raster decoding now runs in a separately resource-isolated, internal-only processing service. PDF/DOCX parsing must preserve or strengthen that boundary, with format-specific parser and renderer limits, before those formats ship.
 
-## Alpha in progress: expiring and one-time external share links
+## Alpha: expiring and one-time external share links
 
 The product direction and security architecture for a deliberately narrow external sharing surface
-are now accepted in [`docs/architecture/external-sharing.md`](docs/architecture/external-sharing.md).
-Implementation and the required cross-browser security proof remain in progress. The surface lets an
+are documented in [`docs/architecture/external-sharing.md`](docs/architecture/external-sharing.md).
+The implementation and required cross-browser security proof shipped in v0.0.7. The surface lets an
 authorized page access manager create a high-entropy capability link for someone who does not have
 an ArtifactFlow account, with two explicit modes:
 
@@ -82,7 +82,7 @@ principal may create a share only for an in-scope page it owns and can still
 edit while the workspace permits Editors and page owners to share, and the
 bearer URL is returned once.
 
-Required security properties:
+Implemented security properties:
 
 1. Store only a hash of the random share secret; never log the raw token, include it in audit metadata, or expose it after the creation response.
 2. Re-check page state and link state on every redemption. Revocation, expiry, page archival/deletion, and relevant access revisions must fail closed with a uniform not-found response.
@@ -93,7 +93,7 @@ Required security properties:
 7. Prove the MCP path requires `mcp:share`, token-workspace reach, page ownership, live edit authority, and the workspace's live editor-sharing permission for both human and service-account principals, without leaking the returned URL into persistence, events, or audit metadata.
 8. Add browser-level proof for token leakage, one-time concurrency, revocation/expiry, uniform failures, and the HTML sandbox boundary before enabling the feature.
 
-## Focus: searchable PDF artifacts
+## Later focus: searchable PDF artifacts
 
 Tracking: [GitHub issue #32](https://github.com/Gadsotek/artifactflow/issues/32)
 
@@ -128,7 +128,7 @@ PDFs must not be converted into executable HTML or rendered directly in the auth
 - deleting or hard-deleting a PDF removes every original, rendered derivative, OCR artifact, and search projection required by the existing retention rules;
 - browser tests prove the reader cannot execute PDF-provided active content or access app-origin credentials.
 
-## Focus: searchable Word document artifacts
+## Later focus: searchable Word document artifacts
 
 Tracking: [GitHub issue #33](https://github.com/Gadsotek/artifactflow/issues/33)
 
@@ -163,9 +163,9 @@ DOCX is a ZIP/XML container, not trusted text. Processing must reject malformed 
 - deletion and retention rules remove the original, extracted text, preview derivatives, and any attached generator source for the affected version;
 - browser tests prove document previews cannot execute document-provided active content or access app-origin credentials.
 
-## Later beta candidate: nested shared workspaces
+## Verified beta candidate: nested shared workspaces
 
-Nested workspaces are deferred until after alpha feedback. [Confluence Cloud currently keeps spaces flat](https://support.atlassian.com/confluence-cloud/docs/navigate-spaces/) and nests content inside each space; ArtifactFlow would therefore be making a deliberate product choice rather than copying Confluence parity.
+Nested shared workspaces are implemented and verified locally as the current beta candidate. The governing security and data-model decision is documented in [`docs/architecture/nested-workspaces.md`](docs/architecture/nested-workspaces.md). [Confluence Cloud currently keeps spaces flat](https://support.atlassian.com/confluence-cloud/docs/navigate-spaces/) and nests content inside each space; ArtifactFlow is therefore making a deliberate product choice rather than copying Confluence parity.
 
 ### Agreed product rules
 
@@ -173,29 +173,30 @@ Nested workspaces are deferred until after alpha feedback. [Confluence Cloud cur
 - Only shared workspaces may participate. Personal workspaces remain standalone.
 - Every level remains a normal page-bearing workspace.
 - Pages, categories, storage counters, and Library filters stay separate per workspace. Selecting a parent shows that workspace's pages, not a merged descendant library.
-- Parent memberships flow downward with the same role.
-- A child may add direct members. Direct child membership may add access or elevate an inherited role, but may not reduce inherited authority.
-- Effective authority is the strongest applicable direct or inherited role. The first version has no deny rules.
+- Parent memberships flow downward with the same role by default; workspace creation has a default-on opt-out control.
+- A child Admin may remove one inherited user at that boundary. The exclusion also blocks ancestor-derived access below that child, but preserves independent direct memberships at the child or below.
+- A child may add direct members. At an exclusion boundary, the direct local role is authoritative without reviving a stronger ancestor role.
+- Effective authority is the strongest applicable direct or inherited role whose path is not blocked by a workspace inheritance boundary or user exclusion.
 - Child-only members receive no parent or sibling access.
-- Inherited members are shown separately and managed at the workspace where their membership originates.
+- Inherited members are labelled with their origin and can be removed locally by a child Admin.
 - Role-affecting workspace settings may be stricter in a child but may not loosen an ancestor's restriction.
 - Reparenting requires Admin authority over the child, its old parent, and its new parent.
 - A parent with children cannot be deleted through a cascading content deletion.
 - MCP tokens with selected workspace scopes remain exact: choosing a parent does not silently add current or future descendants. An explicit all-workspaces token continues to follow the principal's live reach.
 
-### Security and architecture plan
+### Implemented security and architecture
 
 1. Write an architecture decision and threat-model update before the migration. Define depth, cycle prevention, reparenting, deletion, settings inheritance, and token-scope semantics as server-side invariants.
 2. Add a parent relationship plus an indexed ancestry representation suitable for authorization and search queries. Do not copy inherited memberships into child membership rows.
 3. Centralize effective membership resolution so web policies, `WorkspaceAccess`, `PageAccess`, search visibility, navigation, page grants, realtime channel authorization, and MCP all consume the same result.
-4. Make membership removal, role downgrade, hierarchy creation, and reparenting transactionally invalidate every affected descendant page preview revision and revoke lost realtime presence.
+4. Make membership removal, inherited exclusion, role downgrade, hierarchy creation, and reparenting transactionally invalidate every affected descendant page preview revision and revoke lost realtime presence.
 5. Audit and event-record hierarchy changes with non-secret reach summaries. A newly attached child must clearly disclose that ancestor members gain access.
 6. Add tree navigation and member-origin labels only after the authorization boundary is proven.
 
-### Required proof before beta
+### Completed beta proof
 
 - cycle and three-level depth constraints hold under concurrent writes;
-- inherited roles cannot be reduced or bypassed by direct child records;
+- inherited roles cross only enabled boundaries; local exclusions remove one user's ancestor-derived authority without suppressing independent direct descendant roles;
 - parent removal and downgrade revoke descendant access immediately;
 - restricted page titles and UIDs never leak through trees, search, taxonomy, invitations, realtime, or MCP;
 - page grants to a child include its effective inherited members, while child-only members do not gain grants addressed to a parent;
@@ -203,4 +204,4 @@ Nested workspaces are deferred until after alpha feedback. [Confluence Cloud cur
 - storage, categories, page moves, and exact-workspace Library filters remain isolated at each level;
 - browser tests cover the real hierarchy UI and saved artifact preview revocation path.
 
-Only after those invariants are accepted should nested workspaces be scheduled for beta.
+These invariants are implemented and verified by application tests, PostgreSQL concurrency tests, and multi-engine browser tests in the current working tree. That engineering status does not make nested workspaces part of the released alpha until a tagged release includes them.

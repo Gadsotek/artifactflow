@@ -35,13 +35,31 @@ final class ProjectConventionTest extends TestCase
         );
     }
 
-    public function test_page_access_revocation_journaling_is_shared_by_both_workflows(): void
+    public function test_page_access_revocation_journaling_is_shared_by_all_workflows(): void
     {
         foreach ([
             app_path('Application/Identity/RemoveWorkspaceMember.php'),
+            app_path('Application/Identity/ExcludeInheritedWorkspaceMember.php'),
+        ] as $membershipAuthorityLossHandlerFile) {
+            $source = $this->source($membershipAuthorityLossHandlerFile);
+
+            $this->assertStringContainsString('WorkspaceMemberAuthorityRetirement', $source);
+        }
+
+        foreach ([
+            app_path('Application/Identity/WorkspaceMemberAuthorityRetirement.php'),
+            app_path('Application/Identity/ReparentWorkspace.php'),
+        ] as $authorityLossHandlerFile) {
+            $source = $this->source($authorityLossHandlerFile);
+
+            $this->assertStringContainsString('DirectUserPageAccessGrantRevoker', $source);
+        }
+
+        foreach ([
+            app_path('Application/PageCatalog/DirectUserPageAccessGrantRevoker.php'),
             app_path('Application/PageCatalog/RevokePageAccess.php'),
-        ] as $handlerFile) {
-            $source = $this->source($handlerFile);
+        ] as $revocationWorkflowFile) {
+            $source = $this->source($revocationWorkflowFile);
 
             $this->assertStringContainsString('PageAccessGrantRevocationJournal', $source);
         }

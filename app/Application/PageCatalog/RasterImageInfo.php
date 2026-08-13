@@ -10,6 +10,7 @@ final readonly class RasterImageInfo
         public string $mediaType,
         public int $width,
         public int $height,
+        public ImageNormalizationWorkload $workload,
     ) {
     }
 

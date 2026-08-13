@@ -3,19 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ArtifactFlow Roadmap | PDF and Word Artifact Focus</title>
-<meta name="description" content="ArtifactFlow's public direction: the current alpha, focused PDF and Word artifact work, later candidates, required security proof, and explicit non-promises.">
+<title>ArtifactFlow Roadmap | Nested Workspace Focus</title>
+<meta name="description" content="ArtifactFlow's public direction: the shipped alpha, verified nested shared workspace beta candidate, later document formats, and explicit non-promises.">
 <link rel="canonical" href="https://artifactflow.app/roadmap/">
-<meta property="og:title" content="ArtifactFlow Roadmap | PDF and Word Artifact Focus">
-<meta property="og:description" content="Current alpha boundaries, focused PDF and Word artifact work, later candidates, and the proof required before ArtifactFlow expands.">
+<meta property="og:title" content="ArtifactFlow Roadmap | Nested Workspace Focus">
+<meta property="og:description" content="Shipped alpha boundaries, a verified nested workspace beta candidate, later document formats, and the proof required before ArtifactFlow expands.">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://artifactflow.app/roadmap/">
 <meta property="og:site_name" content="ArtifactFlow">
 <meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="ArtifactFlow Roadmap | PDF and Word Artifact Focus">
-<meta name="twitter:description" content="Direction without invented dates: current alpha, PDF and DOCX focus, explicit boundaries, and required security proof.">
+<meta name="twitter:title" content="ArtifactFlow Roadmap | Nested Workspace Focus">
+<meta name="twitter:description" content="Direction without invented dates: shipped alpha, verified nested workspace beta candidate, and later PDF and DOCX formats.">
 <meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
@@ -28,7 +28,7 @@
   "@context": "https://schema.org",
   "@type": "WebPage",
   "name": "ArtifactFlow Roadmap",
-  "description": "Current alpha boundaries, focused PDF and Word artifact work, later candidates, and required security proof.",
+  "description": "Shipped alpha boundaries, a verified nested workspace beta candidate, later document formats, and required security proof.",
   "url": "https://artifactflow.app/roadmap/",
   "isPartOf": { "@id": "https://artifactflow.app/#website" }
 }
@@ -59,7 +59,7 @@
     <div class="shell">
       <p class="eyebrow">Product direction</p>
       <h1>Build the boundary before expanding the surface.</h1>
-      <p class="lede">Direction, not a release promise. ArtifactFlow's alpha is intentionally narrow while the next format focus brings searchable PDF artifacts and Word documents into the same versioned vault. Each format moves forward only after its authorization, storage, parsing, preview, and operational boundaries are written down and proven.</p>
+      <p class="lede">Direction, not a release promise. ArtifactFlow's alpha is intentionally narrow while the verified beta candidate adds a three-level shared workspace hierarchy. Searchable PDF and Word artifacts remain later format expansions after this authorization boundary.</p>
       <div class="detail-actions">
         <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/ROADMAP.md">Read the source roadmap ↗</a>
         <a class="button" href="https://github.com/Gadsotek/artifactflow/releases">View releases ↗</a>
@@ -87,30 +87,45 @@
         </section>
 
         <section id="sharing">
-          <p class="kicker">Post-alpha candidate</p>
-          <h2>External sharing requires a new capability boundary.</h2>
-          <p>Expiring and one-time links are candidates for deliberate post-alpha work. They are not current features. Before implementation, ArtifactFlow needs an architecture decision covering the share origin, version semantics, recipient verification, downloads, revocation, and uniform failure behavior.</p>
-          <p>Any accepted design must store only a hash of the random secret, reveal only the selected page or version, re-check state on every redemption, consume one-time links atomically, preserve HTML isolation, and prove that tokens and restricted metadata do not leak.</p>
+          <p class="kicker">Shipped in v0.0.7</p>
+          <h2>Narrow external sharing is available.</h2>
+          <p>Expiring and one-time links now use the documented bearer-capability boundary. ArtifactFlow stores only a hash of the random secret, reveals only the selected page, re-checks live state on every load, consumes one-time links atomically, and keeps executable HTML on the isolated artifact origin.</p>
+          <p>This is intentionally not broad public hosting: there is no public navigation, search, reusable unlimited link, recipient account, or workspace disclosure.</p>
         </section>
 
         <section id="beta">
-          <p class="kicker">Beta candidates</p>
-          <h2>Document artifacts are the active roadmap focus.</h2>
+          <p class="kicker">Verified beta candidate</p>
+          <h2>Nested shared workspaces, capped at three levels.</h2>
+          <div class="split-cards">
+            <article class="split-card">
+              <h3>Inherited authority</h3>
+              <p>Parent memberships flow downward, direct child memberships may elevate but never reduce inherited authority, and restrictive sharing or invitation settings remain restrictive throughout the subtree.</p>
+            </article>
+            <article class="split-card">
+              <h3>Bounded hierarchy</h3>
+              <p>Root, child, and grandchild workspaces remain distinct page, category, storage, and Library boundaries. Reparenting prevents cycles, preserves exact MCP scopes, and revokes lost preview and realtime access.</p>
+            </article>
+          </div>
+          <div class="callout">
+            <strong>Implemented and verified; release pending</strong>
+            <p>The required server, concurrency, and multi-engine browser proof is complete in the current working tree. Nested workspaces remain outside the released alpha until a tagged release includes them.</p>
+          </div>
+        </section>
+
+        <section id="documents">
+          <p class="kicker">Later format expansions</p>
+          <h2>PDF and Word follow the workspace authorization work.</h2>
           <div class="split-cards">
             <article class="split-card">
               <h3>Searchable PDF artifacts</h3>
-              <p>PDFs would join the same permission-aware catalog and version history as other pages while remaining non-executable. Search needs bounded parsing, OCR, private originals, safe reading, and proof that titles, snippets, files, and processing status never leak.</p>
+              <p>PDFs would join the permission-aware catalog and version history while remaining non-executable. Search needs bounded parsing, OCR, private originals, safe reading, and proof that restricted content never leaks.</p>
               <a class="roadmap-issue-link" href="https://github.com/Gadsotek/artifactflow/issues/32">Track PDF issue #32 ↗</a>
             </article>
             <article class="split-card">
               <h3>Searchable Word documents</h3>
-              <p>Modern DOCX files would keep their private original, extracted searchable text, safe non-executable preview, and immutable replacements. ZIP limits, external relationships, embedded content, parser isolation, derivative cleanup, and optional generator-source pairing need explicit proof.</p>
+              <p>Modern DOCX files would keep their private original, extracted searchable text, safe non-executable preview, and immutable replacements under strict ZIP and parser limits.</p>
               <a class="roadmap-issue-link" href="https://github.com/Gadsotek/artifactflow/issues/33">Track Word issue #33 ↗</a>
             </article>
-          </div>
-          <div class="callout">
-            <strong>Later candidate</strong>
-            <p>Nested shared workspaces remain documented, but document artifacts are the current format focus. No candidate has a promised date or order.</p>
           </div>
         </section>
 
@@ -154,8 +169,9 @@
       <aside class="detail-aside" aria-label="On this page">
         <strong>On this page</strong>
         <a href="#now">Available now</a>
-        <a href="#sharing">Post-alpha candidate</a>
-        <a href="#beta">Beta candidates</a>
+        <a href="#sharing">External sharing</a>
+        <a href="#beta">Active beta focus</a>
+        <a href="#documents">Later formats</a>
         <a href="#proof">Before beta</a>
         <a href="#not-promised">Explicitly not promised</a>
         <a href="#source">Source of truth</a>

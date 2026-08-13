@@ -14,6 +14,10 @@ final readonly class ImageArtifactLimits
 
     public const int MAX_UPLOAD_PIXELS = 16 * 1024 * 1024;
 
+    public const int MAX_PNG_ANCILLARY_BYTES = 1024 * 1024;
+
+    public const int MAX_PNG_CHUNKS = 1024;
+
     /**
      * Stored versions are immutable and must remain readable when an operator
      * lowers a write-side image limit. These ceilings are the parser's permanent

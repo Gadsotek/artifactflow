@@ -17,31 +17,37 @@ final readonly class McpAccessTokenRevoker
     public function __construct(
         private DomainEventRecorder $events,
         private AuditLogger $audit,
+        private McpAccessTokenExecutionLock $executionLock,
     ) {
     }
 
     public function revoke(McpAccessToken $token, ?User $actor = null, string $channel = 'application'): bool
     {
-        return DB::transaction(function () use ($token, $actor, $channel): bool {
-            $lockedToken = McpAccessToken::query()
-                ->whereKey($token->uid)
-                ->lockForUpdate()
-                ->first();
+        return $this->executionLock->runExclusive(
+            $token->uid,
+            function () use ($token, $actor, $channel): bool {
+                return DB::transaction(function () use ($token, $actor, $channel): bool {
+                    $lockedToken = McpAccessToken::query()
+                        ->whereKey($token->uid)
+                        ->lockForUpdate()
+                        ->first();
 
-            if (!$lockedToken instanceof McpAccessToken || $lockedToken->revoked_at !== null) {
-                return false;
-            }
+                    if (!$lockedToken instanceof McpAccessToken || $lockedToken->revoked_at !== null) {
+                        return false;
+                    }
 
-            $lockedToken->forceFill(['revoked_at' => now()])->save();
-            $this->recordRevoked(
-                token: $lockedToken,
-                actorUserUid: $actor?->uid,
-                channel: $channel,
-                reason: 'manual',
-            );
+                    $lockedToken->forceFill(['revoked_at' => now()])->save();
+                    $this->recordRevoked(
+                        token: $lockedToken,
+                        actorUserUid: $actor?->uid,
+                        channel: $channel,
+                        reason: 'manual',
+                    );
 
-            return true;
-        });
+                    return true;
+                });
+            },
+        );
     }
 
     public function revokeActiveForPrincipal(
@@ -50,41 +56,53 @@ final readonly class McpAccessTokenRevoker
         string $channel,
         string $reason,
     ): int {
-        return DB::transaction(function () use ($principal, $actorUserUid, $channel, $reason): int {
-            $revokedAt = now();
-            /** @var Collection<int, McpAccessToken> $tokens */
-            $tokens = McpAccessToken::query()
-                ->where('principal_user_uid', $principal->uid)
-                ->whereNull('revoked_at')
-                ->lockForUpdate()
-                ->get();
+        /** @var list<string> $tokenUids */
+        $tokenUids = McpAccessToken::query()
+            ->where('principal_user_uid', $principal->uid)
+            ->whereNull('revoked_at')
+            ->pluck('uid')
+            ->all();
 
-            if ($tokens->isEmpty()) {
-                return 0;
-            }
+        return $this->executionLock->runManyExclusive(
+            $tokenUids,
+            function () use ($principal, $actorUserUid, $channel, $reason): int {
+                return DB::transaction(function () use ($principal, $actorUserUid, $channel, $reason): int {
+                    $revokedAt = now();
+                    /** @var Collection<int, McpAccessToken> $tokens */
+                    $tokens = McpAccessToken::query()
+                        ->where('principal_user_uid', $principal->uid)
+                        ->whereNull('revoked_at')
+                        ->lockForUpdate()
+                        ->get();
 
-            /** @var list<string> $tokenUids */
-            $tokenUids = $tokens->pluck('uid')->all();
-            McpAccessToken::query()
-                ->whereIn('uid', $tokenUids)
-                ->whereNull('revoked_at')
-                ->update([
-                    'revoked_at' => $revokedAt,
-                    'updated_at' => $revokedAt,
-                ]);
+                    if ($tokens->isEmpty()) {
+                        return 0;
+                    }
 
-            foreach ($tokens as $token) {
-                $token->forceFill(['revoked_at' => $revokedAt]);
-                $this->recordRevoked(
-                    token: $token,
-                    actorUserUid: $actorUserUid,
-                    channel: $channel,
-                    reason: $reason,
-                );
-            }
+                    /** @var list<string> $lockedTokenUids */
+                    $lockedTokenUids = $tokens->pluck('uid')->all();
+                    McpAccessToken::query()
+                        ->whereIn('uid', $lockedTokenUids)
+                        ->whereNull('revoked_at')
+                        ->update([
+                            'revoked_at' => $revokedAt,
+                            'updated_at' => $revokedAt,
+                        ]);
 
-            return $tokens->count();
-        });
+                    foreach ($tokens as $token) {
+                        $token->forceFill(['revoked_at' => $revokedAt]);
+                        $this->recordRevoked(
+                            token: $token,
+                            actorUserUid: $actorUserUid,
+                            channel: $channel,
+                            reason: $reason,
+                        );
+                    }
+
+                    return $tokens->count();
+                });
+            },
+        );
     }
 
     private function recordRevoked(

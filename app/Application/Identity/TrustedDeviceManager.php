@@ -119,8 +119,14 @@ final readonly class TrustedDeviceManager
         });
     }
 
-    public function revoke(User $actor, TrustedDevice $trustedDevice): void
-    {
+    /**
+     * @throws ValidationException
+     */
+    public function revoke(
+        User $actor,
+        TrustedDevice $trustedDevice,
+        int $expectedAuthRevision,
+    ): TrustedDeviceRevocation {
         if ($trustedDevice->user_uid !== $actor->uid) {
             // 404, not 403: another user's device UID must be indistinguishable
             // from a missing one (same pattern as MCP token self-service revoke).
@@ -129,11 +135,22 @@ final readonly class TrustedDeviceManager
 
         $trustedDeviceUid = $trustedDevice->uid;
 
-        DB::transaction(function () use ($actor, $trustedDeviceUid): void {
+        return DB::transaction(function () use (
+            $actor,
+            $expectedAuthRevision,
+            $trustedDeviceUid,
+        ): TrustedDeviceRevocation {
             $user = User::query()
                 ->where('uid', $actor->uid)
                 ->lockForUpdate()
                 ->sole();
+
+            if ($user->auth_revision !== $expectedAuthRevision) {
+                throw ValidationException::withMessages([
+                    'trusted_devices' => 'Your authentication state changed. Sign in again before revoking a trusted device.',
+                ]);
+            }
+
             $lockedTrustedDevice = TrustedDevice::query()
                 ->where('uid', $trustedDeviceUid)
                 ->where('user_uid', $user->uid)
@@ -145,6 +162,8 @@ final readonly class TrustedDeviceManager
             }
 
             $lockedTrustedDevice->delete();
+            $committedAuthRevision = $expectedAuthRevision + 1;
+            $user->forceFill(['auth_revision' => $committedAuthRevision])->save();
 
             $event = $this->events->record(
                 eventType: DomainEventType::UserTwoFactorTrustedDeviceRevoked,
@@ -166,6 +185,12 @@ final readonly class TrustedDeviceManager
                 metadata: [
                     'trusted_device_uid' => $trustedDeviceUid,
                 ],
+            );
+
+            return new TrustedDeviceRevocation(
+                trustedDevicesRevoked: 1,
+                authRevision: $committedAuthRevision,
+                user: $user,
             );
         });
     }

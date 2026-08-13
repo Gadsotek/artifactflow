@@ -6,6 +6,8 @@ namespace App\Application\Identity;
 
 use App\Application\Audit\AuditLogger;
 use App\Application\Events\DomainEventRecorder;
+use App\Application\PageCatalog\PageAccess;
+use App\Application\PageCatalog\PageAccessRevision;
 use App\Application\PageCatalog\PageSearchVectorUpdater;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
@@ -24,6 +26,9 @@ final readonly class UpdateWorkspaceSettings
         private AuditLogger $audit,
         private PageSearchVectorUpdater $searchVectors,
         private WorkspaceAccess $workspaceAccess,
+        private WorkspaceAuthorityImpact $authorityImpact,
+        private PageAccessRevision $revisions,
+        private PageAccess $pageAccess,
     ) {
     }
 
@@ -35,10 +40,14 @@ final readonly class UpdateWorkspaceSettings
         $actorUid = ActorId::fromUser($actor);
         $name = $this->normalizedName($command->name);
 
-        return DB::transaction(function () use ($actorUid, $command, $name): Workspace {
-            $workspace = Workspace::query()
-                ->lockForUpdate()
-                ->find($command->workspaceUid);
+        $workspace = DB::transaction(function () use ($actorUid, $command, $name): Workspace {
+            $this->authorityImpact->acquireHierarchyLock();
+            $descendantWorkspaceUids = $this->authorityImpact->descendantWorkspaceUids($command->workspaceUid);
+            $affectedPageUids = $this->authorityImpact->pageUids($descendantWorkspaceUids);
+            $this->authorityImpact->lockPages($affectedPageUids);
+            $this->authorityImpact->lockWorkspaces($descendantWorkspaceUids);
+
+            $workspace = Workspace::query()->find($command->workspaceUid);
 
             if (!$workspace instanceof Workspace) {
                 throw new DomainRuleViolation('Workspace does not exist.');
@@ -71,6 +80,9 @@ final readonly class UpdateWorkspaceSettings
                 'allow_editor_invites' => $command->allowEditorInvites,
                 'allow_editor_page_sharing' => $command->allowEditorPageSharing,
             ])->save();
+            $invalidatedPreviewPageCount = $previousAllowEditorPageSharing !== $command->allowEditorPageSharing
+                ? $this->invalidateWorkspaceReach($descendantWorkspaceUids)
+                : 0;
 
             if ($previousName !== $name) {
                 $workspaceUid = $workspace->uid;
@@ -118,6 +130,8 @@ final readonly class UpdateWorkspaceSettings
                     'new_allow_editor_invites' => $command->allowEditorInvites,
                     'previous_allow_editor_page_sharing' => $previousAllowEditorPageSharing,
                     'new_allow_editor_page_sharing' => $command->allowEditorPageSharing,
+                    'affected_workspace_count' => count($descendantWorkspaceUids),
+                    'invalidated_preview_page_count' => $invalidatedPreviewPageCount,
                 ],
             );
 
@@ -135,11 +149,17 @@ final readonly class UpdateWorkspaceSettings
                     'new_allow_editor_invites' => $command->allowEditorInvites,
                     'previous_allow_editor_page_sharing' => $previousAllowEditorPageSharing,
                     'new_allow_editor_page_sharing' => $command->allowEditorPageSharing,
+                    'affected_workspace_count' => count($descendantWorkspaceUids),
+                    'invalidated_preview_page_count' => $invalidatedPreviewPageCount,
                 ],
             );
 
             return $workspace->refresh();
         });
+
+        $this->pageAccess->flushCache();
+
+        return $workspace;
     }
 
     /**
@@ -190,5 +210,20 @@ final readonly class UpdateWorkspaceSettings
     private function renameCooldownCacheKey(string $workspaceUid): string
     {
         return 'workspace-name-renamed:' . $workspaceUid;
+    }
+
+    /**
+     * @param list<string> $workspaceUids
+     */
+    private function invalidateWorkspaceReach(array $workspaceUids): int
+    {
+        $count = 0;
+
+        foreach ($workspaceUids as $workspaceUid) {
+            $count += $this->revisions->bumpWorkspace($workspaceUid);
+            $count += $this->revisions->bumpPagesGrantedToWorkspace($workspaceUid);
+        }
+
+        return $count;
     }
 }

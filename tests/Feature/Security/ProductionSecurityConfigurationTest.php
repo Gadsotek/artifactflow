@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Security;
 
+use App\Application\PageCatalog\ImageNormalizationConfiguration;
 use App\Infrastructure\Security\ProductionSecurityConfiguration;
 use RuntimeException;
 use Symfony\Component\Process\Process;
@@ -947,17 +948,23 @@ final class ProductionSecurityConfigurationTest extends TestCase
 
     public function test_image_normalization_budgets_must_cover_one_upload_without_exceeding_hard_ceilings(): void
     {
+        $minimumWorkBudget = ImageNormalizationConfiguration::maximumWorkUnitsForInputBytes(1024 * 1024);
+
         foreach ([
             ['image_parser.user_pixel_budget_per_minute' => 16 * 1024 * 1024 - 1],
             ['image_parser.user_pixel_budget_per_minute' => 64 * 1024 * 1024 + 1],
             ['image_parser.installation_pixel_budget_per_minute' => 64 * 1024 * 1024 - 1],
             ['image_parser.installation_pixel_budget_per_minute' => 256 * 1024 * 1024 + 1],
+            ['image_parser.user_work_budget_per_minute' => $minimumWorkBudget - 1],
+            ['image_parser.user_work_budget_per_minute' => 64 * 1024 * 1024 + 1],
+            ['image_parser.installation_work_budget_per_minute' => $minimumWorkBudget - 1],
+            ['image_parser.installation_work_budget_per_minute' => 256 * 1024 * 1024 + 1],
         ] as $unsafe) {
             $this->configureSafeProductionValues();
             config($unsafe);
 
             $this->assertUnsafeConfiguration(
-                'Image normalization pixel budgets must allow one upload and remain within the supported per-minute ceilings.',
+                'Image normalization pixel and input-work budgets must allow one upload and remain within the supported per-minute ceilings.',
             );
         }
     }
@@ -1108,6 +1115,8 @@ final class ProductionSecurityConfigurationTest extends TestCase
             'image_parser.timeout_seconds' => 12,
             'image_parser.user_pixel_budget_per_minute' => 64 * 1024 * 1024,
             'image_parser.installation_pixel_budget_per_minute' => 256 * 1024 * 1024,
+            'image_parser.user_work_budget_per_minute' => 64 * 1024 * 1024,
+            'image_parser.installation_work_budget_per_minute' => 256 * 1024 * 1024,
             'reverb.apps.apps.0.configured_allowed_origins' => ['https://app.example.test'],
             'reverb.apps.apps.0.allowed_origins' => ['app.example.test'],
             'reverb.apps.apps.0.max_connections' => 1000,

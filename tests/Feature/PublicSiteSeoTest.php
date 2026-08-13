@@ -516,8 +516,9 @@ final class PublicSiteSeoTest extends TestCase
         $this->assertStringContainsString('href="/roadmap/"', $homepage);
         $this->assertStringContainsString('Direction, not a release promise.', $roadmapPage);
         $this->assertStringContainsString('Available now', $roadmapPage);
-        $this->assertStringContainsString('Post-alpha candidate', $roadmapPage);
-        $this->assertStringContainsString('Beta candidates', $roadmapPage);
+        $this->assertStringContainsString('Shipped in v0.0.7', $roadmapPage);
+        $this->assertStringContainsString('Verified beta candidate', $roadmapPage);
+        $this->assertStringContainsString('Later format expansions', $roadmapPage);
         $this->assertStringContainsString('Explicitly not promised', $roadmapPage);
         $this->assertStringContainsString(
             'https://github.com/Gadsotek/artifactflow/blob/main/ROADMAP.md',
@@ -814,15 +815,17 @@ final class PublicSiteSeoTest extends TestCase
         }
     }
 
-    public function test_roadmap_prioritizes_pdf_and_word_document_artifacts(): void
+    public function test_roadmap_prioritizes_nested_workspaces_before_document_artifacts(): void
     {
         $roadmap = file_get_contents(base_path('ROADMAP.md'));
         $roadmapPage = file_get_contents(base_path('site/roadmap/index.html'));
 
         $this->assertIsString($roadmap);
         $this->assertIsString($roadmapPage);
-        $this->assertStringContainsString('## Focus: searchable PDF artifacts', $roadmap);
-        $this->assertStringContainsString('## Focus: searchable Word document artifacts', $roadmap);
+        $this->assertStringContainsString('## Verified beta candidate: nested shared workspaces', $roadmap);
+        $this->assertStringContainsString('## Later focus: searchable PDF artifacts', $roadmap);
+        $this->assertStringContainsString('## Later focus: searchable Word document artifacts', $roadmap);
+        $this->assertStringContainsString('Nested shared workspaces', $roadmapPage);
         $this->assertStringContainsString('Searchable PDF artifacts', $roadmapPage);
         $this->assertStringContainsString('Searchable Word documents', $roadmapPage);
         $this->assertStringContainsString('DOCX', $roadmapPage);

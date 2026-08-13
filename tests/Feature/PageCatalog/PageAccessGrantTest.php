@@ -424,8 +424,8 @@ final class PageAccessGrantTest extends TestCase
                 role: WorkspaceRole::Reader,
             ));
             $this->fail('Expected missing workspace grant subject to be rejected.');
-        } catch (DomainRuleViolation $exception) {
-            $this->assertSame('Workspace access grant subject does not exist.', $exception->getMessage());
+        } catch (PageAccessGrantTargetUnavailable $exception) {
+            $this->assertSame('Workspace access grant target is unavailable.', $exception->getMessage());
         }
     }
 
@@ -473,11 +473,8 @@ final class PageAccessGrantTest extends TestCase
                 role: WorkspaceRole::Reader,
             ));
             $this->fail('Expected an unrelated workspace grant target to be rejected.');
-        } catch (DomainRuleViolation $exception) {
-            $this->assertSame(
-                'Workspace access grant target must be a workspace you belong to.',
-                $exception->getMessage(),
-            );
+        } catch (PageAccessGrantTargetUnavailable $exception) {
+            $this->assertSame('Workspace access grant target is unavailable.', $exception->getMessage());
         }
 
         $this->assertSame(0, PageAccessGrant::query()->where('page_uid', $page->uid)->count());

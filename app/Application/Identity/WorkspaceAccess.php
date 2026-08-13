@@ -6,7 +6,6 @@ namespace App\Application\Identity;
 
 use App\Application\Mcp\McpEffectiveAuthority;
 use App\Domain\Identity\WorkspaceRole;
-use App\Models\WorkspaceMembership;
 use Illuminate\Auth\Access\AuthorizationException;
 
 /**
@@ -20,6 +19,7 @@ final readonly class WorkspaceAccess
 {
     public function __construct(
         private McpEffectiveAuthority $mcpAuthority,
+        private EffectiveWorkspaceMembershipResolver $memberships,
     ) {
     }
 
@@ -29,13 +29,8 @@ final readonly class WorkspaceAccess
             return null;
         }
 
-        $membership = WorkspaceMembership::query()
-            ->where('workspace_uid', $workspaceUid)
-            ->where('user_uid', $actorUid)
-            ->first();
-
         return $this->mcpAuthority->workspaceRole(
-            $membership instanceof WorkspaceMembership ? $membership->role : null,
+            $this->memberships->resolve($actorUid, $workspaceUid)->role,
         );
     }
 

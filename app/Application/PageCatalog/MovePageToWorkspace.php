@@ -7,6 +7,8 @@ namespace App\Application\PageCatalog;
 use App\Application\Audit\AuditLogger;
 use App\Application\Events\DomainEventRecorder;
 use App\Application\Identity\ActorId;
+use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
+use App\Application\Identity\WorkspaceHierarchyGraph;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\Identity\WorkspaceRole;
@@ -18,7 +20,6 @@ use App\Models\Page;
 use App\Models\PageAccessGrant;
 use App\Models\User;
 use App\Models\Workspace;
-use App\Models\WorkspaceMembership;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 
@@ -34,6 +35,8 @@ final readonly class MovePageToWorkspace
         private PageAccessRevision $revisions,
         private PageOwnershipTransferRecorder $ownershipTransfers,
         private CreateCategory $createCategory,
+        private EffectiveWorkspaceMembershipResolver $memberships,
+        private WorkspaceHierarchyGraph $workspaceHierarchy,
     ) {
     }
 
@@ -49,6 +52,7 @@ final readonly class MovePageToWorkspace
         }
 
         return DB::transaction(function () use ($actor, $actorUid, $command): Page {
+            $this->workspaceHierarchy->acquireMutationLock();
             $page = $this->pageForUpdate($command->pageUid);
             $targetWorkspace = $this->lockSourceAndTargetWorkspaces(
                 $page->workspace_uid,
@@ -213,16 +217,13 @@ final readonly class MovePageToWorkspace
 
     private function ensureOwnerBelongsToTargetWorkspace(string $ownerUserUid, string $workspaceUid): void
     {
-        $membership = WorkspaceMembership::query()
-            ->where('workspace_uid', $workspaceUid)
-            ->where('user_uid', $ownerUserUid)
-            ->first();
+        $role = $this->memberships->resolve($ownerUserUid, $workspaceUid)->role;
 
-        if (!$membership instanceof WorkspaceMembership) {
+        if (!$role instanceof WorkspaceRole) {
             throw new DomainRuleViolation('Page owner must belong to the target workspace.');
         }
 
-        if ($membership->role === WorkspaceRole::Reader) {
+        if (!$role->canWritePages()) {
             throw new DomainRuleViolation('Page owner must be a target workspace editor or admin.');
         }
     }

@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Application\PageCatalog;
 
+use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
 use App\Application\Mcp\McpEffectiveAuthority;
 use App\Domain\Identity\WorkspaceRole;
 use App\Domain\PageCatalog\PageAccessMode;
 use App\Domain\PageCatalog\PageAccessSubjectType;
 use App\Models\Page;
 use App\Models\User;
-use App\Models\WorkspaceMembership;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -22,6 +22,7 @@ final readonly class PageVisibilityQuery
 {
     public function __construct(
         private McpEffectiveAuthority $mcpAuthority,
+        private EffectiveWorkspaceMembershipResolver $memberships,
     ) {
     }
 
@@ -77,22 +78,18 @@ final readonly class PageVisibilityQuery
      */
     private function workspaceUidsFor(User $actor): array
     {
-        $memberships = WorkspaceMembership::query()
-            ->where('user_uid', $actor->uid)
-            ->get();
-        $workspaceUids = [];
+        $workspaceUids = $this->memberships->workspaceUidsFor($actor->uid);
+        $effectiveMemberships = $this->memberships->resolveMany($actor->uid, $workspaceUids);
         $adminWorkspaceUids = [];
 
-        foreach ($memberships as $membership) {
-            $workspaceUids[] = $membership->workspace_uid;
-
+        foreach ($effectiveMemberships as $workspaceUid => $membership) {
             if ($membership->role === WorkspaceRole::Admin) {
-                $adminWorkspaceUids[] = $membership->workspace_uid;
+                $adminWorkspaceUids[] = $workspaceUid;
             }
         }
 
         return [
-            $this->mcpAuthority->filterWorkspaceUids(array_values(array_unique($workspaceUids))),
+            $this->mcpAuthority->filterWorkspaceUids($workspaceUids),
             $this->mcpAuthority->filterWorkspaceUids(array_values(array_unique($adminWorkspaceUids))),
         ];
     }

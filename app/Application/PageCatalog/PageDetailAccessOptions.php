@@ -4,16 +4,21 @@ declare(strict_types=1);
 
 namespace App\Application\PageCatalog;
 
+use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
 use App\Domain\Identity\WorkspaceType;
 use App\Domain\PageCatalog\PageAccessSubjectType;
 use App\Models\Page;
 use App\Models\PageAccessGrant;
 use App\Models\User;
 use App\Models\Workspace;
-use App\Models\WorkspaceMembership;
 
-final class PageDetailAccessOptions
+final readonly class PageDetailAccessOptions
 {
+    public function __construct(
+        private EffectiveWorkspaceMembershipResolver $memberships,
+    ) {
+    }
+
     /**
      * @return list<PageAccessGrantItem>
      */
@@ -59,12 +64,9 @@ final class PageDetailAccessOptions
      */
     public function workspaceTargetsFor(User $actor): array
     {
-        $workspaceUids = WorkspaceMembership::query()
-            ->where('user_uid', $actor->uid)
-            ->pluck('workspace_uid')
-            ->all();
+        $workspaceUids = $this->memberships->workspaceUidsFor($actor->uid);
         $workspaces = Workspace::query()
-            ->whereIn('uid', array_values(array_filter($workspaceUids, 'is_string')))
+            ->whereIn('uid', $workspaceUids)
             ->where('type', WorkspaceType::Shared)
             ->orderBy('name')
             ->get();

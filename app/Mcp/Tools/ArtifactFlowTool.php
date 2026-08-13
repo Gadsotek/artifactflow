@@ -69,27 +69,29 @@ abstract class ArtifactFlowTool extends Tool
             $sessionId = is_string($legacySessionId) ? $legacySessionId : null;
         }
 
-        $this->mcpContext->activate($token, $sessionId);
-
         try {
-            try {
-                $result = $this->guard->run(
-                    $token,
-                    $scopes,
-                    $rateLimited,
-                    static fn (): McpToolResult => $run($actor, $token, $arguments),
-                );
-            } catch (DomainRuleViolation $exception) {
-                $result = McpToolResult::error([
-                    'type' => 'invalid_request',
-                    'message' => $exception->getMessage(),
-                ]);
-            }
+            $result = $this->guard->run(
+                $token,
+                $scopes,
+                $rateLimited,
+                function (McpAccessToken $liveToken) use ($arguments, $run, $sessionId): McpToolResult {
+                    $this->mcpContext->activate($liveToken, $sessionId);
 
-            return $this->response($result);
-        } finally {
-            $this->mcpContext->clear();
+                    try {
+                        return $run($liveToken->principal, $liveToken, $arguments);
+                    } finally {
+                        $this->mcpContext->clear();
+                    }
+                },
+            );
+        } catch (DomainRuleViolation $exception) {
+            $result = McpToolResult::error([
+                'type' => 'invalid_request',
+                'message' => $exception->getMessage(),
+            ]);
         }
+
+        return $this->response($result);
     }
 
     /**

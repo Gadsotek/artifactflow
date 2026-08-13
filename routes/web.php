@@ -41,6 +41,7 @@ use App\Http\Controllers\ThemePreferenceController;
 use App\Http\Controllers\TwoFactorSettingsController;
 use App\Http\Controllers\WorkspaceCollaboratorController;
 use App\Http\Controllers\WorkspaceController;
+use App\Http\Controllers\WorkspaceHierarchyController;
 use App\Http\Controllers\WorkspaceInvitationController;
 use App\Http\Controllers\WorkspaceInvitationJoinController;
 use App\Http\Controllers\WorkspaceMembershipController;
@@ -395,6 +396,12 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
         Route::post('/workspaces', [WorkspaceController::class, 'store'])
             ->middleware('throttle:artifactflow-workspace-creates')
             ->name('workspaces.store');
+        Route::post('/workspaces/{workspace}/hierarchy/preview', [WorkspaceHierarchyController::class, 'preview'])
+            ->middleware(['can:manage,workspace', 'throttle:artifactflow-page-writes'])
+            ->name('workspaces.hierarchy.preview');
+        Route::put('/workspaces/{workspace}/hierarchy', [WorkspaceHierarchyController::class, 'update'])
+            ->middleware(['can:manage,workspace', 'throttle:artifactflow-page-writes'])
+            ->name('workspaces.hierarchy.update');
         Route::put('/workspaces/{workspace}/settings', WorkspaceSettingsController::class)
             ->middleware(['can:manage,workspace', 'throttle:artifactflow-page-writes'])
             ->name('workspaces.settings.update');
@@ -411,6 +418,11 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
             [WorkspaceMembershipController::class, 'destroy'],
         )->middleware(['can:delete,membership,workspace', 'throttle:artifactflow-page-writes'])
             ->name('workspace-memberships.destroy');
+        Route::delete(
+            '/workspaces/{workspace}/inherited-members/{member}',
+            [WorkspaceMembershipController::class, 'destroyInherited'],
+        )->middleware(['can:manage,workspace', 'throttle:artifactflow-page-writes'])
+            ->name('workspace-inherited-members.destroy');
         Route::post('/workspaces/{workspace}/invitations', [WorkspaceInvitationController::class, 'store'])
             ->middleware(['can:invite,workspace', 'throttle:artifactflow-invitations'])
             ->name('workspace-invitations.store');

@@ -7,11 +7,11 @@ namespace App\Application\PageCatalog;
 use App\Application\Audit\AuditLogger;
 use App\Application\Events\DomainEventRecorder;
 use App\Application\Identity\ActorId;
+use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
 use App\Domain\Events\DomainEventType;
 use App\Domain\PageCatalog\PageAccessMode;
 use App\Models\Page;
 use App\Models\User;
-use App\Models\WorkspaceMembership;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 
@@ -23,6 +23,7 @@ final readonly class UpdatePageAccessMode
         private AuditLogger $audit,
         private PageAccessRevision $revisions,
         private PagePresenceRevoker $presence,
+        private EffectiveWorkspaceMembershipResolver $memberships,
     ) {
     }
 
@@ -98,9 +99,7 @@ final readonly class UpdatePageAccessMode
     private function workspaceMembers(string $workspaceUid): iterable
     {
         return User::query()
-            ->whereIn('uid', WorkspaceMembership::query()
-                ->select('user_uid')
-                ->where('workspace_uid', $workspaceUid))
+            ->whereIn('uid', $this->memberships->userUidsForAny([$workspaceUid]))
             ->orderBy('uid')
             ->get();
     }

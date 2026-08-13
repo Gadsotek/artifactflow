@@ -577,6 +577,34 @@ final class ImageParserClientTest extends TestCase
         $this->assertSame(1, $info->height);
     }
 
+    public function test_png_ancillary_and_chunk_limits_reject_before_parser_dispatch(): void
+    {
+        $this->configureParser();
+        config(['pages.max_image_bytes' => 2 * 1024 * 1024]);
+        Http::fake();
+        $payloads = [
+            'ancillary bytes' => [
+                $this->pngWithTextMetadata((1024 * 1024) + 1, 0),
+                'PNG metadata exceeds the supported work limit.',
+            ],
+            'chunk fanout' => [
+                $this->pngWithTextMetadata(0, 1021),
+                'PNG structure exceeds the supported work limit.',
+            ],
+        ];
+
+        foreach ($payloads as $case => [$payload, $message]) {
+            try {
+                app(RasterImageNormalizer::class)->normalize($payload, 'actor-png-work-limit');
+                $this->fail(sprintf('Expected %s to be rejected.', $case));
+            } catch (DomainRuleViolation $exception) {
+                $this->assertSame($message, $exception->getMessage(), $case);
+            }
+        }
+
+        Http::assertNothingSent();
+    }
+
     public function test_upload_pixel_limit_can_be_16_megapixels_while_retained_images_keep_the_40_megapixel_envelope(): void
     {
         config(['pages.max_image_pixels' => 16 * 1024 * 1024]);
@@ -678,6 +706,39 @@ final class ImageParserClientTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_input_work_budget_charges_png_metadata_and_chunk_processing_independently_of_pixels(): void
+    {
+        $this->configureParser();
+        $metadataBytes = 768 * 1024;
+        $extraChunks = 512;
+        $input = $this->pngWithTextMetadata($metadataBytes, $extraChunks);
+        $workUnits = strlen($input) + $metadataBytes + ((4 + $extraChunks) * 1024);
+        config([
+            'pages.max_image_bytes' => 1024 * 1024,
+            'pages.max_image_pixels' => 100,
+            'image_parser.user_pixel_budget_per_minute' => 100,
+            'image_parser.installation_pixel_budget_per_minute' => 1_000,
+            'image_parser.user_work_budget_per_minute' => 3 * 1024 * 1024,
+            'image_parser.installation_work_budget_per_minute' => 9 * 1024 * 1024,
+        ]);
+        $this->assertGreaterThan((3 * 1024 * 1024) / 2, $workUnits);
+        $this->fakeSuccessfulParser();
+        $normalizer = app(RasterImageNormalizer::class);
+
+        $normalizer->normalize($input, 'actor-input-work-a');
+
+        try {
+            $normalizer->normalize($input, 'actor-input-work-a');
+            $this->fail('Expected metadata work to exhaust the actor input-work budget.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame('Image normalization limit reached. Try again shortly.', $exception->getMessage());
+        }
+
+        $normalizer->normalize($input, 'actor-input-work-b');
+
+        Http::assertSentCount(2);
+    }
+
     public function test_image_replacement_completes_parser_io_before_opening_the_database_transaction(): void
     {
         Storage::fake('artifacts');
@@ -743,6 +804,8 @@ final class ImageParserClientTest extends TestCase
             'image_parser.timeout_seconds' => 3,
             'image_parser.user_pixel_budget_per_minute' => 64 * 1024 * 1024,
             'image_parser.installation_pixel_budget_per_minute' => 256 * 1024 * 1024,
+            'image_parser.user_work_budget_per_minute' => 64 * 1024 * 1024,
+            'image_parser.installation_work_budget_per_minute' => 256 * 1024 * 1024,
             'pages.max_image_bytes' => 1024 * 1024,
             'pages.max_image_pixels' => 100,
             'pages.max_image_dimension' => 100,
@@ -839,6 +902,20 @@ final class ImageParserClientTest extends TestCase
             . $this->pngChunk('IHDR', pack('NNCCCCC', $width, $height, 8, 6, 0, 0, 0))
             . $this->pngChunk('IDAT', $compressed)
             . $this->pngChunk('IEND', '');
+    }
+
+    private function pngWithTextMetadata(int $metadataBytes, int $extraChunks): string
+    {
+        $png = $this->png();
+        $metadata = $this->pngChunk('tEXt', str_repeat('m', $metadataBytes));
+
+        for ($chunk = 0; $chunk < $extraChunks; $chunk++) {
+            $metadata .= $this->pngChunk('tEXt', '');
+        }
+
+        return substr($png, 0, 33)
+            . $metadata
+            . substr($png, 33);
     }
 
     private function jpeg(): string

@@ -7,39 +7,28 @@ namespace App\Application\Identity;
 use App\Application\Audit\AuditLogger;
 use App\Application\Events\DomainEventRecorder;
 use App\Application\PageCatalog\PageAccess;
-use App\Application\PageCatalog\PageAccessGrantRevocationJournal;
-use App\Application\PageCatalog\PageAccessRevision;
-use App\Application\PageCatalog\PageOwnershipTransferRecorder;
 use App\Application\PageCatalog\PagePresenceRevoker;
-use App\Application\PageCatalog\PageSearchVectorUpdater;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\Identity\WorkspaceRole;
 use App\Domain\Identity\WorkspaceType;
-use App\Domain\PageCatalog\PageAccessSubjectType;
 use App\Models\Page;
-use App\Models\PageAccessGrant;
 use App\Models\User;
 use App\Models\Workspace;
-use App\Models\WorkspaceInvitation;
 use App\Models\WorkspaceMembership;
-use App\Models\WorkspaceMembershipRemoval;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
-use LogicException;
 
 final readonly class RemoveWorkspaceMember
 {
     public function __construct(
         private DomainEventRecorder $events,
         private AuditLogger $audit,
-        private PageSearchVectorUpdater $searchVectors,
         private PageAccess $access,
         private WorkspaceAccess $workspaceAccess,
-        private PageAccessRevision $revisions,
+        private WorkspaceAuthorityImpact $authorityImpact,
         private PagePresenceRevoker $presence,
-        private PageOwnershipTransferRecorder $ownershipTransfers,
-        private PageAccessGrantRevocationJournal $revocationJournal,
+        private WorkspaceMemberAuthorityRetirement $retirement,
     ) {
     }
 
@@ -77,9 +66,13 @@ final readonly class RemoveWorkspaceMember
         // test_removal_bumps_the_preview_revision_of_a_page_that_appears_after_the_presence_snapshot.
         /** @var array{member_user_uid: string, page_uids: list<string>} $presenceRevocations */
         $presenceRevocations = DB::transaction(function () use ($actorUid, $command): array {
+            $this->authorityImpact->acquireHierarchyLock();
+            $descendantWorkspaceUids = $this->authorityImpact->descendantWorkspaceUids($command->workspaceUid);
             // The locked set doubles as the presence snapshot: it is exactly the pages
             // whose presence subscribers may lose view once the membership is gone.
-            $presencePageUids = $this->lockWorkspacePagesInCanonicalOrder($command->workspaceUid);
+            $presencePageUids = $this->authorityImpact->pageUids($descendantWorkspaceUids);
+            $this->authorityImpact->lockPages($presencePageUids);
+            $this->authorityImpact->lockWorkspaces($descendantWorkspaceUids);
 
             $workspace = $this->lockRemovableWorkspace($command->workspaceUid);
             $this->ensureWorkspaceAdmin($actorUid, $workspace->uid);
@@ -89,24 +82,20 @@ final readonly class RemoveWorkspaceMember
             $memberUserUid = $membership->user_uid;
             $previousRole = $membership->role;
             $membershipUid = $membership->uid;
+            $beforeRoles = $this->authorityImpact->rolesForUser($memberUserUid, $descendantWorkspaceUids);
 
-            $reassignment = $this->reassignOwnedPages($membership, $command->replacementOwnerUserUid, $actorUid);
-
-            $revokedInvitationCount = $this->revokeReusableInvitations($workspace->uid, $memberUserUid);
-            $revokedPageAccessGrantCount = $this->revokeDirectPageAccessGrants(
-                workspaceUid: $workspace->uid,
+            $membership->delete();
+            $afterRoles = $this->authorityImpact->rolesForUser($memberUserUid, $descendantWorkspaceUids);
+            $retirement = $this->retirement->apply(
                 memberUserUid: $memberUserUid,
                 actorUid: $actorUid,
-            );
-            $invalidatedPreviewPageCount = $this->revisions->bumpWorkspace($workspace->uid)
-                + $this->revisions->bumpPagesGrantedToWorkspace($workspace->uid);
-            $membership->delete();
-
-            // Materialize the removal so page-access authorization can reject
-            // grants that predate it without reading the domain-event outbox.
-            WorkspaceMembershipRemoval::query()->updateOrCreate(
-                ['workspace_uid' => $workspace->uid, 'user_uid' => $memberUserUid],
-                ['removed_at' => now()],
+                affectedWorkspaceUids: $descendantWorkspaceUids,
+                beforeRoles: $beforeRoles,
+                afterRoles: $afterRoles,
+                requestedReplacementOwnerUserUid: $command->replacementOwnerUserUid,
+                reason: 'workspace_member_removed',
+                ownershipSummary: 'Page ownership transferred before workspace member removal.',
+                grantRevocationSummary: 'Page access grant revoked before workspace member removal.',
             );
 
             $this->recordRemoval(
@@ -115,11 +104,11 @@ final readonly class RemoveWorkspaceMember
                 memberUserUid: $memberUserUid,
                 actorUid: $actorUid,
                 previousRole: $previousRole,
-                reassignedPageCount: $reassignment['count'],
-                replacementOwnerUserUid: $reassignment['replacementOwnerUserUid'],
-                revokedInvitationCount: $revokedInvitationCount,
-                revokedPageAccessGrantCount: $revokedPageAccessGrantCount,
-                invalidatedPreviewPageCount: $invalidatedPreviewPageCount,
+                reassignedPageCount: $retirement->reassignedPageCount,
+                replacementOwnerUserUid: $retirement->replacementOwnerUserUid,
+                revokedInvitationCount: $retirement->revokedInvitationCount,
+                revokedPageAccessGrantCount: $retirement->revokedPageAccessGrantCount,
+                invalidatedPreviewPageCount: $retirement->invalidatedPreviewPageCount,
                 presencePageCount: count($presencePageUids),
             );
 
@@ -174,107 +163,6 @@ final readonly class RemoveWorkspaceMember
         }
 
         return $membership;
-    }
-
-    /**
-     * Lock every page this removal will touch, FOR UPDATE, one row at a time in
-     * ascending uid order, before the caller takes the workspace row lock. Locking
-     * the rows individually in sorted order (rather than a single ordered
-     * SELECT ... FOR UPDATE, whose lock order follows the scan, not the ORDER BY)
-     * guarantees the ascending acquisition order the catalog-wide page->workspace
-     * discipline depends on. Returns the locked uids so they can double as the
-     * presence snapshot.
-     *
-     * @return list<string>
-     */
-    private function lockWorkspacePagesInCanonicalOrder(string $workspaceUid): array
-    {
-        $pageUids = $this->collectPresencePageUids($workspaceUid);
-        sort($pageUids);
-
-        foreach ($pageUids as $pageUid) {
-            Page::query()->whereKey($pageUid)->lockForUpdate()->first();
-        }
-
-        return $pageUids;
-    }
-
-    /**
-     * Pages whose presence subscribers may lose view when this membership goes
-     * away: every page in the workspace, plus pages elsewhere shared with it.
-     *
-     * @return list<string>
-     */
-    private function collectPresencePageUids(string $workspaceUid): array
-    {
-        /** @var list<string> $workspacePageUids */
-        $workspacePageUids = Page::query()
-            ->where('workspace_uid', $workspaceUid)
-            ->orderBy('uid')
-            ->pluck('uid')
-            ->all();
-        /** @var list<string> $grantedPageUids */
-        $grantedPageUids = Page::query()
-            ->where('workspace_uid', '<>', $workspaceUid)
-            ->whereIn('uid', PageAccessGrant::query()
-                ->select('page_uid')
-                ->where('subject_type', PageAccessSubjectType::Workspace)
-                ->where('subject_uid', $workspaceUid))
-            ->orderBy('uid')
-            ->pluck('uid')
-            ->all();
-
-        return array_values(array_unique([...$workspacePageUids, ...$grantedPageUids]));
-    }
-
-    /**
-     * Transfers every page the departing member owns to the resolved
-     * replacement owner. Locks the owned pages before resolving the
-     * replacement so the reassignment cannot race a concurrent change.
-     *
-     * @return array{count: int, replacementOwnerUserUid: ?string}
-     */
-    private function reassignOwnedPages(
-        WorkspaceMembership $membership,
-        ?string $requestedReplacementOwnerUserUid,
-        string $actorUid,
-    ): array {
-        $ownedPages = Page::query()
-            ->where('workspace_uid', $membership->workspace_uid)
-            ->where('owner_user_uid', $membership->user_uid)
-            ->lockForUpdate()
-            ->orderBy('uid')
-            ->get();
-        $replacementOwnerUserUid = $this->replacementOwnerUserUid(
-            membership: $membership,
-            ownedPageCount: $ownedPages->count(),
-            requestedReplacementOwnerUserUid: $requestedReplacementOwnerUserUid,
-        );
-
-        foreach ($ownedPages as $page) {
-            if ($replacementOwnerUserUid === null) {
-                throw new LogicException('Owned pages require a resolved replacement owner.');
-            }
-
-            $page->forceFill([
-                'owner_user_uid' => $replacementOwnerUserUid,
-                'metadata_revision' => $page->metadata_revision + 1,
-            ])->save();
-            $this->searchVectors->refreshPage($page->uid);
-            $this->ownershipTransfers->record(
-                page: $page,
-                previousOwnerUserUid: $membership->user_uid,
-                newOwnerUserUid: $replacementOwnerUserUid,
-                actorUid: $actorUid,
-                reason: 'workspace_member_removed',
-                summary: 'Page ownership transferred before workspace member removal.',
-            );
-        }
-
-        return [
-            'count' => $ownedPages->count(),
-            'replacementOwnerUserUid' => $replacementOwnerUserUid,
-        ];
     }
 
     private function recordRemoval(
@@ -338,56 +226,6 @@ final readonly class RemoveWorkspaceMember
         $this->workspaceAccess->ensureAdmin($actorUid, $workspaceUid, 'Only workspace admins can remove members.');
     }
 
-    private function revokeReusableInvitations(string $workspaceUid, string $memberUserUid): int
-    {
-        $member = User::query()->find($memberUserUid);
-
-        if (!$member instanceof User) {
-            return 0;
-        }
-
-        return WorkspaceInvitation::query()
-            ->where('workspace_uid', $workspaceUid)
-            ->where('invited_email', strtolower(trim($member->email)))
-            ->whereNull('revoked_at')
-            ->update(['revoked_at' => now()]);
-    }
-
-    private function revokeDirectPageAccessGrants(string $workspaceUid, string $memberUserUid, string $actorUid): int
-    {
-        $grants = PageAccessGrant::query()
-            ->select('page_access_grants.*')
-            ->join('pages', 'page_access_grants.page_uid', '=', 'pages.uid')
-            ->where('pages.workspace_uid', $workspaceUid)
-            ->where('page_access_grants.subject_type', PageAccessSubjectType::User)
-            ->where('page_access_grants.subject_uid', $memberUserUid)
-            ->orderBy('page_access_grants.uid')
-            ->lockForUpdate()
-            ->get();
-
-        foreach ($grants as $grant) {
-            $grantUid = $grant->uid;
-            $pageUid = $grant->page_uid;
-            $subjectType = $grant->subject_type;
-            $subjectUid = $grant->subject_uid;
-            $role = $grant->role;
-            $grant->delete();
-
-            $this->revocationJournal->record(
-                pageUid: $pageUid,
-                grantUid: $grantUid,
-                subjectType: $subjectType,
-                subjectUid: $subjectUid,
-                role: $role,
-                actorUid: $actorUid,
-                summary: 'Page access grant revoked before workspace member removal.',
-                reason: 'workspace_member_removed',
-            );
-        }
-
-        return $grants->count();
-    }
-
     private function ensureAdminRemains(WorkspaceMembership $membership, string $workspaceUid): void
     {
         if ($membership->role !== WorkspaceRole::Admin) {
@@ -402,43 +240,5 @@ final readonly class RemoveWorkspaceMember
         if ($adminCount <= 1) {
             throw new DomainRuleViolation('A shared workspace must retain at least one admin.');
         }
-    }
-
-    private function replacementOwnerUserUid(
-        WorkspaceMembership $membership,
-        int $ownedPageCount,
-        ?string $requestedReplacementOwnerUserUid,
-    ): ?string {
-        if ($ownedPageCount === 0) {
-            return null;
-        }
-
-        $replacementOwnerUserUid = $requestedReplacementOwnerUserUid === null
-            ? ''
-            : trim($requestedReplacementOwnerUserUid);
-
-        if ($replacementOwnerUserUid === '') {
-            throw new DomainRuleViolation('A replacement owner is required for pages owned by this member.');
-        }
-
-        if ($replacementOwnerUserUid === $membership->user_uid) {
-            throw new DomainRuleViolation('Replacement page owner must be a different workspace member.');
-        }
-
-        $replacementMembership = WorkspaceMembership::query()
-            ->where('workspace_uid', $membership->workspace_uid)
-            ->where('user_uid', $replacementOwnerUserUid)
-            ->lockForUpdate()
-            ->first();
-
-        if (!$replacementMembership instanceof WorkspaceMembership) {
-            throw new DomainRuleViolation('Replacement page owner must belong to this workspace.');
-        }
-
-        if ($replacementMembership->role === WorkspaceRole::Reader) {
-            throw new DomainRuleViolation('Replacement page owner must be a workspace editor or admin.');
-        }
-
-        return $replacementMembership->user_uid;
     }
 }

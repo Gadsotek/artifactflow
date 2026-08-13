@@ -8,6 +8,7 @@ use App\Application\Administration\RealtimeConfiguration;
 use App\Application\Audit\AuditLogger;
 use App\Application\Events\DomainEventRecorder;
 use App\Application\Identity\ActorId;
+use App\Application\Identity\WorkspaceHierarchyGraph;
 use App\Application\Mcp\McpRequestContext;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
@@ -44,6 +45,7 @@ final readonly class CreatePage
         private CreateCategory $createCategory,
         private RealtimeConfiguration $realtimeConfiguration,
         private PageCatalogLiveAudience $liveAudience,
+        private WorkspaceHierarchyGraph $workspaceHierarchy,
     ) {
     }
 
@@ -117,6 +119,11 @@ final readonly class CreatePage
                 $workspace,
                 $changeSummary,
             ): Page {
+                // Page placement participates in the same hierarchy transaction
+                // protocol as reparenting. Acquiring this before any page or
+                // workspace row prevents a post-snapshot page from escaping the
+                // reparent preview-revision and owner-eligibility checks.
+                $this->workspaceHierarchy->acquireMutationLock();
                 $lockedParent = null;
 
                 if ($command->parentPageUid !== null) {

@@ -159,7 +159,7 @@ final class ImageParserServiceIntegrationTest extends TestCase
         ));
     }
 
-    public function test_parser_strips_compressed_png_metadata_before_native_decode(): void
+    public function test_parser_strips_png_text_and_compressed_metadata_before_native_decode(): void
     {
         $compressedMetadata = gzcompress(str_repeat('A', 7_900_000), 9);
         $compressedPixels = gzcompress("\x00\x23\x78\xdd\xff");
@@ -168,15 +168,16 @@ final class ImageParserServiceIntegrationTest extends TestCase
         $input = "\x89PNG\r\n\x1a\n"
             . $this->pngChunk('IHDR', pack('NNCCCCC', 1, 1, 8, 6, 0, 0, 0));
 
-        for ($index = 0; $index < 150; $index++) {
+        for ($index = 0; $index < 100; $index++) {
             $input .= $this->pngChunk('zTXt', 'key-' . $index . "\x00\x00" . $compressedMetadata);
         }
 
-        $input .= $this->pngChunk('iTXt', "localized\x00\x01\x00\x00\x00" . $compressedMetadata)
+        $input .= $this->pngChunk('tEXt', 'comment' . "\x00" . str_repeat('m', 128 * 1024))
+            . $this->pngChunk('iTXt', "localized\x00\x01\x00\x00\x00" . $compressedMetadata)
             . $this->pngChunk('iCCP', "profile\x00\x00" . $compressedMetadata)
             . $this->pngChunk('IDAT', $compressedPixels)
             . $this->pngChunk('IEND', '');
-        $this->assertGreaterThan(1024 * 1024, strlen($input));
+        $this->assertGreaterThan(512 * 1024, strlen($input));
 
         $safeInput = PngDatastreamValidator::validatedForDecode(
             $input,
@@ -203,6 +204,79 @@ final class ImageParserServiceIntegrationTest extends TestCase
 
         $this->assertSame(1, $image->width);
         $this->assertSame(1, $image->height);
+    }
+
+    public function test_parser_strips_the_maximum_allowed_text_metadata_before_native_decode(): void
+    {
+        $keyword = "comment\x00";
+        $textData = $keyword . str_repeat('m', (1024 * 1024) - strlen($keyword));
+        $input = "\x89PNG\r\n\x1a\n"
+            . $this->pngChunk('IHDR', pack('NNCCCCC', 1, 1, 8, 6, 0, 0, 0))
+            . $this->pngChunk('tEXt', $textData)
+            . $this->pngChunk('IDAT', $this->compressedPixel())
+            . $this->pngChunk('IEND', '');
+
+        $safeInput = PngDatastreamValidator::validatedForDecode(
+            $input,
+            new RasterInfo('image/png', 1, 1),
+        );
+
+        $this->assertSame(['IHDR', 'IDAT', 'IEND'], $this->pngChunkTypes($safeInput));
+        $this->assertLessThan(1024, strlen($safeInput));
+        $configuration = new ParserConfiguration(
+            sharedSecret: str_repeat('s', 32),
+            maxInputBytes: strlen($input),
+            maxOutputBytes: 1024 * 1024,
+            maxPixels: 100,
+            maxDimension: 100,
+            maxClockSkewSeconds: 30,
+        );
+
+        [$image] = (new RasterNormalizer($configuration))->normalize(new ParserRequest(
+            nonce: str_repeat('a', 32),
+            mediaType: 'image/png',
+            bytes: $input,
+            maxOutputBytes: 1024 * 1024,
+        ));
+
+        $this->assertSame(1, $image->width);
+        $this->assertSame(1, $image->height);
+    }
+
+    public function test_parser_rejects_png_ancillary_bytes_above_the_per_image_work_limit(): void
+    {
+        $input = "\x89PNG\r\n\x1a\n"
+            . $this->pngChunk('IHDR', pack('NNCCCCC', 1, 1, 8, 6, 0, 0, 0))
+            . $this->pngChunk('tEXt', str_repeat('m', (1024 * 1024) + 1))
+            . $this->pngChunk('IDAT', $this->compressedPixel())
+            . $this->pngChunk('IEND', '');
+
+        $this->expectException(ParserRejection::class);
+
+        PngDatastreamValidator::validatedForDecode(
+            $input,
+            new RasterInfo('image/png', 1, 1),
+        );
+    }
+
+    public function test_parser_rejects_png_chunk_fanout_above_the_per_image_work_limit(): void
+    {
+        $input = "\x89PNG\r\n\x1a\n"
+            . $this->pngChunk('IHDR', pack('NNCCCCC', 1, 1, 8, 6, 0, 0, 0));
+
+        for ($chunk = 0; $chunk < 1022; $chunk++) {
+            $input .= $this->pngChunk('tEXt', '');
+        }
+
+        $input .= $this->pngChunk('IDAT', $this->compressedPixel())
+            . $this->pngChunk('IEND', '');
+
+        $this->expectException(ParserRejection::class);
+
+        PngDatastreamValidator::validatedForDecode(
+            $input,
+            new RasterInfo('image/png', 1, 1),
+        );
     }
 
     public function test_parser_accepts_a_seven_pass_adam7_png_with_consecutive_idat_chunks(): void
@@ -386,6 +460,14 @@ final class ImageParserServiceIntegrationTest extends TestCase
             . $type
             . $data
             . pack('N', crc32($type . $data));
+    }
+
+    private function compressedPixel(): string
+    {
+        $compressed = gzcompress("\x00\x23\x78\xdd\xff");
+        $this->assertIsString($compressed);
+
+        return $compressed;
     }
 
     /**

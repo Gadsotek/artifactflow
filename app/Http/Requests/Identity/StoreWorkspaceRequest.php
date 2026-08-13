@@ -17,6 +17,8 @@ final class StoreWorkspaceRequest extends AppFormRequest
     {
         return [
             'name' => ['required', 'string', new StorableText(), 'max:120'],
+            'parent_workspace_uid' => ['nullable', 'string', 'ulid'],
+            'inherits_parent_memberships' => ['sometimes', 'boolean'],
             'return_to' => ['nullable', Rule::in(['library'])],
         ];
     }
@@ -29,5 +31,18 @@ final class StoreWorkspaceRequest extends AppFormRequest
     public function returnsToLibrary(): bool
     {
         return $this->string('return_to')->toString() === 'library';
+    }
+
+    public function parentWorkspaceUid(): ?string
+    {
+        $workspaceUid = trim($this->string('parent_workspace_uid')->toString());
+
+        return $workspaceUid === '' ? null : $workspaceUid;
+    }
+
+    public function inheritsParentMemberships(): bool
+    {
+        return !$this->exists('inherits_parent_memberships')
+            || $this->boolean('inherits_parent_memberships');
     }
 }

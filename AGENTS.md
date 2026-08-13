@@ -64,7 +64,7 @@ Security is the first design constraint, not a final review step.
 
 - Treat uploaded or pasted artifact HTML as untrusted executable content.
 - Treat Markdown and Mermaid source as untrusted user content.
-- Treat uploaded raster images as untrusted binary parser input. Accept only bounded PNG/JPEG and perform native decoding only in the dedicated internal parser container; keep the production app image free of GD/EXIF. Authenticate requests and normalized responses, re-encode decoded pixels, discard the original upload, and serve only the normalized derivative from the artifact origin.
+- Treat uploaded raster images as untrusted binary parser input. Accept only bounded PNG/JPEG and perform native decoding only in the dedicated internal parser container; keep the production app image free of GD/EXIF. Bound decoded pixels and non-pixel input work independently: raw bytes, metadata bytes, structure count, and execution time must not escape accounting. Authenticate requests and normalized responses, re-encode decoded pixels, discard the original upload, and serve only the normalized derivative from the artifact origin.
 - Untrusted artifact HTML must never execute in the main application origin or DOM.
 - Raw HTML or JavaScript inside Markdown must never execute in the main application origin or DOM.
 - Mermaid rendering must use strict security settings and must not require external network calls.

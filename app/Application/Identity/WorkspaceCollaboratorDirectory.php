@@ -21,7 +21,9 @@ final readonly class WorkspaceCollaboratorDirectory
 
     /**
      * Candidates the actor may add to the target workspace: registered human
-     * coworkers not already in that workspace whose name or email matches.
+     * coworkers without a direct membership in that workspace whose name or
+     * email matches. Weaker inherited members remain candidates for a stronger
+     * direct role; the write boundary validates the selected elevation.
      *
      * @return list<array{uid: string, name: string, email: string}>
      */

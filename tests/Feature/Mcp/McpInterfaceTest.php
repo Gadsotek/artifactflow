@@ -1502,6 +1502,24 @@ final class McpInterfaceTest extends TestCase
         $this->assertSame(1, $usageUpdates);
     }
 
+    public function test_authenticated_mcp_requests_are_rate_limited_per_principal_across_tokens(): void
+    {
+        config([
+            'rate_limits.mcp_pre_auth_per_minute' => 100,
+            'rate_limits.mcp_per_minute' => 1,
+        ]);
+        $service = $this->createServiceAccount('Principal Rate Agent', 'principal-rate-agent@example.test');
+        $otherService = $this->createServiceAccount('Other Rate Agent', 'other-rate-agent@example.test');
+        $firstToken = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_SEARCH]);
+        $secondToken = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_SEARCH]);
+        $otherToken = $this->issueToken($otherService, [McpAccessTokenIssuer::SCOPE_SEARCH]);
+
+        $this->postJsonRpc($firstToken->plainTextToken, 'tools/list', id: 'principal-first')->assertOk();
+        $this->postJsonRpc($secondToken->plainTextToken, 'tools/list', id: 'principal-second')
+            ->assertTooManyRequests();
+        $this->postJsonRpc($otherToken->plainTextToken, 'tools/list', id: 'other-principal')->assertOk();
+    }
+
     public function test_mcp_route_is_unreachable_on_the_artifact_host_runtime(): void
     {
         $service = $this->createServiceAccount('Runtime Agent', 'runtime-agent@example.test');
@@ -2037,7 +2055,7 @@ final class McpInterfaceTest extends TestCase
         ]))['type']);
     }
 
-    public function test_mutating_mcp_tools_are_rate_limited_per_token(): void
+    public function test_mutating_mcp_tools_are_rate_limited_per_principal_across_tokens(): void
     {
         Storage::fake('artifacts');
         config(['rate_limits.mcp_writes_per_minute' => 1]);
@@ -2052,16 +2070,17 @@ final class McpInterfaceTest extends TestCase
             title: 'Rate Limited Page',
             content: '# Before',
         );
-        $issued = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_UPDATE]);
-        RateLimiter::clear('mcp-write:' . $issued->accessToken->uid);
+        $firstToken = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_UPDATE]);
+        $secondToken = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_UPDATE]);
+        RateLimiter::clear('mcp-write-principal:' . $service->uid);
 
-        $updated = $this->successfulToolPayload($this->callTool($issued->plainTextToken, 'update', [
+        $updated = $this->successfulToolPayload($this->callTool($firstToken->plainTextToken, 'update', [
             'page_uid' => $page->uid,
             'content' => '# First write',
             'base_version_uid' => $page->current_version_uid,
             'change_summary' => 'Apply the first rate-limited write.',
         ]));
-        $limited = $this->toolErrorPayload($this->callTool($issued->plainTextToken, 'update', [
+        $limited = $this->toolErrorPayload($this->callTool($secondToken->plainTextToken, 'update', [
             'page_uid' => $page->uid,
             'content' => '# Second write',
             'base_version_uid' => $this->payloadString($updated, 'version_uid'),

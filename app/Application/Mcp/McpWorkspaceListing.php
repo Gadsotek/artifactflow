@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Application\Mcp;
 
+use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
 use App\Models\McpAccessToken;
 use App\Models\User;
 use App\Models\Workspace;
-use App\Models\WorkspaceMembership;
 
 /**
  * Read query for the MCP list_workspaces tool: the workspaces an actor belongs
@@ -15,19 +15,20 @@ use App\Models\WorkspaceMembership;
  */
 final readonly class McpWorkspaceListing
 {
+    public function __construct(
+        private EffectiveWorkspaceMembershipResolver $memberships,
+    ) {
+    }
+
     /**
      * @return list<array{uid: string, name: array{prompt_read_first: string, kind: string, media_type: string, data: string}}>
      */
     public function forActor(User $actor, McpAccessToken $token): array
     {
-        $membershipUids = WorkspaceMembership::query()
-            ->where('user_uid', $actor->uid)
-            ->get(['workspace_uid'])
-            ->map(static fn (WorkspaceMembership $membership): string => $membership->workspace_uid)
-            ->values()
-            ->all();
-
-        $workspaceUids = $this->filterWorkspaceUidsForToken(array_values($membershipUids), $token);
+        $workspaceUids = $this->filterWorkspaceUidsForToken(
+            $this->memberships->workspaceUidsFor($actor->uid),
+            $token,
+        );
 
         return array_values(Workspace::query()
             ->whereIn('uid', $workspaceUids)

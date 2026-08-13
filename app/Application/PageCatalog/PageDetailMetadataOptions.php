@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Application\PageCatalog;
 
+use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
 use App\Domain\Identity\WorkspaceRole;
 use App\Models\Category;
 use App\Models\Page;
 use App\Models\User;
-use App\Models\WorkspaceMembership;
 
 final readonly class PageDetailMetadataOptions
 {
@@ -16,6 +16,7 @@ final readonly class PageDetailMetadataOptions
 
     public function __construct(
         private PageAccess $access,
+        private EffectiveWorkspaceMembershipResolver $memberships,
     ) {
     }
 
@@ -48,12 +49,10 @@ final readonly class PageDetailMetadataOptions
             return [];
         }
 
-        $userUids = WorkspaceMembership::query()
-            ->whereIn('workspace_uid', $workspaceUids)
-            ->whereIn('role', [WorkspaceRole::Editor->value, WorkspaceRole::Admin->value])
-            ->pluck('user_uid')
-            ->all();
-        $uniqueUserUids = array_values(array_unique(array_filter($userUids, 'is_string')));
+        $uniqueUserUids = $this->memberships->userUidsForAny(
+            $workspaceUids,
+            [WorkspaceRole::Editor, WorkspaceRole::Admin],
+        );
 
         if ($uniqueUserUids === []) {
             return [];

@@ -70,6 +70,7 @@ final class PageRateLimitTest extends TestCase
             'pages.versions.restore',
             'workspace-memberships.update',
             'workspace-memberships.destroy',
+            'workspace-inherited-members.destroy',
         ] as $routeName) {
             $route = Route::getRoutes()->getByName($routeName);
 
