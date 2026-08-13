@@ -44,10 +44,6 @@ final readonly class PruneOrphanArtifacts
         $sampleOrphanPaths = [];
 
         foreach ($disk->allFiles() as $path) {
-            if (!is_string($path)) {
-                continue;
-            }
-
             $filesScanned++;
 
             if (isset($referencedPaths[$path])) {
