@@ -8,8 +8,34 @@ parse_trailers() {
     git --git-dir="${TMPDIR:-/tmp}" -c core.bare=true interpret-trailers --parse
 }
 
+has_valid_dco() {
+    message=$1
+
+    if printf '%s\n' "$message" | parse_trailers | grep -qE "$DCO_PATTERN"; then
+        return 0
+    fi
+
+    # Dependabot puts its trailer after a `---` metadata block. Git treats that
+    # marker as a patch divider and omits the otherwise valid final trailer.
+    # Accept only an isolated final non-empty line so body text cannot qualify.
+    printf '%s\n' "$message" | awk '
+        { lines[NR] = $0 }
+        END {
+            last = NR
+            while (last > 0 && lines[last] ~ /^[[:space:]]*$/) {
+                last--
+            }
+            if (last > 1 && lines[last - 1] ~ /^[[:space:]]*$/) {
+                print lines[last]
+            }
+        }
+    ' | grep -qE "$DCO_PATTERN"
+}
+
 if [ "${1:-}" = "--message-stdin" ]; then
-    if parse_trailers | grep -qE "$DCO_PATTERN"; then
+    message=$(cat)
+
+    if has_valid_dco "$message"; then
         exit 0
     fi
 
@@ -28,7 +54,9 @@ range="${base_sha}..${head_sha}"
 missing=0
 
 for sha in $(git rev-list --no-merges "$range"); do
-    if git log -1 --format=%B "$sha" | parse_trailers | grep -qE "$DCO_PATTERN"; then
+    message=$(git log -1 --format=%B "$sha")
+
+    if has_valid_dco "$message"; then
         continue
     fi
 
