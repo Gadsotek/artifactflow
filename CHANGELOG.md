@@ -6,6 +6,26 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.0.8 — 2026-08-13
+
+Dependency maintenance release. It refreshes the production and development
+image pins, updates the Laravel and frontend toolchains within their existing
+major versions, and advances the release provenance action. There are no schema
+changes or new operator configuration requirements.
+
+### Dependencies
+
+- Updated Laravel Framework 13.23.0 → 13.25.0, Laravel MCP 0.9.1 → 0.9.2, Laravel Reverb 1.11.0 → 1.11.1, and Rector 2.5.9 → 2.6.1. (#68)
+- Updated CodeMirror HTML 6.4.11 → 6.4.12, CodeMirror Markdown 6.5.1 → 6.5.2, ESLint 10.8.0 → 10.8.1, and Vite 8.2.0 → 8.2.1. (#69)
+- Refreshed the pinned PHP 8.5.9, Node 26 Alpine, and FrankenPHP v1 image digests. (#65, #66, #67)
+- Updated `actions/attest-build-provenance` 4.1.1 → 4.2.2 for tagged-release provenance generation. (#64)
+
+### Internal / Tooling
+
+- Kept the Dockerfile and Compose Node pins synchronized after the image refresh. (#66)
+- Updated the DCO validator to recognize Dependabot's isolated final sign-off after its metadata block, while retaining strict rejection of body-text lookalikes. (#66, #68)
+- Removed storage-path type guards made redundant by the updated static-analysis types. (#68)
+
 ## v0.0.7 — 2026-08-10
 
 Major alpha feature and security release. It adds normalized image artifacts,
