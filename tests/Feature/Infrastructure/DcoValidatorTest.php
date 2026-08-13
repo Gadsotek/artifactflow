@@ -16,6 +16,24 @@ final class DcoValidatorTest extends TestCase
         $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
     }
 
+    public function test_validator_accepts_dependabot_metadata_before_the_final_sign_off(): void
+    {
+        $process = $this->validate(<<<'MESSAGE'
+Subject
+
+---
+updated-dependencies:
+- dependency-name: example/package
+  dependency-version: 1.2.3
+  dependency-type: direct:production
+...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+MESSAGE);
+
+        $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
+    }
+
     public function test_validator_rejects_missing_or_malformed_signed_off_by_trailers(): void
     {
         foreach ([
