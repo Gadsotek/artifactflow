@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\PageCatalog;
 
 use App\Application\Identity\CreateSharedWorkspace;
+use App\Application\Identity\ReparentWorkspace;
+use App\Application\Identity\ReparentWorkspaceCommand;
 use App\Application\PageCatalog\CreatePage;
 use App\Application\PageCatalog\CreatePageCommand;
 use App\Domain\Identity\WorkspaceRole;
@@ -101,6 +103,45 @@ final class PageCatalogLiveUpdateTest extends TestCase
                 'page_uid' => $page->uid,
                 'workspace_uid' => $workspace->uid,
             ], $event->broadcastWith());
+
+            return true;
+        });
+    }
+
+    public function test_page_creation_broadcasts_to_human_members_inherited_from_an_ancestor(): void
+    {
+        Storage::fake('artifacts');
+        $this->configureLocalReverb();
+
+        $owner = $this->createUser('Inherited Live Owner', 'catalog-inherited-owner@example.test');
+        $reader = $this->createUser('Inherited Live Reader', 'catalog-inherited-reader@example.test');
+        $root = app(CreateSharedWorkspace::class)->handle($owner, 'Live Root');
+        $child = app(CreateSharedWorkspace::class)->handle($owner, 'Live Child');
+        app(ReparentWorkspace::class)->handle($owner, new ReparentWorkspaceCommand($child->uid, $root->uid, true));
+        WorkspaceMembership::query()->forceCreate([
+            'workspace_uid' => $root->uid,
+            'user_uid' => $reader->uid,
+            'role' => WorkspaceRole::Reader,
+            'accepted_at' => now(),
+        ]);
+        $this->createInstallationSettings(true, $owner->uid);
+        Event::fake([AccessiblePageCreated::class]);
+
+        app(CreatePage::class)->handle($owner, new CreatePageCommand(
+            workspaceUid: $child->uid,
+            type: PageType::Markdown,
+            title: 'Inherited Live Page',
+            description: null,
+            content: '# Inherited live page',
+        ));
+
+        Event::assertDispatched(AccessiblePageCreated::class, function (AccessiblePageCreated $event) use ($reader): bool {
+            $channelNames = array_map(
+                static fn (PrivateChannel $channel): string => $channel->name,
+                $event->broadcastOn(),
+            );
+
+            $this->assertContains('private-user.' . $reader->uid . '.page-catalog', $channelNames);
 
             return true;
         });

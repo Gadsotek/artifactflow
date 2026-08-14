@@ -17,6 +17,9 @@ Accepted security-sensitive architecture decisions:
   one-time redemption, isolated window-lived viewing sessions, scoped MCP
   creation, lifecycle invalidation, and safe type-specific presentation for
   external artifact shares.
+- [`nested-workspaces.md`](nested-workspaces.md): three-level shared-workspace
+  hierarchy, downward role inheritance, exact MCP scope semantics, serialized
+  hierarchy writes, and descendant access revocation.
 
 > Diagrams reflect the *actual* current code. Yes, the implementation is AI-assisted; the rigor behind it (repeated security audits, PHPStan-max, a documented threat model, a broad test suite including browser-level sandbox proofs) is the point.
 

@@ -58,6 +58,7 @@ final class ImageParserIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('${PORT:-8080}', $startScript);
         $this->assertStringContainsString('0.0.0.0:${port}', $startScript);
         $this->assertStringContainsString('memory_limit=448M', $startScript);
+        $this->assertStringContainsString('max_execution_time=15', $startScript);
 
         $healthcheck = $this->readProjectFile('image-parser/healthcheck.php');
         $this->assertStringContainsString('ParserConfiguration::fromEnvironment()', $healthcheck);

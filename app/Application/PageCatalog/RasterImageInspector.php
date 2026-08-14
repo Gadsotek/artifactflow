@@ -87,13 +87,20 @@ final readonly class RasterImageInspector
             throw new DomainRuleViolation('Image pixel count exceeds the configured limit.');
         }
 
-        return new RasterImageInfo($mediaType, $width, $height);
+        return new RasterImageInfo(
+            mediaType: $mediaType,
+            width: $width,
+            height: $height,
+            workload: $mediaType === 'image/png'
+                ? $this->pngWorkload($bytes)
+                : $this->jpegWorkload($bytes),
+        );
     }
 
     /**
-     * This deliberately performs only fixed-offset envelope inspection in PHP.
-     * Native decompression and pixel decoding belong exclusively to the isolated
-     * image-parser service.
+     * Dimension extraction is deliberately fixed-offset. The separate workload
+     * walk below processes only length-prefixed chunk envelopes; native
+     * decompression and pixel decoding belong exclusively to the isolated parser.
      *
      * @return array{string, int, int}
      */
@@ -120,6 +127,116 @@ final readonly class RasterImageInspector
         }
 
         return ['image/png', $width, $height];
+    }
+
+    private function pngWorkload(string $bytes): ImageNormalizationWorkload
+    {
+        $length = strlen($bytes);
+        $offset = 8;
+        $chunkCount = 0;
+        $ancillaryBytes = 0;
+        $seenEnd = false;
+
+        while ($offset < $length) {
+            $chunkCount++;
+
+            if ($chunkCount > ImageArtifactLimits::MAX_PNG_CHUNKS || $length - $offset < 12) {
+                throw new DomainRuleViolation('PNG structure exceeds the supported work limit.');
+            }
+
+            $unpackedLength = unpack('Nlength', substr($bytes, $offset, 4));
+            $chunkLength = is_array($unpackedLength) ? ($unpackedLength['length'] ?? null) : null;
+
+            if (!is_int($chunkLength)) {
+                throw new DomainRuleViolation('Image header is invalid.');
+            }
+
+            $type = substr($bytes, $offset + 4, 4);
+            $dataOffset = $offset + 8;
+            $remaining = $length - $dataOffset;
+
+            if (
+                preg_match('/^[A-Za-z]{4}$/D', $type) !== 1
+                || $remaining < 4
+                || $chunkLength > $remaining - 4
+            ) {
+                throw new DomainRuleViolation('Image header is invalid.');
+            }
+
+            if ((ord($type[0]) & 0x20) !== 0) {
+                $ancillaryBytes += $chunkLength;
+
+                if ($ancillaryBytes > ImageArtifactLimits::MAX_PNG_ANCILLARY_BYTES) {
+                    throw new DomainRuleViolation('PNG metadata exceeds the supported work limit.');
+                }
+            }
+
+            $offset = $dataOffset + $chunkLength + 4;
+
+            if ($type === 'IEND') {
+                $seenEnd = true;
+
+                break;
+            }
+        }
+
+        if (!$seenEnd) {
+            throw new DomainRuleViolation('Image header is invalid.');
+        }
+
+        return new ImageNormalizationWorkload($length, $ancillaryBytes, $chunkCount);
+    }
+
+    private function jpegWorkload(string $bytes): ImageNormalizationWorkload
+    {
+        $length = strlen($bytes);
+        $offset = 2;
+        $markerCount = 0;
+        $metadataBytes = 0;
+
+        while ($offset < $length && $markerCount < self::JPEG_MAX_HEADER_MARKERS) {
+            if (ord($bytes[$offset]) !== 0xff) {
+                break;
+            }
+
+            $offset += strspn($bytes, "\xff", $offset);
+
+            if ($offset >= $length) {
+                break;
+            }
+
+            $marker = ord($bytes[$offset]);
+            $offset++;
+            $markerCount++;
+
+            if ($marker === 0xd9 || $marker === 0xda || ($marker >= 0xd0 && $marker <= 0xd7)) {
+                break;
+            }
+
+            if ($marker === 0x01) {
+                continue;
+            }
+
+            if ($offset + 2 > $length) {
+                break;
+            }
+
+            $segmentLength = unpack('nlength', substr($bytes, $offset, 2));
+            $unpackedSize = is_array($segmentLength) ? ($segmentLength['length'] ?? null) : null;
+            $size = is_int($unpackedSize) ? $unpackedSize : 0;
+
+            if ($size < 2 || $offset + $size > $length) {
+                break;
+            }
+
+            if (($marker >= 0xe0 && $marker <= 0xef) || $marker === 0xfe) {
+                $metadataBytes += $size - 2;
+            }
+
+            $offset += $size;
+        }
+
+        return new ImageNormalizationWorkload($length, $metadataBytes, $markerCount);
     }
 
     /**

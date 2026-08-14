@@ -217,7 +217,12 @@ final readonly class TwoFactorSettingsController
         TrustedDevice $trustedDevice,
         TrustedDeviceManager $trustedDevices,
     ): RedirectResponse {
-        $trustedDevices->revoke($this->authenticatedUser($request), $trustedDevice);
+        $user = $this->authenticatedUser($request);
+        $revocation = $trustedDevices->revoke($user, $trustedDevice, $user->auth_revision);
+        $request->session()->regenerate();
+        Auth::guard('web')->setUser($revocation->user);
+        $this->sessionRevision->bindRevision($request, $revocation->authRevision);
+        $request->session()->regenerateToken();
 
         return redirect()
             ->route('settings.two-factor.index')

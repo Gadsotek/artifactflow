@@ -53,7 +53,7 @@ final class WorkspaceInvitationJoinTest extends TestCase
         $this->assertNotNull($invitation->refresh()->accepted_at);
     }
 
-    public function test_registration_locks_the_workspace_before_the_invitation(): void
+    public function test_registration_acquires_the_hierarchy_lock_before_workspace_and_invitation_rows(): void
     {
         $admin = $this->createUser('Admin User', 'admin@example.test');
         $workspace = app(CreateSharedWorkspace::class)->handle($admin, 'Platform Team');
@@ -62,6 +62,12 @@ final class WorkspaceInvitationJoinTest extends TestCase
 
         DB::listen(function (QueryExecuted $query) use (&$locks, $workspace, $invitation): void {
             $sql = strtolower($query->sql);
+
+            if (str_contains($sql, 'pg_advisory_xact_lock')) {
+                $locks[] = 'hierarchy';
+
+                return;
+            }
 
             if (!str_contains($sql, 'for update')) {
                 return;
@@ -83,8 +89,9 @@ final class WorkspaceInvitationJoinTest extends TestCase
         ])->assertRedirect(route('dashboard', absolute: false));
 
         $this->assertNotEmpty($locks);
-        $this->assertSame(Workspace::class, $locks[0]);
-        $this->assertSame(WorkspaceInvitation::class, $locks[1]);
+        $this->assertSame('hierarchy', $locks[0]);
+        $this->assertSame(Workspace::class, $locks[1]);
+        $this->assertSame(WorkspaceInvitation::class, $locks[2]);
     }
 
     public function test_the_emailed_link_secret_is_stored_only_as_a_hash(): void

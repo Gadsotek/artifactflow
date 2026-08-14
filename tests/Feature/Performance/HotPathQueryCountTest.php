@@ -46,6 +46,51 @@ final class HotPathQueryCountTest extends TestCase
         $this->assertSame($small, $large, "member overview scaled queries: 2 members={$small}, 9 members={$large}");
     }
 
+    public function test_member_overview_ownership_analysis_is_limited_to_the_displayed_member_page(): void
+    {
+        $workspace = $this->sharedWorkspace();
+        $users = [];
+        $createdAt = now()->subHour();
+
+        for ($i = 0; $i < 25; $i++) {
+            $user = User::factory()->create();
+            $users[] = $user;
+            WorkspaceMembership::query()->forceCreate([
+                'workspace_uid' => $workspace->uid,
+                'user_uid' => $user->uid,
+                'role' => WorkspaceRole::Editor,
+                'accepted_at' => $createdAt->addSeconds($i),
+                'created_at' => $createdAt->addSeconds($i),
+                'updated_at' => $createdAt->addSeconds($i),
+            ]);
+        }
+
+        $offPageUser = $users[24];
+        $this->page($workspace, $offPageUser, PageAccessMode::Inherited);
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $page = app(WorkspaceMemberOverview::class)->forWorkspace($users[0], $workspace->uid, 1, 20);
+
+        /** @var list<array{query: string, bindings: list<mixed>, time: float}> $queries */
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+        $ownershipBindings = [];
+
+        foreach ($queries as $query) {
+            if (!str_contains($query['query'], '"owner_user_uid" in')) {
+                continue;
+            }
+
+            $ownershipBindings = $query['bindings'];
+            break;
+        }
+
+        $this->assertCount(20, $page->items);
+        $this->assertNotSame([], $ownershipBindings);
+        $this->assertFalse(in_array($offPageUser->uid, $ownershipBindings, true));
+    }
+
     public function test_workspace_nav_query_count_does_not_grow_with_workspace_count(): void
     {
         $context = app(WorkspaceContext::class);

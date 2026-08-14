@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\Application\PageCatalog;
 
 use App\Application\Identity\ActorId;
+use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
 use App\Domain\Identity\WorkspaceRole;
 use App\Domain\PageCatalog\PageAccessSubjectType;
 use App\Models\Page;
 use App\Models\PageAccessGrant;
 use App\Models\User;
-use App\Models\WorkspaceMembership;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 
@@ -21,6 +21,7 @@ final readonly class RevokePageAccess
         private PageAccessGrantRevocationJournal $revocationJournal,
         private PageAccessRevision $revisions,
         private PagePresenceRevoker $presence,
+        private EffectiveWorkspaceMembershipResolver $memberships,
     ) {
     }
 
@@ -95,9 +96,7 @@ final readonly class RevokePageAccess
         }
 
         return User::query()
-            ->whereIn('uid', WorkspaceMembership::query()
-                ->select('user_uid')
-                ->where('workspace_uid', $command->subjectUid))
+            ->whereIn('uid', $this->memberships->userUidsForAny([$command->subjectUid]))
             ->orderBy('uid')
             ->get();
     }

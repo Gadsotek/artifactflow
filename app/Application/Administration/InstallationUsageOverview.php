@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Application\Administration;
 
+use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
 use App\Models\Page;
 use App\Models\PageVersion;
 use App\Models\User;
 use App\Models\Workspace;
-use App\Models\WorkspaceMembership;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -18,6 +18,7 @@ final readonly class InstallationUsageOverview
     public function __construct(
         private InstallationLimitSettings $limits,
         private ByteSizeFormatter $bytes,
+        private EffectiveWorkspaceMembershipResolver $memberships,
     ) {
     }
 
@@ -25,12 +26,7 @@ final readonly class InstallationUsageOverview
     {
         $limitValues = $this->limits->current();
         $usedBytes = (int) PageVersion::query()->sum('byte_size');
-        /** @var list<string> $visibleWorkspaceUids */
-        $visibleWorkspaceUids = array_values(WorkspaceMembership::query()
-            ->where('user_uid', $actor->uid)
-            ->get(['workspace_uid'])
-            ->map(static fn (WorkspaceMembership $membership): string => $membership->workspace_uid)
-            ->all());
+        $visibleWorkspaceUids = $this->memberships->workspaceUidsFor($actor->uid);
 
         return new InstallationStorageUsage(
             summary: new StorageUsageSummary(

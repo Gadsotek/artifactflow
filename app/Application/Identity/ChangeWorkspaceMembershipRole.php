@@ -28,18 +28,23 @@ final readonly class ChangeWorkspaceMembershipRole
         private AuditLogger $audit,
         private PageAccess $access,
         private WorkspaceAccess $workspaceAccess,
+        private WorkspaceAuthorityImpact $authorityImpact,
         private PageAccessRevision $revisions,
         private PagePresenceRevoker $presence,
+        private PendingWorkspaceInvitationRevoker $invitationRevoker,
     ) {
     }
 
     /**
      * @throws AuthorizationException
+     * @throws DomainRuleViolation
      */
     public function handle(User $actor, ChangeWorkspaceMembershipRoleCommand $command): WorkspaceMembership
     {
         $actorUid = ActorId::fromUser($actor);
         $previousRole = null;
+        /** @var list<string> $presencePageUids */
+        $presencePageUids = [];
 
         // Lock ordering: bumpWorkspace() below row-locks every page in the workspace via
         // an UPDATE. Acquiring those page rows FOR UPDATE in ascending uid order FIRST, and
@@ -54,11 +59,19 @@ final readonly class ChangeWorkspaceMembershipRole
         // retry intentionally guards (it is pre-locked on replay); the bump stays
         // workspace-scoped because it is load-bearing security -- see the phantom-window
         // note and regression test referenced from RemoveWorkspaceMember::handle().
-        $membership = DB::transaction(function () use ($actorUid, $command, &$previousRole): WorkspaceMembership {
-            $this->lockWorkspacePagesInCanonicalOrder($command->workspaceUid);
+        $membership = DB::transaction(function () use (
+            $actorUid,
+            $command,
+            &$previousRole,
+            &$presencePageUids,
+        ): WorkspaceMembership {
+            $this->authorityImpact->acquireHierarchyLock();
+            $descendantWorkspaceUids = $this->authorityImpact->descendantWorkspaceUids($command->workspaceUid);
+            $affectedPageUids = $this->authorityImpact->pageUids($descendantWorkspaceUids);
+            $this->authorityImpact->lockPages($affectedPageUids);
+            $this->authorityImpact->lockWorkspaces($descendantWorkspaceUids);
 
             $workspace = Workspace::query()
-                ->lockForUpdate()
                 ->find($command->workspaceUid);
 
             if (!$workspace instanceof Workspace) {
@@ -86,10 +99,27 @@ final readonly class ChangeWorkspaceMembershipRole
             }
 
             $this->ensureAdminRemains($membership, $command->role, $workspace->uid);
-            $this->ensureOwnedPagesRemainWithAnEligibleOwner($membership, $command->role, $workspace->uid);
+            $beforeRoles = $this->authorityImpact->rolesForUser(
+                $membership->user_uid,
+                $descendantWorkspaceUids,
+            );
             $previousRole = $membership->role;
             $membership->forceFill(['role' => $command->role])->save();
-            $invalidatedPreviewPageCount = $this->revisions->bumpWorkspace($workspace->uid);
+            $afterRoles = $this->authorityImpact->rolesForUser(
+                $membership->user_uid,
+                $descendantWorkspaceUids,
+            );
+            $presencePageUids = $this->presencePageUidsForViewLoss($beforeRoles, $afterRoles);
+            $revokedInvitationCount = $this->invitationRevoker->forUserAcrossWorkspaces(
+                $membership->user_uid,
+                $this->reducedWorkspaceUids($beforeRoles, $afterRoles),
+            );
+            $this->ensureOwnedPagesRemainWithAnEligibleOwner(
+                membership: $membership,
+                beforeRoles: $beforeRoles,
+                afterRoles: $afterRoles,
+            );
+            $invalidatedPreviewPageCount = $this->invalidateWorkspaceReach($descendantWorkspaceUids);
 
             $event = $this->events->record(
                 eventType: DomainEventType::WorkspaceMembershipRoleChanged,
@@ -102,6 +132,8 @@ final readonly class ChangeWorkspaceMembershipRole
                     'changed_by_user_uid' => $actorUid,
                     'previous_role' => $previousRole->value,
                     'new_role' => $command->role->value,
+                    'affected_workspace_count' => count($descendantWorkspaceUids),
+                    'revoked_invitation_count' => $revokedInvitationCount,
                     'invalidated_preview_page_count' => $invalidatedPreviewPageCount,
                 ],
             );
@@ -118,6 +150,8 @@ final readonly class ChangeWorkspaceMembershipRole
                     'member_user_uid' => $membership->user_uid,
                     'previous_role' => $previousRole->value,
                     'new_role' => $command->role->value,
+                    'affected_workspace_count' => count($descendantWorkspaceUids),
+                    'revoked_invitation_count' => $revokedInvitationCount,
                     'invalidated_preview_page_count' => $invalidatedPreviewPageCount,
                 ],
             );
@@ -127,15 +161,18 @@ final readonly class ChangeWorkspaceMembershipRole
 
         $this->access->flushCache();
 
-        if ($previousRole === WorkspaceRole::Admin && $membership->role !== WorkspaceRole::Admin) {
+        if (
+            $previousRole instanceof WorkspaceRole
+            && $membership->role->rank() < $previousRole->rank()
+            && $presencePageUids !== []
+        ) {
             $member = User::query()->find($membership->user_uid);
 
             if ($member instanceof User) {
                 $this->presence->kickUserFromPagesWhereViewLost(
                     $member,
                     Page::query()
-                        ->where('workspace_uid', $command->workspaceUid)
-                        ->where('access_mode', PageAccessMode::Restricted)
+                        ->whereIn('uid', $presencePageUids)
                         ->orderBy('uid')
                         ->get(),
                 );
@@ -153,20 +190,6 @@ final readonly class ChangeWorkspaceMembershipRole
      * order follows the scan, not the ORDER BY) guarantees the ascending acquisition
      * order the catalog-wide page->workspace discipline depends on.
      */
-    private function lockWorkspacePagesInCanonicalOrder(string $workspaceUid): void
-    {
-        /** @var list<string> $pageUids */
-        $pageUids = Page::query()
-            ->where('workspace_uid', $workspaceUid)
-            ->orderBy('uid')
-            ->pluck('uid')
-            ->all();
-
-        foreach ($pageUids as $pageUid) {
-            Page::query()->whereKey($pageUid)->lockForUpdate()->first();
-        }
-    }
-
     /**
      * @throws AuthorizationException
      */
@@ -194,17 +217,31 @@ final readonly class ChangeWorkspaceMembershipRole
         }
     }
 
+    /**
+     * @param array<string, WorkspaceRole|null> $beforeRoles
+     * @param array<string, WorkspaceRole|null> $afterRoles
+     */
     private function ensureOwnedPagesRemainWithAnEligibleOwner(
         WorkspaceMembership $membership,
-        WorkspaceRole $newRole,
-        string $workspaceUid,
+        array $beforeRoles,
+        array $afterRoles,
     ): void {
-        if ($newRole !== WorkspaceRole::Reader) {
+        $lostWriteWorkspaceUids = [];
+
+        foreach ($beforeRoles as $workspaceUid => $beforeRole) {
+            $afterRole = $afterRoles[$workspaceUid] ?? null;
+
+            if ($beforeRole?->canWritePages() === true && $afterRole?->canWritePages() !== true) {
+                $lostWriteWorkspaceUids[] = $workspaceUid;
+            }
+        }
+
+        if ($lostWriteWorkspaceUids === []) {
             return;
         }
 
         $ownsPages = Page::query()
-            ->where('workspace_uid', $workspaceUid)
+            ->whereIn('workspace_uid', $lostWriteWorkspaceUids)
             ->where('owner_user_uid', $membership->user_uid)
             ->exists();
 
@@ -213,5 +250,102 @@ final readonly class ChangeWorkspaceMembershipRole
                 'Reassign pages owned by this member before changing their role to Reader.',
             );
         }
+    }
+
+    /**
+     * @param array<string, WorkspaceRole|null> $beforeRoles
+     * @param array<string, WorkspaceRole|null> $afterRoles
+     * @return list<string>
+     */
+    private function reducedWorkspaceUids(array $beforeRoles, array $afterRoles): array
+    {
+        $workspaceUids = [];
+
+        foreach ($beforeRoles as $workspaceUid => $beforeRole) {
+            $afterRole = $afterRoles[$workspaceUid] ?? null;
+
+            if (($afterRole?->rank() ?? 0) < ($beforeRole?->rank() ?? 0)) {
+                $workspaceUids[] = $workspaceUid;
+            }
+        }
+
+        return $workspaceUids;
+    }
+
+    /**
+     * Select only pages the role transition could make unreadable. Every
+     * effective workspace role can read inherited pages, while restricted
+     * pages require Admin unless an independent page grant still applies.
+     * The post-commit PageAccess check handles that independent grant.
+     *
+     * @param array<string, WorkspaceRole|null> $beforeRoles
+     * @param array<string, WorkspaceRole|null> $afterRoles
+     * @return list<string>
+     */
+    private function presencePageUidsForViewLoss(array $beforeRoles, array $afterRoles): array
+    {
+        $allPageWorkspaceUids = [];
+        $restrictedPageWorkspaceUids = [];
+
+        foreach ($beforeRoles as $workspaceUid => $beforeRole) {
+            $afterRole = $afterRoles[$workspaceUid] ?? null;
+
+            if (!$beforeRole instanceof WorkspaceRole || $beforeRole === $afterRole) {
+                continue;
+            }
+
+            if (!$afterRole instanceof WorkspaceRole) {
+                $allPageWorkspaceUids[] = $workspaceUid;
+
+                continue;
+            }
+
+            if ($beforeRole === WorkspaceRole::Admin && $afterRole !== WorkspaceRole::Admin) {
+                $restrictedPageWorkspaceUids[] = $workspaceUid;
+            }
+        }
+
+        if ($allPageWorkspaceUids === [] && $restrictedPageWorkspaceUids === []) {
+            return [];
+        }
+
+        /** @var list<string> $allPageUids */
+        $allPageUids = $allPageWorkspaceUids === []
+            ? []
+            : Page::query()
+                ->whereIn('workspace_uid', $allPageWorkspaceUids)
+                ->pluck('uid')
+                ->all();
+        /** @var list<string> $restrictedPageUids */
+        $restrictedPageUids = $restrictedPageWorkspaceUids === []
+            ? []
+            : Page::query()
+                ->whereIn('workspace_uid', $restrictedPageWorkspaceUids)
+                ->where('access_mode', PageAccessMode::Restricted)
+                ->pluck('uid')
+                ->all();
+        $pageUids = array_values(array_unique([...$allPageUids, ...$restrictedPageUids]));
+        sort($pageUids);
+
+        return $pageUids;
+    }
+
+    /**
+     * Keep the existing workspace-scoped UPDATE for every affected workspace.
+     * It deliberately catches pages committed after the locked snapshot; the
+     * transaction retry handles the resulting phantom-row deadlock window.
+     *
+     * @param list<string> $workspaceUids
+     */
+    private function invalidateWorkspaceReach(array $workspaceUids): int
+    {
+        $count = 0;
+
+        foreach ($workspaceUids as $workspaceUid) {
+            $count += $this->revisions->bumpWorkspace($workspaceUid);
+            $count += $this->revisions->bumpPagesGrantedToWorkspace($workspaceUid);
+        }
+
+        return $count;
     }
 }

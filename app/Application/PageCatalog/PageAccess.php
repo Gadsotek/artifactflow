@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\PageCatalog;
 
+use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
+use App\Application\Identity\EffectiveWorkspaceSettingsResolver;
 use App\Application\Mcp\McpEffectiveAuthority;
 use App\Domain\Identity\WorkspaceRole;
 use App\Domain\PageCatalog\PageAccessMode;
@@ -11,8 +13,6 @@ use App\Domain\PageCatalog\PageAccessSubjectType;
 use App\Models\Page;
 use App\Models\PageAccessGrant;
 use App\Models\User;
-use App\Models\Workspace;
-use App\Models\WorkspaceMembership;
 use App\Models\WorkspaceMembershipRemoval;
 use Carbon\CarbonImmutable;
 use Closure;
@@ -48,6 +48,8 @@ final class PageAccess
 
     public function __construct(
         private readonly McpEffectiveAuthority $mcpAuthority,
+        private readonly EffectiveWorkspaceMembershipResolver $memberships,
+        private readonly EffectiveWorkspaceSettingsResolver $settings,
     ) {
     }
 
@@ -231,12 +233,9 @@ final class PageAccess
             return null;
         }
 
-        $membership = WorkspaceMembership::query()
-            ->where('workspace_uid', $workspaceUid)
-            ->where('user_uid', $user->uid)
-            ->first();
-
-        $role = $this->mcpAuthority->workspaceRole($membership instanceof WorkspaceMembership ? $membership->role : null);
+        $role = $this->mcpAuthority->workspaceRole(
+            $this->memberships->resolve($user->uid, $workspaceUid)->role,
+        );
         $this->workspaceRoleCache[$cacheKey] = $role;
 
         return $role;
@@ -261,13 +260,9 @@ final class PageAccess
      */
     public function lockWorkspaceSharingPolicy(string $workspaceUid): void
     {
-        $workspace = Workspace::query()
-            ->whereKey($workspaceUid)
-            ->lockForUpdate()
-            ->first();
-
-        $this->editorPageSharingCache[$workspaceUid] = $workspace instanceof Workspace
-            && $workspace->allow_editor_page_sharing;
+        $this->editorPageSharingCache[$workspaceUid] = $this->settings
+            ->resolveLocked($workspaceUid)
+            ->allowEditorPageSharing;
     }
 
     /**
@@ -412,7 +407,7 @@ final class PageAccess
         Page $page,
         ?WorkspaceRole $pageWorkspaceRole,
     ): ?WorkspaceRole {
-        if (!$this->grantAppliesToUser($grant, $page, $pageWorkspaceRole)) {
+        if (!$this->grantAppliesToUser($grant, $page)) {
             return null;
         }
 
@@ -434,13 +429,8 @@ final class PageAccess
     private function grantAppliesToUser(
         PageAccessGrant $grant,
         Page $page,
-        ?WorkspaceRole $pageWorkspaceRole,
     ): bool {
         if ($grant->subject_type !== PageAccessSubjectType::User) {
-            return true;
-        }
-
-        if ($pageWorkspaceRole instanceof WorkspaceRole) {
             return true;
         }
 
@@ -500,8 +490,7 @@ final class PageAccess
             return $this->editorPageSharingCache[$workspaceUid];
         }
 
-        $workspace = Workspace::query()->find($workspaceUid);
-        $allowsSharing = $workspace instanceof Workspace && $workspace->allow_editor_page_sharing;
+        $allowsSharing = $this->settings->resolve($workspaceUid)->allowEditorPageSharing;
         $this->editorPageSharingCache[$workspaceUid] = $allowsSharing;
 
         return $allowsSharing;
@@ -518,14 +507,9 @@ final class PageAccess
             return $this->workspaceUidCache[$cacheKey];
         }
 
-        $workspaceUids = WorkspaceMembership::query()
-            ->where('user_uid', $user->uid)
-            ->get(['workspace_uid'])
-            ->map(static fn (WorkspaceMembership $membership): string => $membership->workspace_uid)
-            ->values()
-            ->all();
-
-        $workspaceUids = $this->mcpAuthority->filterWorkspaceUids(array_values($workspaceUids));
+        $workspaceUids = $this->mcpAuthority->filterWorkspaceUids(
+            $this->memberships->workspaceUidsFor($user->uid),
+        );
         $this->workspaceUidCache[$cacheKey] = $workspaceUids;
 
         return $workspaceUids;

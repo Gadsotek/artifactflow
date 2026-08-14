@@ -253,7 +253,7 @@ final class AppServiceProvider extends ServiceProvider
         RateLimiter::for('mcp', function (Request $request): Limit {
             $token = $request->attributes->get('mcp_access_token');
             $key = $token instanceof McpAccessToken
-                ? 'mcp-token:' . $token->uid
+                ? 'mcp-principal:' . $token->principal_user_uid
                 : 'mcp-ip:' . ($request->ip() ?? 'unknown');
 
             return Limit::perMinute($this->configuredRateLimit('rate_limits.mcp_per_minute', 60))

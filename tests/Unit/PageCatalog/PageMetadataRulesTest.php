@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\PageCatalog;
 
+use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
 use App\Application\PageCatalog\PageMetadataRules;
 use App\Domain\DomainRuleViolation;
 use PHPUnit\Framework\TestCase;
@@ -19,7 +20,7 @@ final class PageMetadataRulesTest extends TestCase
         // rule, so the guard must live here too: a NUL byte would otherwise reach the
         // PostgreSQL text column and 500 rather than fail cleanly. The NUL sits mid-string
         // because trim() alone would strip a leading/trailing one.
-        (new PageMetadataRules())->normalizeTitle("Run\0book");
+        (new PageMetadataRules(new EffectiveWorkspaceMembershipResolver()))->normalizeTitle("Run\0book");
     }
 
     public function test_description_rejects_malformed_utf8(): void
@@ -27,12 +28,12 @@ final class PageMetadataRulesTest extends TestCase
         $this->expectException(DomainRuleViolation::class);
         $this->expectExceptionMessage('Page description must not contain control characters or invalid text.');
 
-        (new PageMetadataRules())->normalizeDescription("Notes \xFF here");
+        (new PageMetadataRules(new EffectiveWorkspaceMembershipResolver()))->normalizeDescription("Notes \xFF here");
     }
 
     public function test_clean_title_and_description_pass_through_unchanged(): void
     {
-        $rules = new PageMetadataRules();
+        $rules = new PageMetadataRules(new EffectiveWorkspaceMembershipResolver());
 
         $this->assertSame('Release Runbook', $rules->normalizeTitle('  Release Runbook  '));
         $this->assertSame("Line one\nLine two", $rules->normalizeDescription("Line one\nLine two"));

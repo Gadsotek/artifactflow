@@ -323,7 +323,7 @@ that person/client as the model that produced the restored bytes.
 
 Content scanning remains advisory except for explicit secret and credential patterns, which block writes. Inline script in an HTML artifact is expected; it is recorded as a warning finding and audit trail, not held for human acknowledgement. Descriptions are scanned for obvious secrets and prompt-injection role markers before save. MCP taxonomy names and slugs are user-authored data and are therefore returned inside the same explicit untrusted-data envelope as other user-authored text.
 
-Set `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` to tune the pre-authenticated source-IP ceiling, `MCP_RATE_LIMIT_PER_MINUTE` to tune the authenticated token ceiling, and `MCP_WRITE_RATE_LIMIT_PER_MINUTE` to tune per-token create/organize/upload/update-description/update-content/revert/external-share write throughput. Invalid or unauthenticated bearer attempts are bucketed by source IP before token lookup so random bearer rotation cannot create fresh unauthenticated buckets. Authenticated calls are also limited after token authentication. Image normalization keeps its independent parser-admission and pixel-work budgets; temporary parser saturation or unavailability returns a retryable MCP error with `retry_after`. External-share creation additionally consumes the normal per-actor/page `EXTERNAL_SHARE_CREATE_RATE_LIMIT_PER_MINUTE` budget. If many legitimate MCP clients share one NAT or proxy egress IP, size the pre-auth limit for the aggregate caller pool or route trusted clients through distinct egress identities. The official Laravel MCP transport negotiates the protocol during initialization and issues `MCP-Session-Id`; compliant clients return that non-secret identifier automatically, and ArtifactFlow records it in MCP-created version, metadata/description update, restore, and external-share audit metadata. Never place image Base64, submitted image bytes, signed preview URLs, returned external-share URLs, application session cookies, or raw authorization headers in MCP client prompts or logs.
+Set `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` to tune the pre-authenticated source-IP ceiling, `MCP_RATE_LIMIT_PER_MINUTE` to tune the authenticated principal ceiling, and `MCP_WRITE_RATE_LIMIT_PER_MINUTE` to tune per-principal create/organize/upload/update-description/update-content/revert/external-share write throughput. Invalid or unauthenticated bearer attempts are bucketed by source IP before token lookup so random bearer rotation cannot create fresh unauthenticated buckets. Authenticated calls and writes are bucketed by the human or service-account principal after token authentication; issuing more tokens does not multiply either allowance. Image normalization keeps independent parser-admission, decoded-pixel, and input-work budgets; temporary parser saturation or unavailability returns a retryable MCP error with `retry_after`. External-share creation additionally consumes the normal per-actor/page `EXTERNAL_SHARE_CREATE_RATE_LIMIT_PER_MINUTE` budget. If many legitimate MCP clients share one NAT or proxy egress IP, size the pre-auth limit for the aggregate caller pool or route trusted clients through distinct egress identities. The official Laravel MCP transport negotiates the protocol during initialization and issues `MCP-Session-Id`; compliant clients return that non-secret identifier automatically, and ArtifactFlow records it in MCP-created version, metadata/description update, restore, and external-share audit metadata. Never place image Base64, submitted image bytes, signed preview URLs, returned external-share URLs, application session cookies, or raw authorization headers in MCP client prompts or logs.
 
 ## Mail Delivery
 
@@ -387,10 +387,12 @@ per-container memory budget, so prefork workers can OOM-kill only part of the po
 endpoint remains green. The parser entrypoint refuses `PHP_CLI_SERVER_WORKERS` values other than
 one. Every app replica uses the shared rate-limit cache for a single non-blocking normalization
 slot; a busy slot returns 503 immediately instead of queueing for the parser timeout. Every
-dispatch consumes the image's exact pixel count from per-user and installation-wide one-minute
-budgets, including completed parser rejections. Only failures proven to occur before dispatch are
-refunded. A connection, timeout, or response-stream failure with uncertain parser state retains the
-existing slot lease, whose total TTL is the parser timeout plus a fixed expiry margin. Monitor
+dispatch consumes both the image's exact pixel count and its input-work charge from per-principal
+and installation-wide one-minute budgets, including completed parser rejections. Input work counts
+the raw compressed bytes, metadata bytes, and chunk/marker fan-out independently. Only failures
+proven to occur before dispatch are refunded. A connection, timeout, or response-stream failure
+with uncertain parser state retains the existing slot lease, whose total TTL is the parser timeout
+plus a fixed expiry margin. The parser process also has a 15-second execution ceiling. Monitor
 repeated busy responses alongside `image_parser.request_failed` rather than shortening that lease.
 App replicas request
 identity encoding and incrementally stop a parser response after the signed output-byte limit plus
@@ -643,8 +645,8 @@ Rate limits:
 | `DRAFT_PREVIEW_CAPABILITY_RATE_LIMIT_PER_MINUTE` | 30 | Authenticated draft capabilities issued per user |
 | `ARTIFACT_PREVIEWS_PER_MINUTE` | 60 | Artifact preview loads per IP and per path |
 | `MCP_PRE_AUTH_RATE_LIMIT_PER_MINUTE` | 300 | MCP requests per IP before authentication |
-| `MCP_RATE_LIMIT_PER_MINUTE` | 60 | MCP requests per token |
-| `MCP_WRITE_RATE_LIMIT_PER_MINUTE` | 20 | MCP write tool calls per token |
+| `MCP_RATE_LIMIT_PER_MINUTE` | 60 | MCP requests per human or service-account principal across all of its tokens |
+| `MCP_WRITE_RATE_LIMIT_PER_MINUTE` | 20 | MCP write tool calls per principal across all of its tokens |
 | `ADMIN_STEP_UP_RATE_LIMIT_PER_MINUTE` | 5 | Password confirmations and MCP-token creation attempts per user; also the compatibility fallback for the renamed admin-2FA minute limit |
 | `ADMIN_TWO_FACTOR_RATE_LIMIT_PER_MINUTE` | 5 | Administration 2FA confirmations per account per minute |
 | `ADMIN_TWO_FACTOR_ACCOUNT_RATE_LIMIT_PER_HOUR` | 30 | Administration 2FA confirmations per account across source IPs per hour |
@@ -678,8 +680,10 @@ Content and storage limits:
 | `IMAGE_PARSER_CONNECT_TIMEOUT_SECONDS` | 2 seconds | App-to-parser connection timeout (hard-capped at 10 seconds) |
 | `IMAGE_PARSER_TIMEOUT_SECONDS` | 12 seconds | Whole normalization timeout (hard-capped at 30 seconds) |
 | `IMAGE_PARSER_MAX_CLOCK_SKEW_SECONDS` | 120 seconds | Parser request timestamp tolerance (hard-capped at 300 seconds). Keep host clocks synchronized; authenticated skew failures are recorded as `image_parser.request_failed` with reason `clock_skew`. |
-| `IMAGE_NORMALIZATION_USER_PIXEL_BUDGET_PER_MINUTE` | 64 Mi pixels | Per-user normalization work budget; must allow one maximum upload and cannot exceed 64 Mi pixels |
-| `IMAGE_NORMALIZATION_INSTALLATION_PIXEL_BUDGET_PER_MINUTE` | 256 Mi pixels | Shared installation work budget; must be at least the user budget and cannot exceed 256 Mi pixels |
+| `IMAGE_NORMALIZATION_USER_PIXEL_BUDGET_PER_MINUTE` | 64 Mi pixels | Per-principal decoded-pixel budget; must allow one maximum upload and cannot exceed 64 Mi pixels |
+| `IMAGE_NORMALIZATION_INSTALLATION_PIXEL_BUDGET_PER_MINUTE` | 256 Mi pixels | Shared installation decoded-pixel budget; must be at least the principal budget and cannot exceed 256 Mi pixels |
+| `IMAGE_NORMALIZATION_USER_WORK_BUDGET_PER_MINUTE` | 64 Mi work units | Per-principal non-pixel work budget. Input bytes count once, PNG ancillary/JPEG header metadata bytes count again, and every parsed chunk/marker costs 1 Ki work units. |
+| `IMAGE_NORMALIZATION_INSTALLATION_WORK_BUDGET_PER_MINUTE` | 256 Mi work units | Installation-wide non-pixel work budget; must be at least the principal budget and cannot exceed 256 Mi work units. |
 | `ARTIFACT_MAX_BYTES` | 10 MiB | Artifact size stored/served on read and signed normalized-image output budget (must be ≥ every Markdown/HTML/image upload limit in production; hard-capped at 64 MiB for image derivatives) |
 | `ARTIFACT_DRAFT_PREVIEW_MAX_BODY` | 6 MB | Edge request-body cap for the capability-protected draft-preview route; keep above `PAGE_HTML_MAX_BYTES` for multipart overhead |
 | `PAGE_WORKSPACE_MAX_STORAGE_BYTES` | 1 GiB | Total artifact storage per workspace |

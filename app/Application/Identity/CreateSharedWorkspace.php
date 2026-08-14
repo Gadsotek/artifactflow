@@ -14,6 +14,7 @@ use App\Domain\PageCatalog\PageContentEncoding;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceMembership;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 
 final readonly class CreateSharedWorkspace
@@ -21,11 +22,17 @@ final readonly class CreateSharedWorkspace
     public function __construct(
         private DomainEventRecorder $events,
         private AuditLogger $audit,
+        private WorkspaceHierarchyGraph $hierarchy,
+        private WorkspaceAccess $workspaceAccess,
     ) {
     }
 
-    public function handle(User $actor, string $name): Workspace
-    {
+    public function handle(
+        User $actor,
+        string $name,
+        ?string $parentWorkspaceUid = null,
+        bool $inheritsParentMemberships = true,
+    ): Workspace {
         $workspaceName = trim($name);
 
         if ($workspaceName === '') {
@@ -38,18 +45,65 @@ final readonly class CreateSharedWorkspace
             throw new DomainRuleViolation('Workspace name must not contain control characters or invalid text.');
         }
 
-        return DB::transaction(function () use ($actor, $workspaceName): Workspace {
+        return DB::transaction(function () use (
+            $actor,
+            $workspaceName,
+            $parentWorkspaceUid,
+            $inheritsParentMemberships,
+        ): Workspace {
             $actorUid = ActorId::fromUser(
                 $actor,
                 'Cannot create a shared workspace for an unsaved user.',
             );
+            $parent = null;
+            $parentAncestorRows = [];
+
+            if ($parentWorkspaceUid !== null) {
+                $this->hierarchy->acquireMutationLock();
+                $parent = Workspace::query()->whereKey($parentWorkspaceUid)->lockForUpdate()->first();
+
+                // A submitted workspace UID is not an authority credential. Keep a
+                // missing parent indistinguishable from an existing parent outside
+                // the actor's reach before revealing its type or hierarchy depth.
+                if (
+                    !$parent instanceof Workspace
+                    || !$this->workspaceAccess->isAdmin($actorUid, $parent->uid)
+                ) {
+                    throw new AuthorizationException('Only workspace admins can create a child workspace.');
+                }
+
+                if ($parent->type !== WorkspaceType::Shared) {
+                    throw new DomainRuleViolation('Personal workspaces cannot participate in a workspace hierarchy.');
+                }
+                $parentAncestorRows = $this->hierarchy->ancestorRows($parent->uid);
+
+                foreach ($parentAncestorRows as $ancestorRow) {
+                    if ($ancestorRow->depth >= 2) {
+                        throw new DomainRuleViolation($this->depthLimitMessage(
+                            $actorUid,
+                            $parentAncestorRows,
+                        ));
+                    }
+                }
+            }
 
             $workspace = Workspace::query()->forceCreate([
                 'name' => $workspaceName,
                 'type' => WorkspaceType::Shared,
                 'personal_owner_uid' => null,
+                'parent_workspace_uid' => $parent?->uid,
+                'inherits_parent_memberships' => $parent === null || $inheritsParentMemberships,
                 'created_by_user_uid' => $actorUid,
             ]);
+
+            if ($parent instanceof Workspace) {
+                $this->hierarchy->replaceParent(
+                    workspace: $workspace,
+                    newParentWorkspaceUid: $parent->uid,
+                    subtreeRows: $this->hierarchy->subtreeRows($workspace->uid),
+                    newParentAncestorRows: $parentAncestorRows,
+                );
+            }
 
             WorkspaceMembership::query()->forceCreate([
                 'workspace_uid' => $workspace->uid,
@@ -66,6 +120,8 @@ final readonly class CreateSharedWorkspace
                     'workspace_uid' => $workspace->uid,
                     'created_by_user_uid' => $actorUid,
                     'workspace_name' => $workspace->name,
+                    'parent_workspace_uid' => $parent?->uid,
+                    'inherits_parent_memberships' => $workspace->inherits_parent_memberships,
                 ],
             );
 
@@ -79,10 +135,33 @@ final readonly class CreateSharedWorkspace
                 metadata: [
                     'workspace_name' => $workspace->name,
                     'workspace_type' => WorkspaceType::Shared->value,
+                    'parent_workspace_uid' => $parent?->uid,
+                    'inherits_parent_memberships' => $workspace->inherits_parent_memberships,
                 ],
             );
 
-            return $workspace;
+            return $workspace->refresh();
         });
+    }
+
+    /**
+     * Visible ancestry may explain the three-level limit. If any ancestor is
+     * hidden, report only that the chosen workspace is ineligible so the error
+     * cannot become a hierarchy-depth oracle.
+     *
+     * @param list<\App\Models\WorkspaceAncestry> $ancestorRows
+     */
+    private function depthLimitMessage(string $actorUid, array $ancestorRows): string
+    {
+        foreach ($ancestorRows as $ancestorRow) {
+            if (
+                $ancestorRow->depth > 0
+                && $this->workspaceAccess->role($actorUid, $ancestorRow->ancestor_workspace_uid) === null
+            ) {
+                return 'This workspace cannot contain a child workspace.';
+            }
+        }
+
+        return 'Workspace hierarchy is limited to three levels.';
     }
 }

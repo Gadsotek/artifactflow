@@ -11,6 +11,7 @@ public_paths=(
     "docs/OPERATIONS.md"
     "docs/architecture/README.md"
     "docs/architecture/external-sharing.md"
+    "docs/architecture/nested-workspaces.md"
     "docs/architecture/overview.svg"
     "docs/architecture/workflows.svg"
     "docs/operations/artifact-host-database-grants.sql"
@@ -23,6 +24,7 @@ published_docs=(
     "docs/OPERATIONS.md"
     "docs/architecture/README.md"
     "docs/architecture/external-sharing.md"
+    "docs/architecture/nested-workspaces.md"
     "docs/architecture/overview.svg"
     "docs/architecture/workflows.svg"
     "docs/operations/artifact-host-database-grants.sql"
@@ -65,6 +67,7 @@ readme_links=(
 
 architecture_links=(
     "docs/architecture/external-sharing.md"
+    "docs/architecture/nested-workspaces.md"
     "docs/architecture/overview.svg"
     "docs/architecture/workflows.svg"
 )

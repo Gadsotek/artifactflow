@@ -258,6 +258,25 @@
                         <span class="text-sm font-medium">Workspace name</span>
                         <input class="mt-2 w-full" name="name" type="text" maxlength="120" placeholder="Shared workspace" required>
                     </label>
+                    <label>
+                        <span class="text-sm font-medium">Parent workspace</span>
+                        <select class="mt-2 w-full" name="parent_workspace_uid">
+                            <option value="">No parent (top level)</option>
+                            @foreach ($workspaceParentOptions as $parentOption)
+                                <option value="{{ $parentOption->uid }}" @selected($currentWorkspaceUid === $parentOption->uid)>
+                                    {{ str_repeat('— ', $parentOption->depth) }}{{ $parentOption->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <label class="flex items-start gap-3">
+                        <input name="inherits_parent_memberships" type="hidden" value="0">
+                        <input class="mt-1" name="inherits_parent_memberships" type="checkbox" value="1" checked>
+                        <span>
+                            <strong class="block text-sm">Inherit parent members</strong>
+                            <small class="block text-zinc-500 dark:text-zinc-400">Give current and future parent members access. Clear this to start with only you as admin.</small>
+                        </span>
+                    </label>
                     <div class="flex justify-end">
                         <button class="af-primary-button" type="submit">Create workspace</button>
                     </div>

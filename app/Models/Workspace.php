@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $name
  * @property WorkspaceType $type
  * @property string|null $personal_owner_uid
+ * @property string|null $parent_workspace_uid
+ * @property bool $inherits_parent_memberships
  * @property bool $allow_editor_invites
  * @property bool $allow_editor_page_sharing
  * @property int $used_storage_bytes
@@ -38,6 +40,7 @@ final class Workspace extends Model
         return [
             'allow_editor_invites' => 'boolean',
             'allow_editor_page_sharing' => 'boolean',
+            'inherits_parent_memberships' => 'boolean',
             'type' => WorkspaceType::class,
             'used_storage_bytes' => 'integer',
         ];

@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Application\PageCatalog;
 
+use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Identity\WorkspaceRole;
 use App\Domain\PageCatalog\PageContentEncoding;
 use App\Models\Category;
-use App\Models\WorkspaceMembership;
 
 /**
  * Shared metadata boundary rules for page create and update. Deliberately
@@ -21,6 +21,11 @@ final readonly class PageMetadataRules
     public const int MAX_TITLE_CHARACTERS = 255;
 
     public const int MAX_DESCRIPTION_CHARACTERS = 5000;
+
+    public function __construct(
+        private EffectiveWorkspaceMembershipResolver $memberships,
+    ) {
+    }
 
     public function normalizeTitle(string $title): string
     {
@@ -85,16 +90,13 @@ final readonly class PageMetadataRules
 
     public function ensureOwnerBelongsToWorkspace(string $ownerUserUid, string $workspaceUid): void
     {
-        $membership = WorkspaceMembership::query()
-            ->where('workspace_uid', $workspaceUid)
-            ->where('user_uid', $ownerUserUid)
-            ->first();
+        $role = $this->memberships->resolve($ownerUserUid, $workspaceUid)->role;
 
-        if (!$membership instanceof WorkspaceMembership) {
+        if (!$role instanceof WorkspaceRole) {
             throw new DomainRuleViolation('Page owner must belong to the selected workspace.');
         }
 
-        if ($membership->role === WorkspaceRole::Reader) {
+        if (!$role->canWritePages()) {
             throw new DomainRuleViolation('Page owner must be a workspace editor or admin.');
         }
     }

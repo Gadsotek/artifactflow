@@ -6,8 +6,13 @@ namespace Tests\Feature\Identity;
 
 use App\Application\Identity\AcceptWorkspaceInvitation;
 use App\Application\Identity\CreateSharedWorkspace;
+use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
+use App\Application\Identity\ExcludeInheritedWorkspaceMember;
+use App\Application\Identity\ExcludeInheritedWorkspaceMemberCommand;
 use App\Application\Identity\InviteUserToWorkspace;
 use App\Application\Identity\InviteUserToWorkspaceCommand;
+use App\Application\Identity\ReparentWorkspace;
+use App\Application\Identity\ReparentWorkspaceCommand;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Identity\WorkspaceRole;
 use App\Models\AuditEntry;
@@ -140,7 +145,84 @@ final class WorkspaceInvitationAcceptanceTest extends TestCase
         $this->assertSame(1, AuditEntry::query()->where('action', 'workspace.invitation.accepted')->count());
     }
 
-    public function test_accepting_an_invitation_preserves_an_existing_admin_membership(): void
+    public function test_invitation_is_redundant_against_effective_authority_even_when_a_weaker_direct_membership_exists(): void
+    {
+        $admin = $this->createUser('Hierarchy Admin', 'invitation-effective-admin@example.test');
+        $invitee = $this->createUser('Hierarchy Invitee', 'invitation-effective-member@example.test');
+        $root = app(CreateSharedWorkspace::class)->handle($admin, 'Authority Root');
+        $child = app(CreateSharedWorkspace::class)->handle($admin, 'Authority Child');
+        app(ReparentWorkspace::class)->handle($admin, new ReparentWorkspaceCommand($child->uid, $root->uid, true));
+        WorkspaceMembership::query()->forceCreate([
+            'workspace_uid' => $root->uid,
+            'user_uid' => $invitee->uid,
+            'role' => WorkspaceRole::Admin,
+            'accepted_at' => now(),
+        ]);
+        $direct = WorkspaceMembership::query()->forceCreate([
+            'workspace_uid' => $child->uid,
+            'user_uid' => $invitee->uid,
+            'role' => WorkspaceRole::Reader,
+            'accepted_at' => now(),
+        ]);
+        $invitation = app(InviteUserToWorkspace::class)->handle(
+            actor: $admin,
+            command: new InviteUserToWorkspaceCommand(
+                workspaceUid: $child->uid,
+                email: $invitee->email,
+                role: WorkspaceRole::Editor,
+            ),
+        );
+
+        try {
+            app(AcceptWorkspaceInvitation::class)->handle($invitee, $invitation);
+            $this->fail('Expected the invitation to be rejected as redundant.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame('This invitation does not add stronger workspace access.', $exception->getMessage());
+        }
+
+        $this->assertSame(WorkspaceRole::Reader, $direct->refresh()->role);
+        $this->assertNull($invitation->refresh()->accepted_at);
+    }
+
+    public function test_excluded_parent_member_can_accept_an_exact_lower_direct_child_role(): void
+    {
+        $admin = $this->createUser('Exclusion Invitation Admin', 'exclusion-invitation-admin@example.test');
+        $invitee = $this->createUser('Excluded Invitee', 'excluded-invitee@example.test');
+        $root = app(CreateSharedWorkspace::class)->handle($admin, 'Invitation Exclusion Root');
+        $child = app(CreateSharedWorkspace::class)->handle($admin, 'Invitation Exclusion Child', $root->uid);
+        WorkspaceMembership::query()->forceCreate([
+            'workspace_uid' => $root->uid,
+            'user_uid' => $invitee->uid,
+            'role' => WorkspaceRole::Editor,
+            'accepted_at' => now(),
+        ]);
+        app(ExcludeInheritedWorkspaceMember::class)->handle(
+            $admin,
+            new ExcludeInheritedWorkspaceMemberCommand($child->uid, $invitee->uid, null),
+        );
+        $invitation = app(InviteUserToWorkspace::class)->handle(
+            actor: $admin,
+            command: new InviteUserToWorkspaceCommand(
+                workspaceUid: $child->uid,
+                email: $invitee->email,
+                role: WorkspaceRole::Reader,
+            ),
+        );
+
+        $membership = app(AcceptWorkspaceInvitation::class)->handle($invitee, $invitation);
+
+        $this->assertSame(WorkspaceRole::Reader, $membership->role);
+        $this->assertSame(
+            WorkspaceRole::Reader,
+            app(EffectiveWorkspaceMembershipResolver::class)->resolve($invitee->uid, $child->uid)->role,
+        );
+        $this->assertDatabaseHas('workspace_membership_exclusions', [
+            'workspace_uid' => $child->uid,
+            'user_uid' => $invitee->uid,
+        ]);
+    }
+
+    public function test_weaker_invitation_is_rejected_when_a_direct_admin_membership_already_exists(): void
     {
         $admin = $this->createUser('Admin User', 'admin@example.test');
         $invitee = $this->createUser('Existing Admin', 'existing-admin@example.test');
@@ -161,10 +243,19 @@ final class WorkspaceInvitationAcceptanceTest extends TestCase
             'accepted_at' => now(),
         ]);
 
-        $membership = app(AcceptWorkspaceInvitation::class)->handle($invitee, $invitation);
+        try {
+            app(AcceptWorkspaceInvitation::class)->handle($invitee, $invitation);
+            $this->fail('Expected the weaker invitation to be rejected as redundant.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame('This invitation does not add stronger workspace access.', $exception->getMessage());
+        }
 
+        $membership = WorkspaceMembership::query()
+            ->where('workspace_uid', $workspace->uid)
+            ->where('user_uid', $invitee->uid)
+            ->sole();
         $this->assertSame(WorkspaceRole::Admin, $membership->role);
-        $this->assertSame(1, WorkspaceMembership::query()->where('workspace_uid', $workspace->uid)->where('user_uid', $invitee->uid)->count());
+        $this->assertNull($invitation->refresh()->accepted_at);
     }
 
     public function test_only_the_invited_email_can_accept_an_invitation(): void

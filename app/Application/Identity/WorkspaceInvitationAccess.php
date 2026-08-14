@@ -15,6 +15,7 @@ final readonly class WorkspaceInvitationAccess
 {
     public function __construct(
         private WorkspaceAccess $workspaceAccess,
+        private EffectiveWorkspaceSettingsResolver $settings,
     ) {
     }
 
@@ -27,7 +28,7 @@ final readonly class WorkspaceInvitationAccess
         $role = $this->role($actor, $workspace);
 
         return $role === WorkspaceRole::Admin
-            || ($role === WorkspaceRole::Editor && $workspace->allow_editor_invites);
+            || ($role === WorkspaceRole::Editor && $this->allowsEditorInvites($workspace));
     }
 
     /**
@@ -41,7 +42,7 @@ final readonly class WorkspaceInvitationAccess
             return WorkspaceRole::cases();
         }
 
-        if ($role === WorkspaceRole::Editor && $workspace->allow_editor_invites) {
+        if ($role === WorkspaceRole::Editor && $this->allowsEditorInvites($workspace)) {
             return [WorkspaceRole::Reader, WorkspaceRole::Editor];
         }
 
@@ -59,7 +60,7 @@ final readonly class WorkspaceInvitationAccess
             return;
         }
 
-        if ($actorRole === WorkspaceRole::Editor && $workspace->allow_editor_invites) {
+        if ($actorRole === WorkspaceRole::Editor && $this->allowsEditorInvites($workspace)) {
             if ($invitedRole === WorkspaceRole::Admin) {
                 throw new AuthorizationException('Editors cannot invite workspace admins.');
             }
@@ -84,7 +85,7 @@ final readonly class WorkspaceInvitationAccess
             return;
         }
 
-        if ($actorRole === WorkspaceRole::Editor && $workspace->allow_editor_invites) {
+        if ($actorRole === WorkspaceRole::Editor && $this->allowsEditorInvites($workspace)) {
             if ($invitation->invited_by_user_uid !== $actor->uid) {
                 throw new AuthorizationException('Editors can revoke only invitations they created.');
             }
@@ -98,5 +99,10 @@ final readonly class WorkspaceInvitationAccess
     public function role(User $actor, Workspace $workspace): ?WorkspaceRole
     {
         return $this->workspaceAccess->role($actor->uid, $workspace->uid);
+    }
+
+    private function allowsEditorInvites(Workspace $workspace): bool
+    {
+        return $this->settings->resolve($workspace->uid)->allowEditorInvites;
     }
 }

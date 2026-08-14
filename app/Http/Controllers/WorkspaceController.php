@@ -19,10 +19,15 @@ final class WorkspaceController
         $user = $this->authenticatedUser($request);
 
         try {
-            $workspace = $createSharedWorkspace->handle($user, $request->workspaceName());
+            $workspace = $createSharedWorkspace->handle(
+                $user,
+                $request->workspaceName(),
+                $request->parentWorkspaceUid(),
+                $request->inheritsParentMemberships(),
+            );
         } catch (DomainRuleViolation $exception) {
             throw ValidationException::withMessages([
-                'name' => $exception->getMessage(),
+                $request->parentWorkspaceUid() === null ? 'name' : 'parent_workspace_uid' => $exception->getMessage(),
             ]);
         }
         $request->session()->put('current_workspace_uid', $workspace->uid);

@@ -63,6 +63,37 @@ final class WorkspaceCollaboratorTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_search_keeps_weaker_inherited_members_available_for_direct_elevation(): void
+    {
+        Mail::fake();
+
+        $admin = $this->createUser('Admin User', 'admin@example.test');
+        $root = app(CreateSharedWorkspace::class)->handle($admin, 'Root');
+        $target = app(CreateSharedWorkspace::class)->handle($admin, 'Child', $root->uid);
+        $reader = $this->createUser('Inherited Reader', 'inherited-reader@example.test');
+        $this->addMember($root->uid, $reader, WorkspaceRole::Reader);
+
+        $this->actingAs($admin)
+            ->getJson(route('workspace-collaborators.search', $target->uid) . '?q=inherited-reader@example.test')
+            ->assertOk()
+            ->assertJsonCount(1, 'results')
+            ->assertJsonPath('results.0.uid', $reader->uid);
+
+        $this->actingAs($admin)
+            ->post(route('workspace-collaborators.store', $target->uid), [
+                'user_uid' => $reader->uid,
+                'role' => WorkspaceRole::Editor->value,
+            ])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('workspace_memberships', [
+            'workspace_uid' => $target->uid,
+            'user_uid' => $reader->uid,
+            'role' => WorkspaceRole::Editor->value,
+        ]);
+    }
+
     public function test_adding_an_existing_collaborator_grants_immediate_access_and_notifies_them(): void
     {
         Mail::fake();

@@ -16,4 +16,12 @@ return [
         'IMAGE_NORMALIZATION_INSTALLATION_PIXEL_BUDGET_PER_MINUTE',
         256 * 1024 * 1024,
     ),
+    'user_work_budget_per_minute' => (int) env(
+        'IMAGE_NORMALIZATION_USER_WORK_BUDGET_PER_MINUTE',
+        64 * 1024 * 1024,
+    ),
+    'installation_work_budget_per_minute' => (int) env(
+        'IMAGE_NORMALIZATION_INSTALLATION_WORK_BUDGET_PER_MINUTE',
+        256 * 1024 * 1024,
+    ),
 ];

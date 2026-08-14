@@ -210,21 +210,32 @@ final readonly class DeploymentDoctor
         $maxUploadPixels = $this->positiveInt('pages.max_image_pixels');
         $userBudget = $this->positiveInt('image_parser.user_pixel_budget_per_minute');
         $installationBudget = $this->positiveInt('image_parser.installation_pixel_budget_per_minute');
+        $maxUploadBytes = $this->positiveInt('pages.max_image_bytes');
+        $userWorkBudget = $this->positiveInt('image_parser.user_work_budget_per_minute');
+        $installationWorkBudget = $this->positiveInt('image_parser.installation_work_budget_per_minute');
 
         if (
             $maxUploadPixels === null
             || $userBudget === null
             || $installationBudget === null
+            || $maxUploadBytes === null
+            || $userWorkBudget === null
+            || $installationWorkBudget === null
             || !ImageNormalizationConfiguration::budgetsAreSafe(
                 min($maxUploadPixels, ImageArtifactLimits::MAX_UPLOAD_PIXELS),
                 $userBudget,
                 $installationBudget,
             )
+            || !ImageNormalizationConfiguration::workBudgetsAreSafe(
+                min($maxUploadBytes, ImageArtifactLimits::MAX_UPLOAD_BYTES),
+                $userWorkBudget,
+                $installationWorkBudget,
+            )
         ) {
             return $this->fail(
                 'image_parser',
                 'Image parser isolation',
-                'Image normalization pixel budgets must allow one upload and remain within the supported per-minute ceilings.',
+                'Image normalization pixel and input-work budgets must allow one upload and remain within the supported per-minute ceilings.',
             );
         }
 

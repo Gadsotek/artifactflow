@@ -262,7 +262,9 @@ final class PngDatastreamValidator
 {
     private const string SIGNATURE = "\x89PNG\r\n\x1a\n";
 
-    private const int MAX_CHUNKS = 4096;
+    private const int MAX_CHUNKS = 1024;
+
+    private const int MAX_ANCILLARY_BYTES = 1024 * 1024;
 
     /**
      * libpng may materialize or inflate these metadata payloads during native
@@ -272,7 +274,7 @@ final class PngDatastreamValidator
      *
      * @var list<string>
      */
-    private const array NATIVE_DECODE_EXCLUDED_METADATA_CHUNKS = ['zTXt', 'iTXt', 'iCCP'];
+    private const array NATIVE_DECODE_EXCLUDED_METADATA_CHUNKS = ['tEXt', 'zTXt', 'iTXt', 'iCCP'];
 
     /**
      * @var list<array{int, int, int, int}>
@@ -303,6 +305,7 @@ final class PngDatastreamValidator
         $seenIdat = false;
         $idatEnded = false;
         $seenEnd = false;
+        $ancillaryBytes = 0;
 
         while ($offset < $length) {
             $chunkCount++;
@@ -338,6 +341,14 @@ final class PngDatastreamValidator
 
             if (!hash_equals(hash_final($crc, true), $storedCrc)) {
                 throw new ParserRejection('PNG image data is invalid.');
+            }
+
+            if ((ord($type[0]) & 0x20) !== 0) {
+                $ancillaryBytes += $chunkLength;
+
+                if ($ancillaryBytes > self::MAX_ANCILLARY_BYTES) {
+                    throw new ParserRejection('PNG image data exceeds the ancillary work limit.');
+                }
             }
 
             if ($chunkCount === 1 && ($type !== 'IHDR' || $chunkLength !== 13)) {
@@ -613,20 +624,20 @@ final readonly class RasterNormalizer
      */
     public function normalize(ParserRequest $request): array
     {
-        $input = $this->inspect(
-            $request->bytes,
-            min($request->maxInputBytes, $this->configuration->maxInputBytes),
-            min($request->maxPixels, $this->configuration->maxPixels),
-            min($request->maxDimension, $this->configuration->maxDimension),
-        );
+        $maxInputBytes = min($request->maxInputBytes, $this->configuration->maxInputBytes);
+        $maxPixels = min($request->maxPixels, $this->configuration->maxPixels);
+        $maxDimension = min($request->maxDimension, $this->configuration->maxDimension);
         $decodeBytes = $request->bytes;
+
+        if (str_starts_with($request->bytes, "\x89PNG\r\n\x1a\n")) {
+            $input = $this->inspectPngHeader($request->bytes, $maxInputBytes, $maxPixels, $maxDimension);
+            $decodeBytes = PngDatastreamValidator::validatedForDecode($request->bytes, $input);
+        } else {
+            $input = $this->inspect($request->bytes, $maxInputBytes, $maxPixels, $maxDimension);
+        }
 
         if ($input->mediaType !== $request->mediaType) {
             throw new ParserRejection('Image media type does not match its decoded format.');
-        }
-
-        if ($input->mediaType === 'image/png') {
-            $decodeBytes = PngDatastreamValidator::validatedForDecode($request->bytes, $input);
         }
 
         $image = @imagecreatefromstring($decodeBytes);
@@ -658,6 +669,40 @@ final readonly class RasterNormalizer
         }
 
         return [$output, $normalized];
+    }
+
+    private function inspectPngHeader(
+        string $bytes,
+        int $maxBytes,
+        int $maxPixels,
+        int $maxDimension,
+    ): RasterInfo {
+        if (
+            $bytes === ''
+            || strlen($bytes) > $maxBytes
+            || strlen($bytes) < 33
+            || substr($bytes, 8, 8) !== "\x00\x00\x00\rIHDR"
+        ) {
+            throw new ParserRejection('PNG image data is invalid.');
+        }
+
+        $dimensions = unpack('Nwidth/Nheight', substr($bytes, 16, 8));
+        $width = is_array($dimensions) ? ($dimensions['width'] ?? null) : null;
+        $height = is_array($dimensions) ? ($dimensions['height'] ?? null) : null;
+
+        if (
+            !is_int($width)
+            || !is_int($height)
+            || $width < 1
+            || $height < 1
+            || $width > $maxDimension
+            || $height > $maxDimension
+            || $width > intdiv($maxPixels, $height)
+        ) {
+            throw new ParserRejection('Image dimensions exceed the configured limit.');
+        }
+
+        return new RasterInfo('image/png', $width, $height);
     }
 
     private function inspect(string $bytes, int $maxBytes, int $maxPixels, int $maxDimension): RasterInfo

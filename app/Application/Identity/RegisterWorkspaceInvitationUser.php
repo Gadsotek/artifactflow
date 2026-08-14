@@ -15,6 +15,7 @@ final readonly class RegisterWorkspaceInvitationUser
     public function __construct(
         private CreateUser $createUser,
         private AcceptWorkspaceInvitation $acceptInvitation,
+        private WorkspaceAuthorityImpact $authorityImpact,
     ) {
     }
 
@@ -25,6 +26,10 @@ final readonly class RegisterWorkspaceInvitationUser
     public function handle(RegisterWorkspaceInvitationUserCommand $command): WorkspaceInvitationRegistrationResult
     {
         return DB::transaction(function () use ($command): WorkspaceInvitationRegistrationResult {
+            // Reparenting locks hierarchy -> workspace. Registration must enter
+            // that protocol before taking the workspace row, otherwise its outer
+            // transaction can deadlock when acceptance later requests the hierarchy lock.
+            $this->authorityImpact->acquireHierarchyLock();
             $candidateInvitation = WorkspaceInvitation::query()
                 ->select(['uid', 'workspace_uid'])
                 ->whereKey($command->invitationUid)

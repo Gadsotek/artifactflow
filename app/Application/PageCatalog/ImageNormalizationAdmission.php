@@ -21,6 +21,8 @@ final readonly class ImageNormalizationAdmission
 
     private const string INSTALLATION_BUDGET_KEY = 'artifactflow:image-normalization:pixels:installation:v1';
 
+    private const string INSTALLATION_WORK_BUDGET_KEY = 'artifactflow:image-normalization:work:installation:v1';
+
     private const int BUDGET_WINDOW_SECONDS = 60;
 
     private const int LOCK_EXPIRY_MARGIN_SECONDS = 5;
@@ -59,13 +61,13 @@ final readonly class ImageNormalizationAdmission
         $reservation = new ImageNormalizationReservation();
 
         try {
-            $this->reservePixelBudget($actorUid, $input->pixels());
+            $this->reserveBudgets($actorUid, $input->pixels(), $input->workload->units());
 
             try {
                 return $normalize($reservation);
             } catch (Throwable $exception) {
                 if (!$reservation->wasDispatched()) {
-                    $this->refundPixelBudget($actorUid, $input->pixels());
+                    $this->refundBudgets($actorUid, $input->pixels(), $input->workload->units());
                 }
 
                 throw $exception;
@@ -77,36 +79,72 @@ final readonly class ImageNormalizationAdmission
         }
     }
 
-    private function reservePixelBudget(string $actorUid, int $pixels): void
+    private function reserveBudgets(string $actorUid, int $pixels, int $workUnits): void
     {
-        $userKey = $this->userBudgetKey($actorUid);
-        $installationKey = self::INSTALLATION_BUDGET_KEY;
-        $userBudget = $this->normalizationConfiguration->userPixelBudgetPerMinute();
-        $installationBudget = $this->normalizationConfiguration->installationPixelBudgetPerMinute();
+        $userPixelKey = $this->userPixelBudgetKey($actorUid);
+        $installationPixelKey = self::INSTALLATION_BUDGET_KEY;
+        $userWorkKey = $this->userWorkBudgetKey($actorUid);
+        $installationWorkKey = self::INSTALLATION_WORK_BUDGET_KEY;
 
-        if ($this->wouldExceedBudget($userKey, $userBudget, $pixels)) {
-            throw new ImageNormalizationLimitExceeded($this->retryAfter($userKey));
+        if ($this->wouldExceedBudget(
+            $userPixelKey,
+            $this->normalizationConfiguration->userPixelBudgetPerMinute(),
+            $pixels,
+        )) {
+            throw new ImageNormalizationLimitExceeded($this->retryAfter($userPixelKey));
         }
 
-        if ($this->wouldExceedBudget($installationKey, $installationBudget, $pixels)) {
-            throw new ImageNormalizationCapacityExceeded($this->retryAfter($installationKey));
+        if ($this->wouldExceedBudget(
+            $installationPixelKey,
+            $this->normalizationConfiguration->installationPixelBudgetPerMinute(),
+            $pixels,
+        )) {
+            throw new ImageNormalizationCapacityExceeded($this->retryAfter($installationPixelKey));
+        }
+
+        if ($this->wouldExceedBudget(
+            $userWorkKey,
+            $this->normalizationConfiguration->userWorkBudgetPerMinute(),
+            $workUnits,
+        )) {
+            throw new ImageNormalizationLimitExceeded($this->retryAfter($userWorkKey));
+        }
+
+        if ($this->wouldExceedBudget(
+            $installationWorkKey,
+            $this->normalizationConfiguration->installationWorkBudgetPerMinute(),
+            $workUnits,
+        )) {
+            throw new ImageNormalizationCapacityExceeded($this->retryAfter($installationWorkKey));
         }
 
         // The shared normalization slot serializes this check-and-increment
-        // sequence across every app replica, so neither budget can overshoot
+        // sequence across every app replica, so none of the budgets can overshoot
         // through concurrent requests.
-        $this->rateLimiter->increment($userKey, self::BUDGET_WINDOW_SECONDS, $pixels);
-        $this->rateLimiter->increment($installationKey, self::BUDGET_WINDOW_SECONDS, $pixels);
+        $this->rateLimiter->increment($userPixelKey, self::BUDGET_WINDOW_SECONDS, $pixels);
+        $this->rateLimiter->increment($installationPixelKey, self::BUDGET_WINDOW_SECONDS, $pixels);
+        $this->rateLimiter->increment($userWorkKey, self::BUDGET_WINDOW_SECONDS, $workUnits);
+        $this->rateLimiter->increment($installationWorkKey, self::BUDGET_WINDOW_SECONDS, $workUnits);
     }
 
-    private function refundPixelBudget(string $actorUid, int $pixels): void
+    private function refundBudgets(string $actorUid, int $pixels, int $workUnits): void
     {
-        // The shared slot remains held while both counters are rolled back, so
+        // The shared slot remains held while all counters are rolled back, so
         // another replica cannot observe or modify a half-refunded reservation.
         $this->rateLimiter->decrement(
-            $this->userBudgetKey($actorUid),
+            $this->userPixelBudgetKey($actorUid),
             self::BUDGET_WINDOW_SECONDS,
             $pixels,
+        );
+        $this->rateLimiter->decrement(
+            $this->userWorkBudgetKey($actorUid),
+            self::BUDGET_WINDOW_SECONDS,
+            $workUnits,
+        );
+        $this->rateLimiter->decrement(
+            self::INSTALLATION_WORK_BUDGET_KEY,
+            self::BUDGET_WINDOW_SECONDS,
+            $workUnits,
         );
         $this->rateLimiter->decrement(
             self::INSTALLATION_BUDGET_KEY,
@@ -115,12 +153,12 @@ final readonly class ImageNormalizationAdmission
         );
     }
 
-    private function wouldExceedBudget(string $key, int $budget, int $pixels): bool
+    private function wouldExceedBudget(string $key, int $budget, int $cost): bool
     {
         $attempts = $this->rateLimiter->attempts($key);
         $used = is_numeric($attempts) ? max(0, (int) $attempts) : 0;
 
-        return $pixels > $budget - min($used, $budget);
+        return $cost > $budget - min($used, $budget);
     }
 
     private function retryAfter(string $key): int
@@ -128,9 +166,14 @@ final readonly class ImageNormalizationAdmission
         return max(1, $this->rateLimiter->availableIn($key));
     }
 
-    private function userBudgetKey(string $actorUid): string
+    private function userPixelBudgetKey(string $actorUid): string
     {
         return 'artifactflow:image-normalization:pixels:user:v1:' . hash('sha256', $actorUid);
+    }
+
+    private function userWorkBudgetKey(string $actorUid): string
+    {
+        return 'artifactflow:image-normalization:work:user:v1:' . hash('sha256', $actorUid);
     }
 
     private function limiterStoreName(): ?string

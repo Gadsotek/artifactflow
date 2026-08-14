@@ -212,13 +212,22 @@ final readonly class ProductionSecurityConfiguration
 
     private function ensureImageNormalizationBudgets(): void
     {
+        $maxUploadBytes = min(
+            $this->positiveInt('pages.max_image_bytes'),
+            ImageArtifactLimits::MAX_UPLOAD_BYTES,
+        );
+
         if (!ImageNormalizationConfiguration::budgetsAreSafe(
             min($this->positiveInt('pages.max_image_pixels'), ImageArtifactLimits::MAX_UPLOAD_PIXELS),
             $this->positiveInt('image_parser.user_pixel_budget_per_minute'),
             $this->positiveInt('image_parser.installation_pixel_budget_per_minute'),
+        ) || !ImageNormalizationConfiguration::workBudgetsAreSafe(
+            $maxUploadBytes,
+            $this->positiveInt('image_parser.user_work_budget_per_minute'),
+            $this->positiveInt('image_parser.installation_work_budget_per_minute'),
         )) {
             throw new RuntimeException(
-                'Image normalization pixel budgets must allow one upload and remain within the supported per-minute ceilings.',
+                'Image normalization pixel and input-work budgets must allow one upload and remain within the supported per-minute ceilings.',
             );
         }
     }

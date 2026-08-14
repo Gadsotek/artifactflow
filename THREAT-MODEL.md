@@ -368,15 +368,44 @@ Revoking a page grant removes that discovery path on the next authorized request
 revoke their own grant unless they independently have page-access management authority; merely being
 the grant subject, or a System Admin, does not confer that authority.
 
+## 9A. Nested shared workspace authorization (beta contract)
+
+The released v0.0.7 alpha keeps workspaces flat. The active beta design permits
+shared workspaces to form a maximum three-level tree and makes ancestor
+membership effective in descendants. This is an authorization-boundary change,
+not merely a navigation feature. Its complete decision is documented in
+`docs/architecture/nested-workspaces.md`.
+
+The threat is stale, misdirected, or silently expanded authority: a crafted or
+racing reparent could create a cycle, exceed the depth limit, retain a signed
+preview after an ancestor revoke, disclose an inaccessible sibling, or widen a
+standing MCP token that selected only a parent.
+
+| Threat | Control | Residual |
+| --- | --- | --- |
+| Concurrent writes create a cycle, fourth level, or stale placement/authority decision | Every hierarchy command takes one transaction-scoped PostgreSQL advisory lock before reading ancestry. Page creation, page moves, workspace-grant writes, invitation creation/registration/acceptance, and subtree membership mutations take the same lock before their authorization and row locks. The direct-parent row and indexed closure rows update together; depth is constrained to `0..2`. | Direct database writes outside supported commands can violate application invariants and remain an operator-integrity risk. |
+| A child boundary or user exclusion is applied in the wrong direction | The resolver walks target to root, admits a direct membership before applying that boundary, and then blocks only higher membership origins when `inherits_parent_memberships` is false or the user has a local exclusion. Parent and sibling authority never flows upward or sideways. | A direct role can deliberately coexist with an exclusion; the UI must show direct versus inherited origin clearly. |
+| Removing inherited access leaves descendant capabilities live | The exclusion handler shares the hierarchy lock and authority-retirement path with direct removal: it reauthorizes after row locks, requires page-owner reassignment on lost write, revokes reduced invitations and fully lost user grants, records removal timestamps, bumps preview revisions, and revokes lost realtime presence after commit. | Bytes already delivered cannot be erased, and the exclusion continues into descendants until an independent direct membership establishes authority below it. |
+| Ancestor removal, downgrade, or reparent leaves descendant access live | The mutation resolves the stable affected subtree, locks affected pages before workspaces, rechecks effective authority, revokes reusable invitations wherever authority was reduced, retires direct user page grants wherever membership is fully lost, updates removal state, and bumps relevant preview revisions in the same transaction. Every surviving legacy user grant is independently rejected when it predates the latest removal timestamp, even after lower membership returns. Reparenting additionally requires a short-lived, session- and target-bound impact confirmation whose displayed counts are recalculated under the hierarchy lock. Realtime revocation runs after commit. | Bytes already delivered cannot be erased, and a non-cooperative presence client can retain bounded identity metadata until its socket closes. |
+| Hierarchy UI leaks inaccessible names, UIDs, counts, or gaps | Navigation, search, taxonomy, grants, and member-origin views return only authorization-filtered nodes. No hidden ancestor, sibling, or child placeholder is emitted. | A user who inherits authority from an ancestor necessarily learns the visible path that explains that authority. |
+| Workspace grant flows in the wrong direction | Grant subjects use effective membership of the exact subject workspace. A child grant includes inherited parent members; a parent grant excludes child-only members. Exact `PageAccess` post-filtering remains mandatory. | Broad parent membership deliberately gives those users access through grants addressed to a descendant. |
+| Selected MCP scope expands through hierarchy changes | The requested target UID must be inside the token's stored exact workspace list before inherited role resolution. Only an explicit all-workspaces token follows live descendant reach, and MCP still de-elevates Admin to Editor. | An all-workspaces token is intentionally dynamic and gains any workspace its principal can newly reach. |
+| Child settings loosen an ancestor restriction | Role-affecting booleans such as editor invitations and editor page sharing compose with logical AND across the ancestor chain. | Relaxing an ancestor can make an already-true child setting effective; the UI must show local and inherited state. |
+| Access loss leaves a page without an eligible owner or workspace without an administrator | Every shared workspace retains a direct Admin. Mutations are blocked when an affected page owner would lose effective Editor authority without explicit reassignment. | Large subtree mutations scale with affected pages and can be operationally expensive; correctness remains transactional rather than eventually consistent. |
+
+The hierarchy never merges descendant content into a parent Library, category
+set, storage counter, page tree, or exact-workspace search filter. This keeps
+those data boundaries unchanged while membership reach is inherited.
+
 ## 10. Raster image input and preview
 
 PNG and JPEG uploads are hostile binary parser input. ArtifactFlow does not retain or directly serve
 the uploaded container. The write boundary requires a valid upload, an extension matching the
 header-detected format, a supported PNG/JPEG envelope, bounded compressed bytes, a bounded maximum
-dimension, and a bounded total pixel count. The application performs only fixed-offset PNG header
-inspection or a JPEG walk capped at 256 pre-frame markers inside the 5 MiB upload envelope.
-Length-prefixed metadata payloads are skipped from their declared sizes, so there is deliberately
-no separate 1 MiB header-byte ceiling; restart markers before scan data are rejected. The
+dimension, and a bounded total pixel count. The application extracts PNG dimensions at fixed
+offsets, then walks at most 1,024 length-prefixed chunks and admits at most 1 MiB of ancillary data;
+JPEG inspection is capped at 256 pre-frame markers inside the 5 MiB upload envelope. JPEG
+length-prefixed metadata payloads are skipped from their declared sizes; restart markers before scan data are rejected. The
 application does not invoke a native raster decoder.
 
 The original bytes are sent to a dedicated `image-parser` container over an internal-only network.
@@ -400,10 +429,12 @@ Its startup script refuses `PHP_CLI_SERVER_WORKERS` values above one. New upload
 16 Mi-pixel hard ceiling while retained normalized versions remain readable up to the historical
 40 Mi-pixel envelope. Before dispatch, every app replica competes for one non-blocking lock in the
 shared rate-limit cache; contention returns a retryable 503 instead of queueing an app worker
-behind the serial parser. Every dispatched attempt consumes exact-pixel per-user and
-installation-wide one-minute budgets; only a client failure proven to occur before dispatch is
-refunded. A transport or response-stream failure whose parser state is uncertain keeps the shared
-slot until its bounded lease expires. Budget rejection returns 429 for the user budget or retryable
+behind the serial parser. Every dispatched attempt consumes independent decoded-pixel and
+input-work budgets per principal and installation. Input work counts the full compressed input,
+counts metadata bytes again, and assigns 1 Ki work units to each chunk or marker; only a client
+failure proven to occur before dispatch is refunded. A transport or response-stream failure whose
+parser state is uncertain keeps the shared slot until its bounded lease expires, while the parser
+process has a 15-second execution ceiling. Budget rejection returns 429 for the principal budget or retryable
 503 for shared capacity.
 Additional separately memory-bounded parser replicas therefore provide failover without silently
 multiplying admitted native work; raising installation concurrency requires a deliberate,
@@ -414,15 +445,15 @@ optional WebP support, its authenticated request envelope admits only PNG/JPEG, 
 endpoint performs a one-pixel PNG decode/re-encode rather than reporting listener liveness alone.
 
 PNG receives an additional pre-decode work boundary inside the parser. Before GD is called, the
-parser walks at most 4,096 CRC-valid chunks, requires one consecutive IDAT sequence, validates the
-IHDR color-depth and palette rules, strips `zTXt`, `iTXt`, and `iCCP` metadata from the
+parser walks at most 1,024 CRC-valid chunks and 1 MiB of ancillary data, requires one consecutive IDAT sequence, validates the
+IHDR color-depth and palette rules, strips `tEXt`, `zTXt`, `iTXt`, and `iCCP` metadata from the
 bytes handed to GD, and inflates IDAT with an output ceiling of exactly the scanline bytes implied
 by width, height, color type, bit depth, and Adam7 passes. A pixel stream that expands even one byte
 beyond that envelope, ends early, or uses an invalid filter byte receives 422 before GD. The bounded
 walker is deliberately not a complete libpng implementation: final PNG conformance still belongs to
 GD/libpng, and malformed streams accepted by the advisory walk fail closed during native decode.
-Pixel-based admission therefore cannot be bypassed by declaring a tiny raster while hiding
-unbounded decompression work in either pixel rows or compressed metadata.
+The independent pixel and input-work limits therefore prevent a tiny declared raster from hiding
+unbounded decompression, metadata, or chunk-processing work.
 
 Image display does not execute the retained bytes as a document. The signed artifact-host route
 validates the normalized raster again and places it in a fixed application-owned HTML shell as a
@@ -466,6 +497,12 @@ framing is advisory. The actual enforcement rules are:
 - Token scopes are the hard ceiling. Tokens can be read-only or read-write, and can be bound to
   one or more workspaces for reads and writes. `list_workspaces` returns only workspaces reachable
   inside that token ceiling, so scoped tokens do not learn that other workspaces exist.
+- Token revocation and in-flight use share a credential-scoped PostgreSQL advisory lease. A tool
+  reloads token and principal state only after acquiring the lease and holds it through the tool
+  body in shared mode; manual and principal-wide revocation take the lease exclusively. The
+  operation therefore commits before revocation or fails closed after it, instead of acting from
+  the middleware's stale token snapshot. The session-scoped lease avoids wrapping parser or storage
+  I/O in a database transaction.
 - `list_taxonomy` requires `mcp:search` and returns only the category/tag vocabulary described in §9,
   intersected with the token's workspace ceiling. Its strings are explicit untrusted-data envelopes,
   just like other MCP-provided content.

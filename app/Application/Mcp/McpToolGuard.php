@@ -5,38 +5,67 @@ declare(strict_types=1);
 namespace App\Application\Mcp;
 
 use App\Models\McpAccessToken;
+use Closure;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * Shared guard for every MCP tool body: enforce the token scope the tool
- * requires and, for write tools, the per-token write rate limit before the
+ * requires and, for write tools, the per-principal write rate limit before the
  * tool runs. Returns the early error envelope when a guard fails.
  */
-final class McpToolGuard
+final readonly class McpToolGuard
 {
+    public function __construct(private McpAccessTokenExecutionLock $executionLock)
+    {
+    }
+
     /**
      * @param string|list<string> $scopes
-     * @param callable(): McpToolResult $run
+     * @param Closure(McpAccessToken): McpToolResult $run
      */
-    public function run(McpAccessToken $token, string|array $scopes, bool $rateLimited, callable $run): McpToolResult
+    public function run(McpAccessToken $token, string|array $scopes, bool $rateLimited, Closure $run): McpToolResult
     {
-        foreach ((array) $scopes as $scope) {
-            $scopeError = $this->requireScope($token, $scope);
+        return $this->executionLock->runShared($token->uid, function () use (
+            $rateLimited,
+            $run,
+            $scopes,
+            $token,
+        ): McpToolResult {
+            $liveToken = McpAccessToken::query()
+                ->with('principal')
+                ->whereKey($token->uid)
+                ->first();
 
-            if ($scopeError instanceof McpToolResult) {
-                return $scopeError;
+            if (
+                !$liveToken instanceof McpAccessToken
+                || $liveToken->revoked_at !== null
+                || $liveToken->isExpired()
+                || !McpAccessTokenIssuer::principalCanUseMcp($liveToken->principal)
+            ) {
+                return McpToolResult::error([
+                    'type' => 'authentication_required',
+                    'message' => 'The MCP access token is no longer active.',
+                ]);
             }
-        }
 
-        if ($rateLimited) {
-            $rateLimitError = $this->requireWriteRateLimit($token);
+            foreach ((array) $scopes as $scope) {
+                $scopeError = $this->requireScope($liveToken, $scope);
 
-            if ($rateLimitError instanceof McpToolResult) {
-                return $rateLimitError;
+                if ($scopeError instanceof McpToolResult) {
+                    return $scopeError;
+                }
             }
-        }
 
-        return $run();
+            if ($rateLimited) {
+                $rateLimitError = $this->requireWriteRateLimit($liveToken);
+
+                if ($rateLimitError instanceof McpToolResult) {
+                    return $rateLimitError;
+                }
+            }
+
+            return $run($liveToken);
+        });
     }
 
     private function requireScope(McpAccessToken $token, string $scope): ?McpToolResult
@@ -55,7 +84,7 @@ final class McpToolGuard
     {
         $configuredLimit = config('rate_limits.mcp_writes_per_minute', 20);
         $limit = max(1, is_numeric($configuredLimit) ? (int) $configuredLimit : 20);
-        $key = 'mcp-write:' . $token->uid;
+        $key = 'mcp-write-principal:' . $token->principal_user_uid;
 
         if (RateLimiter::tooManyAttempts($key, $limit)) {
             return McpToolResult::error([

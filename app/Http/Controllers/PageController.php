@@ -91,6 +91,7 @@ final class PageController
                 $user,
                 $currentWorkspaceUid,
             ),
+            'workspaceParentOptions' => $this->workspaceContext->parentItemsFor($user),
         ]);
     }
 

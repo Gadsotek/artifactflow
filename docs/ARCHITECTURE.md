@@ -1,7 +1,7 @@
 # ArtifactFlow Architecture
 
 Status: MVP alpha architecture
-Last updated: 2026-07-27
+Last updated: 2026-08-11
 Primary audience: operators, engineering teams, security reviewers, maintainers, and OSS contributors
 
 > Looking for the diagrams? See the [architecture one-pager](architecture/README.md) (`overview.svg` + `workflows.svg`). **This** document is the full written architecture; that one is just the diagram index.
@@ -127,6 +127,18 @@ Workspace roles:
 
 Pages inherit workspace permissions by default. Page-level overrides can narrow or extend access to specific users or workspaces, subject to application rules. Parent/child navigation and search results are authorization-filtered so restricted titles and UIDs are not disclosed.
 
+The active beta design allows shared workspaces to form a maximum three-level
+tree. Direct memberships remain stored once at their origin and flow downward;
+inheritance is enabled by default at each child, while a creation-time opt-out
+or per-user child exclusion can stop ancestor origins at that boundary.
+Effective authority is the strongest surviving direct or inherited role, and
+a direct role at an exclusion boundary remains independently effective. Personal
+workspaces remain standalone, selected workspace catalogs remain exact rather
+than rolling up descendants, and selected MCP workspace scopes never expand
+implicitly. The complete persistence, mutation, settings, revocation, and
+disclosure contract is in
+[`architecture/nested-workspaces.md`](architecture/nested-workspaces.md).
+
 Registered human accounts form an installation-wide coworker directory. Their names, email addresses, and UIDs are intentionally discoverable to other authenticated humans; System Admin accounts participate like any other human account, while MCP/automation service accounts do not appear in human sharing pickers. These identifiers are never capabilities. Workspace additions still require invitation authority, page grants still require access-management authority with locked-row reauthorization, Reader grants may target any registered human, and Editor/Admin grants require membership in the page workspace.
 
 System Admin is deliberately separate from content authority. It permits installation settings and user administration, but it does not enumerate, view, search, edit, move, share, or delete content in another user's personal workspace or any shared workspace the actor cannot normally reach. A System Admin needs the same workspace membership or explicit page grant as any other account. Installation-wide storage totals may remain aggregate operational telemetry, while workspace names, page titles, and per-workspace/page breakdowns are limited to the actor's own memberships. There is no implicit or hidden break-glass content bypass.
@@ -139,7 +151,10 @@ codes and revocable trusted devices (opaque hashed cookie tokens). TOTP secrets 
 enforced for all users through installation settings; enrollment is gated by the
 `EnforceTwoFactorEnrollment` middleware. Account-security actions require a recent password
 confirmation (step-up), entering Administration requires a live authenticator or single-use
-recovery code, and minting an MCP token additionally requires a fresh TOTP code.
+recovery code, and minting an MCP token additionally requires a fresh TOTP code. Revoking one
+trusted device advances the user's authentication revision: the revoker's current session is
+rebound to the committed revision, while every older or concurrently finalized session fails its
+next live revision check.
 
 ## MCP Server
 
@@ -149,11 +164,19 @@ AI clients call `list_workspaces` / `list_taxonomy` / `search` / `read` / `creat
 through the *same* command handlers, policies, scanners, and optimistic-concurrency checks
 as humans. Authority flows through scoped, expiring bearer tokens (hashed at rest,
 read-only or read-write, bound to selected workspaces) whose reach is the intersection of
-the token scope and the acting user's live memberships. System Admin status never adds
+the token scope and the acting user's live memberships. Under the nested-workspace beta design,
+selected workspace UIDs remain exact: parent scope does not imply descendant scope, while live
+authority in an explicitly selected child may be inherited. System Admin status never adds
 content authority in browser or MCP contexts. `McpEffectiveAuthority` additionally collapses
 workspace/page Admin to Editor while an MCP context is active, so a token can never exceed the Editor cap. Read
 text content is framed as an untrusted-data envelope, while normalized image reads add a standard MCP image content block beside an untrusted metadata envelope. Neither authorizes a write; every write
 still needs write scope, live access, and the matching content-version or metadata-revision token required by that operation.
+Each tool invocation takes a shared credential-scoped PostgreSQL advisory lease, reloads the live
+token and principal after acquiring it, and holds the lease until the tool finishes. Manual and
+principal-wide token revocation take the matching exclusive lease, making use and revocation a
+single ordering: an invocation either finishes before revocation commits or observes the revoked
+credential and does not enter the tool. The lease is session-scoped rather than an outer database
+transaction, so image parser, scanner, and storage work does not hold transactional locks open.
 
 `update_description` requires both the observed current-version UID and the page's separate optimistic metadata revision, then deliberately changes only the description. This prevents image-derived text from being attached after the pixels are replaced while preserving human-managed title, owner, parent, category, and tags and reusing the normal description scanner, search projection, audit event, and MCP token/session attribution.
 
@@ -231,10 +254,11 @@ artifact storage, public listener, or outbound route. It runs non-root with a re
 and explicit CPU, memory, PID, capability, and temporary-filesystem restrictions. The shipped
 512 MiB service uses one normalization process so maximum-pixel native image operations cannot
 multiply across prefork workers; its startup script rejects worker counts above one. The app uses
-the shared rate-limit cache for a non-blocking installation-wide admission slot plus exact-pixel
-per-user and global work budgets. A busy slot fails immediately instead of queueing an app worker,
+the shared rate-limit cache for a non-blocking installation-wide admission slot plus independent
+decoded-pixel and input-work budgets per principal and installation. Input work charges raw
+compressed bytes, metadata bytes, and chunk/marker count. A busy slot fails immediately instead of queueing an app worker,
 and extra independently memory-bounded parser replicas provide failover without increasing admitted
-concurrency. Every dispatched attempt consumes its reserved pixel budget; only failures proven to
+concurrency. Every dispatched attempt consumes both reserved budgets; only failures proven to
 precede dispatch are refunded. An uncertain transport or response-stream failure retains the shared
 slot until its lease expires. The app disables response decompression, rejects encoded responses,
 and incrementally reads no more than the signed output-byte ceiling plus one sentinel byte. It
@@ -250,7 +274,8 @@ it on artifact-host, worker, and scheduler roles. The parser image omits optiona
 request envelope admits only PNG/JPEG, and `/health` proves a one-pixel PNG decode/re-encode rather
 than listener liveness alone.
 
-For PNG, the parser validates bounded chunk structure and CRCs, strips `zTXt`, `iTXt`,
+For PNG, the app and parser cap the stream at 1,024 chunks and 1 MiB of ancillary data. The parser
+validates chunk structure and CRCs, strips `tEXt`, `zTXt`, `iTXt`,
 and `iCCP` metadata from the bytes passed to GD, then performs an output-limited zlib pass over
 IDAT. The decompressed pixel stream must contain exactly the scanlines implied by IHDR (including
 Adam7 passes), with no trailing expansion. Native decode therefore cannot inflate metadata that
@@ -357,6 +382,15 @@ System Admins can adjust runtime limits for content size, artifact read size, wo
 ## Locking And Realtime
 
 Content updates use optimistic concurrency control at the write boundary: each update includes the expected current version and returns a conflict response when another version won the race.
+
+The nested-workspace beta design requires hierarchy mutations to take a transaction-scoped PostgreSQL advisory
+lock so cycle, depth, and reparent checks cannot race another hierarchy write.
+They then preserve the existing page-to-workspace row-lock order while
+invalidating descendant access revisions. Membership and invitation mutations,
+page placement, and workspace-subject grant writes that depend on stable
+ancestry take the same hierarchy lock before authorization and row locking.
+Ordinary page reads and content updates do not take it; see
+[`architecture/nested-workspaces.md`](architecture/nested-workspaces.md).
 
 Reverb is the realtime path for advisory page-editing presence. It must remain outside the artifact security boundary:
 

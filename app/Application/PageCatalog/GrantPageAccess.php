@@ -7,7 +7,9 @@ namespace App\Application\PageCatalog;
 use App\Application\Audit\AuditLogger;
 use App\Application\Events\DomainEventRecorder;
 use App\Application\Identity\ActorId;
+use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
 use App\Application\Identity\WorkspaceCollaboratorDirectory;
+use App\Application\Identity\WorkspaceHierarchyGraph;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\Identity\WorkspaceRole;
@@ -17,7 +19,6 @@ use App\Models\Page;
 use App\Models\PageAccessGrant;
 use App\Models\User;
 use App\Models\Workspace;
-use App\Models\WorkspaceMembership;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 
@@ -29,6 +30,8 @@ final readonly class GrantPageAccess
         private AuditLogger $audit,
         private PageAccessRevision $revisions,
         private WorkspaceCollaboratorDirectory $collaborators,
+        private EffectiveWorkspaceMembershipResolver $memberships,
+        private WorkspaceHierarchyGraph $workspaceHierarchy,
     ) {
     }
 
@@ -40,6 +43,10 @@ final readonly class GrantPageAccess
         $actorUid = ActorId::fromUser($actor);
 
         $grant = DB::transaction(function () use ($actor, $actorUid, $command): PageAccessGrant {
+            // Workspace-subject grants change the page reach snapshotted by a
+            // hierarchy move. All grants use the lock for one stable ordering
+            // and to keep the subject-type branch race-free.
+            $this->workspaceHierarchy->acquireMutationLock();
             // Lock the page row so concurrent grants for the same subject serialize here
             // instead of racing the (page_uid, subject_type, subject_uid) unique index and
             // turning the loser into a 23505 -> 500. Reauthorize through the single
@@ -182,8 +189,16 @@ final readonly class GrantPageAccess
 
         $workspace = Workspace::query()->find($command->subjectUid);
 
-        if (!$workspace instanceof Workspace) {
-            throw new DomainRuleViolation('Workspace access grant subject does not exist.');
+        // Do not classify a submitted workspace UID until the actor has
+        // independent authority in that workspace. Missing and inaccessible
+        // targets take the same neutral controller path.
+        if (
+            !$workspace instanceof Workspace
+            || !$this->userBelongsToWorkspace($actor->uid, $workspace->uid)
+        ) {
+            throw new PageAccessGrantTargetUnavailable(
+                'Workspace access grant target is unavailable.',
+            );
         }
 
         if ($workspace->type !== WorkspaceType::Shared) {
@@ -199,20 +214,11 @@ final readonly class GrantPageAccess
         if ($command->role !== WorkspaceRole::Reader) {
             throw new DomainRuleViolation('Workspace access grants are limited to Reader access.');
         }
-
-        if (!$this->userBelongsToWorkspace($actor->uid, $workspace->uid)) {
-            throw new DomainRuleViolation(
-                'Workspace access grant target must be a workspace you belong to.',
-            );
-        }
     }
 
     private function userBelongsToWorkspace(string $userUid, string $workspaceUid): bool
     {
-        return WorkspaceMembership::query()
-            ->where('workspace_uid', $workspaceUid)
-            ->where('user_uid', $userUid)
-            ->exists();
+        return $this->memberships->resolve($userUid, $workspaceUid)->role instanceof WorkspaceRole;
     }
 
     private function recordGrantEvent(

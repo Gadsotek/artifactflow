@@ -833,6 +833,9 @@ final class TwoFactorAuthenticationTest extends TestCase
             ->assertSessionHas('status', 'Trusted device revoked.');
 
         $this->assertSame(1, TrustedDevice::query()->where('user_uid', $user->uid)->count());
+        $user->refresh();
+        $this->assertSame($originalAuthRevision + 1, $user->auth_revision);
+        $this->assertSame($user->auth_revision, session(AuthenticationSessionRevision::SESSION_KEY));
 
         $preRevokeAllSessionId = $this->app['session']->getId();
         $this->actingAs($user)
@@ -843,7 +846,7 @@ final class TwoFactorAuthenticationTest extends TestCase
 
         $user->refresh();
         $this->assertSame(0, TrustedDevice::query()->where('user_uid', $user->uid)->count());
-        $this->assertSame($originalAuthRevision + 1, $user->auth_revision);
+        $this->assertSame($originalAuthRevision + 2, $user->auth_revision);
         $this->assertSame($user->auth_revision, session(AuthenticationSessionRevision::SESSION_KEY));
         $this->assertNotSame($preRevokeAllSessionId, $this->app['session']->getId());
         $this->assertSame(
@@ -883,10 +886,29 @@ final class TwoFactorAuthenticationTest extends TestCase
             }
         });
 
-        app(TrustedDeviceManager::class)->revoke($user, $trustedDevice);
+        app(TrustedDeviceManager::class)->revoke($user, $trustedDevice, $user->auth_revision);
 
         $this->assertSame(['users', 'trusted_devices'], $lockedTables);
         $this->assertDatabaseMissing('trusted_devices', ['uid' => $trustedDevice->uid]);
+    }
+
+    public function test_single_trusted_device_revocation_rejects_a_stale_authentication_revision(): void
+    {
+        $user = $this->createUser('Stale Device Revoke User', 'stale-device-revoke@example.test');
+        $this->enableTwoFactor($user);
+        $trustedDevice = $this->createTrustedDevice($user, 'stale-revoke-device');
+        $expectedAuthRevision = $user->auth_revision;
+        $user->forceFill(['auth_revision' => $expectedAuthRevision + 1])->save();
+
+        try {
+            app(TrustedDeviceManager::class)->revoke($user, $trustedDevice, $expectedAuthRevision);
+            $this->fail('A stale session must not adopt the current authentication revision through device revocation.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('trusted_devices', $exception->errors());
+        }
+
+        $this->assertDatabaseHas('trusted_devices', ['uid' => $trustedDevice->uid]);
+        $this->assertSame($expectedAuthRevision + 1, $user->refresh()->auth_revision);
     }
 
     public function test_revoke_all_after_totp_proof_prevents_stale_trusted_device_issuance(): void

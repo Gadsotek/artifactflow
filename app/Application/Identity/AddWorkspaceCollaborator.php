@@ -35,6 +35,8 @@ final readonly class AddWorkspaceCollaborator
         private WorkspaceInvitationAccess $access,
         private WorkspaceCollaboratorDirectory $directory,
         private PageAccess $pageAccess,
+        private EffectiveWorkspaceMembershipResolver $memberships,
+        private WorkspaceAuthorityImpact $authorityImpact,
     ) {
     }
 
@@ -45,6 +47,7 @@ final readonly class AddWorkspaceCollaborator
     public function handle(User $actor, AddWorkspaceCollaboratorCommand $command): WorkspaceMembership
     {
         $membership = DB::transaction(function () use ($actor, $command): WorkspaceMembership {
+            $this->authorityImpact->acquireHierarchyLock();
             $actorUid = ActorId::fromUser($actor);
             $workspace = Workspace::query()->lockForUpdate()->find($command->workspaceUid);
 
@@ -76,6 +79,12 @@ final readonly class AddWorkspaceCollaborator
 
             if ($existing instanceof WorkspaceMembership) {
                 throw new DomainRuleViolation('That person is already a member of this workspace.');
+            }
+
+            $inheritedRole = $this->memberships->resolve($targetUser->uid, $workspace->uid)->role;
+
+            if ($inheritedRole instanceof WorkspaceRole && $inheritedRole->rank() >= $command->role->rank()) {
+                throw new DomainRuleViolation('That person already has equal or stronger inherited workspace access.');
             }
 
             $membership = WorkspaceMembership::query()->forceCreate([

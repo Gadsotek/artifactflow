@@ -145,7 +145,10 @@ final class WorkspaceMembershipLockOrderingTest extends TestCase
 
             $isPresenceSnapshot = str_contains($sql, 'select')
                 && str_contains($sql, '"pages"')
-                && str_contains($sql, '"workspace_uid" = ?')
+                && (
+                    str_contains($sql, '"workspace_uid" = ?')
+                    || str_contains($sql, '"workspace_uid" in (?)')
+                )
                 && str_contains($sql, 'order by "uid"')
                 && !str_contains($sql, 'for update')
                 && in_array($workspace->uid, $query->bindings, true);
