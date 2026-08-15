@@ -85,7 +85,6 @@ jobs:
             --build-arg APP_UID="$(id -u)" \
             --build-arg APP_GID="$(id -g)" \
             --cache-from type=gha,scope=dev \
-            --cache-to type=gha,scope=dev-nightly,mode=max,ignore-error=true \
             . 2>&1 | tee nightly-results/dev-image-build.log
 
       - name: Composer audit

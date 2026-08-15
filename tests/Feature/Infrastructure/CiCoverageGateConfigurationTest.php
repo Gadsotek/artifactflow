@@ -127,6 +127,18 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('npm audit --audit-level=moderate', $browserJob);
     }
 
+    public function test_reusable_dev_build_cache_has_one_writer_and_read_only_consumers(): void
+    {
+        $workflow = $this->readProjectFile('.github/workflows/ci.yml');
+        $nightly = $this->readProjectFile('.github/workflows/nightly-audit.yml');
+
+        $this->assertSame(2, substr_count($workflow, '--cache-from type=gha,scope=dev'));
+        $this->assertSame(1, substr_count($workflow, '--cache-to type=gha,scope=dev,mode=max'));
+        $this->assertSame(1, substr_count($nightly, '--cache-from type=gha,scope=dev'));
+        $this->assertStringNotContainsString('scope=dev-browser', $workflow);
+        $this->assertStringNotContainsString('scope=dev-nightly', $nightly);
+    }
+
     public function test_nightly_finishes_every_audit_and_uploads_outputs_before_reporting_failure(): void
     {
         $nightly = $this->readProjectFile('.github/workflows/nightly-audit.yml');
