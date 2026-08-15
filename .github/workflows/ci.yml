@@ -217,7 +217,6 @@ jobs:
             --build-arg APP_GID="$(id -g)" \
             --build-arg INSTALL_PCOV=1 \
             --cache-from type=gha,scope=dev \
-            --cache-to type=gha,scope=dev-browser,mode=max,ignore-error=true \
             .
 
       - name: Install Composer dependencies
