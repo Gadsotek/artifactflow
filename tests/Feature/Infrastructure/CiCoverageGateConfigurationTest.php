@@ -207,6 +207,10 @@ final class CiCoverageGateConfigurationTest extends TestCase
     {
         $dockerfile = $this->readProjectFile('Dockerfile');
 
+        $this->assertStringContainsString(
+            "go version | grep -E '^go version go1\\.26\\.6[[:space:]]'",
+            $dockerfile,
+        );
         $this->assertStringContainsString('go get google.golang.org/grpc@v1.82.1', $dockerfile);
         $this->assertStringContainsString('go get github.com/getkin/kin-openapi@v0.144.0', $dockerfile);
         $this->assertStringContainsString(

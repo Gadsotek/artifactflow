@@ -6,6 +6,22 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.0.9 — 2026-08-15
+
+Security maintenance release. It clears the nightly production-image audit
+findings without adding product features, schema changes, or operator
+configuration requirements.
+
+### Security
+
+- Rebuilt FrankenPHP with Go 1.26.6, clearing CVE-2026-39821 and
+  CVE-2026-46600 from the production-image Trivy scan.
+
+### Internal / Tooling
+
+- Pinned the verified FrankenPHP builder digest and made the production build
+  assert the expected patched Go toolchain before compiling the binary.
+
 ## v0.0.8 — 2026-08-13
 
 Dependency maintenance release. It refreshes the production and development

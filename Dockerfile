@@ -165,13 +165,14 @@ CMD ["/srv/image-parser/start.sh"]
 
 # FrankenPHP v1.12.6 still resolves vulnerable Go dependencies. Rebuild the
 # bundled binary with patched versions until upstream ships them or newer.
-FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:cc67443b9155efe8adee9f37d1f9a9312d43fce47edca3ea7570e6dae424a20c AS frankenphp-security-builder
+FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:764a5d89d0042aba4b652225e283f439f63d8505ded2c53158184bb758015640 AS frankenphp-security-builder
 
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 WORKDIR /go/src/app/caddy
 
-RUN go get google.golang.org/grpc@v1.82.1 \
+RUN go version | grep -E '^go version go1\.26\.6[[:space:]]' \
+    && go get google.golang.org/grpc@v1.82.1 \
     && go get github.com/getkin/kin-openapi@v0.144.0 \
     && go mod tidy
 
@@ -194,8 +195,9 @@ COPY --from=frankenphp-security-builder /usr/local/bin/frankenphp /usr/local/bin
 # minimum-version constraint below intentionally permits a later patched Alpine
 # revision, so this layer is not byte-for-byte reproducible from the base digest
 # alone; the release image digest, SBOM, and provenance identify the exact output.
-# The source-rebuilt binary above upgrades grpc-go for GHSA-hrxh-6v49-42gf
-# and kin-openapi for GHSA-r277-6w6q-xmqw.
+# The source-rebuilt binary above uses Go 1.26.6 for CVE-2026-39821 and
+# CVE-2026-46600, upgrades grpc-go for GHSA-hrxh-6v49-42gf, and upgrades
+# kin-openapi for GHSA-r277-6w6q-xmqw.
 # Current apk minimum: c-ares CVE-2026-33630 is fixed in 1.34.8-r0.
 RUN setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp \
     && apk add --no-cache "c-ares>=1.34.8-r0"
