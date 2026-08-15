@@ -22,6 +22,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('--type-coverage --min=$(TYPE_COVERAGE_MIN)', $makefile);
         $this->assertStringContainsString('--type-coverage-json=$(TYPE_COVERAGE_JSON)', $makefile);
         $this->assertStringContainsString("run-app-cmd APP_CMD='php scripts/type-coverage-guard.php", $makefile);
+        $this->assertStringContainsString('PCOV is required for line coverage.', $makefile);
         $this->assertStringContainsString('pcov.enabled=$(if $(COVERAGE),1,0)', $makefile);
         $this->assertStringContainsString('XDEBUG_MODE=off', $makefile);
         $this->assertStringNotContainsString('XDEBUG_MODE=$(if $(COVERAGE),coverage,off)', $makefile);
@@ -111,6 +112,42 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('PCOV', $readme);
         $this->assertStringContainsString('make type-coverage', $readme);
         $this->assertStringContainsString('make coverage', $readme);
+    }
+
+    public function test_ci_runs_browser_coverage_in_parallel_with_php_quality(): void
+    {
+        $workflow = $this->readProjectFile('.github/workflows/ci.yml');
+
+        $this->assertStringContainsString("  browser:\n", $workflow);
+        $this->assertStringContainsString('name: Build frontend assets', $workflow);
+        $this->assertStringContainsString('name: E2E browser suite', $workflow);
+        $this->assertStringContainsString("      - browser\n", $workflow);
+        $browserJob = $this->afterNeedle($workflow, "  browser:\n");
+        $this->assertStringContainsString('name: Install Composer dependencies', $browserJob);
+        $this->assertStringContainsString('npm audit --audit-level=moderate', $browserJob);
+    }
+
+    public function test_nightly_finishes_every_audit_and_uploads_outputs_before_reporting_failure(): void
+    {
+        $nightly = $this->readProjectFile('.github/workflows/nightly-audit.yml');
+
+        $this->assertStringContainsString("  dependency-audit:\n", $nightly);
+        $this->assertStringContainsString("  container-audit:\n", $nightly);
+        $this->assertStringContainsString('GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"', $nightly);
+        $this->assertStringContainsString('continue-on-error: true', $nightly);
+        $this->assertGreaterThanOrEqual(8, substr_count($nightly, 'set -o pipefail'));
+        $this->assertGreaterThanOrEqual(6, substr_count($nightly, '|| status=1'));
+        $this->assertStringContainsString('NIGHTLY_FAILED_TASK=Install npm dependencies', $nightly);
+        $this->assertStringContainsString('NIGHTLY_FAILED_TASK=Composer audit', $nightly);
+        $this->assertStringContainsString('NIGHTLY_FAILED_TASK=npm audit', $nightly);
+        $this->assertStringContainsString(
+            'NIGHTLY_FAILED_TASK=Locked MCP bridge install and direct-entrypoint smoke',
+            $nightly,
+        );
+        $this->assertStringContainsString('NIGHTLY_FAILED_TASK=Scan production image (Trivy)', $nightly);
+        $this->assertStringContainsString('nightly-audit-results-', $nightly);
+        $this->assertStringContainsString('uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a', $nightly);
+        $this->assertStringContainsString("    if: always()\n", $this->afterNeedle($nightly, "  notify:\n"));
     }
 
     public function test_capability_verifier_fuzz_corpus_has_a_focused_target_without_duplicate_ci_execution(): void

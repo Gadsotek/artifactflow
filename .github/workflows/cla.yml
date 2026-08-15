@@ -41,7 +41,7 @@ jobs:
           path-to-signatures: signatures/version1/cla.json
           path-to-document: https://github.com/Gadsotek/artifactflow/blob/main/CLA.md
           branch: cla-signatures
-          allowlist: Gadsotek,dependabot[bot],dependabot-preview[bot]
+          allowlist: Gadsotek,dependabot[bot],dependabot-preview[bot],renovate[bot]
           custom-notsigned-prcomment: >
             Thank you for the contribution. Before it can be reviewed and merged,
             please read the [Contributor License Agreement](https://github.com/Gadsotek/artifactflow/blob/main/CLA.md)

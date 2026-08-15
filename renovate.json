@@ -1,0 +1,24 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["dockerfile", "docker-compose"],
+  "dependencyDashboard": true,
+  "labels": ["dependencies", "docker"],
+  "pinDigests": true,
+  "automerge": false,
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "semanticCommits": "enabled",
+  "semanticCommitType": "fix",
+  "semanticCommitScope": "deps",
+  "commitBody": "Signed-off-by: renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>",
+  "packageRules": [
+    {
+      "description": "Keep the Node build and Compose runtime on the same pinned image",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "matchPackageNames": ["node"],
+      "groupName": "node container image",
+      "groupSlug": "node-container-image"
+    }
+  ]
+}

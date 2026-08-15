@@ -13,12 +13,9 @@ env:
   DOCKER_BUILDKIT: "1"
 
 jobs:
-  audit:
+  secret-scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    permissions:
-      contents: read
-      issues: write
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -31,6 +28,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Prepare audit output
+        run: mkdir -p nightly-results
 
       - name: Export host UID and GID
         run: |
@@ -54,13 +63,20 @@ jobs:
           cache: npm
 
       - name: Install npm dependencies
-        run: npm ci --prefer-offline --no-audit --no-fund
+        id: npm-install
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm ci --prefer-offline --no-audit --no-fund 2>&1 | tee nightly-results/npm-install.log
 
       - name: Set up Docker Buildx
         run: docker buildx create --use --driver docker-container
 
       - name: Build cached dev image
+        id: dev-image
+        continue-on-error: true
         run: |
+          set -o pipefail
           docker buildx build \
             --load \
             --pull \
@@ -69,26 +85,99 @@ jobs:
             --build-arg APP_UID="$(id -u)" \
             --build-arg APP_GID="$(id -g)" \
             --cache-from type=gha,scope=dev \
-            --cache-to type=gha,scope=dev,mode=max,ignore-error=true \
-            .
+            --cache-to type=gha,scope=dev-nightly,mode=max,ignore-error=true \
+            . 2>&1 | tee nightly-results/dev-image-build.log
 
       - name: Composer audit
-        run: make audit-php
+        id: composer-audit
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          make audit-php 2>&1 | tee nightly-results/composer-audit.log
 
       - name: npm audit
+        id: npm-audit
+        continue-on-error: true
         run: |
-          node scripts/verify-dompurify.mjs
-          node scripts/verify-mcp-remote.mjs
-          npm audit --audit-level=moderate
-          npm audit --package-lock-only --prefix scripts/mcp-remote-bridge --audit-level=moderate
+          set -o pipefail
+          (
+            status=0
+            node scripts/verify-dompurify.mjs || status=1
+            node scripts/verify-mcp-remote.mjs || status=1
+            npm audit --audit-level=moderate || status=1
+            npm audit --package-lock-only --prefix scripts/mcp-remote-bridge --audit-level=moderate || status=1
+            exit "$status"
+          ) 2>&1 | tee nightly-results/npm-audit.log
 
       - name: Locked MCP bridge install and direct-entrypoint smoke
+        id: bridge-smoke
+        continue-on-error: true
         run: |
-          bridge_install_cache="$(mktemp -d)"
-          bridge_smoke_cwd="$(mktemp -d)"
-          NPM_CONFIG_CACHE="$bridge_install_cache" npm ci --prefix scripts/mcp-remote-bridge --engine-strict --ignore-scripts --no-audit --no-fund
-          node scripts/verify-mcp-remote.mjs --installed
-          MCP_BRIDGE_SMOKE_CWD="$bridge_smoke_cwd" node scripts/smoke-mcp-remote.mjs
+          set -o pipefail
+          (
+            status=0
+            bridge_install_cache="$(mktemp -d)"
+            bridge_smoke_cwd="$(mktemp -d)"
+            NPM_CONFIG_CACHE="$bridge_install_cache" npm ci --prefix scripts/mcp-remote-bridge --engine-strict --ignore-scripts --no-audit --no-fund || status=1
+            node scripts/verify-mcp-remote.mjs --installed || status=1
+            MCP_BRIDGE_SMOKE_CWD="$bridge_smoke_cwd" node scripts/smoke-mcp-remote.mjs || status=1
+            exit "$status"
+          ) 2>&1 | tee nightly-results/mcp-bridge-smoke.log
+
+      - name: Upload dependency audit outputs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: nightly-audit-results-dependencies-${{ github.run_id }}
+          path: nightly-results/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Report dependency audit results
+        if: always()
+        env:
+          DEV_IMAGE_OUTCOME: ${{ steps.dev-image.outcome }}
+          NPM_INSTALL_OUTCOME: ${{ steps.npm-install.outcome }}
+          COMPOSER_OUTCOME: ${{ steps.composer-audit.outcome }}
+          NPM_OUTCOME: ${{ steps.npm-audit.outcome }}
+          BRIDGE_OUTCOME: ${{ steps.bridge-smoke.outcome }}
+        run: |
+          failed=0
+          if [ "$DEV_IMAGE_OUTCOME" != success ]; then
+            echo "NIGHTLY_FAILED_TASK=Build cached dev image"
+            failed=1
+          fi
+          if [ "$NPM_INSTALL_OUTCOME" != success ]; then
+            echo "NIGHTLY_FAILED_TASK=Install npm dependencies"
+            failed=1
+          fi
+          if [ "$COMPOSER_OUTCOME" != success ]; then
+            echo "NIGHTLY_FAILED_TASK=Composer audit"
+            failed=1
+          fi
+          if [ "$NPM_OUTCOME" != success ]; then
+            echo "NIGHTLY_FAILED_TASK=npm audit"
+            failed=1
+          fi
+          if [ "$BRIDGE_OUTCOME" != success ]; then
+            echo "NIGHTLY_FAILED_TASK=Locked MCP bridge install and direct-entrypoint smoke"
+            failed=1
+          fi
+          exit "$failed"
+
+  container-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Prepare audit output
+        run: mkdir -p nightly-results
+
+      - name: Set up Docker Buildx
+        run: docker buildx create --use --driver docker-container
 
       - name: Cache Trivy database
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -97,34 +186,101 @@ jobs:
           key: trivy-${{ runner.os }}
 
       - name: Build production image
+        id: production-image
+        continue-on-error: true
         run: |
+          set -o pipefail
           make build-prod \
             DOCKER_BUILD='docker buildx build --load' \
-            DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha,scope=production --cache-to type=gha,scope=production,mode=max,ignore-error=true'
+            DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha,scope=production --cache-to type=gha,scope=production,mode=max,ignore-error=true' \
+            2>&1 | tee nightly-results/production-image-build.log
 
       - name: Verify artifact Caddy sandbox headers
-        run: sh scripts/verify-artifact-caddy-headers.sh artifactflow-app:production
+        id: caddy-headers
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          sh scripts/verify-artifact-caddy-headers.sh artifactflow-app:production 2>&1 | tee nightly-results/caddy-headers.log
 
       - name: Scan production image (Trivy)
-        run: make scan-image
+        id: trivy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          make scan-image 2>&1 | tee nightly-results/trivy.log
 
       - name: Normalize Trivy cache ownership
         if: always()
         run: sudo chown -R "$(id -u):$(id -g)" ~/.cache/trivy || true
 
+      - name: Upload container audit outputs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: nightly-audit-results-container-${{ github.run_id }}
+          path: nightly-results/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Report container audit results
+        if: always()
+        env:
+          PRODUCTION_IMAGE_OUTCOME: ${{ steps.production-image.outcome }}
+          CADDY_HEADERS_OUTCOME: ${{ steps.caddy-headers.outcome }}
+          TRIVY_OUTCOME: ${{ steps.trivy.outcome }}
+        run: |
+          failed=0
+          if [ "$PRODUCTION_IMAGE_OUTCOME" != success ]; then
+            echo "NIGHTLY_FAILED_TASK=Build production image"
+            failed=1
+          fi
+          if [ "$CADDY_HEADERS_OUTCOME" != success ]; then
+            echo "NIGHTLY_FAILED_TASK=Verify artifact Caddy sandbox headers"
+            failed=1
+          fi
+          if [ "$TRIVY_OUTCOME" != success ]; then
+            echo "NIGHTLY_FAILED_TASK=Scan production image (Trivy)"
+            failed=1
+          fi
+          exit "$failed"
+
+  notify:
+    needs:
+      - secret-scan
+      - dependency-audit
+      - container-audit
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Evaluate nightly audit jobs
+        id: results
+        env:
+          NEEDS_JSON: ${{ toJson(needs) }}
+        run: |
+          failed="$(python3 -c 'import json, os; print("true" if any(job.get("result") != "success" for job in json.loads(os.environ["NEEDS_JSON"]).values()) else "false")')"
+          echo "failed=$failed" >> "$GITHUB_OUTPUT"
+
       - name: Open an issue on failure
-        # Scheduled workflows fail silently (and GitHub disables them after 60
-        # days of repository inactivity); an issue makes the failure visible.
-        if: failure()
+        if: steps.results.outputs.failed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'Nightly audit failed in:title' --json number --jq '.[0].number // empty')"
           url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body="Nightly audit completed all runnable checks and failed. Logs and per-task output artifacts: $url"
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "Nightly audit failed again: $url"
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
           else
             gh issue create --repo "$GITHUB_REPOSITORY" \
               --title "Nightly audit failed" \
-              --body "The scheduled nightly audit failed: $url"
+              --body "$body"
           fi
+
+      - name: Require all nightly audit jobs
+        if: steps.results.outputs.failed == 'true'
+        run: exit 1
