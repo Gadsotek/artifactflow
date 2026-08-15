@@ -109,6 +109,19 @@ the aggregate `ci-required` check; the `cla` check is required separately becaus
 branch-protection settings that make this enforcement real are listed in
 [`RELEASE-CHECKLIST.md`](RELEASE-CHECKLIST.md).
 
+## Automated dependency pull requests
+
+Dependabot security alerts and security updates are enabled for the repository. Composer and both
+npm lockfiles are also checked every day before the 05:00 UTC nightly audit; GitHub Actions remain
+on the lower-noise weekly schedule.
+
+Pinned container images are managed separately by the free hosted
+[Renovate GitHub App](https://github.com/apps/renovate) using [`renovate.json`](renovate.json).
+Renovate is deliberately restricted to Dockerfile and Docker Compose dependencies so it can update
+repeated pins—especially the Node image shared by both files—in one PR without duplicating
+Dependabot's Composer or npm work. Dependency bots may prepare PRs, but they never auto-merge;
+required CI and human review still apply.
+
 **Per-file license headers:** first-party source deliberately carries **no** per-file SPDX or
 copyright header; the whole work is governed by the root [`LICENSE`](LICENSE) (AGPL-3.0-or-later),
 and the relicensing paper trail for the dual-license model rests on the CLA/DCO record above rather

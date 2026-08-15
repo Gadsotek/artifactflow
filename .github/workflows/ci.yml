@@ -15,6 +15,10 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   DOCKER_BUILDKIT: "1"
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   secret-scan:
     runs-on: ubuntu-latest
@@ -56,29 +60,6 @@ jobs:
           path: vendor
           key: composer-vendor-${{ runner.os }}-${{ hashFiles('composer.lock') }}
           restore-keys: composer-vendor-${{ runner.os }}-
-
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '26'
-          cache: npm
-
-      - name: Install npm dependencies
-        run: npm ci --prefer-offline --no-audit --no-fund
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-all-engines-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright browser OS dependencies
-        run: npx playwright install-deps chromium firefox webkit
-
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium firefox webkit
 
       - name: Export host UID and GID
         run: |
@@ -136,26 +117,6 @@ jobs:
         # problems as their own step instead of inside the boot sequence.
         run: make key-generate
 
-      - name: Migrate database
-        # /up is exempt from session middleware, so the healthcheck does not
-        # require migrations — but migrating before the stack starts keeps the
-        # boot deterministic and reports migration failures as their own step.
-        # make migrate's one-off container does NOT start the db service, so
-        # bring db up (and healthy) first.
-        run: |
-          docker compose up -d --wait db
-          make migrate
-
-      - name: Start app stack
-        run: |
-          make up UP_BUILD= || {
-            echo "::group::compose ps"; docker compose ps || true; echo "::endgroup::"
-            echo "::group::app container logs"; docker compose logs app || true; echo "::endgroup::"
-            echo "::group::artifact-host container logs"; docker compose logs artifact-host || true; echo "::endgroup::"
-            echo "::group::Laravel logs"; tail -n 200 storage/logs/*.log 2>/dev/null || echo "(no laravel logs)"; echo "::endgroup::"
-            exit 1
-          }
-
       - name: ECS
         run: make ecs
 
@@ -178,6 +139,41 @@ jobs:
       - name: Composer audit
         run: make audit-php
 
+      - name: PHP test and coverage gates
+        run: |
+          make type-coverage
+          make coverage
+
+      - name: Stop containers
+        if: always()
+        run: make down-reset
+
+  # Browser coverage is independent from PHP/static analysis. Running it in a
+  # separate job cuts the critical path while preserving every engine and test.
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Cache Composer vendor
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor
+          key: composer-vendor-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-vendor-${{ runner.os }}-
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
       - name: npm audit
         run: |
           node scripts/verify-dompurify.mjs
@@ -185,10 +181,54 @@ jobs:
           npm audit --audit-level=moderate
           npm audit --package-lock-only --prefix scripts/mcp-remote-bridge --audit-level=moderate
 
-      - name: PHP test and coverage gates
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-all-engines-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browser OS dependencies
+        run: npx playwright install-deps chromium firefox webkit
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium firefox webkit
+
+      - name: Export host UID and GID
         run: |
-          make type-coverage
-          make coverage
+          echo "APP_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "APP_GID=$(id -g)" >> "$GITHUB_ENV"
+
+      - name: Prepare environment
+        run: cp .env.example .env
+
+      - name: Set up Docker Buildx
+        run: docker buildx create --use --driver docker-container
+
+      - name: Build cached dev image
+        run: |
+          docker buildx build \
+            --load \
+            --pull \
+            --target dev \
+            --tag artifactflow-app:dev \
+            --build-arg APP_UID="$(id -u)" \
+            --build-arg APP_GID="$(id -g)" \
+            --build-arg INSTALL_PCOV=1 \
+            --cache-from type=gha,scope=dev \
+            --cache-to type=gha,scope=dev-browser,mode=max,ignore-error=true \
+            .
+
+      - name: Install Composer dependencies
+        run: |
+          docker run --rm \
+            -v "$PWD:/var/www/html" -w /var/www/html \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp -e COMPOSER_HOME=/tmp/composer \
+            --entrypoint composer \
+            artifactflow-app:dev \
+            install --no-interaction --no-progress --prefer-dist
 
       - name: Build frontend assets
         run: npm run build
@@ -283,6 +323,7 @@ jobs:
     needs:
       - secret-scan
       - quality
+      - browser
       - container-image
       - dco
     if: always()
