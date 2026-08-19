@@ -34,6 +34,9 @@ use App\Http\Controllers\PageVersionController;
 use App\Http\Controllers\PageVersionInspectionController;
 use App\Http\Controllers\PageWorkspaceController;
 use App\Http\Controllers\PasswordConfirmationController;
+use App\Http\Controllers\PdfArtifactController;
+use App\Http\Controllers\PdfDownloadController;
+use App\Http\Controllers\PdfReprocessController;
 use App\Http\Controllers\SwitchWorkspaceController;
 use App\Http\Controllers\SystemAdminTwoFactorConfirmationController;
 use App\Http\Controllers\SystemUserController;
@@ -58,6 +61,21 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/artifact-previews/{pageUid}/versions/{versionUid}', ArtifactPreviewController::class)
     ->name('artifact-previews.show')
+    ->middleware([RequireArtifactHostRuntime::class, 'throttle:artifact-previews'])
+    ->withoutMiddleware([
+        Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+        Illuminate\Cookie\Middleware\EncryptCookies::class,
+        Illuminate\Foundation\Http\Middleware\PreventRequestForgery::class,
+        Illuminate\Session\Middleware\StartSession::class,
+        Illuminate\View\Middleware\ShareErrorsFromSession::class,
+    ])
+    ->where([
+        'pageUid' => '[0-9A-Za-z]{26}',
+        'versionUid' => '[0-9A-Za-z]{26}',
+    ]);
+
+Route::get('/pdf-artifacts/{pageUid}/versions/{versionUid}', PdfArtifactController::class)
+    ->name('pdf-artifacts.show')
     ->middleware([RequireArtifactHostRuntime::class, 'throttle:artifact-previews'])
     ->withoutMiddleware([
         Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
@@ -269,6 +287,9 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
         Route::get('/pages/{page}/artifact-preview-url', ArtifactPreviewUrlController::class)
             ->middleware('can:view,page')
             ->name('pages.artifact-preview-url');
+        Route::get('/pages/{page}/download', [PdfDownloadController::class, 'current'])
+            ->middleware('can:view,page')
+            ->name('pages.pdf.download');
         Route::post('/pages/{page}/markdown-preview', MarkdownPreviewController::class)
             ->middleware(['can:update,page', 'throttle:artifactflow-markdown-previews'])
             ->name('pages.markdown-preview');
@@ -328,12 +349,18 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
         Route::post('/pages/{page}/versions', [PageVersionController::class, 'store'])
             ->middleware(['can:update,page', 'throttle:artifactflow-page-writes'])
             ->name('pages.versions.store');
+        Route::post('/pages/{page}/pdf/reprocess', PdfReprocessController::class)
+            ->middleware(['can:update,page', 'throttle:artifactflow-page-writes'])
+            ->name('pages.pdf.reprocess');
         Route::get('/pages/{page}/versions/{version}', PageVersionInspectionController::class)
             ->middleware('can:view,page')
             ->name('pages.versions.show');
         Route::get('/pages/{page}/versions/{version}/artifact-preview-url', ArtifactHistoryPreviewUrlController::class)
             ->middleware('can:view,page')
             ->name('pages.versions.artifact-preview-url');
+        Route::get('/pages/{page}/versions/{version}/download', [PdfDownloadController::class, 'history'])
+            ->middleware('can:view,page')
+            ->name('pages.versions.pdf.download');
         Route::post('/pages/{page}/versions/{version}/restore', [PageVersionController::class, 'restore'])
             ->middleware(['can:update,page', 'throttle:artifactflow-page-writes'])
             ->name('pages.versions.restore');

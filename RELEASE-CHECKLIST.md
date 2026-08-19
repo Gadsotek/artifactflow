@@ -32,6 +32,10 @@ Set tester expectations explicitly:
 - If Reverb is enabled, keep `REVERB_APP_RATE_LIMITING_ENABLED=true`, set a bounded `REVERB_APP_MAX_CONNECTIONS`, and keep `REVERB_PUBLIC_URL`/`REVERB_ALLOWED_ORIGINS` on the app origin only.
 - Create the bootstrap System Admin without baking `ARTIFACTFLOW_ADMIN_PASSWORD` into a cached config artifact, then remove or rotate that temporary password after first login.
 - Keep artifact storage private and confirm artifact-preview URLs are served only by the artifact runtime.
+- Keep `PDF_PROCESSOR_ENABLED=false`. The end-to-end PDF application boundary is
+  implemented and E2E-proven behind the default-off roadmap gate, but is not
+  production-enabled behavior; directional processor containment, the manual
+  released-Safari/iOS check, and final release review are still open.
 - Confirm protected branches require **both** required status checks before merge or release: the aggregate `ci-required` check (from `ci.yml`, which folds in the DCO sign-off gate) **and** the `cla` check from the `CLA` workflow (`cla.yml`). The CLA runs in a separate `pull_request_target` workflow, so it can never be part of `ci-required`; requiring only `ci-required` would leave the CLA signature unenforced at merge — the "no CLA, no merge" guarantee depends on this second required check. If the repository is still private on a GitHub plan without branch protection, make it public or move it to a plan that supports branch protection before treating CI as enforced.
 - Run the full gate set from `AGENTS.md`, including type coverage, line coverage, browser E2E, production image build, and Trivy image/config scans.
 - Do not deploy the repository `docker-compose.yml` as a production stack; it is local-only and intentionally uses development settings.

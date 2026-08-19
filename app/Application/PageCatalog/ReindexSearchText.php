@@ -113,6 +113,13 @@ final readonly class ReindexSearchText
 
             foreach ($this->versionsFor($lockedPage, $allVersions) as $version) {
                 $versionsExamined++;
+
+                if (!$this->contentPreparer->supportsSearchTextReindex($lockedPage->type)) {
+                    $versionsSkipped++;
+
+                    continue;
+                }
+
                 $projection = $this->contentPreparer->textProjection(
                     $lockedPage->type,
                     fn (): ?string => $this->contentReader->read($version->content_storage_path),

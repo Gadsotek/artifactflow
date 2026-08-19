@@ -15,9 +15,11 @@ function initialiseCreatePageMode(form) {
   const title = form.querySelector('input[name="title"]');
   const htmlFileInput = form.querySelector('input[name="html_file"]');
   const imageFileInput = form.querySelector('input[name="image_file"]');
+  const pdfFileInput = form.querySelector('input[name="pdf_file"]');
   const contentFields = form.querySelector('[data-create-page-content-fields]');
   const htmlUploadFields = form.querySelector('[data-create-page-upload-fields]');
   const imageUploadFields = form.querySelector('[data-create-page-image-upload-fields]');
+  const pdfUploadFields = form.querySelector('[data-create-page-pdf-upload-fields]');
 
   if (
     !(type instanceof HTMLSelectElement) ||
@@ -53,12 +55,19 @@ function initialiseCreatePageMode(form) {
 
     const isHtmlUpload = type.value === 'html_artifact' && mode.value === 'html_upload';
     const isImageUpload = type.value === 'image' && mode.value === 'image_upload';
+    const isPdfUpload = type.value === 'pdf' && mode.value === 'pdf_upload';
 
-    contentFields.hidden = isHtmlUpload || isImageUpload;
+    contentFields.hidden = isHtmlUpload || isImageUpload || isPdfUpload;
     htmlUploadFields.hidden = !isHtmlUpload;
     imageUploadFields.hidden = !isImageUpload;
+    if (pdfUploadFields instanceof HTMLElement) {
+      pdfUploadFields.hidden = !isPdfUpload;
+    }
     htmlFileInput.required = isHtmlUpload;
     imageFileInput.required = isImageUpload;
+    if (pdfFileInput instanceof HTMLInputElement) {
+      pdfFileInput.required = isPdfUpload;
+    }
   };
 
   type.addEventListener('change', () => {
@@ -82,6 +91,7 @@ function initialiseCreatePageMode(form) {
 
   htmlFileInput.addEventListener('change', () => suggestTitle(htmlFileInput));
   imageFileInput.addEventListener('change', () => suggestTitle(imageFileInput));
+  pdfFileInput?.addEventListener('change', () => suggestTitle(pdfFileInput));
 
   update();
   form.setAttribute('data-create-page-mode-ready', 'true');

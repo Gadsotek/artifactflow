@@ -6,11 +6,42 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+### Added
+
+- Added a default-off searchable PDF application boundary: bounded synchronous
+  PDFBox validation/text extraction, immutable original storage, permission-aware
+  search, current/history native preview and forced download on the artifact
+  origin, restore, standalone derived-fact reprocessing, full lifecycle and
+  operator coverage, and permission-first MCP create/replace/read/search/revert.
+  External PDF sharing is implemented behind the default-off PDF feature gate,
+  reusing the existing revocable anonymous session capability and isolated
+  native viewer. OCR, raster/HTML preview conversion, raw PDF MCP responses,
+  and production enablement remain deliberately closed.
+
+### Security
+
+- Added purpose- and revision-bound PDF delivery capabilities, exact stored-byte
+  hash/size verification, strict response headers, renamed-HTML/active-structure
+  hostile fixtures, a fail-closed feature switch across app and artifact
+  runtimes, and a cross-process native-engine lease that preserves the
+  concurrency-one memory boundary during health probes. MCP checks exact
+  authority before Base64 decoding/native work and returns only enveloped text
+  plus safe facts; restore/reprocess verify retained original hashes before
+  processing, and PDF diagnostics stay out of audit/event metadata.
+
 ## v0.0.9 — 2026-08-15
 
-Security maintenance release. It clears the nightly production-image audit
-findings without adding product features, schema changes, or operator
-configuration requirements.
+Feature and security maintenance release. It adds three-level nested shared
+workspaces and clears the nightly production-image audit findings.
+
+### Added
+
+- Added three-level nested shared workspaces with downward membership
+  inheritance, opt-out boundaries and per-user exclusions, direct child
+  memberships, serialized reparenting, exact-workspace Library/category/storage
+  behavior, and exact selected-workspace MCP scopes. Authorization, preview
+  revision, realtime revocation, and non-disclosure checks cover descendants and
+  hierarchy changes. (#71)
 
 ### Security
 

@@ -24,6 +24,35 @@ function runAppCommand(appCommand: string, failureMessage: string): void {
   }
 }
 
+function buildPdf(text: string): Buffer {
+  const content = `BT /F1 24 Tf 72 700 Td (${text}) Tj ET`;
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${Buffer.byteLength(content, 'ascii')} >>\nstream\n${content}\nendstream`,
+  ];
+  let document = '%PDF-1.4\n';
+  const offsets = [0];
+
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(document, 'ascii'));
+    document += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+
+  const xrefOffset = Buffer.byteLength(document, 'ascii');
+  document += `xref\n0 ${objects.length + 1}\n`;
+  document += '0000000000 65535 f \n';
+  offsets.slice(1).forEach((offset) => {
+    document += `${offset.toString().padStart(10, '0')} 00000 n \n`;
+  });
+  document += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\n`;
+  document += `startxref\n${xrefOffset}\n%%EOF\n`;
+
+  return Buffer.from(document, 'ascii');
+}
+
 function enableExternalSharing(): void {
   runAppCommand(
     'php artisan tinker --execute="Illuminate\\\\Support\\\\Facades\\\\DB::table(\\"installation_settings\\")->upsert([array_merge(app(App\\\\Application\\\\Administration\\\\InstallationLimitSettings::class)->current()->toPersistenceArray(), [\\"uid\\" => (string) Illuminate\\\\Support\\\\Str::ulid(), \\"scope\\" => App\\\\Models\\\\InstallationSettings::SCOPE_INSTALLATION, \\"external_sharing_enabled\\" => true, \\"external_share_acknowledgement_required\\" => true, \\"external_share_max_expiry_hours\\" => 168, \\"created_at\\" => now(), \\"updated_at\\" => now()])], [\\"scope\\"], [\\"external_sharing_enabled\\", \\"external_share_acknowledgement_required\\", \\"external_share_max_expiry_hours\\", \\"updated_at\\"]);"',
@@ -99,6 +128,24 @@ async function createImagePage(page: Page, title: string): Promise<void> {
   });
   await page.getByRole('button', { name: 'Save page' }).click();
   await expect(page).toHaveURL(/\/pages\/[0-9a-hjkmnp-tv-z]{26}$/u, { timeout: 20_000 });
+}
+
+async function createPdfPage(page: Page, title: string): Promise<void> {
+  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('[data-create-page-form]')).toHaveAttribute(
+    'data-create-page-mode-ready',
+    'true',
+  );
+  await page.locator('select[name="type"]').selectOption('pdf');
+  await page.locator('input[name="title"]').fill(title);
+  await page.locator('input[name="pdf_file"]').setInputFiles({
+    name: 'external-share.pdf',
+    mimeType: 'application/pdf',
+    buffer: buildPdf('External PDF recipient content'),
+  });
+  await page.getByRole('button', { name: 'Save page' }).click();
+  await expect(page).toHaveURL(/\/pages\/[0-9a-hjkmnp-tv-z]{26}$/u, { timeout: 30_000 });
+  await expect(page.getByText('Text extraction: Indexed')).toBeVisible();
 }
 
 async function createOneTimeLink(page: Page): Promise<string> {
@@ -390,7 +437,7 @@ test('one-time fragment sharing is explicit, single-use, and independent of logi
   await expect(page.getByText('Recipient content.')).toBeVisible();
 });
 
-test('external HTML and image viewers preserve their isolated sandbox policies @artifact-security', async ({
+test('external HTML, image, and PDF viewers preserve their format-specific isolation policies @artifact-security', async ({
   browser,
   page,
 }) => {
@@ -467,5 +514,50 @@ test('external HTML and image viewers preserve their isolated sandbox policies @
     expect(renewalRequests).toBe(0);
   } finally {
     await imageContext.close();
+  }
+
+  const pdfTitle = `External PDF ${suffix}`;
+  await createPdfPage(page, pdfTitle);
+  const pdfUrl = await createOneTimeLink(page);
+  const pdfContext = await browser.newContext();
+
+  try {
+    const opened = await openConfirmation(pdfContext, pdfUrl, pdfTitle);
+    let renewalRequests = 0;
+    opened.page.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('/artifact-preview-url')) {
+        renewalRequests += 1;
+      }
+    });
+    const responsePromise = opened.page.waitForResponse((response) =>
+      new URL(response.url()).pathname.startsWith('/external-artifact-previews/'),
+    );
+    await opened.page.getByRole('button', { name: /open artifact/iu }).click();
+    await expect(opened.page.getByText('Viewing this PDF is download-equivalent.')).toBeVisible();
+    const frame = opened.page.locator('iframe[title="PDF preview"]');
+    await expect(frame).toHaveAttribute('allow', '');
+    await expect(frame).toHaveAttribute('referrerpolicy', 'no-referrer');
+    expect(await frame.getAttribute('sandbox')).toBeNull();
+    const response = await responsePromise;
+    expect(response.url()).not.toContain(opened.secret);
+    expect(new URL(response.url()).origin).not.toBe(new URL(baseUrl).origin);
+    expect(await response.headerValue('content-type')).toBe('application/pdf');
+    expect(await response.headerValue('content-disposition')).toMatch(/^inline; filename=/u);
+    expect(await response.headerValue('cache-control')).toBe('no-store, private');
+    expect(await response.headerValue('x-content-type-options')).toBe('nosniff');
+    expect(await response.headerValue('accept-ranges')).toBe('none');
+    expect(await response.headerValue('x-frame-options')).toBeNull();
+    expect(await response.headerValue('set-cookie')).toBeNull();
+    expect(await response.headerValue('access-control-allow-origin')).toBeNull();
+    expect(await response.request().headerValue('cookie')).toBeNull();
+    const csp = await response.headerValue('content-security-policy');
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain(`frame-ancestors ${baseUrl}`);
+    expect(csp).not.toMatch(/(?:^|;)\s*sandbox(?:\s|;|$)/u);
+    await opened.page.waitForTimeout(500);
+    expect(renewalRequests).toBe(0);
+  } finally {
+    await pdfContext.close();
   }
 });

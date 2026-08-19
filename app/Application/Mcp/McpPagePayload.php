@@ -49,6 +49,7 @@ final readonly class McpPagePayload
             PageType::Markdown => 'text/markdown',
             PageType::HtmlArtifact => 'text/html',
             PageType::Image => throw new LogicException('Image pages are served as a binary image block, not a text media type.'),
+            PageType::Pdf => throw new LogicException('PDF bytes are not returned through MCP.'),
         };
     }
 }

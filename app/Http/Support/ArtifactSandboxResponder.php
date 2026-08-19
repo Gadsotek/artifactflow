@@ -6,7 +6,6 @@ namespace App\Http\Support;
 
 use App\Application\PageCatalog\ArtifactPreviewComplexityExceeded;
 use App\Application\PageCatalog\ArtifactPreviewDocumentGuard;
-use App\Infrastructure\Security\OriginNormalizer;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use InvalidArgumentException;
@@ -26,6 +25,7 @@ final readonly class ArtifactSandboxResponder
 
     public function __construct(
         private ArtifactPreviewDocumentGuard $documentGuard,
+        private ArtifactFramePolicy $framePolicy,
     ) {
     }
 
@@ -204,25 +204,8 @@ final readonly class ArtifactSandboxResponder
             // directive, so it must never be credited as a cross-engine barrier;
             // response rewriting prevents an unpatched nested realm from existing.
             "webrtc 'block'",
-            'frame-ancestors ' . $this->frameAncestors(),
+            'frame-ancestors ' . $this->framePolicy->frameAncestors(),
         ];
-    }
-
-    private function frameAncestors(): string
-    {
-        $configured = $this->stringConfig('app.artifact_frame_ancestors');
-
-        if ($configured === '') {
-            $configured = $this->stringConfig('app.url');
-        }
-
-        $normalized = preg_replace('/\s+/', ' ', str_replace(',', ' ', trim($configured)));
-
-        if (!is_string($normalized) || $normalized === '') {
-            return "'none'";
-        }
-
-        return $normalized;
     }
 
     private function topLevelNoticeHtml(?string $openInAppUrl): string
@@ -262,28 +245,6 @@ final readonly class ArtifactSandboxResponder
      */
     public function appOrigin(): string
     {
-        $frameAncestors = preg_split(
-            '/[\s,]+/',
-            $this->stringConfig('app.artifact_frame_ancestors'),
-            -1,
-            PREG_SPLIT_NO_EMPTY,
-        );
-
-        if (is_array($frameAncestors) && count($frameAncestors) === 1) {
-            $origin = OriginNormalizer::tryParse($frameAncestors[0]);
-
-            if ($origin !== null) {
-                return $origin->compact();
-            }
-        }
-
-        return $this->stringConfig('app.url');
-    }
-
-    private function stringConfig(string $key): string
-    {
-        $value = config($key);
-
-        return is_string($value) ? $value : '';
+        return $this->framePolicy->appOrigin();
     }
 }

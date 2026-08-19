@@ -106,6 +106,10 @@ final class PageSearch
             $query->where('type', $filters->type);
         }
 
+        if ($filters->excludedTypes !== []) {
+            $query->whereNotIn('type', $filters->excludedTypes);
+        }
+
         if (count($filters->statuses) < count(PageStatus::cases())) {
             $query->whereIn('status', $filters->statuses);
         }

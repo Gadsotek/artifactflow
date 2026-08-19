@@ -3,19 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ArtifactFlow Roadmap | Nested Workspace Focus</title>
-<meta name="description" content="ArtifactFlow's public direction: the shipped alpha, verified nested shared workspace beta candidate, later document formats, and explicit non-promises.">
+<title>ArtifactFlow Roadmap | Searchable PDF Focus</title>
+<meta name="description" content="ArtifactFlow's public direction: the shipped alpha with nested workspaces, searchable PDF artifacts next, Word documents later, and explicit non-promises.">
 <link rel="canonical" href="https://artifactflow.app/roadmap/">
-<meta property="og:title" content="ArtifactFlow Roadmap | Nested Workspace Focus">
-<meta property="og:description" content="Shipped alpha boundaries, a verified nested workspace beta candidate, later document formats, and the proof required before ArtifactFlow expands.">
+<meta property="og:title" content="ArtifactFlow Roadmap | Searchable PDF Focus">
+<meta property="og:description" content="Shipped alpha boundaries, released nested workspaces, searchable PDF artifacts next, and the proof required before ArtifactFlow expands.">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://artifactflow.app/roadmap/">
 <meta property="og:site_name" content="ArtifactFlow">
 <meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="ArtifactFlow Roadmap | Nested Workspace Focus">
-<meta name="twitter:description" content="Direction without invented dates: shipped alpha, verified nested workspace beta candidate, and later PDF and DOCX formats.">
+<meta name="twitter:title" content="ArtifactFlow Roadmap | Searchable PDF Focus">
+<meta name="twitter:description" content="Direction without invented dates: nested workspaces shipped, searchable native-text PDF next, and DOCX later.">
 <meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
@@ -28,7 +28,7 @@
   "@context": "https://schema.org",
   "@type": "WebPage",
   "name": "ArtifactFlow Roadmap",
-  "description": "Shipped alpha boundaries, a verified nested workspace beta candidate, later document formats, and required security proof.",
+  "description": "Shipped alpha boundaries, released nested workspaces, searchable PDF artifacts next, and required security proof.",
   "url": "https://artifactflow.app/roadmap/",
   "isPartOf": { "@id": "https://artifactflow.app/#website" }
 }
@@ -59,7 +59,7 @@
     <div class="shell">
       <p class="eyebrow">Product direction</p>
       <h1>Build the boundary before expanding the surface.</h1>
-      <p class="lede">Direction, not a release promise. ArtifactFlow's alpha is intentionally narrow while the verified beta candidate adds a three-level shared workspace hierarchy. Searchable PDF and Word artifacts remain later format expansions after this authorization boundary.</p>
+      <p class="lede">Direction, not a release promise. Three-level nested shared workspaces shipped in v0.0.9. Searchable, versioned native-text PDF artifacts are the next format milestone; Word documents follow only after the PDF processing boundary is proven.</p>
       <div class="detail-actions">
         <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/ROADMAP.md">Read the source roadmap ↗</a>
         <a class="button" href="https://github.com/Gadsotek/artifactflow/releases">View releases ↗</a>
@@ -73,16 +73,18 @@
         <section id="now">
           <p class="kicker">Available now</p>
           <h2>The alpha has shipped and remains deliberately focused.</h2>
-          <p>The current alpha line is feature-frozen while it gathers feedback. Work stays concentrated on security, correctness, release readiness, documentation, and small usability improvements to behavior that already exists.</p>
+          <p>The current alpha stays deliberately bounded. Work remains concentrated on security, correctness, release readiness, documentation, and deliberately scoped format slices.</p>
           <ul class="detail-list">
             <li><strong>HTML, Markdown, and Mermaid</strong>Preserve, search, version, and share artifacts through authenticated personal and shared workspaces.</li>
             <li><strong>Visible page hierarchy</strong>The Library, Overview, page detail, and MCP expose authorization-filtered parent and child context within one workspace.</li>
+            <li><strong>Normalized raster images</strong>PNG/JPEG uploads cross an isolated parser boundary and retain only re-encoded pixels.</li>
+            <li><strong>Nested shared workspaces</strong>Root, child, and grandchild workspaces preserve exact content boundaries while parent authority flows through explicit inheritance rules.</li>
             <li><strong>Isolated HTML execution</strong>Generated HTML runs on the separate artifact origin under the documented iframe, CSP, and signed-preview boundary.</li>
             <li><strong>Scoped MCP access</strong>Nine operations cover workspace discovery, taxonomy, search, read, create, update, and revert without granting preview capabilities.</li>
           </ul>
           <div class="callout">
-            <strong>The alpha boundary stays flat</strong>
-            <p>Workspaces remain independent permission boundaries. Page hierarchy is navigation over the existing page model, not a second permission system or nested workspace inheritance.</p>
+            <strong>Workspace libraries stay exact</strong>
+            <p>Nested membership can grant authority downward, but selecting a parent never merges descendant pages, categories, storage counters, Library filters, or selected MCP scopes.</p>
           </div>
         </section>
 
@@ -94,12 +96,12 @@
         </section>
 
         <section id="beta">
-          <p class="kicker">Verified beta candidate</p>
+          <p class="kicker">Shipped in v0.0.9</p>
           <h2>Nested shared workspaces, capped at three levels.</h2>
           <div class="split-cards">
             <article class="split-card">
               <h3>Inherited authority</h3>
-              <p>Parent memberships flow downward, direct child memberships may elevate but never reduce inherited authority, and restrictive sharing or invitation settings remain restrictive throughout the subtree.</p>
+              <p>Parent memberships flow downward by default. A child can disable inheritance at its boundary or exclude one inherited user locally while independent direct roles remain effective.</p>
             </article>
             <article class="split-card">
               <h3>Bounded hierarchy</h3>
@@ -107,18 +109,18 @@
             </article>
           </div>
           <div class="callout">
-            <strong>Implemented and verified; release pending</strong>
-            <p>The required server, concurrency, and multi-engine browser proof is complete in the current working tree. Nested workspaces remain outside the released alpha until a tagged release includes them.</p>
+            <strong>Implemented, verified, and released</strong>
+            <p>The server, PostgreSQL concurrency, authorization non-disclosure, and multi-engine browser proof is included in the released v0.0.9 line.</p>
           </div>
         </section>
 
         <section id="documents">
-          <p class="kicker">Later format expansions</p>
-          <h2>PDF and Word follow the workspace authorization work.</h2>
+          <p class="kicker">Next format milestone</p>
+          <h2>Searchable PDF comes next; Word follows.</h2>
           <div class="split-cards">
             <article class="split-card">
               <h3>Searchable PDF artifacts</h3>
-              <p>PDFs would join the permission-aware catalog and version history while remaining non-executable. Search needs bounded parsing, OCR, private originals, safe reading, and proof that restricted content never leaks.</p>
+              <p>Native-text PDFs would join the permission-aware catalog and version history with private originals, bounded isolated extraction, browser-native viewing on the existing cookieless artifact origin, normal forced-attachment downloads, and proof that restricted content never leaks. Preview deliberately transfers the authorized original. Embedded text remains untrusted and may not be visible in the document. OCR remains a later PDF milestone.</p>
               <a class="roadmap-issue-link" href="https://github.com/Gadsotek/artifactflow/issues/32">Track PDF issue #32 ↗</a>
             </article>
             <article class="split-card">
@@ -130,7 +132,7 @@
         </section>
 
         <section id="proof">
-          <p class="kicker">Before beta</p>
+          <p class="kicker">Before PDF release</p>
           <h2>Scheduling follows proof, not the other way around.</h2>
           <ol class="flow-steps">
             <li>Write the product rule and architecture decision before changing schema or authorization behavior.</li>
@@ -170,9 +172,9 @@
         <strong>On this page</strong>
         <a href="#now">Available now</a>
         <a href="#sharing">External sharing</a>
-        <a href="#beta">Active beta focus</a>
-        <a href="#documents">Later formats</a>
-        <a href="#proof">Before beta</a>
+        <a href="#beta">Nested workspaces</a>
+        <a href="#documents">PDF next</a>
+        <a href="#proof">Before PDF release</a>
         <a href="#not-promised">Explicitly not promised</a>
         <a href="#source">Source of truth</a>
       </aside>

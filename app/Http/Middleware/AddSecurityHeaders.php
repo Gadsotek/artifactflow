@@ -56,18 +56,32 @@ final class AddSecurityHeaders
             $isArtifactPreview = $request->is(
                 'artifact-previews/*',
                 'external-artifact-previews/*',
+                'pdf-artifacts/*',
             );
+            $isPdfArtifact = $request->is('pdf-artifacts/*')
+                || (
+                    $request->is('external-artifact-previews/*')
+                    && $response->headers->get('Content-Type') === 'application/pdf'
+                );
 
             if (!$isArtifactPreview || !$response->headers->has('Content-Security-Policy')) {
                 $response->headers->set('Content-Security-Policy', $this->artifactHostFallbackPolicy());
             }
-            // The artifact-preview response carries X-Frame-Options: DENY even though
-            // the app must iframe it. That is safe and fails closed: the preview CSP's
+            // HTML/image artifact-preview responses carry X-Frame-Options: DENY even
+            // though the app must iframe them. That is safe and fails closed: the preview CSP's
             // frame-ancestors <app-origin> (set in ArtifactPreviewController) takes
             // precedence over X-Frame-Options in modern browsers, while every other
             // artifact-host response genuinely must not be framed. Do not "resolve"
             // the apparent contradiction by loosening frame-ancestors.
-            $response->headers->set('X-Frame-Options', 'DENY');
+            // Native PDF viewers cannot be framed when X-Frame-Options is DENY.
+            // Relax it only for a successful response that the trusted responder
+            // has already typed as PDF; external HTML/image and every external error
+            // response retain DENY and their existing sandbox/fallback CSP.
+            if ($isPdfArtifact) {
+                $response->headers->remove('X-Frame-Options');
+            } else {
+                $response->headers->set('X-Frame-Options', 'DENY');
+            }
             $response->headers->set('Strict-Transport-Security', $this->strictTransportSecurity());
             $response->headers->set('Referrer-Policy', 'no-referrer');
             $response->headers->set('X-Content-Type-Options', 'nosniff');

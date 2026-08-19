@@ -110,6 +110,11 @@ services:
       IMAGE_PARSER_SHARED_SECRET: ${IMAGE_PARSER_SHARED_SECRET:-artifactflow-local-parser-secret-not-for-production}
       IMAGE_PARSER_CONNECT_TIMEOUT_SECONDS: ${IMAGE_PARSER_CONNECT_TIMEOUT_SECONDS:-2}
       IMAGE_PARSER_TIMEOUT_SECONDS: ${IMAGE_PARSER_TIMEOUT_SECONDS:-12}
+      PDF_PROCESSOR_ENABLED: ${PDF_PROCESSOR_ENABLED:-false}
+      PDF_PROCESSOR_URL: ${PDF_PROCESSOR_URL:-http://pdf-processor:8080}
+      PDF_PROCESSOR_SHARED_SECRET: ${PDF_PROCESSOR_SHARED_SECRET:-}
+      PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS: ${PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS:-2}
+      PDF_PROCESSOR_TIMEOUT_SECONDS: ${PDF_PROCESSOR_TIMEOUT_SECONDS:-15}
       IMAGE_NORMALIZATION_USER_PIXEL_BUDGET_PER_MINUTE: ${IMAGE_NORMALIZATION_USER_PIXEL_BUDGET_PER_MINUTE:-67108864}
       IMAGE_NORMALIZATION_INSTALLATION_PIXEL_BUDGET_PER_MINUTE: ${IMAGE_NORMALIZATION_INSTALLATION_PIXEL_BUDGET_PER_MINUTE:-268435456}
       IMAGE_NORMALIZATION_USER_WORK_BUDGET_PER_MINUTE: ${IMAGE_NORMALIZATION_USER_WORK_BUDGET_PER_MINUTE:-67108864}
@@ -207,6 +212,10 @@ services:
       QUEUE_CONNECTION: sync
       IMAGE_PARSER_URL: ""
       IMAGE_PARSER_SHARED_SECRET: ""
+      # The same installation gate controls PDF delivery, but this runtime still
+      # receives no processor endpoint or credential.
+      PDF_PROCESSOR_URL: ""
+      PDF_PROCESSOR_SHARED_SECRET: ""
     ports:
       - "127.0.0.1:${ARTIFACT_HOST_PORT:-18081}:8000"
     volumes: *app-volumes
@@ -219,6 +228,36 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+
+  e2e-pdf-processor:
+    profiles: ["e2e"]
+    build:
+      context: ./pdf-processor-spike
+      dockerfile: Dockerfile
+      target: pdf-processor-service
+    image: artifactflow-pdf-processor-service:local
+    environment:
+      PDF_PROCESSOR_SHARED_SECRET: ${E2E_PDF_PROCESSOR_SHARED_SECRET:-artifactflow-e2e-pdf-processor-secret}
+      PDF_PROCESSOR_MAX_CLOCK_SKEW_SECONDS: 120
+      PORT: 8080
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 32
+    mem_limit: 512m
+    cpus: 1.0
+    networks:
+      - pdf-processor
+    healthcheck:
+      test: ["CMD", "php", "/srv/pdf-processor-spike/healthcheck.php"]
+      interval: 5s
+      timeout: 15s
+      retries: 6
+      start_period: 10s
 
   e2e-app:
     profiles: ["e2e"]
@@ -262,6 +301,9 @@ services:
       # Keep the suite from exhausting the cross-selector production ceiling;
       # focused feature tests verify that ceiling with deliberately low limits.
       EXTERNAL_SHARE_PUBLIC_IP_RATE_LIMIT_PER_MINUTE: ${E2E_EXTERNAL_SHARE_PUBLIC_IP_RATE_LIMIT_PER_MINUTE:-1000}
+      PDF_PROCESSOR_ENABLED: "true"
+      PDF_PROCESSOR_URL: http://e2e-pdf-processor:8080
+      PDF_PROCESSOR_SHARED_SECRET: ${E2E_PDF_PROCESSOR_SHARED_SECRET:-artifactflow-e2e-pdf-processor-secret}
     command: ["sh", "/var/www/html/docker/start-e2e-app.sh"]
     ports:
       - "127.0.0.1:${E2E_APP_PORT:-18180}:8000"
@@ -279,9 +321,12 @@ services:
         condition: service_healthy
       image-parser:
         condition: service_healthy
+      e2e-pdf-processor:
+        condition: service_healthy
     networks:
       - default
       - image-parser
+      - pdf-processor
     healthcheck:
       test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh && PORT=8001 /var/www/html/docker/healthcheck-app.sh"]
       interval: 10s
@@ -328,6 +373,11 @@ services:
       TURNSTILE_EXPECTED_HOSTNAME: ""
       IMAGE_PARSER_URL: ""
       IMAGE_PARSER_SHARED_SECRET: ""
+      # PDF delivery is under test here, but the artifact runtime still receives
+      # no processor endpoint or credential.
+      PDF_PROCESSOR_ENABLED: "true"
+      PDF_PROCESSOR_URL: ""
+      PDF_PROCESSOR_SHARED_SECRET: ""
       ARTIFACT_STORAGE_ROOT: /var/www/html/storage/app/e2e_private_artifacts
       VITE_HOT_FILE: /tmp/artifactflow-e2e-no-hot
     ports:
@@ -356,6 +406,9 @@ services:
       APP_RUNTIME_ROLE: worker
       IMAGE_PARSER_URL: ""
       IMAGE_PARSER_SHARED_SECRET: ""
+      PDF_PROCESSOR_ENABLED: "false"
+      PDF_PROCESSOR_URL: ""
+      PDF_PROCESSOR_SHARED_SECRET: ""
     volumes: *app-volumes
     depends_on:
       app:
@@ -375,6 +428,9 @@ services:
       APP_RUNTIME_ROLE: scheduler
       IMAGE_PARSER_URL: ""
       IMAGE_PARSER_SHARED_SECRET: ""
+      PDF_PROCESSOR_ENABLED: "false"
+      PDF_PROCESSOR_URL: ""
+      PDF_PROCESSOR_SHARED_SECRET: ""
     volumes: *app-volumes
     depends_on:
       app:
@@ -413,6 +469,9 @@ services:
       # application environment anchor.
       IMAGE_PARSER_URL: ""
       IMAGE_PARSER_SHARED_SECRET: ""
+      PDF_PROCESSOR_ENABLED: "false"
+      PDF_PROCESSOR_URL: ""
+      PDF_PROCESSOR_SHARED_SECRET: ""
       # Local Reverb uses the shared database so `reverb:restart` works across
       # processes. The isolated origin probe overrides only this restart-signal
       # cache; its production limiter stores remain configured separately.
@@ -513,3 +572,8 @@ volumes:
 networks:
   image-parser:
     internal: true
+  pdf-processor:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${E2E_PDF_PROCESSOR_NETWORK_SUBNET:-10.254.70.0/24}

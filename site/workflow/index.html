@@ -7,7 +7,7 @@
 <meta name="description" content="How ArtifactFlow assigns stable artifact identity, appends immutable content versions, separates draft status from unsaved preview, and plans document artifacts.">
 <link rel="canonical" href="https://artifactflow.app/workflow/">
 <meta property="og:title" content="Artifact Identity, Drafts, and Versions | ArtifactFlow">
-<meta property="og:description" content="Understand stable artifact identity, immutable revisions, draft lifecycle state, metadata changes, and future PDF and DOCX versions.">
+<meta property="og:description" content="Understand stable artifact identity, immutable revisions, draft lifecycle state, metadata changes, the default-off PDF milestone, and future DOCX versions.">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://artifactflow.app/workflow/">
 <meta property="og:site_name" content="ArtifactFlow">
@@ -145,11 +145,11 @@
         <section id="documents">
           <p class="kicker">Roadmap direction</p>
           <h2>Document formats keep the original and derive bounded ways to use it.</h2>
-          <p>PDF and DOCX support is roadmap work, not current behavior. Each replacement is intended to append an immutable version with a private original. Bounded, isolated processing may derive searchable text, OCR output, structural metadata, and a safe non-executable preview.</p>
-          <p>The planned boundary keeps authorization consistent across search, preview, download, version history, MCP, processing status, and deletion. Per-version catalog metadata is not promised; that needs a separate product and data-model decision.</p>
+          <p>PDF implementation is default-off and not shipped; DOCX remains roadmap direction only. Each PDF replacement appends an immutable version with a private original. The implemented PDF slice derives bounded untrusted embedded text through an isolated processor and uses the browser's native viewer on the existing cookieless artifact origin; embedded strings may not be visible in the document, and OCR remains a later milestone.</p>
+          <p>The planned boundary keeps authorization consistent across search, native viewing, forced-attachment download, version history, MCP, extraction status, workspace moves, and deletion. Preview deliberately transfers the authorized original. Per-version catalog metadata is not promised; that needs a separate product and data-model decision.</p>
           <p>For generated DOCX, preserving an optional generator source such as Markdown or Python beside the binary original remains an open design question. ArtifactFlow must not pretend every uploaded document has one.</p>
           <div class="page-links">
-            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/issues/32"><strong>PDF issue #32 ↗</strong><span>Private originals, bounded extraction, OCR, search, safe reading, and immutable replacement.</span></a>
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/issues/32"><strong>PDF issue #32 ↗</strong><span>Private originals, bounded native-text extraction, native artifact-origin viewing, search, and immutable replacement; OCR follows later.</span></a>
             <a class="page-link" href="https://github.com/Gadsotek/artifactflow/issues/33"><strong>DOCX issue #33 ↗</strong><span>ZIP and relationship limits, extracted structure, safe preview, and optional source pairing.</span></a>
             <a class="page-link" href="/roadmap/"><strong>Product roadmap</strong><span>Candidate scope, required proof, and explicit non-promises.</span></a>
             <a class="page-link" href="/security/"><strong>Security model</strong><span>Current executable HTML boundary and documented residual risks.</span></a>

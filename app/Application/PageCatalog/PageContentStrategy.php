@@ -34,6 +34,13 @@ interface PageContentStrategy
     public function requiresContentForTextProjection(PageType $type): bool;
 
     /**
+     * Whether the generic in-transaction search maintenance path may rebuild
+     * this format's text projection. External processors need a dedicated
+     * two-phase reprocessing use case and therefore return false.
+     */
+    public function supportsSearchTextReindex(PageType $type): bool;
+
+    /**
      * Rebuild the derived database text for already stored content.
      */
     public function textProjection(PageType $type, string $content): PageContentTextProjection;

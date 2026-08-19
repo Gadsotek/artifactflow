@@ -86,6 +86,7 @@ final class PageVersionFactory extends Factory
             PageType::Markdown => ['source', 'md'],
             PageType::HtmlArtifact => ['index', 'html'],
             PageType::Image => ['preview', 'png'],
+            PageType::Pdf => ['document', 'pdf'],
         };
 
         return sprintf(

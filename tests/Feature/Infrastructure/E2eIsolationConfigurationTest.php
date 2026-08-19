@@ -174,7 +174,7 @@ final class E2eIsolationConfigurationTest extends TestCase
             $makefile,
         );
         $this->assertStringContainsString(
-            '$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env up -d $(UP_BUILD) --force-recreate $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE)',
+            '$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env up -d $(UP_BUILD) --force-recreate $(E2E_PDF_PROCESSOR_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE)',
             $makefile,
         );
     }

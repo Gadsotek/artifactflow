@@ -49,8 +49,12 @@ final readonly class RecordBlockedPageContentScan
     /**
      * @param list<string> $findingCodes
      */
-    public function forPageVersion(User $actor, Page $page, array $findingCodes): void
-    {
+    public function forPageVersion(
+        User $actor,
+        Page $page,
+        array $findingCodes,
+        string $operation = 'create_version',
+    ): void {
         $this->record(
             actorUid: $this->userUid($actor),
             aggregateType: 'page',
@@ -60,7 +64,7 @@ final readonly class RecordBlockedPageContentScan
             workspaceUid: $page->workspace_uid,
             pageUid: $page->uid,
             pageType: $page->type,
-            operation: 'create_version',
+            operation: $operation,
             findingCodes: $findingCodes,
         );
     }

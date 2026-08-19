@@ -9,5 +9,9 @@ export function creationModeForPageType(type, currentMode) {
     return 'image_upload';
   }
 
+  if (type === 'pdf') {
+    return 'pdf_upload';
+  }
+
   return HTML_CREATION_MODES.has(currentMode) ? currentMode : 'html_upload';
 }

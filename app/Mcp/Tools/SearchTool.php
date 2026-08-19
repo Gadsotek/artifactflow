@@ -43,7 +43,12 @@ final class SearchTool extends ArtifactFlowTool
         return [
             'query' => $schema->string()->description('Full-text query.'),
             'workspace_uid' => $schema->string()->description('Narrow to one reachable workspace.'),
-            'type' => $schema->string()->enum(PageType::class),
+            'type' => $schema->string()->enum([
+                PageType::Markdown->value,
+                PageType::HtmlArtifact->value,
+                PageType::Image->value,
+                PageType::Pdf->value,
+            ]),
             'status' => $schema->string()->enum(PageStatus::class),
             'category_uid' => $schema->string(),
             'tag_uids' => $schema->array()->items($schema->string()),

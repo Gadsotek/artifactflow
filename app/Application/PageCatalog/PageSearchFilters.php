@@ -18,6 +18,7 @@ final readonly class PageSearchFilters
      * @param list<string> $tagUids
      * @param list<string> $aiProviders
      * @param list<string> $aiModelIds
+     * @param list<PageType> $excludedTypes
      */
     public function __construct(
         public ?string $query,
@@ -32,6 +33,7 @@ final readonly class PageSearchFilters
         public array $aiModelIds = [],
         public ?string $aiModelQuery = null,
         public ProvenanceSearchScope $provenanceScope = ProvenanceSearchScope::AnyVersion,
+        public array $excludedTypes = [],
     ) {
     }
 

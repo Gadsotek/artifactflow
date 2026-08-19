@@ -50,6 +50,7 @@ final readonly class DeploymentDoctor
             $this->applicationKeyCheck(),
             $this->dedicatedSigningKeyCheck(),
             $this->imageParserCheck($production),
+            $this->pdfReleaseGateCheck($production),
             $this->artifactFrameAncestorsCheck(),
             $this->artifactReadLimitCheck(),
             $this->httpsOriginsCheck($production),
@@ -72,6 +73,54 @@ final readonly class DeploymentDoctor
         ];
 
         return new DoctorReport($production, $checks);
+    }
+
+    private function pdfReleaseGateCheck(bool $production): DoctorCheck
+    {
+        $enabled = $this->config->get('pdf_processor.enabled', false);
+
+        if (!is_bool($enabled)) {
+            return $this->fail(
+                'pdf_release_gate',
+                'PDF release gate',
+                'PDF_PROCESSOR_ENABLED must be true or false.',
+            );
+        }
+
+        if (!$production) {
+            return $this->skipped(
+                'pdf_release_gate',
+                'PDF release gate',
+                $enabled
+                    ? 'PDF is enabled only for local/E2E verification; production remains blocked.'
+                    : 'PDF remains disabled while its production release gate is open.',
+            );
+        }
+
+        if (
+            $this->string('app.runtime_role') !== 'app'
+            && $this->string('pdf_processor.shared_secret') !== ''
+        ) {
+            return $this->fail(
+                'pdf_release_gate',
+                'PDF release gate',
+                'Remove PDF_PROCESSOR_SHARED_SECRET from every non-app runtime role.',
+            );
+        }
+
+        if ($enabled) {
+            return $this->fail(
+                'pdf_release_gate',
+                'PDF release gate',
+                'Set PDF_PROCESSOR_ENABLED=false until the PDF production release gate is accepted.',
+            );
+        }
+
+        return $this->pass(
+            'pdf_release_gate',
+            'PDF release gate',
+            'PDF remains disabled in production.',
+        );
     }
 
     private function cacheStoreCheck(bool $production): DoctorCheck

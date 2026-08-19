@@ -15,6 +15,8 @@ final readonly class PageDetailContent
     public function __construct(
         private ArtifactContentReader $contentReader,
         private ArtifactPreviewUrl $artifactPreviewUrls,
+        private PdfArtifactUrl $pdfArtifactUrls,
+        private PdfProcessorConfiguration $pdfProcessorConfiguration,
         private MarkdownPageRenderer $markdownRenderer,
     ) {
     }
@@ -66,9 +68,12 @@ final readonly class PageDetailContent
         if (
             $version instanceof PageVersion
             && $page->type->usesArtifactHostPreview()
+            && ($page->type !== PageType::Pdf || $this->pdfProcessorConfiguration->enabled())
             && !$contentUnavailable
         ) {
-            $artifactPreviewUrl = $this->artifactPreviewUrls->temporaryUrl($page, $version);
+            $artifactPreviewUrl = $page->type === PageType::Pdf
+                ? $this->pdfArtifactUrls->temporaryCurrentUrl($page, $version)
+                : $this->artifactPreviewUrls->temporaryUrl($page, $version);
             Log::info('artifact_preview_url.issued', [
                 'actor_user_uid' => $actor->uid,
                 'page_uid' => $page->uid,

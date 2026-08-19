@@ -1,0 +1,63 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Requests\PageCatalog;
+
+use App\Application\PageCatalog\PdfArtifactLimits;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\Validator;
+use Throwable;
+
+final readonly class PdfUploadRules
+{
+    public function __construct(private PdfArtifactLimits $limits)
+    {
+    }
+
+    public function maxUploadKilobytes(): int
+    {
+        return intdiv($this->limits->maxUploadBytes() + 1023, 1024);
+    }
+
+    public function validateUpload(
+        Validator $validator,
+        string $field,
+        ?UploadedFile $file,
+    ): ?string {
+        if (!$file instanceof UploadedFile || !$file->isValid()) {
+            $validator->errors()->add($field, 'Choose a PDF file to upload.');
+
+            return null;
+        }
+
+        if (strtolower($file->getClientOriginalExtension()) !== 'pdf') {
+            $validator->errors()->add($field, 'PDF uploads must use a .pdf file.');
+
+            return null;
+        }
+
+        $size = $file->getSize();
+        if (is_int($size) && $size > $this->limits->maxUploadBytes()) {
+            $validator->errors()->add($field, 'PDF exceeds the configured size limit.');
+
+            return null;
+        }
+
+        try {
+            $content = $file->getContent();
+        } catch (Throwable) {
+            $validator->errors()->add($field, 'The PDF upload could not be read.');
+
+            return null;
+        }
+
+        if (strlen($content) > $this->limits->maxUploadBytes()) {
+            $validator->errors()->add($field, 'PDF exceeds the configured size limit.');
+
+            return null;
+        }
+
+        return $content;
+    }
+}

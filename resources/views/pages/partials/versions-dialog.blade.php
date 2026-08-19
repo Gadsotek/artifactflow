@@ -25,7 +25,7 @@
                         <code>SHA-256 {{ $historyVersion->content_hash }}</code>
                         <div class="mt-3 flex flex-wrap justify-end gap-2">
                             <a class="af-secondary-button" href="{{ route('pages.versions.show', [$page, $historyVersion]) }}">Inspect</a>
-                            @if ($canMutateContent && $historyVersion->uid !== $page->current_version_uid)
+                            @if ($canRestoreVersions && $historyVersion->uid !== $page->current_version_uid)
                                 <form method="POST" action="{{ route('pages.versions.restore', [$page, $historyVersion]) }}">
                                     @csrf
                                     {{-- Optimistic-concurrency token: the version current when this dialog

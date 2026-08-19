@@ -9,9 +9,13 @@ enum PageType: string
     case Markdown = 'markdown';
     case HtmlArtifact = 'html_artifact';
     case Image = 'image';
+    case Pdf = 'pdf';
 
     public function usesArtifactHostPreview(): bool
     {
-        return $this !== self::Markdown;
+        return match ($this) {
+            self::HtmlArtifact, self::Image, self::Pdf => true,
+            self::Markdown => false,
+        };
     }
 }

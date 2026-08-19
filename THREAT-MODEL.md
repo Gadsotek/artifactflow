@@ -470,8 +470,12 @@ sandbox for every upload. Resource limits and the container boundary confine ord
 failure and substantially reduce the blast radius of a native-code flaw, but they do not eliminate
 container-runtime or kernel escape risk. Keep GD and its image libraries patched. HMAC authenticates
 traffic on the private network but does not encrypt it; a cross-host deployment must add mutually
-authenticated encrypted transport rather than expose the parser endpoint. PDF/DOCX parsing still
-requires its own deliberately reviewed isolation and resource model before those formats ship.
+authenticated encrypted transport rather than expose the parser endpoint. DOCX parsing still
+requires its own deliberately reviewed isolation and resource model before that format ships. The
+default-off native-text PDF processor, transactional write boundary, and artifact-origin delivery
+slice are documented in [`docs/architecture/pdf-artifacts.md`](docs/architecture/pdf-artifacts.md).
+PDF remains outside the current enabled threat boundary until the remaining containment proof and
+release review are complete.
 
 There is deliberately no OCR for image artifacts. Search indexes catalog metadata only. MCP
 `read` returns the normalized raster as a standard image content block beside an explicit
@@ -484,6 +488,81 @@ client-model framing — so visual prompt injection remains a client-model risk,
 side by enforcement rather than framing: any `update_description` the model is coaxed into still
 needs write scope, live Editor-capped authority, the observed current version UID, a fresh metadata
 revision, scanner success, and rate-limit budget.
+
+## 10A. Default-off PDF application boundary (implemented, not production-enabled)
+
+PDF remains roadmap work rather than shipped behavior. With the default-off setting deliberately
+enabled in the isolated E2E stack, the application can create, replace, restore, and reprocess a
+PDF, extract bounded embedded text synchronously, search it through the normal permission-first
+query, expose enveloped text through authorized MCP operations, and issue native current/history
+preview or forced-download capabilities on the artifact origin. Disabling the setting removes
+create/replace/reprocess controls and closes forged writes, URL refresh, download, artifact-host
+delivery, and PDF MCP read/search operations even for a previously retained PDF. The normal web
+catalog and permission-aware search still show retained PDFs to authorized users: the feature flag
+is an ingestion/delivery safety switch, not an access revocation mechanism. External PDF sharing
+reuses the existing one-time/expiring anonymous capability and its window-lived
+session proof. Anonymous artifact URLs are separately domain-bound to the share,
+session, current version, access revision, expiry, and artifact origin; they are
+not interchangeable with authenticated PDF capabilities. Native viewing is
+download-equivalent, has no separate anonymous download endpoint, and cannot
+prevent an authorized recipient from saving or forwarding delivered bytes.
+Disabling PDF support closes future anonymous viewer and artifact loads. The complete decision is
+[`docs/architecture/pdf-artifacts.md`](docs/architecture/pdf-artifacts.md). Production enablement
+remains blocked until directional containment, the manual released-Safari/iOS check, and the final
+release gates are complete.
+
+The release-blocking attack model is:
+
+- Browser multipart and MCP JSON/base64 have different effective limits. The MCP decoded ceiling is
+  derived from the smallest edge, PHP POST, framework JSON, memory, and decoder envelope after base64
+  expansion and fixed headroom. Oversized unauthenticated bodies must fail at the edge before JSON,
+  base64, storage, or native work; the generic MCP request limit is not widened to fit the PDF hard
+  ceiling.
+- The processor has no app source, database, artifact storage, signing/session credentials, or
+  public listener. Production-shaped tests must deny processor-initiated TCP, UDP, DNS, Unix-socket,
+  loopback, cloud-metadata, private-peer, and public connections. A Docker `internal` network alone
+  is not directional isolation proof. Timeouts kill the entire native process tree.
+- The first release runs one processor replica with native concurrency `1` and rejects concurrent
+  work immediately. This keeps resource admission global for the intended small deployment without
+  adding a distributed scheduler. A cross-process engine lease also prevents the container health
+  probe from starting a second JVM alongside an admitted request. Multiple processor replicas
+  require a later shared-admission design.
+- HMAC authenticates a processor response; it does not make extracted data safe. The app still
+  validates response bounds and escapes/scans extracted text before persistence or presentation.
+- MCP create/replace checks token scope and exact workspace/page authority before Base64 decoding or
+  processor admission. It accepts only canonical standard Base64 under the existing transport
+  ceiling. Read/search/revert return explicitly enveloped extracted text and bounded safe facts;
+  they never return a PDF byte stream, signed capability, storage path, or processor profile.
+- Extracted PDF strings are untrusted embedded text, not proven-visible text. Clipped, off-page,
+  transparent, hidden-layer, white-on-white, overpainted, or stale strings can be indexed and sent to
+  an authorized MCP reader even when absent from the browser-visible document. They cannot certify redaction
+  and may contain prompt injection. Read content never grants write authority.
+- Storage/quota accounting includes each retained original. Bounded extracted text follows the
+  existing current-version database/search lifecycle rather than creating a second stored object. A
+  workspace move atomically transfers the original bytes across every retained version. The artifact-host database
+  role retains the established read-only `pages`/`page_versions` grants and receives no PDF-facts,
+  audit/event, user, or application-counter grant. Because that runtime already mounts retained
+  originals, its compromise is a private-storage compromise rather than a text-confidentiality boundary.
+- Native preview deliberately transfers the original to an authorized browser. A short-lived signed
+  URL binds page, exact version, purpose, artifact origin, expiry, and access revision. The artifact
+  host serves `application/pdf` with `nosniff`, `no-store`, a PDF-specific restrictive CSP, and no
+  app cookies; download uses the same authority with attachment disposition. Headed Chromium testing
+  proved that every tested iframe or CSP `sandbox` profile makes its native viewer blank, including
+  `allow-scripts allow-same-origin`. The PDF-only iframe and response therefore omit `sandbox`, while
+  keeping `allow=""`, `no-referrer`, denied subresources, app-only `frame-ancestors`, signed
+  revision-bound authorization, and the separate cookieless artifact origin. This real artifact
+  origin is an accepted PDF residual and must never be generalized to HTML or image previews.
+  Minimal authenticated single-range handling is permitted only if supported viewers require it.
+- Processing is synchronous in the initial small deployment, so there is no PDF status resource or
+  Reverb payload. View and download recheck live page/version/access-revision state and use uniform
+  unavailable responses. Durable events and audit rows contain identifiers, operation/status, and
+  bounded safe state only—not extracted text, original bytes, signed URLs, storage paths, page
+  count, PDF version, or processor profile.
+
+Residual risk remains: a native parser or shared-kernel escape, authorized opening of an untrusted
+original in the browser's maintained PDF viewer, prompt injection or missed secrets in embedded
+text, denial of service within admitted budgets, browser save/print/link behavior, and bytes already
+delivered before revocation cannot be erased.
 
 ## 11. MCP and prompt injection
 

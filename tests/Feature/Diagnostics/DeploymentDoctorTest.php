@@ -747,6 +747,7 @@ final class DeploymentDoctorTest extends TestCase
             'signing_key',         // ensureDedicatedSigningKey
             'image_parser',        // ensureImageParserConfiguration
             'image_parser',        // ensureImageNormalizationBudgets
+            'pdf_release_gate',     // ensurePdfArtifactsDisabledUntilRelease
             'frame_ancestors',     // ensureArtifactFrameAncestors
             'artifact_limits',     // ensureArtifactReadLimitCanServeHtmlWrites
             'https_origins',       // productionOrigin HTTPS requirement
@@ -800,6 +801,7 @@ final class DeploymentDoctorTest extends TestCase
                 'ensureImageNormalizationBudgets',
                 'ensureImageParserConfiguration',
                 'ensureMailTransportIsDeliverable',
+                'ensurePdfArtifactsDisabledUntilRelease',
                 'ensureReverbConfiguration',
                 'ensureReverbMaxConnectionsBounded',
                 'ensureRuntimeRole',
@@ -812,6 +814,43 @@ final class DeploymentDoctorTest extends TestCase
             ],
             $ensureMethods,
             'ProductionSecurityConfiguration gained or lost an ensure* invariant. Add or remove the matching DeploymentDoctor check and update both lists so doctor/boot-gate parity stays enforced.',
+        );
+    }
+
+    public function test_pdf_release_gate_is_visible_locally_and_fails_closed_in_production(): void
+    {
+        $local = (new DeploymentDoctor($this->config('local', [
+            'pdf_processor.enabled' => true,
+        ])))->run();
+        $this->assertSame(
+            DoctorCheckStatus::Skipped,
+            $this->check($local->checks, 'pdf_release_gate')->status,
+        );
+
+        $productionEnabled = (new DeploymentDoctor($this->config('production', [
+            'pdf_processor.enabled' => true,
+        ])))->run();
+        $this->assertSame(
+            DoctorCheckStatus::Fail,
+            $this->check($productionEnabled->checks, 'pdf_release_gate')->status,
+        );
+
+        $productionDisabled = (new DeploymentDoctor($this->config('production', [
+            'pdf_processor.enabled' => false,
+        ])))->run();
+        $this->assertSame(
+            DoctorCheckStatus::Pass,
+            $this->check($productionDisabled->checks, 'pdf_release_gate')->status,
+        );
+
+        $productionCredentialLeak = (new DeploymentDoctor($this->config('production', [
+            'app.runtime_role' => 'worker',
+            'pdf_processor.enabled' => false,
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+        ])))->run();
+        $this->assertSame(
+            DoctorCheckStatus::Fail,
+            $this->check($productionCredentialLeak->checks, 'pdf_release_gate')->status,
         );
     }
 

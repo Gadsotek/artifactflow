@@ -36,8 +36,8 @@ final readonly class McpUpdateTool
         }
 
         return $this->errors->guard(function () use ($actor, $arguments, $page): McpToolResult {
-            if ($page->type === PageType::Image) {
-                throw new DomainRuleViolation('Image content must be replaced through an authenticated PNG/JPEG upload.');
+            if ($page->type === PageType::Image || $page->type === PageType::Pdf) {
+                throw new DomainRuleViolation('Binary content must be replaced through a dedicated authenticated upload.');
             }
 
             $declaredProvenance = $this->provenance->fromArguments($arguments);

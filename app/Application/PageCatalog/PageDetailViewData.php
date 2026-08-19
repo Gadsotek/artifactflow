@@ -15,6 +15,7 @@ use App\Domain\PageCatalog\PageType;
 use App\Models\Category;
 use App\Models\Page;
 use App\Models\PageVersion;
+use App\Models\PdfVersionFact;
 use App\Models\Tag;
 use App\Models\User;
 use App\Models\Workspace;
@@ -33,6 +34,7 @@ final readonly class PageDetailViewData
         private ProvenanceReadModel $provenance,
         private ExternalSharingPolicySettings $externalSharingPolicy,
         private ListExternalShares $externalShares,
+        private PdfProcessorConfiguration $pdfProcessorConfiguration,
     ) {
     }
 
@@ -45,6 +47,9 @@ final readonly class PageDetailViewData
      *     canEdit: bool,
      *     canMoveWorkspace: bool,
      *     canMutateContent: bool,
+     *     canOpenContentEditor: bool,
+     *     canReprocessPdf: bool,
+     *     canRestoreVersions: bool,
      *     canManageAccess: bool,
      *     category: Category|null,
      *     contentUnavailable: bool,
@@ -66,6 +71,8 @@ final readonly class PageDetailViewData
      *     pagePresenceActorName: string,
      *     pagePresenceActorUid: string,
      *     pagePresenceEnabled: bool,
+     *     pdfArtifactsEnabled: bool,
+     *     pdfExtractionStatus: PdfExtractionStatusView|null,
      *     pageProvenance: PageVersionProvenanceView|null,
      *     renderedEditorMarkdown: string|null,
      *     renderedMarkdown: string|null,
@@ -79,8 +86,14 @@ final readonly class PageDetailViewData
     public function forPage(User $actor, Page $page): array
     {
         $canEdit = $this->access->canEdit($actor, $page);
-        $canMutateContent = $canEdit && $page->status !== PageStatus::Archived;
+        $canMutateContent = $canEdit
+            && $page->status !== PageStatus::Archived;
         $content = $this->content->forPage($actor, $page, $canMutateContent);
+        $canOpenContentEditor = $canMutateContent && match ($page->type) {
+            PageType::Image => true,
+            PageType::Pdf => $this->pdfProcessorConfiguration->enabled(),
+            default => $content->sourcePreview !== null,
+        };
         $tags = array_values($page->tags()->orderBy('name')->get()->all());
         $canManageAccess = $this->access->canManageAccess($actor, $page);
         $externalSharingPolicy = $this->externalSharingPolicy->current();
@@ -95,6 +108,13 @@ final readonly class PageDetailViewData
             'canEdit' => $canEdit,
             'canMoveWorkspace' => $pageMoveTargets !== [],
             'canMutateContent' => $canMutateContent,
+            'canOpenContentEditor' => $canOpenContentEditor,
+            'canReprocessPdf' => $canMutateContent
+                && $page->type === PageType::Pdf
+                && $page->current_version_uid !== null
+                && $this->pdfProcessorConfiguration->enabled(),
+            'canRestoreVersions' => $canMutateContent
+                && ($page->type !== PageType::Pdf || $this->pdfProcessorConfiguration->enabled()),
             'canManageAccess' => $canManageAccess,
             'category' => $page->category_uid === null ? null : Category::query()->find($page->category_uid),
             'contentUnavailable' => $content->contentUnavailable,
@@ -123,6 +143,8 @@ final readonly class PageDetailViewData
             'pagePresenceActorName' => $actor->name,
             'pagePresenceActorUid' => $actor->uid,
             'pagePresenceEnabled' => $this->realtimeConfiguration->enabled(),
+            'pdfArtifactsEnabled' => $this->pdfProcessorConfiguration->enabled(),
+            'pdfExtractionStatus' => $this->pdfExtractionStatus($page, $content->version),
             'pageProvenance' => $content->version instanceof PageVersion
                 ? $this->provenance->forVersion($content->version)
                 : null,
@@ -184,6 +206,19 @@ final readonly class PageDetailViewData
             ->all());
     }
 
+    private function pdfExtractionStatus(Page $page, ?PageVersion $version): ?PdfExtractionStatusView
+    {
+        if ($page->type !== PageType::Pdf || !($version instanceof PageVersion)) {
+            return null;
+        }
+
+        $facts = PdfVersionFact::query()->whereKey($version->uid)->first();
+
+        return $facts instanceof PdfVersionFact
+            ? PdfExtractionStatusView::fromState($facts->extraction_state)
+            : null;
+    }
+
     /**
      * @return array{dialog_id: string, label: string}
      */
@@ -197,6 +232,10 @@ final readonly class PageDetailViewData
             PageType::Image => [
                 'dialog_id' => 'image-version-dialog',
                 'label' => 'Replace image',
+            ],
+            PageType::Pdf => [
+                'dialog_id' => 'pdf-version-dialog',
+                'label' => 'Replace PDF',
             ],
             PageType::Markdown => [
                 'dialog_id' => 'page-content-dialog',

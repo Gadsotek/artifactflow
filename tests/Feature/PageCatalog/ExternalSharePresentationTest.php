@@ -18,6 +18,7 @@ use App\Application\Identity\CreateSharedWorkspace;
 use App\Application\Identity\CreateUser;
 use App\Application\PageCatalog\CreatePage;
 use App\Application\PageCatalog\CreatePageCommand;
+use App\Domain\DomainRuleViolation;
 use App\Domain\ExternalSharing\ExternalPagePresentation;
 use App\Domain\ExternalSharing\ExternalShareMode;
 use App\Domain\ExternalSharing\ExternalShareSessionKind;
@@ -51,7 +52,214 @@ final class ExternalSharePresentationTest extends TestCase
             PageType::Markdown->value => ExternalPagePresentation::Markdown,
             PageType::HtmlArtifact->value => ExternalPagePresentation::SandboxedHtml,
             PageType::Image->value => ExternalPagePresentation::ScriptlessImage,
+            PageType::Pdf->value => ExternalPagePresentation::NativePdf,
         ], $presentations);
+    }
+
+    public function test_pdf_external_share_creation_requires_the_pdf_feature(): void
+    {
+        [$owner, $page] = $this->pageFixture(PageType::Markdown, '# Placeholder');
+        $page->forceFill(['type' => PageType::Pdf])->save();
+        config(['pdf_processor.enabled' => false]);
+
+        try {
+            app(CreateExternalShare::class)->handle(
+                $owner,
+                new CreateExternalShareCommand(
+                    $page->uid,
+                    ExternalShareMode::ExpiresAt,
+                    CarbonImmutable::now()->addHour(),
+                ),
+            );
+            $this->fail('PDF external sharing must fail closed while PDF artifacts are disabled.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertSame(
+                'External sharing is not available while PDF artifacts are disabled.',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertSame(0, ExternalShare::query()->where('page_uid', $page->uid)->count());
+    }
+
+    public function test_pdf_uses_the_native_viewer_and_a_share_bound_pdf_response(): void
+    {
+        config([
+            'app.artifact_frame_ancestors' => 'http://app.example.test',
+            'app.artifact_url' => 'http://artifacts.example.test',
+            'app.artifact_url_signing_key' => str_repeat('e', 32),
+            'app.url' => 'http://app.example.test',
+            'pdf_processor.enabled' => true,
+        ]);
+        [$owner, $page] = $this->pageFixture(PageType::Markdown, '# Placeholder');
+        $version = PageVersion::query()->where('page_uid', $page->uid)->sole();
+        $pdf = "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n";
+        Storage::disk('artifacts')->put($version->content_storage_path, $pdf);
+        $version->forceFill([
+            'byte_size' => strlen($pdf),
+            'content_hash' => hash('sha256', $pdf),
+        ])->save();
+        $page->forceFill(['type' => PageType::Pdf])->save();
+        $page = $page->refresh();
+        [$shareUid, $sessionUid, $credential, $secret, $windowToken] = $this->viewCredential($owner, $page);
+
+        $viewer = $this->viewerContent($shareUid, $sessionUid, $credential, $windowToken);
+
+        $viewer
+            ->assertOk()
+            ->assertSee('data-pdf-preview', false)
+            ->assertSee('title="PDF preview"', false)
+            ->assertSee('Viewing this PDF is download-equivalent.')
+            ->assertSee('save, print, and copy controls')
+            ->assertDontSee('sandbox=', false)
+            ->assertDontSee('data-artifact-preview-refresh-endpoint', false)
+            ->assertDontSee("/external-shares/{$shareUid}/sessions/{$sessionUid}/artifact-preview-url", false)
+            ->assertDontSee($secret);
+
+        $context = app(ResolveExternalShareView::class)->withCredential(
+            $shareUid,
+            $sessionUid,
+            $credential,
+            static fn (ExternalShareViewContext $context): ExternalShareViewContext => $context,
+        );
+        $this->assertNotNull($context);
+        $content = app(ExternalShareViewerContent::class)->forContext($context);
+        $this->assertNotNull($content);
+        $this->assertSame(ExternalPagePresentation::NativePdf, $content->presentation);
+        $previewUrl = $content->artifactPreviewUrl;
+        $this->assertIsString($previewUrl);
+        $this->assertStringStartsWith(
+            "http://artifacts.example.test/external-artifact-previews/{$shareUid}/sessions/",
+            $previewUrl,
+        );
+        $this->assertStringNotContainsString($secret, $previewUrl);
+        $this->assertStringNotContainsString($credential, $previewUrl);
+
+        config(['app.runtime_role' => 'artifact-host']);
+
+        $preview = $this->withHeader('Sec-Fetch-Dest', 'iframe')->get($previewUrl);
+        $preview
+            ->assertOk()
+            ->assertContent($pdf)
+            ->assertHeader('Content-Type', 'application/pdf')
+            ->assertHeader('Content-Disposition', sprintf(
+                'inline; filename="artifactflow-%s-v%d.pdf"',
+                strtolower($page->uid),
+                $version->version_number,
+            ))
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertHeader('Accept-Ranges', 'none')
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeaderMissing('X-Frame-Options')
+            ->assertHeaderMissing('Access-Control-Allow-Origin');
+        $csp = (string) $preview->headers->get('Content-Security-Policy');
+        $this->assertStringContainsString("default-src 'none'", $csp);
+        $this->assertStringContainsString("object-src 'none'", $csp);
+        $this->assertStringContainsString('frame-ancestors http://app.example.test', $csp);
+        $this->assertStringNotContainsString('sandbox', $csp);
+        $this->assertFalse($preview->headers->has('Set-Cookie'));
+
+        $invalidUrl = preg_replace(
+            '/signature=[a-f0-9]+/D',
+            'signature=' . str_repeat('0', 64),
+            $previewUrl,
+        );
+        $this->assertIsString($invalidUrl);
+        $this->withHeader('Sec-Fetch-Dest', 'iframe')
+            ->get($invalidUrl)
+            ->assertNotFound()
+            ->assertHeader('X-Frame-Options', 'DENY');
+    }
+
+    public function test_external_pdf_delivery_rejects_storage_bytes_that_do_not_match_the_version(): void
+    {
+        config([
+            'app.artifact_url' => 'http://artifacts.example.test',
+            'app.artifact_url_signing_key' => str_repeat('e', 32),
+            'app.url' => 'http://app.example.test',
+            'pdf_processor.enabled' => true,
+        ]);
+        [$owner, $page] = $this->pageFixture(PageType::Markdown, '# Placeholder');
+        $version = PageVersion::query()->where('page_uid', $page->uid)->sole();
+        $pdf = "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n";
+        Storage::disk('artifacts')->put($version->content_storage_path, $pdf);
+        $version->forceFill([
+            'byte_size' => strlen($pdf),
+            'content_hash' => hash('sha256', $pdf),
+        ])->save();
+        $page->forceFill(['type' => PageType::Pdf])->save();
+        $page = $page->refresh();
+        [$shareUid, $sessionUid, $credential] = $this->viewCredential($owner, $page);
+        $context = app(ResolveExternalShareView::class)->withCredential(
+            $shareUid,
+            $sessionUid,
+            $credential,
+            static fn (ExternalShareViewContext $context): ExternalShareViewContext => $context,
+        );
+        $this->assertNotNull($context);
+        $content = app(ExternalShareViewerContent::class)->forContext($context);
+        $this->assertNotNull($content);
+        $previewUrl = $content->artifactPreviewUrl;
+        $this->assertIsString($previewUrl);
+        config(['app.runtime_role' => 'artifact-host']);
+
+        $this->withHeader('Sec-Fetch-Dest', 'iframe')
+            ->get($previewUrl)
+            ->assertOk()
+            ->assertContent($pdf);
+
+        Storage::disk('artifacts')->put(
+            $version->content_storage_path,
+            str_repeat('X', strlen($pdf)),
+        );
+        $this->withHeader('Sec-Fetch-Dest', 'iframe')
+            ->get($previewUrl)
+            ->assertNotFound()
+            ->assertHeader('X-Frame-Options', 'DENY');
+
+        Storage::disk('artifacts')->put($version->content_storage_path, $pdf . 'tampered');
+        $this->withHeader('Sec-Fetch-Dest', 'iframe')
+            ->get($previewUrl)
+            ->assertNotFound()
+            ->assertHeader('X-Frame-Options', 'DENY');
+    }
+
+    public function test_disabling_pdf_artifacts_closes_an_existing_external_pdf_view(): void
+    {
+        config([
+            'app.artifact_url' => 'http://artifacts.example.test',
+            'app.artifact_url_signing_key' => str_repeat('e', 32),
+            'app.url' => 'http://app.example.test',
+            'pdf_processor.enabled' => true,
+        ]);
+        [$owner, $page] = $this->pageFixture(PageType::Markdown, '# Placeholder');
+        $version = PageVersion::query()->where('page_uid', $page->uid)->sole();
+        Storage::disk('artifacts')->put($version->content_storage_path, "%PDF-1.4\n%%EOF\n");
+        $page->forceFill(['type' => PageType::Pdf])->save();
+        $page = $page->refresh();
+        [$shareUid, $sessionUid, $credential, , $windowToken] = $this->viewCredential($owner, $page);
+        $context = app(ResolveExternalShareView::class)->withCredential(
+            $shareUid,
+            $sessionUid,
+            $credential,
+            static fn (ExternalShareViewContext $context): ExternalShareViewContext => $context,
+        );
+        $this->assertNotNull($context);
+        $content = app(ExternalShareViewerContent::class)->forContext($context);
+        $this->assertNotNull($content);
+        $previewUrl = $content->artifactPreviewUrl;
+        $this->assertIsString($previewUrl);
+
+        config(['pdf_processor.enabled' => false]);
+
+        $this->viewerContent($shareUid, $sessionUid, $credential, $windowToken)
+            ->assertNotFound()
+            ->assertSee('This external artifact is unavailable.');
+        config(['app.runtime_role' => 'artifact-host']);
+        $this->withHeader('Sec-Fetch-Dest', 'iframe')
+            ->get($previewUrl)
+            ->assertNotFound()
+            ->assertHeader('X-Frame-Options', 'DENY');
     }
 
     public function test_markdown_is_sanitized_without_resolving_private_wiki_links(): void

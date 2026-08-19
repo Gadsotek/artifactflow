@@ -2,7 +2,7 @@
 
 ArtifactFlow is a self-hosted, versioned artifact vault for deliberate outputs created with AI. It preserves the artifact, its authoritative source or original, retained versions, searchable content, ownership, permissions, previews, and audit history. It is not agent memory, a chat archive, or an AI generation platform.
 
-The first open-source alpha has shipped. Its current bounded formats are Markdown, self-contained HTML, and normalized PNG/JPEG screenshots or images. Alpha work should stay focused on security, correctness, release readiness, documentation, and deliberately scoped feature slices. The current beta candidate adds nested shared workspaces; searchable PDF and Word document artifacts remain the next format expansions after that authorization work.
+The open-source alpha has shipped. Its current bounded formats are Markdown, self-contained HTML, and normalized PNG/JPEG screenshots or images. Three-level nested shared workspaces shipped in v0.0.9. Alpha work should stay focused on security, correctness, release readiness, documentation, and deliberately scoped feature slices. Searchable PDF artifacts are the next format milestone; searchable Word documents follow only after the PDF processing boundary is proven.
 
 This roadmap records direction, not a release promise. Every item still requires tests-first implementation and the security gates in `AGENTS.md`.
 
@@ -14,13 +14,12 @@ Artifact identity and version semantics: [docs/ARTIFACT-LIFECYCLE.md](docs/ARTIF
 
 The alpha keeps the current model:
 
-- personal and shared workspaces are flat, independent permission boundaries;
-- pages may already have parent/child relationships inside one workspace;
-- pages inherit workspace access by default and retain their existing page-level overrides;
-- registered human accounts are installation-wide discoverable coworkers whose identifiers do not confer authority; Reader page grants may target any registered human, while Editor/Admin grants require page-workspace membership;
-- categories, storage accounting, search filters, memberships, invitations, and MCP scopes remain workspace-specific.
-
-The released v0.0.7 alpha remains flat. Nested-workspace implementation and its required server, concurrency, and browser proof are complete in the current working tree, but the capability remains unreleased until it appears in a tagged version.
+- personal workspaces remain standalone;
+- shared workspaces may form a tree with at most three levels under the accepted inheritance, exclusion, reparenting, and non-disclosure rules below;
+- pages may have parent/child relationships only inside one exact workspace;
+- pages inherit their exact workspace's effective access by default and retain their existing page-level overrides;
+- registered human accounts are installation-wide discoverable coworkers whose identifiers do not confer authority; Reader page grants may target any registered human, while Editor/Admin grants require effective page-workspace membership;
+- pages, categories, storage accounting, Library filters, and selected MCP workspace scopes remain exact-workspace concerns even when workspace membership is inherited.
 
 ## Alpha: AI artifact provenance
 
@@ -93,40 +92,52 @@ Implemented security properties:
 7. Prove the MCP path requires `mcp:share`, token-workspace reach, page ownership, live edit authority, and the workspace's live editor-sharing permission for both human and service-account principals, without leaking the returned URL into persistence, events, or audit metadata.
 8. Add browser-level proof for token leakage, one-time concurrency, revocation/expiry, uniform failures, and the HTML sandbox boundary before enabling the feature.
 
-## Later focus: searchable PDF artifacts
+## Next focus: searchable PDF artifacts
 
 Tracking: [GitHub issue #32](https://github.com/Gadsotek/artifactflow/issues/32)
 
-PDF upload is deferred until beta. A PDF should participate in the same workspace catalog, permissions, lifecycle, versioning, tags, and search experience as Markdown pages and HTML artifacts, while remaining a distinct non-executable content type.
+Public security contract: [PDF architecture decision](docs/architecture/pdf-artifacts.md).
+Supporting product, delivery, and point-in-time spike records remain private
+working material rather than published roadmap dependencies.
+
+Implementation status (2026-08-17): the native-text application boundary is
+implemented end to end behind `PDF_PROCESSOR_ENABLED=false`, including web and
+MCP ingestion, extraction/search, native preview/download, version restore,
+derived-fact reprocessing, and lifecycle/operations coverage. It is not shipped
+or production-enabled: directional processor containment, the manual released
+Safari/iOS pass, final adversarial review, and the release gates remain open.
+
+A PDF should participate in the same workspace catalog, permissions, lifecycle, versioning, tags, and search experience as existing pages while remaining a distinct document type. The first delivery is deliberately native-text PDF only: OCR follows as a separate milestone after the parser, storage, artifact-origin, authorization, and deletion boundaries are proven.
 
 Planned experience:
 
 - upload a PDF into a personal or shared workspace and attach the usual title, description, category, and tags;
-- extract embedded text and document metadata so permission-aware full-text search can find content inside the PDF;
-- run OCR for image-only or scanned pages, with a visible extraction status when processing is pending, partial, or unsuccessful;
+- extract bounded embedded text so permission-aware full-text search can find content inside the PDF;
+- show image-only PDFs honestly as having no embedded text, while keeping them discoverable through catalog metadata until a later OCR slice;
 - show search snippets and page references from extracted text without exposing content from an inaccessible PDF;
-- provide a safe in-app reading experience and an authorized original-file download;
-- create a new page version when the PDF is replaced, preserving the original file and extracted-text history for each version.
+- display the authorized original with the browser's native PDF viewer on the existing cookieless artifact origin and provide a normal forced-attachment download;
+- create a new page version when the PDF is replaced, preserving each original and its version-scoped processing facts while re-extracting retained historical versions when restored or updating derived facts in place during explicit reprocessing.
 
-PDFs must not be converted into executable HTML or rendered directly in the authenticated app origin. The original remains private binary content; extracted text is untrusted plain text and must always be escaped when displayed.
+PDFs must not be converted into executable HTML or displayed in the authenticated app origin. The original remains private binary content; extracted text is untrusted embedded plain text and must always be escaped when displayed. It can include clipped, off-page, transparent, hidden-layer, or stale strings that are absent from the browser-visible document, so it is not proof of visual redaction. Preview is download-equivalent: an authorized browser receives the original and may expose save, print, copy, or link controls.
 
 ### Security and processing plan
 
-1. Define upload size, page-count, decompression, parser time, memory, and OCR limits before accepting PDFs.
+1. Define browser and MCP transport envelopes plus byte, page, parser-time, memory, temporary-storage, and text-output limits before accepting PDFs.
 2. Validate the file signature and structure rather than trusting the extension or browser-supplied MIME type. Malware scanning remains advisory.
-3. Extract text and metadata in an isolated worker whose OS or container boundary denies outbound network access and enforces hard resource limits. Record parser and OCR versions so documents can be safely reprocessed after security updates.
-4. Store originals in private storage and serve them only through authorized, short-lived access. The reader must use either non-executable rendered pages or an equally isolated viewer boundary; embedded JavaScript, actions, links, attachments, forms, and external fetches must never inherit the app origin.
+3. Validate and extract text in a dedicated isolated processor whose effective OS/container/network boundary denies processor-initiated public, metadata, loopback, and private-peer connections and enforces one native child plus hard resource limits. Record the parser profile so documents can be reprocessed after security updates.
+4. Store originals in private storage and serve an exact authorized version through a short-lived, revision-bound signed URL on the cookieless artifact origin with `application/pdf`, `nosniff`, the existing CSP, and no app cookies. The first release uses one processor replica and no render queue.
 5. Index only normalized extracted text and non-secret metadata. Extraction failures must not make the original public or silently mark it as fully searchable.
-6. Apply workspace/page authorization consistently to upload, processing status, reading, download, search snippets, MCP access, version history, archival, and deletion.
+6. Apply workspace/page authorization consistently to upload, extraction status, native viewing, download, search snippets, MCP access, version history, archival, moves, and deletion. PDF adds no artifact-host database grant beyond the established read-only page/version presentation tables.
 
-### Required proof before beta
+### Required proof before release
 
-- text PDFs and scanned PDFs become searchable after extraction or OCR;
+- native-text PDFs become searchable, while image-only PDFs are clearly marked as not text-searchable without OCR;
 - replacing a PDF creates a version and removes stale text from current search results;
-- malicious, malformed, encrypted, oversized, and parser-exhaustion inputs fail safely;
+- malicious, malformed, encrypted, active-content, oversized, parser-exhaustion, decompression, and output-amplification inputs fail safely;
 - restricted PDF titles, snippets, extracted text, originals, and processing status never leak through search, Library, direct URLs, MCP, logs, or background jobs;
-- deleting or hard-deleting a PDF removes every original, rendered derivative, OCR artifact, and search projection required by the existing retention rules;
-- browser tests prove the reader cannot execute PDF-provided active content or access app-origin credentials.
+- pruning or hard-deleting a PDF removes every original, PDF fact, current extracted-text projection, and search projection required by the existing retention rules;
+- workspace moves atomically transfer original bytes, and tests prove restricted artifact-host grants, exact transport boundaries, signed URL expiry/revision, and processor concurrency limits;
+- browser tests prove the native viewer stays on the artifact origin, sends no app cookies, cannot access app-origin credentials, and uses the narrowly documented PDF-only sandbox exception or falls back to deliberate download without changing the HTML/image cage.
 
 ## Later focus: searchable Word document artifacts
 
@@ -163,9 +174,9 @@ DOCX is a ZIP/XML container, not trusted text. Processing must reject malformed 
 - deletion and retention rules remove the original, extracted text, preview derivatives, and any attached generator source for the affected version;
 - browser tests prove document previews cannot execute document-provided active content or access app-origin credentials.
 
-## Verified beta candidate: nested shared workspaces
+## Released in v0.0.9: nested shared workspaces
 
-Nested shared workspaces are implemented and verified locally as the current beta candidate. The governing security and data-model decision is documented in [`docs/architecture/nested-workspaces.md`](docs/architecture/nested-workspaces.md). [Confluence Cloud currently keeps spaces flat](https://support.atlassian.com/confluence-cloud/docs/navigate-spaces/) and nests content inside each space; ArtifactFlow is therefore making a deliberate product choice rather than copying Confluence parity.
+Nested shared workspaces are implemented, verified, and included in v0.0.9. The governing security and data-model decision is documented in [`docs/architecture/nested-workspaces.md`](docs/architecture/nested-workspaces.md). [Confluence Cloud currently keeps spaces flat](https://support.atlassian.com/confluence-cloud/docs/navigate-spaces/) and nests content inside each space; ArtifactFlow is therefore making a deliberate product choice rather than copying Confluence parity.
 
 ### Agreed product rules
 
@@ -204,4 +215,4 @@ Nested shared workspaces are implemented and verified locally as the current bet
 - storage, categories, page moves, and exact-workspace Library filters remain isolated at each level;
 - browser tests cover the real hierarchy UI and saved artifact preview revocation path.
 
-These invariants are implemented and verified by application tests, PostgreSQL concurrency tests, and multi-engine browser tests in the current working tree. That engineering status does not make nested workspaces part of the released alpha until a tagged release includes them.
+These invariants are implemented and verified by application tests, PostgreSQL concurrency tests, and multi-engine browser tests in the released v0.0.9 line.

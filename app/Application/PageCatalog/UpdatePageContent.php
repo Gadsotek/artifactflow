@@ -38,11 +38,12 @@ final readonly class UpdatePageContent
 
         $actorUid = ActorId::fromUser($actor);
         $prunedStoragePaths = [];
+        $preparedAppend = null;
 
         try {
             $changeSummary = $this->changeSummaryRules->normalize($command->changeSummary);
 
-            // Native image decoding and the parser network round trip must complete
+            // Native image/PDF processing and private PDF staging must complete
             // before a transaction owns a pooled DB connection or locks this page.
             // Authority, status, concurrency, and quota are still re-checked below
             // under the row lock before any prepared derivative is persisted.
@@ -82,6 +83,8 @@ final readonly class UpdatePageContent
             $this->recordBlockedScan->forPageVersion($actor, $page, $exception->findingCodes());
 
             throw $exception;
+        } finally {
+            $preparedAppend?->discard();
         }
 
         $this->deletePrunedArtifacts($page->uid, $prunedStoragePaths);

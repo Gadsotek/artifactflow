@@ -33,8 +33,8 @@ final readonly class McpCreateTool
         return $this->errors->guard(function () use ($actor, $token, $arguments): McpToolResult {
             $type = $arguments->requiredPageType('type');
 
-            if ($type === PageType::Image) {
-                throw new DomainRuleViolation('Image artifacts must be created through an authenticated PNG/JPEG upload.');
+            if ($type === PageType::Image || $type === PageType::Pdf) {
+                throw new DomainRuleViolation('Binary artifacts must be created through a dedicated authenticated upload.');
             }
 
             $tagNames = $arguments->stringList('tags');

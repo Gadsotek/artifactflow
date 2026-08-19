@@ -15,4 +15,5 @@ enum PageCreationMode: string
     case HtmlPaste = 'html_paste';
     case HtmlUpload = 'html_upload';
     case ImageUpload = 'image_upload';
+    case PdfUpload = 'pdf_upload';
 }

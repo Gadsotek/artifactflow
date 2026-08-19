@@ -81,7 +81,7 @@ final readonly class CreatePage
         $this->ensureParentPageIsAvailable($actor, $command->parentPageUid, $workspace->uid);
 
         try {
-            $prepared = $this->contentPreparer->prepare(
+            $prepared = $this->contentPreparer->prepareForPersistence(
                 $command->type,
                 $command->content,
                 $actorUid,
@@ -98,7 +98,7 @@ final readonly class CreatePage
             throw $exception;
         }
 
-        $content = $prepared->content;
+        $byteSize = $prepared->byteSize();
         $scan = $prepared->scan;
         $storagePath = null;
         $closureCompleted = false;
@@ -108,7 +108,7 @@ final readonly class CreatePage
                 $actorUid,
                 $actor,
                 $command,
-                $content,
+                $byteSize,
                 $description,
                 $ownerUserUid,
                 $prepared,
@@ -162,8 +162,8 @@ final readonly class CreatePage
                 // a create has no page row for the membership handlers to contend on, so the
                 // workspace lock is the coordinating point.)
                 $this->metadataRules->ensureOwnerBelongsToWorkspace($ownerUserUid, $lockedWorkspace->uid);
-                $this->storageQuota->ensureWorkspaceAllowsNewBytes($lockedWorkspace, strlen($content));
-                $this->storageQuota->ensurePageAllowsNewBytes(null, strlen($content));
+                $this->storageQuota->ensureWorkspaceAllowsNewBytes($lockedWorkspace, $byteSize);
+                $this->storageQuota->ensurePageAllowsNewBytes(null, $byteSize);
                 $slug = $this->slugs->uniqueForWorkspace($workspace->uid, $title);
                 $categoryUid = $command->categoryUid;
 
@@ -224,6 +224,8 @@ final readonly class CreatePage
             }
 
             throw $exception;
+        } finally {
+            $prepared->discardStaging();
         }
 
         $this->publishCatalogUpdate($page);

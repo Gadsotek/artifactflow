@@ -45,12 +45,20 @@
                         'externalShareUid' => $viewer->context->share->uid,
                         'externalShareSessionUid' => $viewer->context->session->uid,
                     ], false) }}"
+                @elseif ($viewer->presentation === ExternalPagePresentation::NativePdf)
+                    data-pdf-preview
                 @endif
             >
                 <div class="af-external-preview-toolbar">
-                    <p>
-                        This artifact runs inside ArtifactFlow's isolated preview boundary.
-                    </p>
+                    @if ($viewer->presentation === ExternalPagePresentation::NativePdf)
+                        <p>
+                            Viewing this PDF is download-equivalent. Your browser may expose save, print, and copy controls.
+                        </p>
+                    @else
+                        <p>
+                            This artifact runs inside ArtifactFlow's isolated preview boundary.
+                        </p>
+                    @endif
                     <button
                         class="af-secondary-button"
                         data-artifact-fullscreen-toggle
@@ -66,10 +74,17 @@
                     data-artifact-preview-frame
                     loading="eager"
                     referrerpolicy="no-referrer"
-                    sandbox="{{ $viewer->presentation === ExternalPagePresentation::SandboxedHtml ? 'allow-scripts' : '' }}"
+                    @if ($viewer->presentation !== ExternalPagePresentation::NativePdf)
+                        sandbox="{{ $viewer->presentation === ExternalPagePresentation::SandboxedHtml ? 'allow-scripts' : '' }}"
+                    @endif
                     allow=""
                     src="{{ $viewer->artifactPreviewUrl }}"
-                    title="{{ $viewer->presentation === ExternalPagePresentation::SandboxedHtml ? 'Artifact preview' : 'Image preview' }}"
+                    title="{{ match ($viewer->presentation) {
+                        ExternalPagePresentation::SandboxedHtml => 'Artifact preview',
+                        ExternalPagePresentation::ScriptlessImage => 'Image preview',
+                        ExternalPagePresentation::NativePdf => 'PDF preview',
+                        ExternalPagePresentation::Markdown => 'Document preview',
+                    } }}"
                 ></iframe>
             </section>
         @endif

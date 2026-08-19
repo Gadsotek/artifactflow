@@ -111,6 +111,13 @@ final readonly class TextPageContentStrategy implements PageContentStrategy
         return true;
     }
 
+    public function supportsSearchTextReindex(PageType $type): bool
+    {
+        $this->ensureSupported($type);
+
+        return true;
+    }
+
     private function ensureSupported(PageType $type): void
     {
         if (!in_array($type, $this->supportedTypes(), true)) {
