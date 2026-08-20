@@ -139,9 +139,7 @@ test('PDF upload, replacement, and restore are processed, searchable, isolated, 
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('link', { name: 'Download PDF' }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(
-    /^artifactflow-[0-9a-hjkmnp-tv-z]{26}-v1\.pdf$/u,
-  );
+  expect(download.suggestedFilename()).toMatch(/^artifactflow-[0-9a-hjkmnp-tv-z]{26}-v1\.pdf$/u);
   const downloadPath = await download.path();
   expect(downloadPath).not.toBeNull();
   expect(readFileSync(downloadPath as string)).toEqual(pdf);
@@ -155,7 +153,9 @@ test('PDF upload, replacement, and restore are processed, searchable, isolated, 
   await expect(page).toHaveURL(/\/pages\/[0-9a-hjkmnp-tv-z]{26}$/u);
   const replacementMarker = `PdfReplacement${suffix}`;
   const replacementPdf = buildPdf(`ArtifactFlow ${replacementMarker}`);
-  await page.getByRole('button', { name: 'Replace PDF' }).click();
+  const replacementButton = page.getByRole('button', { name: 'Replace PDF' });
+  await expect(replacementButton).toHaveAttribute('data-editor-dialog-trigger-ready', '');
+  await replacementButton.click();
   const replacementDialog = page.locator('#pdf-version-dialog');
   await expect(replacementDialog).toBeVisible();
   await replacementDialog.locator('input[name="pdf_file"]').setInputFiles({
@@ -179,7 +179,9 @@ test('PDF upload, replacement, and restore are processed, searchable, isolated, 
     waitUntil: 'domcontentloaded',
   });
   await page.getByRole('link', { name: title }).click();
-  await page.getByRole('button', { name: 'Versions' }).click();
+  const historyButton = page.getByRole('button', { name: 'Versions' });
+  await expect(historyButton).toHaveAttribute('data-editor-dialog-trigger-ready', '');
+  await historyButton.click();
   const historyDialog = page.locator('#page-versions-dialog');
   await expect(historyDialog).toBeVisible();
   const versionOne = historyDialog.locator('article').filter({ hasText: 'Version 1' });
