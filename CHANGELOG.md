@@ -29,6 +29,34 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   plus safe facts; restore/reprocess verify retained original hashes before
   processing, and PDF diagnostics stay out of audit/event metadata.
 
+## v0.0.10 — 2026-08-19
+
+Dependency and CI maintenance release. It refreshes the PHP and frontend
+toolchains and makes required CI and nightly audits faster and more observable.
+There are no schema changes, product features, or new operator configuration
+requirements.
+
+### Dependencies
+
+- Updated Laravel MCP 0.9.2 → 0.9.4, Resend PHP 1.7.0 → 1.9.0, and
+  Google2FA 9.0.0 → 9.1.0. (#75, #79, #80, #81)
+- Updated Rector 2.6.1 → 2.6.2 and Mockery 1.6.12 → 1.6.13. (#75, #81)
+- Updated Globals 17.9.0 → 17.11.0, Laravel Vite Plugin 3.1.3 → 3.2.0,
+  and Concurrently 10.0.4 → 10.0.5. (#76, #78, #82)
+
+### Internal / Tooling
+
+- Split browser coverage from PHP quality work so required CI can run those
+  independent gates in parallel, while retaining the exact aggregate release
+  gate and a single writer for the shared development-image cache. (#74, #77)
+- Made nightly audits finish all runnable checks, retain per-task logs, and
+  report their aggregate result instead of stopping at the first failure. (#74)
+- Scheduled Composer and npm dependency updates ahead of the nightly audit and
+  moved pinned Docker image updates to a non-auto-merging Renovate configuration
+  that groups repeated Node pins in one pull request. (#74)
+- Made line coverage fail explicitly when PCOV is unavailable instead of
+  silently producing an invalid coverage run. (#74)
+
 ## v0.0.9 — 2026-08-15
 
 Feature and security maintenance release. It adds three-level nested shared
