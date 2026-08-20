@@ -198,9 +198,13 @@ COPY --from=frankenphp-security-builder /usr/local/bin/frankenphp /usr/local/bin
 # The source-rebuilt binary above uses Go 1.26.6 for CVE-2026-39821 and
 # CVE-2026-46600, upgrades grpc-go for GHSA-hrxh-6v49-42gf, and upgrades
 # kin-openapi for GHSA-r277-6w6q-xmqw.
-# Current apk minimum: c-ares CVE-2026-33630 is fixed in 1.34.8-r0.
+# Current apk minimums: c-ares CVE-2026-33630 is fixed in 1.34.8-r0;
+# PostgreSQL client library findings reported against 18.4-r0 are fixed in 18.5-r0.
 RUN setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp \
-    && apk add --no-cache "c-ares>=1.34.8-r0"
+    && apk add --no-cache \
+        "c-ares>=1.34.8-r0" \
+        "libecpg>=18.5-r0" \
+        "libpq>=18.5-r0"
 
 RUN install-php-extensions \
     bcmath \
