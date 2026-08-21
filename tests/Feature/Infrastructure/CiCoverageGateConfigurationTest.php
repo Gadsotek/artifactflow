@@ -337,7 +337,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
             $this->afterNeedle($makefile, 'verify-reverb-origin:'),
         );
         $this->assertStringContainsString(
-            'CACHE_STORE: ${REVERB_CACHE_STORE:-database}',
+            'CACHE_STORE: ${REVERB_CACHE_STORE:-file}',
             $this->afterNeedle($compose, 'reverb:'),
         );
         $this->assertStringContainsString(
@@ -354,6 +354,24 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('make verify-reverb-origin', $operations);
         $this->assertStringContainsString('Pusher error `4009`', $operations);
         $this->assertStringNotContainsString('foreign origin must receive `403 Forbidden`', $operations);
+    }
+
+    public function test_normal_local_startup_includes_reverb_and_cleans_up_its_profile(): void
+    {
+        $makefile = $this->readProjectFile('Makefile');
+
+        $this->assertStringContainsString(
+            'COMPOSE_ALL ?= $(COMPOSE) --profile frontend --profile edge --profile adminer --profile mail --profile realtime --profile test',
+            $makefile,
+        );
+        $this->assertStringContainsString(
+            '$(COMPOSE) --profile realtime up -d $(UP_BUILD) app artifact-host worker scheduler reverb',
+            $makefile,
+        );
+        $this->assertStringContainsString(
+            "$(MAKE) wait APP_SERVICE=reverb WAIT_COMPOSE_PROFILES='--profile realtime'",
+            $makefile,
+        );
     }
 
     public function test_type_coverage_plugin_is_locked_as_a_dev_dependency(): void

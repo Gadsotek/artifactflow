@@ -7,6 +7,7 @@ script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 env_path="${1:-$script_dir/../.env}"
 
 sh "$script_dir/ensure-image-parser-shared-secret.sh" "$env_path"
+sh "$script_dir/ensure-pdf-processor-shared-secret.sh" "$env_path"
 
 if [ ! -f "$env_path" ]; then
     echo "Environment file does not exist: $env_path" >&2

@@ -89,9 +89,14 @@ Targets **PHP 8.5, Laravel 13, PostgreSQL, Caddy, FrankenPHP**. Local dev runs t
 **Step 1 — bring the stack up.** This one is on you: the install wizard runs *inside* the app container and needs the database reachable, so it cannot start Docker for you. Running it against a stopped stack fails with a `could not translate host name "db"` error.
 
 ```sh
-make up            # boots the stack; scaffolds .env and local signing/parser secrets
+make up            # boots the stack; scaffolds .env and distinct local boundary secrets
 # or: make up-local — same, plus edge proxy, Adminer, and Mailpit
 ```
+
+The core local stack includes Reverb and the isolated PDF processor. The guided
+installer keeps PDF application behavior disabled by default and offers a local/test
+opt-in that persists `PDF_PROCESSOR_ENABLED=true`. The processor remains internal-only
+with no public port.
 
 Until Step 2 completes, application pages intentionally return a safe `503 Setup required` response instead of starting a database session against an uninitialized schema. MCP also fails before token lookup with a retryable JSON-RPC 503. The session-free `/up` healthcheck remains available while installation runs.
 
@@ -102,16 +107,17 @@ make shell
 php artisan artifactflow:install
 ```
 
-The wizard asks which environment you're setting up; choose **local** for this stack. It generates any missing application key, artifact signing key, and image-parser shared secret, runs migrations, prompts for your first System Admin, and can add starter demo content (a Mermaid Markdown page plus an interactive HTML artifact). Then sign in at `http://localhost:18080/login`.
+The wizard asks which environment you're setting up; choose **local** for this stack. It generates any missing application key, artifact signing key, and image-parser shared secret, offers the default-off experimental PDF feature and provisions its processor secret when selected, runs migrations, prompts for your first System Admin, and can add starter demo content (a Mermaid Markdown page plus an interactive HTML artifact). If you enable PDF, exit the container and rerun `make up` so Compose recreates the app with the persisted setting. Then sign in at `http://localhost:18080/login`.
 
 For an existing installation whose keys and administrator are already provisioned, `make migrate` is the complete schema-upgrade step. A manually provisioned fresh database also needs a System Admin; use the password-safe `artifactflow:bootstrap-admin` procedure in the [operations guide](docs/OPERATIONS.md#first-user-setup). The setup response clears on the first request after every migration file is recorded.
 
-For an unattended local setup, pass `--env`, `--name`, `--email`, and `--seed-demo` instead of answering prompts, and supply the first admin password through a mounted secret **file** — point `ARTIFACTFLOW_ADMIN_PASSWORD_FILE` at it (a single trailing newline is stripped). Unlike an inline `VAR=… command` assignment, a file leaks the secret to neither shell history nor the process argv:
+For an unattended local setup, pass `--env`, `--name`, `--email`, `--seed-demo`, and `--no-interaction` instead of answering prompts. Add `--pdf` to opt in. Supply the first admin password through a mounted secret **file** — point `ARTIFACTFLOW_ADMIN_PASSWORD_FILE` at it (a single trailing newline is stripped). Unlike an inline `VAR=… command` assignment, a file leaks the secret to neither shell history nor the process argv:
 
 ```sh
 # ARTIFACTFLOW_ADMIN_PASSWORD_FILE=/run/secrets/af_admin_password in the environment
 php artisan artifactflow:install \
-  --env=local --name='Local admin' --email='admin@example.test' --seed-demo
+  --env=local --name='Local admin' --email='admin@example.test' \
+  --pdf --seed-demo --no-interaction
 ```
 
 The installer consumes the password and then clears it from its live config. The plain `ARTIFACTFLOW_ADMIN_PASSWORD` variable is still honored (export it from a secret manager rather than assigning it inline, which shell history records), and the legacy `--password` argument works but is visible in `ps`. Re-run the preflight checks anytime:

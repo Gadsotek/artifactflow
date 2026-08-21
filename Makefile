@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 
 COMPOSE ?= docker compose
-COMPOSE_ALL ?= $(COMPOSE) --profile frontend --profile edge --profile adminer --profile mail --profile test
+COMPOSE_ALL ?= $(COMPOSE) --profile frontend --profile edge --profile adminer --profile mail --profile realtime --profile test
 DOCKER_BUILD ?= docker build
 DOCKER_BUILD_CACHE_ARGS ?=
 APP_SERVICE ?= app
@@ -64,9 +64,10 @@ up:
 	$(MAKE) ensure-artifact-signing-key
 	$(COMPOSE) up -d $(UP_BUILD) db
 	$(MAKE) deps
-	$(COMPOSE) up -d $(UP_BUILD) app artifact-host worker scheduler
+	$(COMPOSE) --profile realtime up -d $(UP_BUILD) app artifact-host worker scheduler reverb
 	$(MAKE) wait APP_SERVICE=app
 	$(MAKE) wait APP_SERVICE=artifact-host
+	$(MAKE) wait APP_SERVICE=reverb WAIT_COMPOSE_PROFILES='--profile realtime'
 	$(COMPOSE) --profile frontend up -d vite
 
 up-local: up edge-up adminer-up mail-up

@@ -21,7 +21,7 @@ final class LocalSecretProvisioningScriptTest extends TestCase
         $this->envPath = storage_path('framework/testing/local-secrets-' . Str::random(12));
         file_put_contents(
             $this->envPath,
-            "ARTIFACT_URL_SIGNING_KEY=\nIMAGE_PARSER_SHARED_SECRET=\n",
+            "ARTIFACT_URL_SIGNING_KEY=\nIMAGE_PARSER_SHARED_SECRET=\nPDF_PROCESSOR_SHARED_SECRET=\n",
         );
     }
 
@@ -34,7 +34,7 @@ final class LocalSecretProvisioningScriptTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_php_local_secret_setup_generates_distinct_idempotent_artifact_and_parser_secrets(): void
+    public function test_php_local_secret_setup_generates_distinct_idempotent_boundary_secrets(): void
     {
         $this->assertGeneratesDistinctIdempotentSecrets([
             PHP_BINARY,
@@ -42,7 +42,7 @@ final class LocalSecretProvisioningScriptTest extends TestCase
         ]);
     }
 
-    public function test_shell_fallback_generates_distinct_idempotent_artifact_and_parser_secrets(): void
+    public function test_shell_fallback_generates_distinct_idempotent_boundary_secrets(): void
     {
         $this->assertGeneratesDistinctIdempotentSecrets([
             'sh',
@@ -62,9 +62,18 @@ final class LocalSecretProvisioningScriptTest extends TestCase
 
         $this->assertFalse(InstallationSecret::isMissing($generated['ARTIFACT_URL_SIGNING_KEY']));
         $this->assertFalse(InstallationSecret::isMissing($generated['IMAGE_PARSER_SHARED_SECRET']));
+        $this->assertFalse(InstallationSecret::isMissing($generated['PDF_PROCESSOR_SHARED_SECRET']));
         $this->assertNotSame(
             $generated['ARTIFACT_URL_SIGNING_KEY'],
             $generated['IMAGE_PARSER_SHARED_SECRET'],
+        );
+        $this->assertNotSame(
+            $generated['ARTIFACT_URL_SIGNING_KEY'],
+            $generated['PDF_PROCESSOR_SHARED_SECRET'],
+        );
+        $this->assertNotSame(
+            $generated['IMAGE_PARSER_SHARED_SECRET'],
+            $generated['PDF_PROCESSOR_SHARED_SECRET'],
         );
 
         $second = Process::path(base_path())->run([...$command, $this->envPath]);
@@ -74,7 +83,7 @@ final class LocalSecretProvisioningScriptTest extends TestCase
     }
 
     /**
-     * @return array{ARTIFACT_URL_SIGNING_KEY: string, IMAGE_PARSER_SHARED_SECRET: string}
+     * @return array{ARTIFACT_URL_SIGNING_KEY: string, IMAGE_PARSER_SHARED_SECRET: string, PDF_PROCESSOR_SHARED_SECRET: string}
      */
     private function values(): array
     {
@@ -83,10 +92,12 @@ final class LocalSecretProvisioningScriptTest extends TestCase
 
         $signingKey = $this->value($contents, 'ARTIFACT_URL_SIGNING_KEY');
         $parserSecret = $this->value($contents, 'IMAGE_PARSER_SHARED_SECRET');
+        $pdfProcessorSecret = $this->value($contents, 'PDF_PROCESSOR_SHARED_SECRET');
 
         return [
             'ARTIFACT_URL_SIGNING_KEY' => $signingKey,
             'IMAGE_PARSER_SHARED_SECRET' => $parserSecret,
+            'PDF_PROCESSOR_SHARED_SECRET' => $pdfProcessorSecret,
         ];
     }
 

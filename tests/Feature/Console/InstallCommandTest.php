@@ -48,10 +48,13 @@ final class InstallCommandTest extends TestCase
         config([
             'app.key' => $this->strongSecret('a'),
             'app.artifact_url_signing_key' => $this->strongSecret('b'),
+            'pdf_processor.enabled' => false,
+            'pdf_processor.shared_secret' => '',
         ]);
 
         $this->runConsoleCommand('artifactflow:install')
             ->expectsChoice('Target environment', 'local', ['local', 'test', 'production'])
+            ->expectsConfirmation('Enable experimental PDF artifacts?', 'no')
             ->expectsQuestion('System admin name', 'Prompted Admin')
             ->expectsQuestion('System admin email', 'prompted-admin@example.test')
             ->expectsQuestion('System admin password', 'correct horse battery staple')
@@ -64,6 +67,7 @@ final class InstallCommandTest extends TestCase
         $admin = User::query()->where('email', 'prompted-admin@example.test')->sole();
         $this->assertTrue($admin->is_system_admin);
         $this->assertSame(0, Page::query()->count());
+        $this->assertStringContainsString('PDF_PROCESSOR_ENABLED=false', (string) file_get_contents($this->envPath));
     }
 
     public function test_it_rejects_an_unknown_target_environment(): void
@@ -91,6 +95,7 @@ final class InstallCommandTest extends TestCase
 
         $this->runConsoleCommand('artifactflow:install', [
             '--env' => 'local',
+            '--no-interaction' => true,
             '--seed-demo' => true,
             '--name' => 'Install Admin',
             '--email' => 'install-admin@example.test',
@@ -132,6 +137,7 @@ final class InstallCommandTest extends TestCase
 
         $this->runConsoleCommand('artifactflow:install', [
             '--env' => 'local',
+            '--no-interaction' => true,
             '--name' => 'Install Admin',
             '--email' => 'install-admin@example.test',
             '--password' => 'correct horse battery staple',
@@ -159,6 +165,7 @@ final class InstallCommandTest extends TestCase
             '--password' => 'correct horse battery staple',
         ])
             ->expectsOutputToContain('- Generating image parser shared secret')
+            ->expectsConfirmation('Enable experimental PDF artifacts?', 'no')
             ->expectsConfirmation('Seed starter demo content?', 'no')
             ->assertExitCode(0);
 
@@ -178,6 +185,7 @@ final class InstallCommandTest extends TestCase
 
         $this->runConsoleCommand('artifactflow:install', [
             '--env' => 'local',
+            '--no-interaction' => true,
             '--seed-demo' => true,
             '--name' => 'Install Admin',
             '--email' => 'install-admin@example.test',
@@ -202,6 +210,7 @@ final class InstallCommandTest extends TestCase
 
         $this->runConsoleCommand('artifactflow:install', [
             '--env' => 'local',
+            '--no-interaction' => true,
             '--seed-demo' => true,
             '--reverb' => true,
             '--name' => 'Reverb Admin',
@@ -215,6 +224,88 @@ final class InstallCommandTest extends TestCase
             return is_array($process->command)
                 && str_contains(implode(' ', $process->command), 'ensure-reverb-keys.php');
         });
+    }
+
+    public function test_local_install_enables_pdf_and_generates_its_missing_secret_when_requested(): void
+    {
+        Process::fake();
+        config([
+            'app.key' => $this->strongSecret('a'),
+            'app.artifact_url_signing_key' => $this->strongSecret('b'),
+            'pdf_processor.enabled' => false,
+            'pdf_processor.shared_secret' => '',
+        ]);
+
+        $this->runConsoleCommand('artifactflow:install', [
+            '--env' => 'local',
+            '--pdf' => true,
+            '--name' => 'PDF Admin',
+            '--email' => 'pdf-admin@example.test',
+            '--password' => 'correct horse battery staple',
+        ])
+            ->expectsOutputToContain('- Generating PDF processor shared secret')
+            ->expectsConfirmation('Seed starter demo content?', 'no')
+            ->expectsOutputToContain('Exit this container and rerun make up so the local app enables PDF artifacts.')
+            ->assertExitCode(0);
+
+        Process::assertRan(static function (PendingProcess $process): bool {
+            return is_array($process->command)
+                && str_contains(implode(' ', $process->command), 'ensure-pdf-processor-shared-secret.php');
+        });
+
+        $env = (string) file_get_contents($this->envPath);
+        $this->assertStringContainsString('APP_ENV=local', $env);
+        $this->assertStringContainsString('PDF_PROCESSOR_ENABLED=true', $env);
+    }
+
+    public function test_local_pdf_install_stops_when_its_shared_secret_cannot_be_generated(): void
+    {
+        Process::fake([
+            '*' => Process::result(output: '', errorOutput: 'generation failed', exitCode: 1),
+        ]);
+        config([
+            'app.key' => $this->strongSecret('a'),
+            'app.artifact_url_signing_key' => $this->strongSecret('b'),
+            'pdf_processor.enabled' => false,
+            'pdf_processor.shared_secret' => '',
+        ]);
+
+        $this->runConsoleCommand('artifactflow:install', [
+            '--env' => 'local',
+            '--pdf' => true,
+            '--name' => 'PDF Admin',
+            '--email' => 'pdf-admin@example.test',
+            '--password' => 'correct horse battery staple',
+        ])
+            ->expectsOutputToContain('Could not generate the PDF processor shared secret.')
+            ->doesntExpectOutputToContain('- Running database migrations')
+            ->assertExitCode(1);
+
+        $this->assertSame(0, User::query()->where('email', 'pdf-admin@example.test')->count());
+        $this->assertStringNotContainsString(
+            'PDF_PROCESSOR_ENABLED=true',
+            (string) file_get_contents($this->envPath),
+        );
+    }
+
+    public function test_production_install_rejects_the_local_only_pdf_option_before_database_changes(): void
+    {
+        $this->configureSafeProductionValues();
+
+        $this->runConsoleCommand('artifactflow:install', [
+            '--env' => 'production',
+            '--pdf' => true,
+            '--name' => 'Production PDF Admin',
+            '--email' => 'production-pdf-admin@example.test',
+            '--password' => 'correct horse battery staple',
+        ])
+            ->expectsOutputToContain('PDF artifacts can be enabled by the installer only in local or test mode.')
+            ->doesntExpectOutputToContain('- Running database migrations')
+            ->doesntExpectOutputToContain('Install complete. Sign in at')
+            ->assertExitCode(1);
+
+        $this->assertSame(0, User::query()->where('email', 'production-pdf-admin@example.test')->count());
+        $this->assertSame("APP_ENV=local\nAPP_URL=https://app.test\n", (string) file_get_contents($this->envPath));
     }
 
     public function test_test_environment_runs_the_doctor_and_skips_demo_and_dev_tooling(): void
@@ -231,6 +322,7 @@ final class InstallCommandTest extends TestCase
 
         $this->runConsoleCommand('artifactflow:install', [
             '--env' => 'test',
+            '--no-interaction' => true,
             '--name' => 'Test Admin',
             '--email' => 'test-admin@example.test',
             '--password' => 'correct horse battery staple',
@@ -419,6 +511,7 @@ final class InstallCommandTest extends TestCase
         try {
             $this->runConsoleCommand('artifactflow:install', [
                 '--env' => 'test',
+                '--no-interaction' => true,
                 '--name' => 'Env Admin',
                 '--email' => 'env-admin@example.test',
             ])
@@ -449,6 +542,7 @@ final class InstallCommandTest extends TestCase
         try {
             $this->runConsoleCommand('artifactflow:install', [
                 '--env' => 'test',
+                '--no-interaction' => true,
                 '--name' => 'Precedence Admin',
                 '--email' => 'precedence-admin@example.test',
                 '--password' => 'argument-password-value',
@@ -482,6 +576,7 @@ final class InstallCommandTest extends TestCase
         try {
             $this->runConsoleCommand('artifactflow:install', [
                 '--env' => 'test',
+                '--no-interaction' => true,
                 '--name' => 'File Admin',
                 '--email' => 'file-admin@example.test',
             ])
@@ -514,6 +609,7 @@ final class InstallCommandTest extends TestCase
         try {
             $this->runConsoleCommand('artifactflow:install', [
                 '--env' => 'test',
+                '--no-interaction' => true,
                 '--name' => 'File Precedence Admin',
                 '--email' => 'file-precedence-admin@example.test',
                 '--password' => 'argument-password-value',
