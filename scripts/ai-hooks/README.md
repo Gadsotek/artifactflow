@@ -15,15 +15,18 @@ The guards are intentionally conservative:
   exit code 2 when `python3` is unavailable, and `make ai-hooks-test` fails with
   the same explicit prerequisite instead of relying on command-not-found behavior.
 - The file-safety hook matches every emitted `PreToolUse` event and denies the
-  `functions.exec` composite tool when the host emits that event. It cannot
-  intercept nested operations that the desktop/tool bridge does not expose to
-  project hooks. Nested calls are not inferred by parsing JavaScript; agents
-  must use native hook-visible tools instead.
+  `functions.exec` composite tool when the host emits that event. Codex is also
+  configured with the `artifactflow-edit` permission profile, so a missing
+  nested hook event cannot silently bypass the OS-enforced file policy.
 - Known mutating file tools fail closed when their target cannot be extracted.
   AI instructions, security contracts, hook code, CI workflows, and enforcement
   configuration require explicit approval to edit; secret, generated, and Git
   internal files remain denied.
-- `git push` and GitHub API deletion of Git refs in any repository always ask first.
+- Codex `PreToolUse` does not support an `ask` result. Codex command findings
+  with matching execpolicy rules delegate to those native prompts; findings
+  without a native prompt fail closed. Claude retains its supported ask flow.
+- `git push` always asks through Codex execpolicy or the Claude hook. GitHub API
+  deletion of Git refs fails closed for Codex and asks through the Claude hook.
 - `git commit` is denied unless it includes DCO sign-off through an actual
   lowercase `-s` option (including a short-option group) or `--signoff`;
   option arguments that happen to contain `s` and GPG `-S` do not satisfy DCO,
@@ -68,18 +71,30 @@ nested tool call, or code that constructs a path internally can bypass a
 command-string denylist. Pattern coverage raises the bar; it does not make a
 secret unreadable.
 
-To actually close access to `.env` or other credentials, run the agent in a
-separate OS/container security context where those files are absent or
-unreadable. Mount only the required workspace paths, make policy/control files
-read-only where practical, use a default-deny execution policy, and deny network
-egress at the sandbox boundary. If the agent process runs as the same host user
-that can read the secret, no repository hook can provide that guarantee.
+ArtifactFlow's Codex configuration uses a macOS-enforced permission profile:
+all `.env*` paths and other secret paths are denied, while AI instructions,
+hooks, CI, security contracts, and other control files are readable but not
+writable without the native Codex approval flow. This deliberately includes
+tracked `.env` templates; inspect or change those only outside the restricted
+profile. Repository hooks remain defense in depth for serialized tool events;
+the permission profile is the file-access boundary.
 
 Run the local harness:
 
 ```sh
 make ai-hooks-test
 ```
+
+After installing or updating Codex Desktop, run the host integration canary:
+
+```sh
+make codex-permissions-test
+```
+
+The canary never prints `.env`; it verifies that the active macOS sandbox cannot
+open it and cannot update the `Makefile` timestamp. A global legacy
+`sandbox_mode` or `[sandbox_workspace_write]` setting disables permission
+profiles and makes the canary fail.
 
 Codex rules can be checked directly when the Codex CLI is installed:
 

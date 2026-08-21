@@ -1,5 +1,44 @@
 # Project-local Codex configuration. Codex loads this only after the project is trusted.
 project_doc_max_bytes = 65536
+default_permissions = "artifactflow-edit"
 
 [features]
 hooks = true
+
+[permissions.artifactflow-edit]
+description = "ArtifactFlow source editing with secrets denied and control files approval-gated."
+extends = ":workspace"
+
+[permissions.artifactflow-edit.filesystem.":workspace_roots"]
+".env*" = "deny"
+"**/.env*" = "deny"
+".npmrc" = "deny"
+"auth.json" = "deny"
+"credentials" = "deny"
+"credentials.json" = "deny"
+"service-account.json" = "deny"
+"**/*.pem" = "deny"
+"**/*.key" = "deny"
+"**/*.p12" = "deny"
+"**/*.pfx" = "deny"
+"**/*.jks" = "deny"
+"**/*.keystore" = "deny"
+".claude" = "read"
+".codex" = "read"
+".github/workflows" = "read"
+".semgrep" = "read"
+"AGENTS.md" = "read"
+"CLAUDE.md" = "read"
+"Makefile" = "read"
+"SECURITY.md" = "read"
+"THREAT-MODEL.md" = "read"
+"harness" = "read"
+"phpstan.neon" = "read"
+"phpunit.xml" = "read"
+"rector.php" = "read"
+"scripts/ai-hooks" = "read"
+"tests/Feature/Architecture/AiHarnessDriftContractTest.php" = "read"
+"tests/Feature/Infrastructure/HarnessPolicyConfigurationTest.php" = "read"
+
+[permissions.artifactflow-edit.network]
+enabled = true

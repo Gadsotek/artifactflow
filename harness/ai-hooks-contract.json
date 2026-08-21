@@ -1,13 +1,13 @@
 {
-  "contract_version": 5,
+  "contract_version": 6,
   "canonical_project": "artifactflow",
   "project_substitutions": {
     "slug": "artifactflow",
     "focused_test": "PageCreationHttpTest"
   },
   "shared_files": {
-    "scripts/ai-hooks/guard_command.py": "f64b0796b63425d8f4c05ade0b754a8a648ca36b14cd50405b339880711f625c",
-    "scripts/ai-hooks/guard_file_write.py": "c75f0ed0b443fe54166a624dacf2691a85db4d57e2a2e3793afc8d3eb25bb476",
+    "scripts/ai-hooks/guard_command.py": "f54fde0c8267ce4b67ab72a08721a8fc6005eba2ccb55330a58bd63001388042",
+    "scripts/ai-hooks/guard_file_write.py": "7bfa0a3ddfa6265b2dee2d66e784ee63c61df94ceda357d18848b0f4d9332533",
     "scripts/ai-hooks/guard_prompt.py": "65fccff46a68751411780a96d634cb6b88ab8b3f9658553a97e7d8d8e47e05b7",
     "scripts/ai-hooks/policy.py": "9872a913ac4cc74ff6c8f4334f9045fabc1425ea835b4ad74a7a4b80eb26c9e0",
     "scripts/ai-hooks/policy_commands.py": "94c6a9d58f79a1c826d455bec247fd146bb7f175793ca1b4fcb5adaf2dd6fc43",
@@ -19,13 +19,13 @@
   },
   "normalized_files": {
     "scripts/ai-hooks/README.md": {
-      "sha256": "dd4b222ab58b5bada8c3f841e54e1f457264047b2cff8b4f1b8cc3952f47228a",
+      "sha256": "247c15a51a0924220ace8eb6eaaeaedbfd1b4990c2fe198a5b6ec3ca82e43012",
       "substitutions": [
         "slug"
       ]
     },
     "scripts/ai-hooks/run_harness.py": {
-      "sha256": "d7a368dc385b38f68e0994a7c8e9e2e1c9080807307e54b30c7a2779022dacc9",
+      "sha256": "71576f86074c9ee7558847c33a4105f9e59c2e6c6765d029e3f4fed9a8a4279e",
       "substitutions": [
         "focused_test"
       ]
