@@ -35,6 +35,7 @@ use App\Models\McpClientSession;
 use App\Models\Page;
 use App\Models\PageAccessGrant;
 use App\Models\PageVersion;
+use App\Models\PdfVersionFact;
 use App\Models\ProducerAssertion;
 use App\Models\Tag;
 use App\Models\User;
@@ -46,6 +47,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
@@ -60,6 +62,8 @@ final class McpInterfaceTest extends TestCase
 {
     use RefreshDatabase;
     use FakesImageParser;
+
+    private const string PDF_PROCESSOR_SECRET = 'test-mcp-pdf-processor-secret-00000001';
 
     protected function setUp(): void
     {
@@ -606,6 +610,264 @@ final class McpInterfaceTest extends TestCase
         Storage::disk('artifacts')->assertDirectoryEmpty('pages');
     }
 
+    public function test_mcp_pdf_create_replace_read_search_and_revert_use_safe_text_only_payloads(): void
+    {
+        Storage::fake('artifacts');
+        $this->enablePdfProcessor();
+        $this->fakePdfProcessorSequence([
+            ['text' => 'firstmcppdfneedle', 'pages' => 2, 'version' => '1.4', 'state' => 'indexed'],
+            ['text' => 'secondmcppdfneedle', 'pages' => 3, 'version' => '1.7', 'state' => 'partially_indexed'],
+            ['text' => 'restoredmcppdfneedle', 'pages' => 2, 'version' => '1.4', 'state' => 'indexed'],
+        ]);
+        $owner = $this->createUser('PDF MCP Owner', 'pdf-mcp-owner@example.test');
+        $service = $this->createServiceAccount('PDF MCP Agent', 'pdf-mcp-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'PDF MCP Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $token = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+            McpAccessTokenIssuer::SCOPE_UPDATE,
+            McpAccessTokenIssuer::SCOPE_UPLOAD,
+            McpAccessTokenIssuer::SCOPE_READ,
+            McpAccessTokenIssuer::SCOPE_SEARCH,
+        ])->plainTextToken;
+        $firstPdf = "%PDF-1.4\nprivate-original-create\n%%EOF";
+
+        $created = $this->successfulToolPayload($this->callTool($token, 'create_pdf', [
+            'workspace_uid' => $workspace->uid,
+            'title' => 'MCP Native PDF',
+            'pdf_base64' => base64_encode($firstPdf),
+            'status' => PageStatus::Approved->value,
+            'change_summary' => 'Create the first PDF original.',
+        ]));
+        $page = Page::query()->whereKey($this->payloadString($created, 'uid'))->sole();
+        $firstVersion = PageVersion::query()->whereKey($page->current_version_uid)->sole();
+        $createdPdfFacts = $this->payloadArray($created, 'pdf');
+
+        $this->assertSame(PageType::Pdf, $page->type);
+        $this->assertSame($firstPdf, Storage::disk('artifacts')->get($firstVersion->content_storage_path));
+        $this->assertSame(2, $createdPdfFacts['page_count']);
+        $this->assertSame('1.4', $createdPdfFacts['pdf_version']);
+        $this->assertSame('indexed', $createdPdfFacts['extraction_state']);
+        $this->assertFalse($createdPdfFacts['ocr_indexed']);
+        $this->assertArrayNotHasKey('processor_profile', $createdPdfFacts);
+
+        $read = $this->successfulToolPayload($this->callTool($token, 'read', [
+            'page_uid' => $page->uid,
+        ]));
+        $content = $this->payloadArray($read, 'content');
+        $readJson = json_encode($read, JSON_THROW_ON_ERROR);
+
+        $this->assertSame('artifactflow.untrusted_data', $content['kind']);
+        $this->assertSame('text/plain', $content['media_type']);
+        $this->assertSame('firstmcppdfneedle', $content['data']);
+        $this->assertStringNotContainsString('private-original-create', $readJson);
+        $this->assertStringNotContainsString('content_storage_path', $readJson);
+        $this->assertStringNotContainsString('processor_profile', $readJson);
+        $this->assertStringNotContainsString('/pdf-artifacts/', $readJson);
+
+        $search = $this->payloadList($this->successfulToolPayload($this->callTool($token, 'search', [
+            'query' => 'firstmcppdfneedle',
+            'type' => PageType::Pdf->value,
+            'include_snippet' => true,
+        ])), 'results');
+
+        $this->assertSame([$page->uid], array_column($search, 'uid'));
+        $snippet = $this->payloadArray($search[0], 'snippet');
+        $this->assertSame('firstmcppdfneedle', $snippet['data']);
+
+        $secondPdf = "%PDF-1.7\nprivate-original-replacement\n%%EOF";
+        $replacement = $this->successfulToolPayload($this->callTool($token, 'replace_pdf', [
+            'page_uid' => $page->uid,
+            'base_version_uid' => $firstVersion->uid,
+            'pdf_base64' => base64_encode($secondPdf),
+            'change_summary' => 'Replace the PDF original.',
+        ]));
+        $secondVersionUid = $this->payloadString($replacement, 'current_version_uid');
+        $secondVersion = PageVersion::query()->whereKey($secondVersionUid)->sole();
+
+        $this->assertSame($secondPdf, Storage::disk('artifacts')->get($secondVersion->content_storage_path));
+        $this->assertSame('secondmcppdfneedle', $secondVersion->extracted_text);
+        $this->assertSame(3, $this->payloadArray($replacement, 'pdf')['page_count']);
+
+        $reverted = $this->successfulToolPayload($this->callTool($token, 'revert', [
+            'page_uid' => $page->uid,
+            'base_version_uid' => $secondVersionUid,
+            'change_summary' => 'Restore the previous PDF original.',
+        ]));
+        $restored = PageVersion::query()
+            ->whereKey($this->payloadString($reverted, 'current_version_uid'))
+            ->sole();
+
+        $this->assertSame($firstVersion->uid, $reverted['restored_from_version_uid']);
+        $this->assertSame($firstVersion->content_hash, $restored->content_hash);
+        $this->assertSame('restoredmcppdfneedle', $restored->extracted_text);
+        $this->assertSame(2, $this->payloadArray($reverted, 'pdf')['page_count']);
+        $this->assertSame(3, PdfVersionFact::query()->count());
+        Http::assertSentCount(3);
+    }
+
+    public function test_mcp_pdf_scope_workspace_and_page_authority_run_before_decode_or_processor_work(): void
+    {
+        Storage::fake('artifacts');
+        $this->enablePdfProcessor();
+        Http::swap(new HttpFactory(app('events')));
+        Http::fake();
+        $owner = $this->createUser('PDF Boundary Owner', 'pdf-boundary-owner@example.test');
+        $service = $this->createServiceAccount('PDF Boundary Agent', 'pdf-boundary-agent@example.test');
+        $otherOwner = $this->createUser('Other PDF Owner', 'other-pdf-owner@example.test');
+        $allowedWorkspace = app(CreateSharedWorkspace::class)->handle($owner, 'Allowed PDF Workspace');
+        $otherWorkspace = app(CreateSharedWorkspace::class)->handle($otherOwner, 'Other PDF Workspace');
+        $this->addMember($allowedWorkspace, $service, WorkspaceRole::Editor);
+        $this->addMember($otherWorkspace, $service, WorkspaceRole::Editor);
+
+        $withoutUpload = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+        ])->plainTextToken;
+        $missingScope = $this->toolErrorPayload($this->callTool($withoutUpload, 'create_pdf', [
+            'workspace_uid' => $allowedWorkspace->uid,
+            'title' => 'Must Not Decode',
+            'pdf_base64' => 'not base64',
+            'change_summary' => 'Attempt without upload scope.',
+        ]));
+        $this->assertSame('insufficient_scope', $missingScope['type']);
+
+        $workspaceScoped = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+            McpAccessTokenIssuer::SCOPE_UPLOAD,
+        ], workspaceUids: [$allowedWorkspace->uid])->plainTextToken;
+        $wrongWorkspace = $this->toolErrorPayload($this->callTool($workspaceScoped, 'create_pdf', [
+            'workspace_uid' => $otherWorkspace->uid,
+            'title' => 'Outside Token Ceiling',
+            'pdf_base64' => 'not base64',
+            'change_summary' => 'Attempt outside the token workspace ceiling.',
+        ]));
+        $this->assertSame('not_found', $wrongWorkspace['type']);
+        $this->assertSame('Workspace not found.', $wrongWorkspace['message']);
+
+        $otherPage = Page::factory()->create([
+            'owner_user_uid' => $otherOwner->uid,
+            'workspace_uid' => $otherWorkspace->uid,
+            'type' => PageType::Pdf,
+        ]);
+        $replaceScoped = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_UPDATE,
+            McpAccessTokenIssuer::SCOPE_UPLOAD,
+        ], workspaceUids: [$allowedWorkspace->uid])->plainTextToken;
+        $wrongPage = $this->toolErrorPayload($this->callTool($replaceScoped, 'replace_pdf', [
+            'page_uid' => $otherPage->uid,
+            'base_version_uid' => '01J00000000000000000000000',
+            'pdf_base64' => 'not base64',
+            'change_summary' => 'Attempt outside page authority.',
+        ]));
+        $this->assertSame('not_found', $wrongPage['type']);
+        $this->assertSame('Page not found.', $wrongPage['message']);
+
+        $editablePage = Page::factory()->create([
+            'owner_user_uid' => $owner->uid,
+            'workspace_uid' => $allowedWorkspace->uid,
+            'type' => PageType::Pdf,
+        ]);
+        $currentVersion = PageVersion::factory()->forPage($editablePage)->create();
+        $editablePage->forceFill(['current_version_uid' => $currentVersion->uid])->save();
+        $stale = $this->toolErrorPayload($this->callTool($replaceScoped, 'replace_pdf', [
+            'page_uid' => $editablePage->uid,
+            'base_version_uid' => '01J00000000000000000000000',
+            'pdf_base64' => 'not base64',
+            'change_summary' => 'Reject stale concurrency before decoding.',
+        ]));
+        $this->assertSame('conflict', $stale['type']);
+        $this->assertSame($currentVersion->uid, $stale['current_version_uid']);
+
+        Http::assertNothingSent();
+        $this->assertDatabaseMissing('pages', ['title' => 'Must Not Decode']);
+        $this->assertDatabaseMissing('pages', ['title' => 'Outside Token Ceiling']);
+    }
+
+    public function test_mcp_pdf_rejects_noncanonical_base64_and_maps_processor_unavailability(): void
+    {
+        Storage::fake('artifacts');
+        $this->enablePdfProcessor();
+        $owner = $this->createUser('Invalid PDF Owner', 'invalid-pdf-owner@example.test');
+        $service = $this->createServiceAccount('Invalid PDF Agent', 'invalid-pdf-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Invalid PDF Team');
+        $this->addMember($workspace, $service, WorkspaceRole::Editor);
+        $token = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_CREATE,
+            McpAccessTokenIssuer::SCOPE_UPLOAD,
+        ])->plainTextToken;
+        Http::swap(new HttpFactory(app('events')));
+        Http::fake();
+
+        foreach ([
+            'not base64',
+            base64_encode("%PDF-1.4\n%%EOF") . "\n",
+            rtrim(base64_encode("%PDF-1.4\n%%EOF"), '='),
+            'data:application/pdf;base64,' . base64_encode("%PDF-1.4\n%%EOF"),
+        ] as $encoded) {
+            $error = $this->toolErrorPayload($this->callTool($token, 'create_pdf', [
+                'workspace_uid' => $workspace->uid,
+                'title' => 'Rejected PDF',
+                'pdf_base64' => $encoded,
+                'change_summary' => 'Attempt invalid PDF transport.',
+            ]));
+            $this->assertSame('invalid_request', $error['type']);
+        }
+        Http::assertNothingSent();
+
+        Http::swap(new HttpFactory(app('events')));
+        Http::fake(['*' => Http::response(['error' => 'service_unavailable'], 503)]);
+        $unavailable = $this->toolErrorPayload($this->callTool($token, 'create_pdf', [
+            'workspace_uid' => $workspace->uid,
+            'title' => 'Unavailable PDF',
+            'pdf_base64' => base64_encode("%PDF-1.4\nvalid transport\n%%EOF"),
+            'change_summary' => 'Attempt while processor unavailable.',
+        ]));
+
+        $this->assertSame('temporarily_unavailable', $unavailable['type']);
+        $this->assertTrue($unavailable['retryable']);
+        $this->assertSame(5, $unavailable['retry_after']);
+        $this->assertSame(0, Page::query()->where('type', PageType::Pdf)->count());
+        Storage::disk('artifacts')->assertDirectoryEmpty('pages');
+    }
+
+    public function test_mcp_pdf_read_and_search_do_not_disclose_an_inaccessible_pdf(): void
+    {
+        Storage::fake('artifacts');
+        $this->enablePdfProcessor();
+        $this->fakePdfProcessorSequence([
+            ['text' => 'restrictedmcppdfneedle', 'pages' => 7, 'version' => '1.7', 'state' => 'indexed'],
+        ]);
+        $owner = $this->createUser('Restricted PDF Owner', 'restricted-pdf-owner@example.test');
+        $service = $this->createServiceAccount('Restricted PDF Agent', 'restricted-pdf-agent@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'Restricted PDF Team');
+        $page = app(CreatePage::class)->handle($owner, new CreatePageCommand(
+            workspaceUid: $workspace->uid,
+            type: PageType::Pdf,
+            title: 'Restricted MCP PDF',
+            description: null,
+            content: "%PDF-1.7\nrestricted original\n%%EOF",
+            sourceFilename: 'restricted.pdf',
+            source: PageVersionSource::Upload,
+        ));
+        $token = $this->issueToken($service, [
+            McpAccessTokenIssuer::SCOPE_READ,
+            McpAccessTokenIssuer::SCOPE_SEARCH,
+        ])->plainTextToken;
+
+        $read = $this->toolErrorPayload($this->callTool($token, 'read', [
+            'page_uid' => $page->uid,
+        ]));
+        $search = $this->payloadList($this->successfulToolPayload($this->callTool($token, 'search', [
+            'query' => 'restrictedmcppdfneedle',
+            'type' => PageType::Pdf->value,
+            'include_snippet' => true,
+        ])), 'results');
+
+        $this->assertSame('not_found', $read['type']);
+        $this->assertSame('Page not found.', $read['message']);
+        $this->assertSame([], $search);
+    }
+
     public function test_image_read_rejects_a_stored_derivative_larger_than_the_configured_read_limit(): void
     {
         Storage::fake('artifacts');
@@ -869,6 +1131,7 @@ final class McpInterfaceTest extends TestCase
     {
         Storage::fake('artifacts');
         Carbon::setTestNow('2026-07-30 12:00:00 UTC');
+        config(['pdf_processor.enabled' => true]);
         $this->enableExternalSharing(72);
 
         $workspaceOwner = $this->createUser('MCP Share Workspace Owner', 'mcp-share-owner@example.test');
@@ -931,6 +1194,18 @@ final class McpInterfaceTest extends TestCase
         $this->assertTrue($expiring['secret_presented_once']);
         $expiringUrl = $this->payloadString($expiring, 'url');
         $this->assertStringContainsString('#secret=', $expiringUrl);
+
+        $page->forceFill(['type' => PageType::Pdf])->save();
+        $pdf = $this->successfulToolPayload($this->callTool(
+            $issuedToken->plainTextToken,
+            'create_external_share',
+            [
+                'page_uid' => $page->uid,
+                'mode' => 'one_time',
+            ],
+        ));
+        $this->assertSame($page->uid, $pdf['page_uid']);
+        $this->assertStringContainsString('#secret=', $this->payloadString($pdf, 'url'));
 
         $event = DomainEvent::query()
             ->where('event_type', 'page.external_share.created')
@@ -1777,22 +2052,38 @@ final class McpInterfaceTest extends TestCase
         $this->assertStringContainsString('include model_id only when you know the exact', $instructions);
         $this->assertStringContainsString('returned stored_provenance', $instructions);
 
-        $tools = $this->postJsonRpc($token, 'tools/list');
+        $tools = $this->postMcp($token, [
+            'jsonrpc' => '2.0',
+            'id' => 'tools-with-pdf',
+            'method' => 'tools/list',
+            'params' => ['per_page' => 50],
+        ]);
         $tools->assertOk();
         $toolDefinitions = $tools->json('result.tools');
         $this->assertIsArray($toolDefinitions);
-        $this->assertCount(14, $toolDefinitions);
+        $this->assertCount(16, $toolDefinitions);
         $this->assertContains('list_taxonomy', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_category', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_tag', array_column($toolDefinitions, 'name'));
         $this->assertContains('organize', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_image', array_column($toolDefinitions, 'name'));
         $this->assertContains('replace_image', array_column($toolDefinitions, 'name'));
+        $this->assertContains('create_pdf', array_column($toolDefinitions, 'name'));
+        $this->assertContains('replace_pdf', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_external_share', array_column($toolDefinitions, 'name'));
         $this->assertContains('update_description', array_column($toolDefinitions, 'name'));
         $search = collect($toolDefinitions)->firstWhere('name', 'search');
         $this->assertIsArray($search);
         $this->assertNull(data_get($search, 'inputSchema.properties.tag_uids.maxItems'));
+        $this->assertSame(
+            [
+                PageType::Markdown->value,
+                PageType::HtmlArtifact->value,
+                PageType::Image->value,
+                PageType::Pdf->value,
+            ],
+            data_get($search, 'inputSchema.properties.type.enum'),
+        );
         $createExternalShare = collect($toolDefinitions)->firstWhere('name', 'create_external_share');
         $this->assertIsArray($createExternalShare);
         $this->assertSame(
@@ -1842,6 +2133,18 @@ final class McpInterfaceTest extends TestCase
         $this->assertIsArray($requiredReplaceImageArguments);
         $this->assertContains('base_version_uid', $requiredReplaceImageArguments);
         $this->assertContains('image_base64', $requiredReplaceImageArguments);
+        $createPdf = collect($toolDefinitions)->firstWhere('name', 'create_pdf');
+        $this->assertIsArray($createPdf);
+        $requiredCreatePdfArguments = data_get($createPdf, 'inputSchema.required');
+        $this->assertIsArray($requiredCreatePdfArguments);
+        $this->assertContains('pdf_base64', $requiredCreatePdfArguments);
+        $this->assertContains('change_summary', $requiredCreatePdfArguments);
+        $replacePdf = collect($toolDefinitions)->firstWhere('name', 'replace_pdf');
+        $this->assertIsArray($replacePdf);
+        $requiredReplacePdfArguments = data_get($replacePdf, 'inputSchema.required');
+        $this->assertIsArray($requiredReplacePdfArguments);
+        $this->assertContains('base_version_uid', $requiredReplacePdfArguments);
+        $this->assertContains('pdf_base64', $requiredReplacePdfArguments);
         $update = collect($toolDefinitions)->firstWhere('name', 'update');
         $this->assertIsArray($update);
         $updateContentSummary = data_get($update, 'inputSchema.properties.content.description');
@@ -3615,6 +3918,52 @@ final class McpInterfaceTest extends TestCase
         return $bytes;
     }
 
+    private function enablePdfProcessor(): void
+    {
+        config([
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'http://pdf-processor.test',
+            'pdf_processor.shared_secret' => self::PDF_PROCESSOR_SECRET,
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+        ]);
+        Cache::lock(\App\Application\PageCatalog\PdfProcessingAdmission::SLOT_KEY)
+            ->forceRelease();
+    }
+
+    /** @param list<array{text: string, pages: int, version: string, state: string}> $responses */
+    private function fakePdfProcessorSequence(array $responses): void
+    {
+        Http::swap(new HttpFactory(app('events')));
+        Http::fake(function (\Illuminate\Http\Client\Request $request) use (&$responses): \GuzzleHttp\Promise\PromiseInterface {
+            $next = array_shift($responses);
+
+            if (!is_array($next)) {
+                return Http::response(['error' => 'unexpected_test_request'], 500);
+            }
+
+            $nonceHeader = $request->header('X-ArtifactFlow-Processor-Nonce')[0] ?? '';
+            $nonce = is_string($nonceHeader) ? $nonceHeader : '';
+            $body = json_encode([
+                'page_count' => $next['pages'],
+                'pdf_version' => $next['version'],
+                'extraction_state' => $next['state'],
+                'processor_profile' => 'pdfbox-3.0.8-native-text-v1',
+                'text' => $next['text'],
+            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+
+            return Http::response($body, 200, [
+                'Content-Type' => 'application/json; charset=utf-8',
+                'X-ArtifactFlow-Processor-Signature' => \App\Application\PageCatalog\PdfProcessorProtocol::responseSignature(
+                    $nonce,
+                    hash('sha256', $request->body()),
+                    $body,
+                    self::PDF_PROCESSOR_SECRET,
+                ),
+            ]);
+        });
+    }
+
     private function enableTwoFactor(User $user): User
     {
         $user->forceFill([
@@ -3815,7 +4164,10 @@ final class McpInterfaceTest extends TestCase
     private function successfulToolPayload(TestResponse $response): array
     {
         $response->assertOk();
-        $this->assertFalse((bool) $response->json('result.isError'));
+        $this->assertFalse(
+            (bool) $response->json('result.isError'),
+            json_encode($response->json(), JSON_THROW_ON_ERROR),
+        );
         $text = $response->json('result.content.0.text');
         $this->assertIsString($text);
         $payload = json_decode($text, true, 512, JSON_THROW_ON_ERROR);

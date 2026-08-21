@@ -49,6 +49,22 @@ final class ExternalShareHttpTest extends TestCase
             ->assertSee('48 hours');
     }
 
+    public function test_access_manager_can_open_external_sharing_for_a_pdf(): void
+    {
+        [$owner, $page] = $this->pageFixture();
+        $page->forceFill(['type' => PageType::Pdf])->save();
+        config(['pdf_processor.enabled' => true]);
+        $this->configureExternalSharing(enabled: true);
+
+        $this->actingAs($owner)
+            ->get("/pages/{$page->uid}")
+            ->assertOk()
+            ->assertSee('Share externally')
+            ->assertSee('data-open-editor-dialog="page-external-share-dialog"', false)
+            ->assertSee('id="page-external-share-dialog"', false)
+            ->assertSee('PDF viewing is download-equivalent.');
+    }
+
     public function test_reader_does_not_receive_the_external_share_action_or_inventory(): void
     {
         [$owner, $page] = $this->pageFixture();

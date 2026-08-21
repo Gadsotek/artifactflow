@@ -101,6 +101,13 @@ final readonly class RasterImagePageContentStrategy implements PageContentStrate
         return false;
     }
 
+    public function supportsSearchTextReindex(PageType $type): bool
+    {
+        $this->ensureSupported($type);
+
+        return true;
+    }
+
     private function ensurePresent(string $content): void
     {
         if ($content === '') {

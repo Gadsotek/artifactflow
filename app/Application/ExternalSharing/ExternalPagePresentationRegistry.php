@@ -15,6 +15,7 @@ final class ExternalPagePresentationRegistry
             PageType::Markdown => ExternalPagePresentation::Markdown,
             PageType::HtmlArtifact => ExternalPagePresentation::SandboxedHtml,
             PageType::Image => ExternalPagePresentation::ScriptlessImage,
+            PageType::Pdf => ExternalPagePresentation::NativePdf,
         };
     }
 }

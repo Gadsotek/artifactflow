@@ -21,6 +21,30 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_default_off_pdf_slice_cannot_be_enabled_in_production_before_its_release_gate(): void
+    {
+        $this->configureSafeProductionValues();
+        config(['pdf_processor.enabled' => true]);
+
+        $this->assertUnsafeConfiguration(
+            'PDF artifacts must remain disabled in production until their release gate is accepted.',
+        );
+    }
+
+    public function test_non_app_runtime_roles_reject_the_pdf_processor_credential(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'app.runtime_role' => 'worker',
+            'image_parser.shared_secret' => '',
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+        ]);
+
+        $this->assertUnsafeConfiguration(
+            'PDF processor shared secret must not be available to non-app runtime roles.',
+        );
+    }
+
     public function test_turnstile_is_optional_but_enabled_configuration_must_be_complete_and_production_safe(): void
     {
         $this->configureSafeProductionValues();

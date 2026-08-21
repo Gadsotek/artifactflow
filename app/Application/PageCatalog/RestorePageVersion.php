@@ -13,6 +13,7 @@ use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\PageCatalog\PageVersionSource;
 use App\Domain\PageCatalog\Security\BlockedPageContentException;
+use App\Domain\PageCatalog\StalePageVersionException;
 use App\Domain\Provenance\VersionOperation;
 use App\Models\Page;
 use App\Models\PageVersion;
@@ -57,15 +58,25 @@ final readonly class RestorePageVersion
             return $sourceVersion;
         }
 
+        $this->ensureExpectedCurrentVersion($page, $command->expectedCurrentVersionUid);
+
         $sourceContent = $this->contentReader->read($sourceVersion->content_storage_path);
 
         if ($sourceContent === null) {
             throw new DomainRuleViolation('Version content is missing from storage.');
         }
 
+        if (
+            strlen($sourceContent) !== $sourceVersion->byte_size
+            || !hash_equals($sourceVersion->content_hash, hash('sha256', $sourceContent))
+        ) {
+            throw new DomainRuleViolation('Version content failed integrity verification.');
+        }
+
         $restoredVersion = null;
         $prunedStoragePaths = [];
         $closureCompleted = false;
+        $preparedAppend = null;
 
         try {
             $changeSummary = $this->changeSummaryRules->normalize($command->changeSummary);
@@ -130,6 +141,8 @@ final readonly class RestorePageVersion
             }
 
             throw $exception;
+        } finally {
+            $preparedAppend?->discard();
         }
 
         $this->deletePrunedArtifacts($page->uid, $prunedStoragePaths);
@@ -171,6 +184,24 @@ final readonly class RestorePageVersion
         }
 
         return $version;
+    }
+
+    /**
+     * Refuse an already-stale request before reading content or spending parser
+     * capacity. PageVersionAppender repeats this assertion under the page lock,
+     * which remains the authoritative guard against a concurrent save during
+     * preparation.
+     */
+    private function ensureExpectedCurrentVersion(Page $page, ?string $expectedCurrentVersionUid): void
+    {
+        if ($expectedCurrentVersionUid === null || $page->current_version_uid === $expectedCurrentVersionUid) {
+            return;
+        }
+
+        throw new StalePageVersionException(
+            currentVersionUid: (string) $page->current_version_uid,
+            submittedBaseVersionUid: $expectedCurrentVersionUid,
+        );
     }
 
     private function recordRestored(

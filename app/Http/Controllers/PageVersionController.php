@@ -12,10 +12,12 @@ use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\ImageNormalizationRejected;
 use App\Domain\PageCatalog\InvalidPageStatusTransition;
 use App\Domain\PageCatalog\PageType;
+use App\Domain\PageCatalog\PdfProcessingRejected;
 use App\Domain\PageCatalog\Security\BlockedPageContentException;
 use App\Domain\PageCatalog\StalePageVersionException;
 use App\Http\Requests\PageCatalog\StorePageVersionRequest;
 use App\Http\Support\ImageNormalizationRejectionResponse;
+use App\Http\Support\PdfProcessingRejectionResponse;
 use App\Models\Page;
 use App\Models\PageVersion;
 use Illuminate\Http\RedirectResponse;
@@ -47,6 +49,8 @@ final class PageVersionController
             ));
         } catch (ImageNormalizationRejected $exception) {
             return ImageNormalizationRejectionResponse::make($exception);
+        } catch (PdfProcessingRejected $exception) {
+            return PdfProcessingRejectionResponse::make($exception);
         } catch (BlockedPageContentException $exception) {
             throw ValidationException::withMessages([
                 'content' => $exception->getMessage(),
@@ -58,7 +62,11 @@ final class PageVersionController
         } catch (StalePageVersionException $exception) {
             return response($exception->getMessage(), 409);
         } catch (DomainRuleViolation $exception) {
-            $field = $page->type === PageType::Image ? 'image_file' : 'content';
+            $field = match ($page->type) {
+                PageType::Image => 'image_file',
+                PageType::Pdf => 'pdf_file',
+                default => 'content',
+            };
 
             throw ValidationException::withMessages([
                 $field => $exception->getMessage(),
@@ -78,6 +86,7 @@ final class PageVersionController
         RestorePageVersion $restorePageVersion,
     ): RedirectResponse|Response {
         $user = $this->authenticatedUser($request);
+
         $expectedCurrentVersionUid = $request->input('current_version_uid');
 
         // The history dialog renders each Restore form with the version that was
@@ -95,6 +104,8 @@ final class PageVersionController
                 versionUid: $version->uid,
                 expectedCurrentVersionUid: $expectedCurrentVersionUid,
             ));
+        } catch (PdfProcessingRejected $exception) {
+            return PdfProcessingRejectionResponse::make($exception);
         } catch (BlockedPageContentException $exception) {
             throw ValidationException::withMessages([
                 'content' => $exception->getMessage(),

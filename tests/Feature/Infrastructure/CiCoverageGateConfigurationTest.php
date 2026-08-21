@@ -217,6 +217,8 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('FROM dunglas/frankenphp:1-php8.5-alpine@sha256:', $dockerfile);
         $this->assertStringContainsString('COPY --from=composer:2.9@sha256:', $dockerfile);
         $this->assertStringNotContainsString('apk upgrade --no-cache', $dockerfile);
+        $this->assertStringContainsString('"libpq>=18.5-r0"', $dockerfile);
+        $this->assertStringContainsString('"libecpg>=18.5-r0"', $dockerfile);
         $this->assertStringContainsString('/var/www/html/docker/healthcheck-app.sh', $dockerfile);
         $this->assertStringContainsString('worker|scheduler', $healthcheck);
         $workerHealthcheckPosition = strpos($healthcheck, 'worker|scheduler');

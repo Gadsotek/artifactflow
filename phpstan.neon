@@ -12,4 +12,5 @@ parameters:
     - routes
     - tests
     - image-parser
+    - pdf-processor-spike/src/PdfProcessor.php
   tmpDir: storage/phpstan

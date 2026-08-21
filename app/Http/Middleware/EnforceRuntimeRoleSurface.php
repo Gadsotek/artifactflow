@@ -26,6 +26,7 @@ final class EnforceRuntimeRoleSurface
         $isArtifactPreview = $request->is(
             'artifact-previews/*',
             'external-artifact-previews/*',
+            'pdf-artifacts/*',
         );
         $runtimeRole = config('app.runtime_role');
         $isArtifactHost = $runtimeRole === 'artifact-host';

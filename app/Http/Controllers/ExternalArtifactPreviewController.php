@@ -8,10 +8,13 @@ use App\Application\ExternalSharing\ExternalArtifactPreviewUrl;
 use App\Application\ExternalSharing\ExternalShareViewContext;
 use App\Application\ExternalSharing\ResolveExternalShareView;
 use App\Application\PageCatalog\ArtifactContentReader;
+use App\Application\PageCatalog\PdfArtifactContentReader;
+use App\Application\PageCatalog\PdfProcessorConfiguration;
 use App\Application\PageCatalog\RasterImageInspector;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\PageType;
 use App\Http\Support\ArtifactSandboxResponder;
+use App\Http\Support\PdfArtifactResponder;
 use App\Models\PageVersion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -23,8 +26,11 @@ final readonly class ExternalArtifactPreviewController
         private ResolveExternalShareView $views,
         private ExternalArtifactPreviewUrl $urls,
         private ArtifactContentReader $contentReader,
+        private PdfArtifactContentReader $pdfContentReader,
         private RasterImageInspector $imageInspector,
         private ArtifactSandboxResponder $responder,
+        private PdfArtifactResponder $pdfResponder,
+        private PdfProcessorConfiguration $pdfConfiguration,
     ) {
     }
 
@@ -54,6 +60,7 @@ final readonly class ExternalArtifactPreviewController
                     || $context->page->uid !== $pageUid
                     || $context->page->current_version_uid !== $version->uid
                     || $version->page_uid !== $context->page->uid
+                    || ($context->page->type === PageType::Pdf && !$this->pdfConfiguration->enabled())
                     || !$context->page->type->usesArtifactHostPreview()
                     || !$this->urls->hasValidSignature(
                         $context,
@@ -69,7 +76,9 @@ final readonly class ExternalArtifactPreviewController
                     return $this->responder->topLevelNavigationNotice(null);
                 }
 
-                $content = $this->contentReader->read($version->content_storage_path);
+                $content = $context->page->type === PageType::Pdf
+                    ? $this->pdfContentReader->read($version)
+                    : $this->contentReader->read($version->content_storage_path);
 
                 if ($content === null) {
                     return null;
@@ -89,6 +98,10 @@ final readonly class ExternalArtifactPreviewController
                     }
 
                     return $this->responder->imageDocument($content, $image->mediaType);
+                }
+
+                if ($context->page->type === PageType::Pdf) {
+                    return $this->pdfResponder->inline($content, $context->page, $version);
                 }
 
                 return $this->responder->document($content, recoveryEnabled: true);

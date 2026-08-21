@@ -17,9 +17,11 @@ final readonly class PreparedPageVersionAppend
 {
     /**
      * @param Closure(Page, ?string, ?string): PageVersion $append
+     * @param Closure(): void $discard
      */
     public function __construct(
         private Closure $append,
+        private Closure $discard,
     ) {
     }
 
@@ -28,6 +30,15 @@ final readonly class PreparedPageVersionAppend
         ?string $baseVersionUid = null,
         ?string $expectedCurrentVersionUid = null,
     ): PageVersion {
-        return ($this->append)($page, $baseVersionUid, $expectedCurrentVersionUid);
+        try {
+            return ($this->append)($page, $baseVersionUid, $expectedCurrentVersionUid);
+        } finally {
+            $this->discard();
+        }
+    }
+
+    public function discard(): void
+    {
+        ($this->discard)();
     }
 }

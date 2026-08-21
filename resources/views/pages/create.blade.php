@@ -8,7 +8,7 @@
                 <div>
                     <p class="af-eyebrow">Compose</p>
                     <h1 class="text-xl font-semibold text-zinc-950 dark:text-zinc-50">Create page</h1>
-                    <p class="af-page-intro">Write portable knowledge, paste an artifact, or upload HTML and images.</p>
+                    <p class="af-page-intro">Write portable knowledge, paste an artifact, or upload HTML, images, and PDFs.</p>
                 </div>
                 <a class="af-secondary-button" href="{{ route('pages.index') }}">Cancel</a>
             </div>
@@ -66,6 +66,9 @@
                                 <option value="{{ PageType::Markdown->value }}" @selected(old('type', PageType::Markdown->value) === PageType::Markdown->value)>Markdown page</option>
                                 <option value="{{ PageType::HtmlArtifact->value }}" @selected(old('type') === PageType::HtmlArtifact->value)>HTML artifact</option>
                                 <option value="{{ PageType::Image->value }}" @selected(old('type') === PageType::Image->value)>Image / screenshot</option>
+                                @if ($pdfArtifactsEnabled)
+                                    <option value="{{ PageType::Pdf->value }}" @selected(old('type') === PageType::Pdf->value)>PDF document</option>
+                                @endif
                             </select>
                         </label>
 
@@ -76,6 +79,9 @@
                                 <option data-create-page-mode-type="{{ PageType::HtmlArtifact->value }}" value="{{ PageCreationMode::HtmlUpload->value }}" @selected(old('mode') === PageCreationMode::HtmlUpload->value) @disabled(old('type', PageType::Markdown->value) !== PageType::HtmlArtifact->value)>Upload HTML file</option>
                                 <option data-create-page-mode-type="{{ PageType::HtmlArtifact->value }}" value="{{ PageCreationMode::HtmlPaste->value }}" @selected(old('mode') === PageCreationMode::HtmlPaste->value) @disabled(old('type', PageType::Markdown->value) !== PageType::HtmlArtifact->value)>Paste HTML</option>
                                 <option data-create-page-mode-type="{{ PageType::Image->value }}" value="{{ PageCreationMode::ImageUpload->value }}" @selected(old('mode') === PageCreationMode::ImageUpload->value) @disabled(old('type', PageType::Markdown->value) !== PageType::Image->value)>Upload image</option>
+                                @if ($pdfArtifactsEnabled)
+                                    <option data-create-page-mode-type="{{ PageType::Pdf->value }}" value="{{ PageCreationMode::PdfUpload->value }}" @selected(old('mode') === PageCreationMode::PdfUpload->value) @disabled(old('type', PageType::Markdown->value) !== PageType::Pdf->value)>Upload PDF</option>
+                                @endif
                             </select>
                         </label>
                     </div>
@@ -201,6 +207,24 @@
                         <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="image_file" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg">
                     </label>
                 </section>
+
+                @if ($pdfArtifactsEnabled)
+                    <section class="space-y-5" data-create-page-pdf-upload-fields hidden>
+                        <div class="af-create-section-heading">
+                            <span>03</span>
+                            <div>
+                                <h2>Upload PDF</h2>
+                                <p>The original is validated and its existing text layer is indexed before storage.</p>
+                            </div>
+                        </div>
+
+                        <label class="af-file-drop block">
+                            <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">PDF document</span>
+                            <span class="mt-1 block text-xs text-zinc-500">Encrypted, malformed, active, or over-limit PDFs are rejected. Image-only PDFs are accepted without OCR.</span>
+                            <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="pdf_file" type="file" accept=".pdf,application/pdf">
+                        </label>
+                    </section>
+                @endif
 
                 <section class="space-y-5" data-create-page-content-fields>
                     <div class="af-create-section-heading">

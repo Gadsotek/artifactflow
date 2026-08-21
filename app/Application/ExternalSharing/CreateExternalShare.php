@@ -10,10 +10,12 @@ use App\Application\Identity\ActorId;
 use App\Application\Mcp\McpEffectiveAuthority;
 use App\Application\Mcp\McpRequestContext;
 use App\Application\PageCatalog\PageAccess;
+use App\Application\PageCatalog\PdfProcessorConfiguration;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\ExternalSharing\ExternalShareMode;
 use App\Domain\PageCatalog\PageStatus;
+use App\Domain\PageCatalog\PageType;
 use App\Models\ExternalShare;
 use App\Models\Page;
 use App\Models\User;
@@ -33,6 +35,7 @@ final readonly class CreateExternalShare
         private AuditLogger $audit,
         private McpEffectiveAuthority $mcpAuthority,
         private McpRequestContext $mcpContext,
+        private PdfProcessorConfiguration $pdfConfiguration,
     ) {
     }
 
@@ -102,6 +105,12 @@ final readonly class CreateExternalShare
 
             if ($page->status === PageStatus::Archived) {
                 throw new DomainRuleViolation('Archived pages cannot be shared externally.');
+            }
+
+            if ($page->type === PageType::Pdf && !$this->pdfConfiguration->enabled()) {
+                throw new DomainRuleViolation(
+                    'External sharing is not available while PDF artifacts are disabled.',
+                );
             }
 
             // The installation settings row serializes the installation-wide

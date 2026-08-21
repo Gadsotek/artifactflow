@@ -17,6 +17,7 @@ use App\Application\Mcp\RecordMcpClientSession;
 use App\Application\PageCatalog\PageAccess;
 use App\Application\PageCatalog\PageContentStrategy;
 use App\Application\PageCatalog\PageContentStrategyRegistry;
+use App\Application\PageCatalog\PdfPageContentStrategy;
 use App\Application\PageCatalog\RasterImagePageContentStrategy;
 use App\Application\PageCatalog\TextPageContentStrategy;
 use App\Http\Support\ExternalShareResponses;
@@ -55,7 +56,7 @@ final class AppServiceProvider extends ServiceProvider
         $this->app->scoped(PageAccess::class);
         $this->app->singleton(InstallationReadiness::class);
         $this->app->tag(
-            [TextPageContentStrategy::class, RasterImagePageContentStrategy::class],
+            [TextPageContentStrategy::class, RasterImagePageContentStrategy::class, PdfPageContentStrategy::class],
             PageContentStrategy::class,
         );
         $this->app

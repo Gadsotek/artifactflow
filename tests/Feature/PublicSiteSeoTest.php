@@ -485,7 +485,10 @@ final class PublicSiteSeoTest extends TestCase
         $this->assertStringContainsString('Script-initiated top-level navigation cannot be fully prevented', $readme);
         $this->assertStringContainsString('WebRTC blocking is browser-dependent', $readme);
         $this->assertStringContainsString('documented self-navigation and browser-dependent WebRTC residuals', $roadmap);
-        $this->assertStringContainsString('OS or container boundary denies outbound network access', $roadmap);
+        $this->assertStringContainsString(
+            'denies processor-initiated public, metadata, loopback, and private-peer connections',
+            $roadmap,
+        );
     }
 
     public function test_public_copy_distinguishes_guarantees_from_advisory_safeguards(): void
@@ -517,8 +520,8 @@ final class PublicSiteSeoTest extends TestCase
         $this->assertStringContainsString('Direction, not a release promise.', $roadmapPage);
         $this->assertStringContainsString('Available now', $roadmapPage);
         $this->assertStringContainsString('Shipped in v0.0.7', $roadmapPage);
-        $this->assertStringContainsString('Verified beta candidate', $roadmapPage);
-        $this->assertStringContainsString('Later format expansions', $roadmapPage);
+        $this->assertStringContainsString('Shipped in v0.0.9', $roadmapPage);
+        $this->assertStringContainsString('Next format milestone', $roadmapPage);
         $this->assertStringContainsString('Explicitly not promised', $roadmapPage);
         $this->assertStringContainsString(
             'https://github.com/Gadsotek/artifactflow/blob/main/ROADMAP.md',
@@ -815,20 +818,24 @@ final class PublicSiteSeoTest extends TestCase
         }
     }
 
-    public function test_roadmap_prioritizes_nested_workspaces_before_document_artifacts(): void
+    public function test_roadmap_prioritizes_pdf_after_released_nested_workspaces(): void
     {
         $roadmap = file_get_contents(base_path('ROADMAP.md'));
         $roadmapPage = file_get_contents(base_path('site/roadmap/index.html'));
 
         $this->assertIsString($roadmap);
         $this->assertIsString($roadmapPage);
-        $this->assertStringContainsString('## Verified beta candidate: nested shared workspaces', $roadmap);
-        $this->assertStringContainsString('## Later focus: searchable PDF artifacts', $roadmap);
+        $this->assertStringContainsString('## Released in v0.0.9: nested shared workspaces', $roadmap);
+        $this->assertStringContainsString('## Next focus: searchable PDF artifacts', $roadmap);
         $this->assertStringContainsString('## Later focus: searchable Word document artifacts', $roadmap);
         $this->assertStringContainsString('Nested shared workspaces', $roadmapPage);
         $this->assertStringContainsString('Searchable PDF artifacts', $roadmapPage);
         $this->assertStringContainsString('Searchable Word documents', $roadmapPage);
         $this->assertStringContainsString('DOCX', $roadmapPage);
+        $this->assertStringContainsString('OCR remains a later PDF milestone.', $roadmapPage);
+        $this->assertStringContainsString('browser-native viewing on the existing cookieless artifact origin', $roadmapPage);
+        $this->assertStringContainsString('Preview deliberately transfers the authorized original', $roadmapPage);
+        $this->assertStringContainsString('Embedded text remains untrusted', $roadmapPage);
         $this->assertStringContainsString(
             '[GitHub issue #32](https://github.com/Gadsotek/artifactflow/issues/32)',
             $roadmap,
@@ -871,12 +878,19 @@ final class PublicSiteSeoTest extends TestCase
             $this->assertStringContainsString('creates no version', $workflow);
             $this->assertStringContainsString('metadata revision', $workflow);
             $this->assertStringContainsString('not a content-version snapshot', $workflow);
-            $this->assertStringContainsString('PDF and DOCX support is roadmap work, not current behavior', $workflow);
+            $this->assertStringContainsString(
+                'PDF implementation is default-off and not shipped; DOCX remains roadmap direction only',
+                $workflow,
+            );
             $this->assertStringContainsString('Per-version catalog metadata is not promised', $workflow);
             $this->assertStringContainsString('optional generator source', $workflow);
         }
 
         $this->assertStringContainsString('href="/workflow/"', $homepage);
+        $this->assertStringContainsString("browser's native PDF viewer on the existing cookieless artifact origin", $workflowDocumentation);
+        $this->assertStringContainsString("browser's native viewer on the existing cookieless artifact origin", $workflowPage);
+        $this->assertStringContainsString('Preview deliberately transfers the authorized original', $workflowPage);
+        $this->assertStringContainsString('may not be visible in the document', $workflowPage);
         $this->assertStringContainsString(
             '- [Artifact workflow](docs/ARTIFACT-LIFECYCLE.md):',
             $readme,

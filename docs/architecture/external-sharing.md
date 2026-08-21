@@ -13,7 +13,9 @@ create one only for an in-scope page it owns and can still edit while that
 workspace allows Editors and page owners to share pages. This is not public
 publishing: a recipient receives a high-entropy bearer capability for one page
 and no catalog, workspace, identity, search, source, history, editing, MCP, or
-download authority.
+separate ArtifactFlow download authority. A native PDF view necessarily
+transfers the retained PDF bytes to the recipient's browser and is explicitly
+treated as download-equivalent.
 
 The product contract defines exactly two mutually exclusive modes:
 
@@ -200,12 +202,13 @@ Creation:
    requires `mcp:share`, token-workspace reach, live edit authority, and page
    ownership by the MCP principal, plus the workspace's live
    `allow_editor_page_sharing` policy;
-4. rechecks installation policy and active-share bounds;
-5. generates the share secret and persists only its hash;
-6. records `page.external_share.created` in both the durable event journal and
+4. for a PDF, rechecks that PDF artifact support is enabled;
+5. rechecks installation policy and active-share bounds;
+6. generates the share secret and persists only its hash;
+7. records `page.external_share.created` in both the durable event journal and
    user-facing audit trail, including non-secret MCP token/session attribution
    when applicable;
-7. commits before returning the raw URL once.
+8. commits before returning the raw URL once.
 
 Revocation locks the page and share in that order, rechecks manage-access
 authority, marks the row terminal, deletes its pending/view sessions, and
@@ -279,6 +282,10 @@ Every viewer load and artifact-preview URL issuance rechecks:
 - the page still belongs to the copied workspace;
 - the page access revision still equals the copied revision.
 
+PDF viewer content and artifact delivery additionally recheck the live PDF
+feature switch. Disabling PDF support makes retained external PDF shares
+uniformly unavailable without deleting their revocable inventory rows.
+
 A new current version does not increment this sharing boundary and is resolved
 when the viewing session starts or the viewer refreshes. Historical versions
 are unavailable. A workspace move or relevant access change invalidates the
@@ -310,6 +317,14 @@ explicit safe presenter.
   `sandbox="allow-scripts"` iframe under the existing restrictive header CSP.
 - Normalized raster images use the fixed scriptless artifact-origin viewer and
   `sandbox=""`.
+- PDFs use the browser's native viewer on the isolated artifact origin. The
+  iframe deliberately has no `sandbox` attribute because tested native viewers
+  render blank under iframe or response sandboxing; it retains `allow=""` and
+  `referrerpolicy="no-referrer"`. The response is fixed to `application/pdf`,
+  `nosniff`, `private, no-store`, no CORS or cookies, restrictive PDF CSP with
+  app-only `frame-ancestors`, and an inline application-generated filename.
+  This exception is registered only for `PageType::Pdf` and does not weaken
+  HTML or image presentation.
 - A future type cannot become shareable until its normal safe preview strategy
   is explicitly registered. There is no raw-byte fallback.
 
@@ -341,7 +356,10 @@ browser time zone; the server time zone is never presented as if it were local.
 
 It never exposes workspace membership, owner or sharer identity, hierarchy,
 taxonomy, search, source, history, provenance, internal links, realtime
-presence, MCP, downloads, or authenticated navigation.
+presence, MCP, a separate ArtifactFlow download endpoint, or authenticated
+navigation. PDF recipients can still save, print, copy, or forward bytes that
+their browser received; revocation cannot erase those bytes and the UI states
+that viewing a PDF is download-equivalent.
 
 ## Rejected alternatives
 
@@ -389,8 +407,9 @@ Implementation remains disabled until focused PHP and cross-browser
 - same-window reload after a long elapsed interval, with no arbitrary viewing
   countdown and no ability to redeem the original one-time link again;
 - latest-version resolution with no history/source/catalog disclosure;
-- Markdown link non-disclosure, HTML opaque sandboxing, and image scriptless
-  sandboxing in Chromium, Firefox, and WebKit;
+- Markdown link non-disclosure, HTML opaque sandboxing, image scriptless
+  sandboxing, and PDF native-viewer origin/cookie/header isolation without
+  generic frame-policy relaxation in Chromium, Firefox, and WebKit;
 - identical behavior whether or not the browser also has an authenticated
   ArtifactFlow session.
 

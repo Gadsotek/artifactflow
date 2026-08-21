@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * @property string $uid
@@ -26,6 +27,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $extracted_text
  * @property string|null $source_text
  * @property User $creator
+ * @property PdfVersionFact|null $pdfFacts
  */
 final class PageVersion extends Model
 {
@@ -71,5 +73,13 @@ final class PageVersion extends Model
     public function page(): BelongsTo
     {
         return $this->belongsTo(Page::class, 'page_uid', 'uid');
+    }
+
+    /**
+     * @return HasOne<PdfVersionFact, $this>
+     */
+    public function pdfFacts(): HasOne
+    {
+        return $this->hasOne(PdfVersionFact::class, 'page_version_uid', 'uid');
     }
 }

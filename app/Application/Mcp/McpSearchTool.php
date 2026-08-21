@@ -8,8 +8,10 @@ use App\Application\PageCatalog\PageSearch;
 use App\Application\PageCatalog\PageSearchFilters;
 use App\Application\PageCatalog\PageSearchResult;
 use App\Application\PageCatalog\PageSearchSort;
+use App\Application\PageCatalog\PdfProcessorConfiguration;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\PageStatus;
+use App\Domain\PageCatalog\PageType;
 use App\Domain\Provenance\ProvenanceSearchScope;
 use App\Models\McpAccessToken;
 use App\Models\Page;
@@ -26,6 +28,7 @@ final readonly class McpSearchTool
     public function __construct(
         private PageSearch $pageSearch,
         private McpPageHierarchy $hierarchy,
+        private PdfProcessorConfiguration $pdfConfiguration,
     ) {
     }
 
@@ -59,10 +62,19 @@ final readonly class McpSearchTool
         $categoryUid = $arguments->nullableString('category_uid');
         $provider = $arguments->nullableString('ai_provider');
 
+        $type = $arguments->pageType('type');
+
+        if ($type === PageType::Pdf && !$this->pdfConfiguration->enabled()) {
+            return McpToolResult::error([
+                'type' => 'unsupported_content_type',
+                'message' => 'PDF content is not available through MCP yet.',
+            ]);
+        }
+
         $filters = new PageSearchFilters(
             query: $arguments->nullableString('query'),
             workspaceUid: $arguments->nullableString('workspace_uid'),
-            type: $arguments->pageType('type'),
+            type: $type,
             statuses: $statuses,
             categoryUids: $categoryUid === null ? [] : [$categoryUid],
             tagUids: $arguments->stringList('tag_uids'),
@@ -72,6 +84,7 @@ final readonly class McpSearchTool
             aiProviders: $provider === null ? [] : [$provider],
             aiModelQuery: $arguments->nullableString('ai_model_query'),
             provenanceScope: $provenanceScope,
+            excludedTypes: $this->pdfConfiguration->enabled() ? [] : [PageType::Pdf],
         );
         $results = $this->pageSearch->search(
             actor: $actor,

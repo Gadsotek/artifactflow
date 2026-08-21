@@ -74,6 +74,8 @@ final readonly class ProductionSecurityConfiguration
             );
         }
 
+        $this->ensurePdfArtifactsDisabledUntilRelease();
+
         $this->ensureArtifactReadLimitCanServeHtmlWrites();
         $this->ensureDatabaseDriver();
         $this->ensureDatabaseTls();
@@ -228,6 +230,30 @@ final readonly class ProductionSecurityConfiguration
         )) {
             throw new RuntimeException(
                 'Image normalization pixel and input-work budgets must allow one upload and remain within the supported per-minute ceilings.',
+            );
+        }
+    }
+
+    private function ensurePdfArtifactsDisabledUntilRelease(): void
+    {
+        $enabled = $this->config->get('pdf_processor.enabled', false);
+
+        if (!is_bool($enabled)) {
+            throw new RuntimeException('PDF_PROCESSOR_ENABLED must be true or false.');
+        }
+
+        if (
+            $this->string('app.runtime_role') !== 'app'
+            && $this->string('pdf_processor.shared_secret') !== ''
+        ) {
+            throw new RuntimeException(
+                'PDF processor shared secret must not be available to non-app runtime roles.',
+            );
+        }
+
+        if ($enabled) {
+            throw new RuntimeException(
+                'PDF artifacts must remain disabled in production until their release gate is accepted.',
             );
         }
     }

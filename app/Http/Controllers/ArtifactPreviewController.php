@@ -65,6 +65,7 @@ final class ArtifactPreviewController
 
         if (
             !$page->type->usesArtifactHostPreview()
+            || $page->type === PageType::Pdf
             || $version->page_uid !== $page->uid
             || ($purpose === ArtifactPreviewPurpose::Current && $page->current_version_uid !== $version->uid)
         ) {

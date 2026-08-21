@@ -6,6 +6,7 @@ namespace App\Application\Mcp;
 
 use App\Application\PageCatalog\ArtifactContentReader;
 use App\Application\PageCatalog\ImageArtifactLimits;
+use App\Application\PageCatalog\PdfProcessorConfiguration;
 use App\Application\PageCatalog\RasterImageInspector;
 use App\Application\Provenance\ProvenanceReadModel;
 use App\Domain\DomainRuleViolation;
@@ -29,6 +30,8 @@ final readonly class McpReadTool
         private ImageArtifactLimits $limits,
         private ProvenanceReadModel $provenance,
         private McpProvenancePayload $provenancePayload,
+        private McpPdfVersionPayload $pdfPayload,
+        private PdfProcessorConfiguration $pdfConfiguration,
     ) {
     }
 
@@ -40,7 +43,44 @@ final readonly class McpReadTool
             return McpToolResult::notFound();
         }
 
+        if ($page->type === PageType::Pdf && !$this->pdfConfiguration->enabled()) {
+            return McpToolResult::error([
+                'type' => 'unsupported_content_type',
+                'message' => 'PDF content is not available through MCP yet.',
+            ]);
+        }
+
         $version = $page->currentVersion;
+
+        if ($page->type === PageType::Pdf) {
+            if (!$version instanceof PageVersion) {
+                return McpToolResult::error([
+                    'type' => 'content_unavailable',
+                    'message' => 'Page content is unavailable.',
+                ]);
+            }
+
+            $pdf = $this->pdfPayload->forVersion($version);
+
+            if ($pdf === null) {
+                return McpToolResult::error([
+                    'type' => 'content_unavailable',
+                    'message' => 'Page content is unavailable.',
+                ]);
+            }
+
+            $hierarchy = $this->hierarchy->forPages($actor, [$page]);
+            $text = McpDataEnvelope::text($version->extracted_text);
+
+            return McpToolResult::success($this->payload->forPage($page) + [
+                'current_version_uid' => $version->uid,
+                'current_version_change_summary' => McpDataEnvelope::text($version->change_summary),
+                'hierarchy' => $hierarchy[$page->uid],
+                'provenance' => $this->provenancePayload->make($this->provenance->forVersion($version)),
+                'content' => $text,
+                'pdf' => $pdf,
+            ]);
+        }
 
         // Image reads share the installation's configured artifact byte limit
         // with every other read path, so any derivative small enough to be

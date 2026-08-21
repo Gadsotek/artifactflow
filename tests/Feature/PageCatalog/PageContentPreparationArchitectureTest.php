@@ -74,4 +74,14 @@ final class PageContentPreparationArchitectureTest extends TestCase
         $this->assertNotContains(PageContentStrategyRegistry::class, $types);
         $this->assertTrue((new ReflectionClass(PageContentPreparer::class))->hasMethod('textProjection'));
     }
+
+    public function test_external_pdf_processing_is_not_admitted_inside_generic_search_reindex_transactions(): void
+    {
+        $preparer = app(PageContentPreparer::class);
+
+        $this->assertTrue($preparer->supportsSearchTextReindex(PageType::Markdown));
+        $this->assertTrue($preparer->supportsSearchTextReindex(PageType::HtmlArtifact));
+        $this->assertTrue($preparer->supportsSearchTextReindex(PageType::Image));
+        $this->assertFalse($preparer->supportsSearchTextReindex(PageType::Pdf));
+    }
 }

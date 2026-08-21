@@ -15,7 +15,7 @@
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <a class="af-secondary-button" href="#version-preview">Preview</a>
-                    @if ($page->type !== PageType::Image)
+                    @if (!in_array($page->type, [PageType::Image, PageType::Pdf], true))
                         <a class="af-secondary-button" href="#version-changes">Changes</a>
                     @endif
                     <a class="af-primary-button" href="{{ route('pages.show', $page) }}">Back to current page</a>
@@ -29,6 +29,9 @@
                     <p class="af-eyebrow">Immutable snapshot</p>
                     <h2>Version {{ $inspection->version->version_number }}</h2>
                     <p>Changed by {{ $inspection->version->creator->name }} · {{ $inspection->version->created_at->toDayDateTimeString() }} · {{ $inspection->version->byte_size }} bytes · {{ $inspection->version->scan_status->value }}</p>
+                    @if ($inspection->pdfExtractionStatus !== null)
+                        <p data-pdf-extraction-state="{{ $inspection->pdfExtractionStatus->stateValue }}">Text extraction: {{ $inspection->pdfExtractionStatus->label }}</p>
+                    @endif
                     @if ($inspection->version->change_summary !== null)
                         <p class="mt-2 font-medium text-zinc-800 dark:text-zinc-200">{{ $inspection->version->change_summary }}</p>
                     @endif
@@ -87,6 +90,18 @@
                         </div>
                         <iframe class="af-artifact-iframe h-[calc(100vh-16rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" sandbox="allow-scripts" allow="" src="{{ $inspection->artifactPreviewUrl }}" title="Historical artifact preview"></iframe>
                     </div>
+                @elseif ($inspection->artifactPreviewUrl !== null && $page->type === PageType::Pdf)
+                    <div
+                        class="af-artifact-preview flex flex-col gap-2"
+                        data-artifact-preview
+                        data-pdf-preview
+                    >
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <span class="text-xs text-zinc-500 dark:text-zinc-400">Historical PDF · browser-native viewer on the isolated artifact origin.</span>
+                            <a class="af-secondary-button" href="{{ route('pages.versions.pdf.download', [$page, $inspection->version]) }}">Download this version</a>
+                        </div>
+                        <iframe class="af-artifact-iframe h-[calc(100vh-16rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" allow="" src="{{ $inspection->artifactPreviewUrl }}" title="Historical PDF preview"></iframe>
+                    </div>
                 @elseif ($inspection->artifactPreviewUrl !== null)
                     <div
                         class="af-artifact-preview flex flex-col gap-2"
@@ -99,8 +114,8 @@
                 @endif
             </section>
 
-            @if ($page->type === PageType::Image)
-                <div class="af-callout">Binary image versions do not have a source diff.</div>
+            @if (in_array($page->type, [PageType::Image, PageType::Pdf], true))
+                <div class="af-callout">Binary {{ $page->type === PageType::Pdf ? 'PDF' : 'image' }} versions do not have a source diff.</div>
             @else
             <section class="af-document-canvas scroll-mt-6" id="version-changes" data-version-diff>
                 <div class="mb-5 flex flex-wrap items-end justify-between gap-3">

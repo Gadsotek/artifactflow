@@ -6,6 +6,7 @@ namespace App\Application\Mcp;
 
 use App\Application\PageCatalog\RevertToPreviousVersion;
 use App\Application\PageCatalog\RevertToPreviousVersionCommand;
+use App\Domain\PageCatalog\PageType;
 use App\Models\Page;
 use App\Models\User;
 
@@ -21,6 +22,7 @@ final readonly class McpRevertTool
         private McpPageResolver $pages,
         private RevertToPreviousVersion $revertToPreviousVersion,
         private McpToolErrorMapper $errors,
+        private McpPdfVersionPayload $pdfPayload,
     ) {
     }
 
@@ -39,12 +41,24 @@ final readonly class McpRevertTool
                 changeSummary: $arguments->requiredString('change_summary'),
             ));
 
-            return McpToolResult::success([
+            $payload = [
                 'page_uid' => $page->uid,
                 'version_uid' => $result->restoredVersion->uid,
                 'current_version_uid' => $result->restoredVersion->uid,
                 'restored_from_version_uid' => $result->restoredFromVersion->uid,
-            ]);
+            ];
+
+            if ($page->type === PageType::Pdf) {
+                $pdf = $this->pdfPayload->forVersion($result->restoredVersion);
+
+                if ($pdf === null) {
+                    throw new \App\Domain\DomainRuleViolation('PDF processing facts are unavailable.');
+                }
+
+                $payload['pdf'] = $pdf;
+            }
+
+            return McpToolResult::success($payload);
         }, self::STALE_CONFLICT_MESSAGE);
     }
 }

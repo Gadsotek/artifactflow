@@ -1,6 +1,6 @@
 # ArtifactFlow: Architecture (one-pager)
 
-ArtifactFlow is a self-hosted, versioned artifact vault for tools and documents created with AI. These diagrams show how the current HTML and Markdown artifact types move through that vault and how untrusted HTML execution stays isolated from authenticated data.
+ArtifactFlow is a self-hosted, versioned artifact vault for tools and documents created with AI. These diagrams show how the current Markdown, HTML, raster-image, and feature-gated PDF artifact types move through that vault and how untrusted HTML execution stays isolated from authenticated data.
 
 Two self-contained SVGs (open in any browser; embeddable in the main README):
 
@@ -20,6 +20,11 @@ Accepted security-sensitive architecture decisions:
 - [`nested-workspaces.md`](nested-workspaces.md): three-level shared-workspace
   hierarchy, downward role inheritance, exact MCP scope semantics, serialized
   hierarchy writes, and descendant access revocation.
+- [`pdf-artifacts.md`](pdf-artifacts.md): private PDF originals, isolated bounded
+  validation and embedded-text extraction, browser-native viewing on the existing
+  cookieless artifact origin, authorization-first search snippets, restricted
+  artifact-host grants, and the focused security proof required before its
+  default-off implementation can be production-enabled.
 
 > Diagrams reflect the *actual* current code. Yes, the implementation is AI-assisted; the rigor behind it (repeated security audits, PHPStan-max, a documented threat model, a broad test suite including browser-level sandbox proofs) is the point.
 
@@ -30,7 +35,7 @@ Accepted security-sensitive architecture decisions:
 - **HTTP** (`app/Http`): thin controllers (parse → authorize → delegate → respond), a middleware pipeline that enforces the runtime-role split + security headers + password/admin-2FA sudo step-up, and FormRequests for validation.
 - **Application** (`app/Application`): where the logic lives, as `command → handler` use-cases:
   - `Identity/`: users, workspaces (Personal/Shared), memberships (Admin/Editor/Reader), invitations.
-  - `PageCatalog/` ★ (the core): pages (Markdown | HtmlArtifact), immutable versions, access grants, categories/tags, search, rendering, the artifact-preview signing/serving.
+  - `PageCatalog/` ★ (the core): pages (Markdown | HtmlArtifact | Image | Pdf), immutable versions, access grants, categories/tags, search, rendering, the artifact-preview signing/serving.
   - `Provenance/`: observed version ingests, declared producers, external origin references, and restore lineage.
   - `Administration/`: installation-wide limit settings (newest, cleanest code).
   - `Events/` (transactional outbox) + `Audit/` (append-only trail): cross-cutting.

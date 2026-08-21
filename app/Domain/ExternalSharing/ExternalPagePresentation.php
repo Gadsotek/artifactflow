@@ -9,4 +9,5 @@ enum ExternalPagePresentation: string
     case Markdown = 'markdown';
     case SandboxedHtml = 'sandboxed_html';
     case ScriptlessImage = 'scriptless_image';
+    case NativePdf = 'native_pdf';
 }

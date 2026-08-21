@@ -9,6 +9,7 @@ use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
 use App\Models\Page;
 use App\Models\PageVersion;
+use App\Models\PdfVersionFact;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
@@ -17,6 +18,8 @@ final readonly class PageVersionInspection
     public function __construct(
         private ArtifactContentReader $contentReader,
         private ArtifactPreviewUrl $artifactPreviewUrls,
+        private PdfArtifactUrl $pdfArtifactUrls,
+        private PdfProcessorConfiguration $pdfProcessorConfiguration,
         private MarkdownPageRenderer $markdownRenderer,
         private PageAccess $access,
         private PageVersionDiff $diff,
@@ -45,11 +48,12 @@ final readonly class PageVersionInspection
 
         $selectedSource = null;
         $currentSource = null;
-        $selectedContentAvailable = $page->type === PageType::Image
+        $binaryArtifact = in_array($page->type, [PageType::Image, PageType::Pdf], true);
+        $selectedContentAvailable = $binaryArtifact
             ? $this->contentReader->isAvailable($version->content_storage_path)
             : false;
 
-        if ($page->type !== PageType::Image) {
+        if (!$binaryArtifact) {
             $selectedSource = $this->contentReader->read($version->content_storage_path);
             $currentSource = $version->uid === $currentVersion->uid
                 ? $selectedSource
@@ -64,8 +68,14 @@ final readonly class PageVersionInspection
             $renderedMarkdown = $this->markdownRenderer->renderForPage($actor, $page, $selectedSource);
         }
 
-        if ($selectedContentAvailable && $page->type->usesArtifactHostPreview()) {
-            $artifactPreviewUrl = $this->artifactPreviewUrls->temporaryHistoryUrl($page, $version);
+        if (
+            $selectedContentAvailable
+            && $page->type->usesArtifactHostPreview()
+            && ($page->type !== PageType::Pdf || $this->pdfProcessorConfiguration->enabled())
+        ) {
+            $artifactPreviewUrl = $page->type === PageType::Pdf
+                ? $this->pdfArtifactUrls->temporaryHistoryUrl($page, $version)
+                : $this->artifactPreviewUrls->temporaryHistoryUrl($page, $version);
             Log::info('artifact_history_preview_url.issued', [
                 'actor_user_uid' => $actor->uid,
                 'page_uid' => $page->uid,
@@ -80,18 +90,33 @@ final readonly class PageVersionInspection
             newerVersion: $this->adjacentVersion($page, $version, newer: true),
             renderedMarkdown: $renderedMarkdown,
             artifactPreviewUrl: $artifactPreviewUrl,
+            pdfExtractionStatus: $this->pdfExtractionStatus($page, $version),
             contentUnavailable: !$selectedContentAvailable,
-            comparisonUnavailable: $page->type === PageType::Image
+            comparisonUnavailable: $binaryArtifact
                 || $selectedSource === null
                 || $currentSource === null,
-            diff: $page->type === PageType::Image || $selectedSource === null || $currentSource === null
+            diff: $binaryArtifact || $selectedSource === null || $currentSource === null
                 ? new PageVersionDiffResult([], 0, 0, false)
                 : $this->diff->compare($selectedSource, $currentSource),
             canRestore: $version->uid !== $currentVersion->uid
                 && $page->status !== PageStatus::Archived
+                && ($page->type !== PageType::Pdf || $this->pdfProcessorConfiguration->enabled())
                 && $this->access->canEdit($actor, $page),
             provenance: $this->provenance->forVersion($version),
         );
+    }
+
+    private function pdfExtractionStatus(Page $page, PageVersion $version): ?PdfExtractionStatusView
+    {
+        if ($page->type !== PageType::Pdf) {
+            return null;
+        }
+
+        $facts = $version->pdfFacts()->first();
+
+        return $facts instanceof PdfVersionFact
+            ? PdfExtractionStatusView::fromState($facts->extraction_state)
+            : null;
     }
 
     private function adjacentVersion(Page $page, PageVersion $version, bool $newer): ?PageVersion

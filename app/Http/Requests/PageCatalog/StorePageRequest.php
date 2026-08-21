@@ -21,6 +21,8 @@ final class StorePageRequest extends AppFormRequest
 {
     private ?string $validatedImageContent = null;
 
+    private ?string $validatedPdfContent = null;
+
     /**
      * @return array<string, list<mixed>>
      */
@@ -53,6 +55,11 @@ final class StorePageRequest extends AppFormRequest
                 'nullable',
                 'file',
                 'max:' . $this->imageUploadRules()->maxUploadKilobytes(),
+            ],
+            'pdf_file' => [
+                'nullable',
+                'file',
+                'max:' . $this->pdfUploadRules()->maxUploadKilobytes(),
             ],
         ];
     }
@@ -93,6 +100,16 @@ final class StorePageRequest extends AppFormRequest
                 return;
             }
 
+            if ($type === PageType::Pdf->value) {
+                $this->validatedPdfContent = $this->pdfUploadRules()->validateUpload(
+                    $validator,
+                    'pdf_file',
+                    $this->pdfFile(),
+                );
+
+                return;
+            }
+
             if ($type !== PageType::HtmlArtifact->value) {
                 return;
             }
@@ -122,6 +139,10 @@ final class StorePageRequest extends AppFormRequest
     {
         if ($this->pageType() === PageType::Image) {
             return $this->validatedImageContent ?? '';
+        }
+
+        if ($this->pageType() === PageType::Pdf) {
+            return $this->validatedPdfContent ?? '';
         }
 
         if ($this->pageType() === PageType::HtmlArtifact && $this->string('mode')->toString() === PageCreationMode::HtmlUpload->value) {
@@ -163,16 +184,18 @@ final class StorePageRequest extends AppFormRequest
 
     public function sourceFilename(): ?string
     {
-        $file = $this->pageType() === PageType::Image
-            ? $this->imageFile()
-            : $this->htmlFile();
+        $file = match ($this->pageType()) {
+            PageType::Image => $this->imageFile(),
+            PageType::Pdf => $this->pdfFile(),
+            default => $this->htmlFile(),
+        };
 
         return $file instanceof UploadedFile ? $file->getClientOriginalName() : null;
     }
 
     public function pageVersionSource(): PageVersionSource
     {
-        if ($this->pageType() === PageType::Image) {
+        if (in_array($this->pageType(), [PageType::Image, PageType::Pdf], true)) {
             return PageVersionSource::Upload;
         }
 
@@ -212,6 +235,7 @@ final class StorePageRequest extends AppFormRequest
                 true,
             ),
             PageType::Image->value => $mode === PageCreationMode::ImageUpload->value,
+            PageType::Pdf->value => $mode === PageCreationMode::PdfUpload->value,
             default => false,
         };
     }
@@ -268,6 +292,13 @@ final class StorePageRequest extends AppFormRequest
         return $file instanceof UploadedFile ? $file : null;
     }
 
+    private function pdfFile(): ?UploadedFile
+    {
+        $file = $this->file('pdf_file');
+
+        return $file instanceof UploadedFile ? $file : null;
+    }
+
     private function installationLimit(string $key): int
     {
         return app(InstallationLimitSettings::class)->integer($key);
@@ -281,5 +312,10 @@ final class StorePageRequest extends AppFormRequest
     private function imageUploadRules(): RasterImageUploadRules
     {
         return app(RasterImageUploadRules::class);
+    }
+
+    private function pdfUploadRules(): PdfUploadRules
+    {
+        return app(PdfUploadRules::class);
     }
 }

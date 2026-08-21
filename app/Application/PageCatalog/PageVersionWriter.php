@@ -19,6 +19,7 @@ use App\Domain\PageCatalog\PageVersionSource;
 use App\Domain\Provenance\VersionOperation;
 use App\Models\Page;
 use App\Models\PageVersion;
+use App\Models\PdfVersionFact;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use LogicException;
@@ -35,6 +36,7 @@ final readonly class PageVersionWriter
         private RecordPageVersionProvenance $provenanceRecorder,
         private VersionProvenanceRules $provenanceRules,
         private PageVersionChangeSummaryRules $changeSummaryRules,
+        private PdfExtractionPersistence $pdfExtractionPersistence,
     ) {
     }
 
@@ -117,8 +119,23 @@ final readonly class PageVersionWriter
             $versionUid,
             $prepared->storageFilename,
         );
+        $pdfExtraction = $prepared->pdfProcessingResult instanceof PdfProcessingResult
+            ? $this->pdfExtractionPersistence->fromResult($prepared->pdfProcessingResult)
+            : null;
 
-        if (Storage::disk('artifacts')->put($storagePath, $content) === false) {
+        if ($prepared->requiresPrivateStaging && !($prepared->stagedContent instanceof StagedArtifactContent)) {
+            throw new LogicException('Prepared PDF content must be privately staged before persistence.');
+        }
+
+        if ($prepared->stagedContent instanceof StagedArtifactContent) {
+            try {
+                $prepared->stagedContent->promoteTo($storagePath, $failureMessage);
+            } catch (Throwable $exception) {
+                Storage::disk('artifacts')->delete($storagePath);
+
+                throw $exception;
+            }
+        } elseif (Storage::disk('artifacts')->put($storagePath, $content) === false) {
             Storage::disk('artifacts')->delete($storagePath);
 
             throw new RuntimeException($failureMessage);
@@ -130,8 +147,8 @@ final readonly class PageVersionWriter
                 'page_uid' => $page->uid,
                 'version_number' => $versionNumber,
                 'content_storage_path' => $storagePath,
-                'content_hash' => hash('sha256', $content),
-                'byte_size' => strlen($content),
+                'content_hash' => $prepared->contentHash(),
+                'byte_size' => $prepared->byteSize(),
                 'scan_status' => $scan->hasWarningFindings()
                     ? PageSecurityScanStatus::Warnings
                     : PageSecurityScanStatus::Clean,
@@ -142,17 +159,24 @@ final readonly class PageVersionWriter
                 // Cap at write like source_text: search only indexes and snippets the
                 // first MAX_EXTRACTED_TEXT_SEARCH_CHARACTERS, so persisting more is dead
                 // weight that TOAST-bloats the row.
-                'extracted_text' => $this->cappedText($prepared->textProjection->extractedText),
+                'extracted_text' => $pdfExtraction->text
+                    ?? $this->cappedText($prepared->textProjection->extractedText),
                 'source_text' => $this->cappedText($prepared->textProjection->sourceText),
             ]);
+            $pdfMetadata = $this->persistPdfFacts(
+                $version,
+                $prepared->pdfProcessingResult,
+                $pdfExtraction,
+            );
 
-            $this->storageQuota->recordBytesStored($page->workspace_uid, strlen($content));
+            $this->storageQuota->recordBytesStored($page->workspace_uid, $prepared->byteSize());
             $this->clearPreviousCurrentVersionExtractedText($page);
             $this->recordPageVersionCreated(
                 $page,
                 $version,
                 $actorUid,
                 $provenance?->wasSupplied() ?? false,
+                $pdfMetadata,
             );
             $this->provenanceRecorder->record(
                 page: $page,
@@ -241,11 +265,15 @@ final readonly class PageVersionWriter
         );
     }
 
+    /**
+     * @param array<string, bool|int|string|null> $pdfMetadata
+     */
     private function recordPageVersionCreated(
         Page $page,
         PageVersion $version,
         string $actorUid,
         bool $provenanceSuppliedAtIngest,
+        array $pdfMetadata,
     ): void {
         $mcpMetadata = $this->mcpContext->auditMetadata();
         $event = $this->events->record(
@@ -262,7 +290,7 @@ final readonly class PageVersionWriter
                 'scan_status' => $version->scan_status->value,
                 'source' => $version->source->value,
                 'provenance_supplied_at_ingest' => $provenanceSuppliedAtIngest,
-            ] + $mcpMetadata,
+            ] + $pdfMetadata + $mcpMetadata,
         );
 
         $this->audit->record(
@@ -279,7 +307,34 @@ final readonly class PageVersionWriter
                 'scan_status' => $version->scan_status->value,
                 'source' => $version->source->value,
                 'provenance_supplied_at_ingest' => $provenanceSuppliedAtIngest,
-            ] + $mcpMetadata,
+            ] + $pdfMetadata + $mcpMetadata,
         );
+    }
+
+    /**
+     * @return array{
+     *     pdf_extraction_state: string
+     * }|array{}
+     */
+    private function persistPdfFacts(
+        PageVersion $version,
+        ?PdfProcessingResult $result,
+        ?PersistedPdfExtraction $extraction,
+    ): array {
+        if (!($result instanceof PdfProcessingResult) || !($extraction instanceof PersistedPdfExtraction)) {
+            return [];
+        }
+
+        PdfVersionFact::query()->forceCreate([
+            'page_version_uid' => $version->uid,
+            'page_count' => $result->pageCount,
+            'pdf_version' => $result->pdfVersion,
+            'extraction_state' => $extraction->state,
+            'processor_profile' => $result->processorProfile,
+        ]);
+
+        return [
+            'pdf_extraction_state' => $extraction->state->value,
+        ];
     }
 }

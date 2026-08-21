@@ -21,14 +21,17 @@ use App\Application\PageCatalog\PagePickerOptions;
 use App\Application\PageCatalog\PageSearch;
 use App\Application\PageCatalog\PageSearchFilters;
 use App\Application\PageCatalog\PageSearchSort;
+use App\Application\PageCatalog\PdfProcessorConfiguration;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\CategoryRuleViolation;
 use App\Domain\PageCatalog\ImageNormalizationRejected;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
+use App\Domain\PageCatalog\PdfProcessingRejected;
 use App\Domain\Provenance\ProvenanceSearchScope;
 use App\Http\Requests\PageCatalog\StorePageRequest;
 use App\Http\Support\ImageNormalizationRejectionResponse;
+use App\Http\Support\PdfProcessingRejectionResponse;
 use App\Models\Page;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -53,6 +56,7 @@ final class PageController
         private readonly PagePickerOptions $pickerOptions,
         private readonly PageFilterTaxonomy $filterTaxonomy,
         private readonly PageFilterProvenance $filterProvenance,
+        private readonly PdfProcessorConfiguration $pdfProcessorConfiguration,
     ) {
     }
 
@@ -131,6 +135,7 @@ final class PageController
             'draftPreviewUrl' => app(ArtifactPreviewUrl::class)->draftEndpointUrl(),
             'editableWorkspaces' => $editableWorkspaces,
             'parentPages' => $parentPages,
+            'pdfArtifactsEnabled' => $this->pdfProcessorConfiguration->enabled(),
             'renderedEditorMarkdown' => $renderedEditorMarkdown,
             'selectedParentPageUid' => $selectedParentPageUid,
             'selectedWorkspaceUid' => $selectedWorkspaceUid,
@@ -163,12 +168,18 @@ final class PageController
             ));
         } catch (ImageNormalizationRejected $exception) {
             return ImageNormalizationRejectionResponse::make($exception);
+        } catch (PdfProcessingRejected $exception) {
+            return PdfProcessingRejectionResponse::make($exception);
         } catch (CategoryRuleViolation $exception) {
             throw ValidationException::withMessages([
                 'category_name' => $exception->getMessage(),
             ]);
         } catch (DomainRuleViolation $exception) {
-            $field = $request->pageType() === PageType::Image ? 'image_file' : 'content';
+            $field = match ($request->pageType()) {
+                PageType::Image => 'image_file',
+                PageType::Pdf => 'pdf_file',
+                default => 'content',
+            };
 
             throw ValidationException::withMessages([
                 $field => $exception->getMessage(),

@@ -6,7 +6,9 @@ namespace App\Application\ExternalSharing;
 
 use App\Application\PageCatalog\ArtifactContentReader;
 use App\Application\PageCatalog\MarkdownPageRenderer;
+use App\Application\PageCatalog\PdfProcessorConfiguration;
 use App\Domain\ExternalSharing\ExternalPagePresentation;
+use App\Domain\PageCatalog\PageType;
 use App\Models\PageVersion;
 
 final readonly class ExternalShareViewerContent
@@ -16,11 +18,16 @@ final readonly class ExternalShareViewerContent
         private ArtifactContentReader $contentReader,
         private MarkdownPageRenderer $markdown,
         private ExternalArtifactPreviewUrl $artifactUrls,
+        private PdfProcessorConfiguration $pdfConfiguration,
     ) {
     }
 
     public function forContext(ExternalShareViewContext $context): ?ExternalShareViewerPage
     {
+        if ($context->page->type === PageType::Pdf && !$this->pdfConfiguration->enabled()) {
+            return null;
+        }
+
         $versionUid = $context->page->current_version_uid;
 
         if ($versionUid === null) {

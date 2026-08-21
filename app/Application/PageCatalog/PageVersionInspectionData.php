@@ -16,6 +16,7 @@ final readonly class PageVersionInspectionData
         public ?PageVersion $newerVersion,
         public ?string $renderedMarkdown,
         public ?string $artifactPreviewUrl,
+        public ?PdfExtractionStatusView $pdfExtractionStatus,
         public bool $contentUnavailable,
         public bool $comparisonUnavailable,
         public PageVersionDiffResult $diff,

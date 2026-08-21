@@ -75,7 +75,7 @@ final readonly class PageVersionAppender
     ): PreparedPageVersionAppend {
         $this->ensurePageAcceptsContentChanges($page);
         $actorUid = ActorId::fromUser($actor);
-        $prepared = $this->contentPreparer->prepare($page->type, $content, $actorUid, $source);
+        $prepared = $this->contentPreparer->prepareForPersistence($page->type, $content, $actorUid, $source);
 
         return new PreparedPageVersionAppend(
             fn (
@@ -94,6 +94,9 @@ final readonly class PageVersionAppender
                 lineage: $lineage,
                 changeSummary: $changeSummary,
             ),
+            static function () use ($prepared): void {
+                $prepared->discardStaging();
+            },
         );
     }
 
@@ -118,9 +121,9 @@ final readonly class PageVersionAppender
         $this->storageQuota->ensureWorkspaceAllowsNewBytesForVersionAppend(
             $lockedWorkspace,
             $page->uid,
-            strlen($prepared->content),
+            $prepared->byteSize(),
         );
-        $this->storageQuota->ensurePageAllowsNewBytes($page->uid, strlen($prepared->content));
+        $this->storageQuota->ensurePageAllowsNewBytes($page->uid, $prepared->byteSize());
 
         $version = null;
         try {

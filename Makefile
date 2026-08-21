@@ -24,6 +24,7 @@ TEST_DB_RUN_ID ?= $(shell uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-')
 TEST_DB_NAME ?= $(TEST_DB_DATABASE)_$(TEST_DB_RUN_ID)
 E2E_APP_SERVICE ?= e2e-app
 E2E_ARTIFACT_SERVICE ?= e2e-artifact-host
+E2E_PDF_PROCESSOR_SERVICE ?= e2e-pdf-processor
 E2E_APP_PORT ?= 18180
 E2E_ARTIFACT_HOST_PORT ?= 18181
 E2E_APP_URL ?= http://localhost:$(E2E_APP_PORT)
@@ -31,6 +32,8 @@ E2E_ARTIFACT_URL ?= http://127.0.0.1:$(E2E_ARTIFACT_HOST_PORT)
 E2E_DB_NAME ?= $(TEST_DB_DATABASE)_e2e_$(TEST_DB_RUN_ID)
 E2E_LOCK_DIR ?= storage/framework/testing/e2e.lock
 PRODUCTION_IMAGE ?= artifactflow-app:production
+PDF_PROCESSOR_SPIKE_IMAGE ?= artifactflow-pdf-processor-spike:local
+PDF_PROCESSOR_SERVICE_IMAGE ?= artifactflow-pdf-processor-service:local
 TRIVY_IMAGE ?= aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
 TRIVY_CACHE_DIR ?= $(HOME)/.cache/trivy
 TRIVY_REPO_SCAN_SKIP_DIRS ?= --skip-dirs /src/vendor --skip-dirs /src/node_modules --skip-dirs /src/public/build --skip-dirs /src/storage --skip-dirs /src/bootstrap/cache --skip-dirs /src/.git
@@ -39,7 +42,7 @@ TYPE_COVERAGE_MIN ?= 100
 TYPE_COVERAGE_REPORT ?= storage/framework/testing/type-coverage.json
 COVERAGE_MIN ?= 94
 
-.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps run-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test fuzz-capabilities type-coverage coverage audit audit-php audit-js ai-hooks-test verify-reverb-origin reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty scan-image quality quality-full config-refresh lint-js doctor install
+.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps run-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test fuzz-capabilities type-coverage coverage audit audit-php audit-js ai-hooks-test verify-reverb-origin reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty pdf-processor-spike-build pdf-processor-spike-test pdf-processor-service-build pdf-processor-service-test scan-image quality quality-full config-refresh lint-js doctor install
 
 ensure-env:
 	@test -f .env || cp .env.example .env
@@ -401,7 +404,7 @@ e2e:
 			exit 1; \
 		fi; \
 		cleanup() { \
-			$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env stop $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) >/dev/null 2>&1 || true; \
+			$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env stop $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) $(E2E_PDF_PROCESSOR_SERVICE) >/dev/null 2>&1 || true; \
 			$(MAKE) test-db-drop TEST_DB_NAME="$$db_name"; \
 			rmdir "$$lock_dir" >/dev/null 2>&1 || true; \
 		}; \
@@ -421,7 +424,8 @@ e2e:
 		E2E_APP_URL="$(E2E_APP_URL)" \
 		E2E_ARTIFACT_URL="$(E2E_ARTIFACT_URL)" \
 		E2E_ARTIFACT_FRAME_ANCESTORS="$(E2E_APP_URL)" \
-			$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env up -d $(UP_BUILD) --force-recreate $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE); \
+			$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env up -d $(UP_BUILD) --force-recreate $(E2E_PDF_PROCESSOR_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE); \
+		$(MAKE) wait APP_SERVICE=$(E2E_PDF_PROCESSOR_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
 		$(MAKE) wait APP_SERVICE=$(E2E_APP_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
 		$(MAKE) wait APP_SERVICE=$(E2E_ARTIFACT_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
 		E2E_DB_DATABASE="$$db_name" \
@@ -443,6 +447,39 @@ build-prod:
 
 assert-prod-storage-empty:
 	docker run --rm $(PRODUCTION_IMAGE) sh -lc 'if find /var/www/html/storage/app -type f -print -quit | grep -q .; then echo "Production image must not contain baked runtime storage files."; exit 1; fi'
+
+pdf-processor-spike-build:
+	$(DOCKER_BUILD) -f pdf-processor-spike/Dockerfile --target pdf-processor-spike \
+		--tag $(PDF_PROCESSOR_SPIKE_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) pdf-processor-spike
+
+pdf-processor-spike-test: pdf-processor-spike-build
+	docker run --rm --network none --read-only --cap-drop ALL \
+		--security-opt no-new-privileges --pids-limit 32 --memory 512m --cpus 1 \
+		--tmpfs /tmp:rw,noexec,nosuid,size=32m \
+		$(PDF_PROCESSOR_SPIKE_IMAGE) self-test
+	docker run --rm --network none --read-only --cap-drop ALL \
+		--security-opt no-new-privileges --pids-limit 32 --memory 512m --cpus 1 \
+		--tmpfs /tmp:rw,noexec,nosuid,size=32m --entrypoint /bin/sh \
+		$(PDF_PROCESSOR_SPIKE_IMAGE) -ec 'for target in http://127.0.0.1:9 http://169.254.169.254 http://example.com; do if wget -q -T 2 -O /dev/null "$$target"; then echo "network probe unexpectedly succeeded: $$target" >&2; exit 1; fi; done; echo "pdf-processor-spike network probes denied"'
+	bash pdf-processor-spike/timeout-harness.sh "$(PDF_PROCESSOR_SPIKE_IMAGE)"
+
+pdf-processor-service-build:
+	$(DOCKER_BUILD) -f pdf-processor-spike/Dockerfile --target pdf-processor-service \
+		--tag $(PDF_PROCESSOR_SERVICE_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) pdf-processor-spike
+
+pdf-processor-service-test: pdf-processor-service-build
+	docker run --rm --network none --read-only --cap-drop ALL \
+		--security-opt no-new-privileges --pids-limit 32 --memory 512m --cpus 1 \
+		--tmpfs /tmp:rw,noexec,nosuid,size=32m \
+		--env PDF_PROCESSOR_SHARED_SECRET=artifactflow-local-pdf-processor-secret-not-for-production \
+		--entrypoint php $(PDF_PROCESSOR_SERVICE_IMAGE) /srv/pdf-processor-spike/healthcheck.php
+	@if docker run --rm --network none --read-only --cap-drop ALL \
+		--security-opt no-new-privileges --pids-limit 32 --memory 512m --cpus 1 \
+		--tmpfs /tmp:rw,noexec,nosuid,size=32m \
+		--env PDF_PROCESSOR_SHARED_SECRET=artifactflow-local-pdf-processor-secret-not-for-production \
+		--env PHP_CLI_SERVER_WORKERS=2 $(PDF_PROCESSOR_SERVICE_IMAGE); then \
+		echo "PDF processor accepted more than one HTTP worker." >&2; exit 1; \
+	fi
 
 scan-image:
 	@mkdir -p "$(TRIVY_CACHE_DIR)"

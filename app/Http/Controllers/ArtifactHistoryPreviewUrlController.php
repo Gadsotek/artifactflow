@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Application\PageCatalog\ArtifactPreviewUrl;
+use App\Application\PageCatalog\PdfArtifactUrl;
+use App\Application\PageCatalog\PdfProcessorConfiguration;
+use App\Domain\PageCatalog\PageType;
 use App\Models\Page;
 use App\Models\PageVersion;
 use Illuminate\Http\JsonResponse;
@@ -12,9 +15,18 @@ use Illuminate\Support\Facades\Log;
 
 final class ArtifactHistoryPreviewUrlController
 {
-    public function __invoke(Page $page, PageVersion $version, ArtifactPreviewUrl $previewUrl): JsonResponse
-    {
-        if (!$page->type->usesArtifactHostPreview() || $version->page_uid !== $page->uid) {
+    public function __invoke(
+        Page $page,
+        PageVersion $version,
+        ArtifactPreviewUrl $previewUrl,
+        PdfArtifactUrl $pdfArtifactUrl,
+        PdfProcessorConfiguration $pdfProcessorConfiguration,
+    ): JsonResponse {
+        if (
+            !$page->type->usesArtifactHostPreview()
+            || $version->page_uid !== $page->uid
+            || ($page->type === PageType::Pdf && !$pdfProcessorConfiguration->enabled())
+        ) {
             abort(404);
         }
 
@@ -24,7 +36,9 @@ final class ArtifactHistoryPreviewUrlController
         ]);
 
         return response()
-            ->json(['url' => $previewUrl->temporaryHistoryUrl($page, $version)])
+            ->json(['url' => $page->type === PageType::Pdf
+                ? $pdfArtifactUrl->temporaryHistoryUrl($page, $version)
+                : $previewUrl->temporaryHistoryUrl($page, $version)])
             ->header('Cache-Control', 'no-store, private');
     }
 }

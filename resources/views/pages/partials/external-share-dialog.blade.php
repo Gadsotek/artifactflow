@@ -1,6 +1,7 @@
 @use('App\Domain\ExternalSharing\ExternalShareMode')
 @use('App\Domain\ExternalSharing\ExternalShareStatus')
 @use('App\Domain\PageCatalog\PageStatus')
+@use('App\Domain\PageCatalog\PageType')
 
 <dialog
     class="artifactflow-editor-dialog af-detail-dialog"
@@ -27,12 +28,21 @@
                 <div class="af-callout" data-external-sharing-disabled>
                     Archived pages cannot be shared externally.
                 </div>
+            @elseif ($page->type === PageType::Pdf && !$pdfArtifactsEnabled)
+                <div class="af-callout" data-external-sharing-disabled>
+                    PDF artifacts are disabled for this installation. Existing links remain unavailable until PDF support is enabled again.
+                </div>
             @else
                 <section aria-labelledby="external-share-create-title">
                     <h3 class="text-sm font-semibold text-zinc-950 dark:text-zinc-50" id="external-share-create-title">Create an external link</h3>
                     <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
                         The recipient needs no account. Anyone holding the link can open the latest version of this artifact.
                     </p>
+                    @if ($page->type === PageType::Pdf)
+                        <p class="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                            PDF viewing is download-equivalent. The recipient's browser may allow saving, printing, copying, or forwarding the bytes.
+                        </p>
+                    @endif
 
                     <form
                         class="mt-4 space-y-4"

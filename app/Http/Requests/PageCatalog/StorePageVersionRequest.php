@@ -20,6 +20,8 @@ final class StorePageVersionRequest extends AppFormRequest
 {
     private ?string $validatedImageContent = null;
 
+    private ?string $validatedPdfContent = null;
+
     /**
      * @return array<string, list<mixed>>
      */
@@ -41,6 +43,11 @@ final class StorePageVersionRequest extends AppFormRequest
                 'nullable',
                 'file',
                 'max:' . $this->imageUploadRules()->maxUploadKilobytes(),
+            ],
+            'pdf_file' => [
+                'nullable',
+                'file',
+                'max:' . $this->pdfUploadRules()->maxUploadKilobytes(),
             ],
             'base_version_uid' => ['nullable', 'string', 'size:26'],
             'change_summary' => [
@@ -79,6 +86,22 @@ final class StorePageVersionRequest extends AppFormRequest
                 return;
             }
 
+            if ($page->type === PageType::Pdf) {
+                if ($mode !== PageVersionSource::Upload) {
+                    $validator->errors()->add('mode', 'PDF artifacts can only be replaced by upload.');
+
+                    return;
+                }
+
+                $this->validatedPdfContent = $this->pdfUploadRules()->validateUpload(
+                    $validator,
+                    'pdf_file',
+                    $this->pdfFile(),
+                );
+
+                return;
+            }
+
             if ($page->type === PageType::Markdown && $mode !== PageVersionSource::Editor) {
                 $validator->errors()->add('mode', 'Markdown pages must be edited as source text.');
 
@@ -99,12 +122,20 @@ final class StorePageVersionRequest extends AppFormRequest
     {
         if ($this->normalizedMode() === PageVersionSource::Upload) {
             $page = $this->route('page');
-            $file = $page instanceof Page && $page->type === PageType::Image
-                ? $this->imageFile()
-                : $this->htmlFile();
+            $file = $page instanceof Page
+                ? match ($page->type) {
+                    PageType::Image => $this->imageFile(),
+                    PageType::Pdf => $this->pdfFile(),
+                    default => $this->htmlFile(),
+                }
+            : null;
 
             if ($page instanceof Page && $page->type === PageType::Image) {
                 return $this->validatedImageContent ?? '';
+            }
+
+            if ($page instanceof Page && $page->type === PageType::Pdf) {
+                return $this->validatedPdfContent ?? '';
             }
 
             return $file instanceof UploadedFile ? $file->getContent() : '';
@@ -210,6 +241,13 @@ final class StorePageVersionRequest extends AppFormRequest
         return $file instanceof UploadedFile ? $file : null;
     }
 
+    private function pdfFile(): ?UploadedFile
+    {
+        $file = $this->file('pdf_file');
+
+        return $file instanceof UploadedFile ? $file : null;
+    }
+
     private function installationLimit(string $key): int
     {
         return app(InstallationLimitSettings::class)->integer($key);
@@ -223,5 +261,10 @@ final class StorePageVersionRequest extends AppFormRequest
     private function imageUploadRules(): RasterImageUploadRules
     {
         return app(RasterImageUploadRules::class);
+    }
+
+    private function pdfUploadRules(): PdfUploadRules
+    {
+        return app(PdfUploadRules::class);
     }
 }

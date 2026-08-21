@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Application\PageCatalog\PageVersionInspection;
+use App\Application\PageCatalog\PdfProcessorConfiguration;
 use App\Models\Page;
 use App\Models\PageVersion;
 use Illuminate\Http\Request;
@@ -19,6 +20,7 @@ final class PageVersionInspectionController
         Page $page,
         PageVersion $version,
         PageVersionInspection $inspection,
+        PdfProcessorConfiguration $pdfProcessorConfiguration,
     ): Response {
         $user = $this->authenticatedUser($request);
 
@@ -30,6 +32,7 @@ final class PageVersionInspectionController
             ->view('pages.versions.show', [
                 'inspection' => $inspection->forVersion($user, $page, $version),
                 'page' => $page,
+                'pdfArtifactsEnabled' => $pdfProcessorConfiguration->enabled(),
             ])
             ->header('Cache-Control', 'no-store, private');
     }

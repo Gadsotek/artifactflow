@@ -1,6 +1,6 @@
 # Artifact identity, drafts, and versions
 
-ArtifactFlow preserves deliberate outputs as managed artifacts. This document explains when an artifact keeps its identity, what a saved version means, how drafts behave, and how the model is intended to extend to PDF and DOCX.
+ArtifactFlow preserves deliberate outputs as managed artifacts. This document explains when an artifact keeps its identity, what a saved version means, how drafts behave, and how the model extends to the default-off PDF milestone and future DOCX work.
 
 It separates three kinds of statements:
 
@@ -52,7 +52,7 @@ ArtifactFlow also supports an unsaved draft preview for single-file HTML. That p
 
 ## Content versions and metadata
 
-**Current invariant:** a content version retains the authoritative payload. For current HTML artifacts, that payload is also the executable single-file result. For Markdown, the payload is Markdown source and the rendered view is derived from it. For PNG/JPEG uploads, the retained authoritative payload is ArtifactFlow's normalized raster derivative; the untrusted original upload is intentionally discarded after pixel decoding and re-encoding.
+**Current invariant:** a content version retains the authoritative payload. For current HTML artifacts, that payload is also the executable single-file result. For Markdown, the payload is Markdown source and the rendered view is derived from it. For PNG/JPEG uploads, the retained authoritative payload is ArtifactFlow's normalized raster derivative; the untrusted original upload is intentionally discarded after pixel decoding and re-encoding. For the default-off PDF milestone, the authoritative payload is the exact validated private original; extracted text and PDF facts are derived projections.
 
 Catalog metadata such as title, description, category, parent, owner, and tags belongs to the stable artifact record. Metadata writes use a separate optimistic metadata revision and produce domain events and audit entries. A metadata revision is not a content-version snapshot, and content version history does not currently promise to restore historical catalog metadata.
 
@@ -104,19 +104,29 @@ Current image artifacts have no OCR or extracted text. Their searchable content 
 
 Previews use a fixed scriptless viewer on the separate artifact origin. MCP `read` returns normalized rasters up to the configured `ARTIFACT_MAX_BYTES` read limit (10 MiB by default, hard-capped at 64 MiB; base64 framing expands the response by roughly a third) as image content (`content_too_large` is returned before reading a derivative above that limit), and an authorized `update_description` call can revise only the page description when both the observed content-version UID and metadata revision remain current. MCP `create_image` and `replace_image` accept only canonical Base64 PNG/JPEG bytes under the combined page-operation and `mcp:upload` scopes, then use this same isolated normalization path; they do not fetch URLs or retain the submitted container. MCP image revert copies a retained normalized derivative exactly and therefore needs `mcp:update`, not `mcp:upload`.
 
-## PDF and DOCX direction
+## PDF milestone and DOCX direction
 
-**Roadmap direction:** PDF and DOCX support is roadmap work, not current behavior.
+**Current implementation, not shipped behavior:** PDF implementation is default-off and not shipped; DOCX remains roadmap direction only. The native-text PDF application boundary exists
+behind `PDF_PROCESSOR_ENABLED=false`; production startup rejects enabling it until the remaining
+containment and release gates are complete.
 
-Each document replacement is intended to append an immutable artifact version that retains its private original. Bounded, isolated processing may derive searchable text, OCR output, structural metadata, and a safe non-executable preview. Authorized users may read the preview and download the original without making the binary public or inheriting the authenticated application origin.
+Each PDF replacement appends an immutable artifact version that retains its private original. The first PDF slice derives bounded embedded text through an isolated processor; OCR remains a later milestone. Authorized users view the exact original with their browser's native PDF viewer on the existing cookieless artifact origin. Embedded text is untrusted and is not proof that a string is visible or that the document was visually redacted. Preview is download-equivalent and may expose the browser's normal save, print, copy, and link controls.
 
-The planned model is:
+The implemented default-off PDF model is:
 
 - one stable artifact identity;
 - one private original for each document version;
-- extracted searchable text and preview derivatives tied to that version;
-- visible processing status and safe failure behavior;
-- consistent authorization across search, preview, download, history, MCP, and deletion.
+- bounded current-version extracted text, regenerated from a retained original
+  when an old version is restored or reprocessed;
+- visible extraction status and safe failure behavior;
+- consistent authorization across search, native viewing, download, history, MCP, and deletion;
+- actual storage ownership that moves atomically with the complete
+  retained version graph.
+
+Standalone reprocessing verifies the retained original's hash and size, reruns
+the current processor/scanner outside the database transaction, and updates
+only the current version's text projection, scan state, PDF facts, and search
+projection. It does not create a new version or modify the retained original.
 
 Per-version catalog metadata is not promised. Whether future document versions snapshot title, tags, ownership, or other catalog fields needs a separate product and data-model decision.
 
@@ -130,11 +140,12 @@ For generated DOCX, preserving an optional generator source such as Markdown or 
 | A runbook receives a corrected procedure while existing links should stay valid | Append a version |
 | A calculator is adapted for a different business unit with independent access and ownership | Create a new artifact |
 | One dashboard forks into two independently maintained operational views | Create a new artifact |
-| A PDF report is replaced by its next retained revision after document support ships | Append a version |
+| A PDF report is replaced by its next retained revision | Append a version |
 
 ## Related boundaries
 
 - [Architecture](ARCHITECTURE.md) documents application handlers, storage, preview flows, and runtime roles.
 - AI provenance records observed ingestion separately from declared producers, unverified MCP-reported client metadata, evidence, lineage, sensitive references, search, and retention. Detailed product and decision records remain internal.
+- The public PDF [architecture decision](architecture/pdf-artifacts.md) defines the implemented default-off native-text-first boundary; supporting product, delivery, and spike records remain private working material. PDF is not production-enabled or shipped support yet.
 - [Roadmap](../ROADMAP.md) is authoritative for PDF and DOCX candidate scope and required proof.
 - [Threat model](../THREAT-MODEL.md) documents executable HTML isolation and residual risks.
