@@ -72,6 +72,36 @@ services:
       retries: 6
       start_period: 5s
 
+  pdf-processor:
+    build:
+      context: ./pdf-processor-spike
+      dockerfile: Dockerfile
+      target: pdf-processor-service
+    image: artifactflow-pdf-processor-service:local
+    environment:
+      PDF_PROCESSOR_SHARED_SECRET: ${PDF_PROCESSOR_SHARED_SECRET:-artifactflow-local-pdf-processor-secret-not-for-production}
+      PDF_PROCESSOR_MAX_CLOCK_SKEW_SECONDS: 120
+      PORT: 8080
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 32
+    mem_limit: 512m
+    cpus: 1.0
+    networks:
+      - local-pdf-processor
+    healthcheck:
+      test: ["CMD", "php", "/srv/pdf-processor-spike/healthcheck.php"]
+      interval: 1m
+      start_interval: 5s
+      timeout: 15s
+      retries: 6
+      start_period: 30s
+
   app:
     build:
       context: .
@@ -112,7 +142,7 @@ services:
       IMAGE_PARSER_TIMEOUT_SECONDS: ${IMAGE_PARSER_TIMEOUT_SECONDS:-12}
       PDF_PROCESSOR_ENABLED: ${PDF_PROCESSOR_ENABLED:-false}
       PDF_PROCESSOR_URL: ${PDF_PROCESSOR_URL:-http://pdf-processor:8080}
-      PDF_PROCESSOR_SHARED_SECRET: ${PDF_PROCESSOR_SHARED_SECRET:-}
+      PDF_PROCESSOR_SHARED_SECRET: ${PDF_PROCESSOR_SHARED_SECRET:-artifactflow-local-pdf-processor-secret-not-for-production}
       PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS: ${PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS:-2}
       PDF_PROCESSOR_TIMEOUT_SECONDS: ${PDF_PROCESSOR_TIMEOUT_SECONDS:-15}
       IMAGE_NORMALIZATION_USER_PIXEL_BUDGET_PER_MINUTE: ${IMAGE_NORMALIZATION_USER_PIXEL_BUDGET_PER_MINUTE:-67108864}
@@ -182,9 +212,12 @@ services:
         condition: service_healthy
       image-parser:
         condition: service_healthy
+      pdf-processor:
+        condition: service_healthy
     networks:
       - default
       - image-parser
+      - local-pdf-processor
     healthcheck:
       test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh"]
       interval: 10s
@@ -472,10 +505,11 @@ services:
       PDF_PROCESSOR_ENABLED: "false"
       PDF_PROCESSOR_URL: ""
       PDF_PROCESSOR_SHARED_SECRET: ""
-      # Local Reverb uses the shared database so `reverb:restart` works across
-      # processes. The isolated origin probe overrides only this restart-signal
-      # cache; its production limiter stores remain configured separately.
-      CACHE_STORE: ${REVERB_CACHE_STORE:-database}
+      # Reverb must share the app's cache store so `reverb:restart` crosses
+      # processes. Before first-install migrations exist, both fall back to the
+      # shared file cache. The isolated origin probe overrides only this store;
+      # limiter stores stay separate.
+      CACHE_STORE: ${REVERB_CACHE_STORE:-${CACHE_STORE:-file}}
       CACHE_LIMITER: ${CACHE_LIMITER:-}
       ARTIFACT_CACHE_LIMITER: ${ARTIFACT_CACHE_LIMITER:-database_artifact_limiter}
       BROADCAST_CONNECTION: reverb
@@ -571,6 +605,8 @@ volumes:
 
 networks:
   image-parser:
+    internal: true
+  local-pdf-processor:
     internal: true
   pdf-processor:
     internal: true

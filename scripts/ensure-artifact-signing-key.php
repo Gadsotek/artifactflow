@@ -11,8 +11,13 @@ if (!is_string($envPath) || $envPath === '') {
 }
 
 require_once __DIR__ . '/ensure-image-parser-shared-secret.php';
+require_once __DIR__ . '/ensure-pdf-processor-shared-secret.php';
 
 if (ensureImageParserSharedSecret($envPath) !== 0) {
+    exit(1);
+}
+
+if (ensurePdfProcessorSharedSecret($envPath) !== 0) {
     exit(1);
 }
 
