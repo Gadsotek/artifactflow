@@ -94,7 +94,7 @@ final class HarnessPolicyConfigurationTest extends TestCase
             JSON_THROW_ON_ERROR,
         );
         $this->assertIsArray($contract);
-        $this->assertSame(5, $contract['contract_version'] ?? null);
+        $this->assertSame(6, $contract['contract_version'] ?? null);
         $this->assertSame('artifactflow', $contract['canonical_project'] ?? null);
         $this->assertNotSame([], $contract['shared_files'] ?? []);
         $this->assertNotSame([], $contract['normalized_files'] ?? []);
@@ -131,6 +131,37 @@ final class HarnessPolicyConfigurationTest extends TestCase
 
         $policy = $this->projectFile('scripts/ai-hooks/policy.py');
         $this->assertLessThanOrEqual(120, substr_count($policy, "\n") + 1);
+    }
+
+    public function test_codex_uses_a_project_permission_profile_for_secrets_and_control_files(): void
+    {
+        $config = $this->projectFile('.codex/config.toml');
+
+        $this->assertStringContainsString('default_permissions = "artifactflow-edit"', $config);
+        $this->assertStringContainsString('[permissions.artifactflow-edit]', $config);
+        $this->assertStringContainsString('extends = ":workspace"', $config);
+        $this->assertStringContainsString('".env*" = "deny"', $config);
+        $this->assertStringContainsString('"**/.env*" = "deny"', $config);
+        $this->assertStringContainsString('"Makefile" = "read"', $config);
+        $this->assertStringContainsString('"scripts/ai-hooks" = "read"', $config);
+        $this->assertStringContainsString('".github/workflows" = "read"', $config);
+        $this->assertFileExists(base_path('scripts/ai-hooks/verify-codex-permissions.sh'));
+
+        $canary = $this->projectFile('scripts/ai-hooks/verify-codex-permissions.sh');
+        $this->assertStringContainsString('approvals_reviewer', $canary);
+        $this->assertStringContainsString('"user"', $canary);
+        $this->assertStringContainsString('/usr/bin/touch "$repository_root/Makefile"', $canary);
+        $this->assertStringContainsString('/usr/bin/touch "$repository_root/composer.json"', $canary);
+        $this->assertStringContainsString('/usr/bin/head -c 0 "$repository_root/.env"', $canary);
+
+        $makefile = $this->projectFile('Makefile');
+        $this->assertStringContainsString('codex-permissions-test:', $makefile);
+
+        $rules = $this->projectFile('.codex/rules/artifactflow.rules');
+        $this->assertStringContainsString('pattern = ["rm"]', $rules);
+        $this->assertStringContainsString('pattern = ["git", "reset"]', $rules);
+        $this->assertStringContainsString('pattern = ["git", "checkout"]', $rules);
+        $this->assertStringContainsString('pattern = ["docker", "builder", "prune"]', $rules);
     }
 
     private function projectFile(string $path): string

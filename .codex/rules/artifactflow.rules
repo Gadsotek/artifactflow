@@ -13,42 +13,25 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["rm", ["-r", "-R", "-rf", "-fr", "--recursive"]],
+    pattern = ["rm"],
     decision = "prompt",
-    justification = "Recursive deletion requires explicit user approval.",
+    justification = "File deletion requires explicit user approval; the hook applies stricter target checks afterward.",
     match = [
+        "rm public/hot",
         "rm -rf storage/framework/views",
         "rm -R public/build",
-    ],
-    not_match = [
-        "rm public/hot",
-    ],
-)
-
-prefix_rule(
-    pattern = ["rm", "-f", ["-r", "-R"]],
-    decision = "prompt",
-    justification = "Recursive deletion requires explicit user approval.",
-    match = [
         "rm -f -r node_modules",
-    ],
-)
-
-prefix_rule(
-    pattern = ["rm", ["-r", "-R"], "-f"],
-    decision = "prompt",
-    justification = "Recursive deletion requires explicit user approval.",
-    match = [
         "rm -r -f node_modules",
     ],
 )
 
 prefix_rule(
-    pattern = ["git", "reset", "--hard"],
+    pattern = ["git", "reset"],
     decision = "prompt",
-    justification = "Discarding worktree changes requires explicit user approval.",
+    justification = "Resetting Git state requires explicit user approval; the hook applies stricter option checks afterward.",
     match = [
         "git reset --hard",
+        "git reset HEAD --hard",
         "git reset --hard HEAD~1",
     ],
 )
@@ -64,11 +47,13 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["git", "checkout", "--"],
+    pattern = ["git", "checkout"],
     decision = "prompt",
-    justification = "Discarding file changes requires explicit user approval.",
+    justification = "Git checkout can discard local changes and requires explicit user approval.",
     match = [
+        "git checkout main",
         "git checkout -- composer.json",
+        "git checkout HEAD -- composer.json",
     ],
 )
 
@@ -109,6 +94,16 @@ prefix_rule(
     match = [
         "docker system prune",
         "docker system prune -a",
+    ],
+)
+
+prefix_rule(
+    pattern = ["docker", "builder", "prune"],
+    decision = "prompt",
+    justification = "Docker builder pruning can delete local build cache and requires approval.",
+    match = [
+        "docker builder prune",
+        "docker builder prune -a",
     ],
 )
 

@@ -42,7 +42,7 @@ TYPE_COVERAGE_MIN ?= 100
 TYPE_COVERAGE_REPORT ?= storage/framework/testing/type-coverage.json
 COVERAGE_MIN ?= 94
 
-.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps run-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test fuzz-capabilities type-coverage coverage audit audit-php audit-js ai-hooks-test verify-reverb-origin reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty pdf-processor-spike-build pdf-processor-spike-test pdf-processor-service-build pdf-processor-service-test scan-image quality quality-full config-refresh lint-js doctor install
+.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps run-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test fuzz-capabilities type-coverage coverage audit audit-php audit-js ai-hooks-test codex-permissions-test verify-reverb-origin reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty pdf-processor-spike-build pdf-processor-spike-test pdf-processor-service-build pdf-processor-service-test scan-image quality quality-full config-refresh lint-js doctor install
 
 ensure-env:
 	@test -f .env || cp .env.example .env
@@ -246,6 +246,9 @@ audit: audit-php audit-js
 ai-hooks-test:
 	@command -v python3 >/dev/null 2>&1 || { echo 'ArtifactFlow AI safety hook runner requires python3; refusing to run the gate.' >&2; exit 2; }
 	python3 scripts/ai-hooks/run_harness.py
+
+codex-permissions-test:
+	sh scripts/ai-hooks/verify-codex-permissions.sh
 
 verify-reverb-origin:
 	$(MAKE) ensure-env

@@ -451,6 +451,11 @@ def main() -> int:
     assert isinstance(output, dict)
     assert output["permissionDecision"] == "ask"
 
+    codex_push_result = run_hook("guard_command.py", claude_payload, "--agent", "codex")
+    assert codex_push_result.returncode == 0
+    assert codex_push_result.stdout == ""
+    assert "Output: delegate" in codex_push_result.stderr
+
     codex_unsigned_commit_payload = {
         "hook_event_name": "PreToolUse",
         "tool_name": "Bash",
@@ -487,12 +492,14 @@ def main() -> int:
             ),
         },
     }
-    codex_github_ref_result = assert_json_stdout(
-        run_hook("guard_command.py", codex_github_ref_payload, "--agent", "codex")
+    codex_github_ref_result = run_hook(
+        "guard_command.py",
+        codex_github_ref_payload,
+        "--agent",
+        "codex",
     )
-    github_ref_output = codex_github_ref_result["hookSpecificOutput"]
-    assert isinstance(github_ref_output, dict)
-    assert github_ref_output["permissionDecision"] == "ask"
+    assert codex_github_ref_result.returncode == 2
+    assert "explicit user approval" in codex_github_ref_result.stderr.lower()
 
     claude_github_ref_payload = {
         "hook_event_name": "PreToolUse",
@@ -586,15 +593,15 @@ def main() -> int:
             "command": "*** Begin Patch\n*** Update File: Makefile\n@@\n-old\n+new\n*** End Patch",
         },
     }
-    codex_control_patch_result = assert_json_stdout(run_hook(
+    codex_control_patch_result = run_hook(
         "guard_file_write.py",
         protected_patch_payload,
         "--agent",
         "codex",
-    ))
-    codex_control_output = codex_control_patch_result["hookSpecificOutput"]
-    assert isinstance(codex_control_output, dict)
-    assert codex_control_output["permissionDecision"] == "ask"
+    )
+    assert codex_control_patch_result.returncode == 0
+    assert codex_control_patch_result.stdout == ""
+    assert "Output: delegate" in codex_control_patch_result.stderr
 
     claude_control_patch_result = assert_json_stdout(run_hook(
         "guard_file_write.py",
@@ -618,12 +625,14 @@ def main() -> int:
             ),
         },
     }
-    multi_file_patch_result = assert_json_stdout(
-        run_hook("guard_file_write.py", multi_file_patch_payload, "--agent", "codex")
+    multi_file_patch_result = run_hook(
+        "guard_file_write.py",
+        multi_file_patch_payload,
+        "--agent",
+        "codex",
     )
-    multi_file_patch_output = multi_file_patch_result["hookSpecificOutput"]
-    assert isinstance(multi_file_patch_output, dict)
-    assert multi_file_patch_output["permissionDecision"] == "ask"
+    assert multi_file_patch_result.returncode == 0
+    assert multi_file_patch_result.stdout == ""
 
     move_patch_payload = {
         "hook_event_name": "PreToolUse",
@@ -635,12 +644,14 @@ def main() -> int:
             ),
         },
     }
-    move_patch_result = assert_json_stdout(
-        run_hook("guard_file_write.py", move_patch_payload, "--agent", "codex")
+    move_patch_result = run_hook(
+        "guard_file_write.py",
+        move_patch_payload,
+        "--agent",
+        "codex",
     )
-    move_patch_output = move_patch_result["hookSpecificOutput"]
-    assert isinstance(move_patch_output, dict)
-    assert move_patch_output["permissionDecision"] == "ask"
+    assert move_patch_result.returncode == 0
+    assert move_patch_result.stdout == ""
 
     benign_patch_payload = {
         "hook_event_name": "PreToolUse",
@@ -672,30 +683,28 @@ def main() -> int:
         "tool_name": "Write",
         "tool_input": {"destination": "AGENTS.md", "content": "new instructions"},
     }
-    alternate_target_result = assert_json_stdout(run_hook(
+    alternate_target_result = run_hook(
         "guard_file_write.py",
         alternate_target_payload,
         "--agent",
         "codex",
-    ))
-    alternate_target_output = alternate_target_result["hookSpecificOutput"]
-    assert isinstance(alternate_target_output, dict)
-    assert alternate_target_output["permissionDecision"] == "ask"
+    )
+    assert alternate_target_result.returncode == 0
+    assert alternate_target_result.stdout == ""
 
     plural_target_payload = {
         "hook_event_name": "PreToolUse",
         "tool_name": "MultiEdit",
         "tool_input": {"files": ["app/Example.php", "CLAUDE.md"]},
     }
-    plural_target_result = assert_json_stdout(run_hook(
+    plural_target_result = run_hook(
         "guard_file_write.py",
         plural_target_payload,
         "--agent",
         "codex",
-    ))
-    plural_target_output = plural_target_result["hookSpecificOutput"]
-    assert isinstance(plural_target_output, dict)
-    assert plural_target_output["permissionDecision"] == "ask"
+    )
+    assert plural_target_result.returncode == 0
+    assert plural_target_result.stdout == ""
 
     read_only_target_payload = {
         "hook_event_name": "PreToolUse",
@@ -720,7 +729,7 @@ def main() -> int:
 
     trace_records = [json.loads(line) for line in TRACE_FILE.read_text().splitlines()]
     assert trace_records, "Every direct hook invocation must append a local trace record"
-    assert {record["decision"] for record in trace_records} >= {"allow", "ask", "deny"}
+    assert {record["decision"] for record in trace_records} >= {"allow", "ask", "delegate", "deny"}
     assert all("command" not in record and "prompt" not in record and "path" not in record for record in trace_records)
     TRACE_FILE.unlink(missing_ok=True)
 

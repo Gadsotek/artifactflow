@@ -34,13 +34,9 @@ def emit_codex_decision(action: str, reason: str) -> int:
         print(reason, file=sys.stderr)
         return 2
 
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "ask",
-            "permissionDecisionReason": reason,
-        },
-    }))
+    # Codex PreToolUse does not support an "ask" result. Control-path writes
+    # proceed to the active permission profile, where read-only paths trigger
+    # the native PermissionRequest approval flow instead of failing open.
     return 0
 
 
@@ -74,12 +70,16 @@ def main() -> int:
         finding = strongest_finding(findings)
 
     hook_event = event_name(event, args.event)
+    decision = finding.action if finding is not None else "allow"
+    if args.agent == "codex" and finding is not None and finding.action == "ask":
+        decision = "delegate"
+
     emit_hook_trace(
         hook="guard_file_write.py",
         agent=args.agent,
         event=hook_event,
         tool=tool_name or "unknown",
-        decision=finding.action if finding is not None else "allow",
+        decision=decision,
         code=finding.code if finding is not None else None,
     )
     if finding is None:
