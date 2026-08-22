@@ -107,7 +107,7 @@ make shell
 php artisan artifactflow:install
 ```
 
-The wizard asks which environment you're setting up; choose **local** for this stack. It generates any missing application key, artifact signing key, and image-parser shared secret, offers the default-off experimental PDF feature and provisions its processor secret when selected, runs migrations, prompts for your first System Admin, and can add starter demo content (a Mermaid Markdown page plus an interactive HTML artifact). If you enable PDF, exit the container and rerun `make up` so Compose recreates the app with the persisted setting. Then sign in at `http://localhost:18080/login`.
+The wizard asks which environment you're setting up; choose **local** for this stack. It generates any missing application key, artifact signing key, and image-parser shared secret, offers the default-off experimental PDF feature and provisions its processor secret when selected, runs migrations, prompts for your first System Admin, and can add starter demo content (a Mermaid Markdown page plus an interactive HTML artifact). Pass `--reverb` to provision and enable realtime locally. If the installer generates service configuration or enables PDF, exit the container and rerun `make up` so Compose recreates the affected services with the persisted values. Then sign in at `http://localhost:18080/login`.
 
 For an existing installation whose keys and administrator are already provisioned, `make migrate` is the complete schema-upgrade step. A manually provisioned fresh database also needs a System Admin; use the password-safe `artifactflow:bootstrap-admin` procedure in the [operations guide](docs/OPERATIONS.md#first-user-setup). The setup response clears on the first request after every migration file is recorded.
 

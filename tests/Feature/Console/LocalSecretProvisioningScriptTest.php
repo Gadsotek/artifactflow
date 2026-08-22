@@ -50,6 +50,22 @@ final class LocalSecretProvisioningScriptTest extends TestCase
         ]);
     }
 
+    public function test_php_pdf_secret_setup_replaces_values_the_installer_rejects(): void
+    {
+        $this->assertPdfSecretSetupReplacesWeakValues([
+            PHP_BINARY,
+            base_path('scripts/ensure-pdf-processor-shared-secret.php'),
+        ]);
+    }
+
+    public function test_shell_pdf_secret_setup_replaces_values_the_installer_rejects(): void
+    {
+        $this->assertPdfSecretSetupReplacesWeakValues([
+            'sh',
+            base_path('scripts/ensure-pdf-processor-shared-secret.sh'),
+        ]);
+    }
+
     /**
      * @param list<string> $command
      */
@@ -80,6 +96,42 @@ final class LocalSecretProvisioningScriptTest extends TestCase
 
         $this->assertTrue($second->successful(), $second->errorOutput());
         $this->assertSame($generated, $this->values());
+    }
+
+    /**
+     * @param list<string> $command
+     */
+    private function assertPdfSecretSetupReplacesWeakValues(array $command): void
+    {
+        foreach (
+            [
+                'quoted empty' => '""',
+                'short' => 'too-short',
+                'invalid base64' => 'base64:not-valid-base64',
+                'published local placeholder' => 'artifactflow-local-pdf-processor-secret-not-for-production',
+            ] as $label => $weakValue
+        ) {
+            file_put_contents($this->envPath, "PDF_PROCESSOR_SHARED_SECRET={$weakValue}\n");
+
+            $result = Process::path(base_path())->run([...$command, $this->envPath]);
+
+            $this->assertTrue($result->successful(), $label . ': ' . $result->errorOutput());
+            $generated = $this->value(
+                (string) file_get_contents($this->envPath),
+                'PDF_PROCESSOR_SHARED_SECRET',
+            );
+            $this->assertFalse(InstallationSecret::isMissing($generated), $label);
+            $this->assertNotSame($weakValue, $generated, $label);
+
+            $rerun = Process::path(base_path())->run([...$command, $this->envPath]);
+
+            $this->assertTrue($rerun->successful(), $label . ': ' . $rerun->errorOutput());
+            $this->assertSame(
+                $generated,
+                $this->value((string) file_get_contents($this->envPath), 'PDF_PROCESSOR_SHARED_SECRET'),
+                $label,
+            );
+        }
     }
 
     /**

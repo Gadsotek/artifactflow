@@ -224,9 +224,10 @@ final class InstallCommand extends Command
             $plan->hasStep('app_key')
             || $plan->hasStep('signing_key')
             || $plan->hasStep('image_parser_secret')
+            || $plan->hasStep('reverb_keys')
             || $plan->hasStep('pdf_processor_secret')
         )) {
-            $this->line('If a dev server is already running, restart it so the new keys take effect.');
+            $this->line('Exit this container and rerun make up so local services reload the new configuration.');
         }
 
         if ($shouldPersistPdfChoice && $wantsPdf && !$pdfWasEnabled) {

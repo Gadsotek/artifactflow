@@ -11,7 +11,59 @@ if [ ! -f "$env_path" ]; then
     exit 1
 fi
 
-if grep -Eq '^PDF_PROCESSOR_SHARED_SECRET=[[:space:]]*[^[:space:]]' "$env_path"; then
+pdf_processor_secret_is_strong() {
+    candidate="$(printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/")"
+
+    if [ -z "$candidate" ]; then
+        return 1
+    fi
+
+    lowercase="$(printf '%s' "$candidate" | tr '[:upper:]' '[:lower:]')"
+    case "$lowercase" in
+        *replace-with*|*replace_me*|*replace-me*|*change-me*|*changeme*|*placeholder*)
+            return 1
+            ;;
+    esac
+
+    if [ "$candidate" = 'artifactflow-local-pdf-processor-secret-not-for-production' ]; then
+        return 1
+    fi
+
+    case "$candidate" in
+        base64:*)
+            payload="${candidate#base64:}"
+
+            if ! printf '%s' "$payload" | grep -Eq '^[A-Za-z0-9+/]*={0,2}$'; then
+                return 1
+            fi
+
+            decoded_path="$(mktemp)"
+            decoded=false
+
+            if printf '%s' "$payload" | base64 -d >"$decoded_path" 2>/dev/null; then
+                decoded=true
+            elif printf '%s' "$payload" | base64 -D >"$decoded_path" 2>/dev/null; then
+                decoded=true
+            elif command -v openssl >/dev/null 2>&1 \
+                && printf '%s' "$payload" | openssl base64 -d -A >"$decoded_path" 2>/dev/null; then
+                decoded=true
+            fi
+
+            decoded_bytes="$(wc -c <"$decoded_path" | tr -d '[:space:]')"
+            rm -f "$decoded_path"
+
+            [ "$decoded" = true ] && [ "$decoded_bytes" -ge 32 ]
+            ;;
+        *)
+            candidate_bytes="$(LC_ALL=C printf '%s' "$candidate" | wc -c | tr -d '[:space:]')"
+            [ "$candidate_bytes" -ge 32 ]
+            ;;
+    esac
+}
+
+configured_pdf_processor_secret="$(sed -n 's/^PDF_PROCESSOR_SHARED_SECRET=//p' "$env_path" | head -n 1)"
+
+if pdf_processor_secret_is_strong "$configured_pdf_processor_secret"; then
     echo "PDF_PROCESSOR_SHARED_SECRET already configured."
     exit 0
 fi

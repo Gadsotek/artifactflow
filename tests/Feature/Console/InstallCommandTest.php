@@ -109,7 +109,7 @@ final class InstallCommandTest extends TestCase
             ->expectsOutputToContain('make up-local   # app + Vite + edge + Adminer + Mailpit')
             ->expectsOutputToContain('- Refreshing cached configuration')
             ->expectsOutputToContain('Install complete. Sign in at')
-            ->expectsOutputToContain('restart it so the new keys take effect')
+            ->expectsOutputToContain('Exit this container and rerun make up so local services reload the new configuration.')
             ->assertExitCode(0);
 
         Process::assertRan(static function (PendingProcess $process): bool {
@@ -218,6 +218,7 @@ final class InstallCommandTest extends TestCase
             '--password' => 'correct horse battery staple',
         ])
             ->expectsOutputToContain('- Generating Reverb realtime keys')
+            ->expectsOutputToContain('Exit this container and rerun make up so local services reload the new configuration.')
             ->assertExitCode(0);
 
         Process::assertRan(static function (PendingProcess $process): bool {

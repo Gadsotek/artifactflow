@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Infrastructure\Security\SecretStrength;
+
+require_once dirname(__DIR__) . '/app/Infrastructure/Security/SecretStrength.php';
+
 function ensurePdfProcessorSharedSecret(string $envPath): int
 {
     if ($envPath === '') {
@@ -25,7 +29,7 @@ function ensurePdfProcessorSharedSecret(string $envPath): int
     }
 
     if (preg_match('/^PDF_PROCESSOR_SHARED_SECRET=(.*)$/m', $contents, $matches) === 1) {
-        if (trim((string) $matches[1]) !== '') {
+        if (SecretStrength::isStrong(pdfProcessorEnvironmentValue((string) $matches[1]))) {
             echo "PDF_PROCESSOR_SHARED_SECRET already configured.\n";
 
             return 0;
@@ -58,6 +62,22 @@ function ensurePdfProcessorSharedSecret(string $envPath): int
     echo "Generated PDF_PROCESSOR_SHARED_SECRET in .env.\n";
 
     return 0;
+}
+
+function pdfProcessorEnvironmentValue(string $value): string
+{
+    $value = trim($value);
+    $length = strlen($value);
+
+    if ($length >= 2) {
+        $quote = $value[0];
+
+        if (($quote === '"' || $quote === "'") && $value[$length - 1] === $quote) {
+            return substr($value, 1, -1);
+        }
+    }
+
+    return $value;
 }
 
 function generatedPdfProcessorSecret(): string

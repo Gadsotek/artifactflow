@@ -29,6 +29,9 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('mem_limit: 512m', $localProcessor);
         $this->assertStringContainsString('cpus: 1.0', $localProcessor);
         $this->assertStringContainsString('- pdf-processor', $localProcessor);
+        $this->assertStringContainsString('test: ["CMD", "php", "/srv/pdf-processor-spike/healthcheck.php"]', $localProcessor);
+        $this->assertStringContainsString('interval: 1m', $localProcessor);
+        $this->assertStringContainsString('start_interval: 5s', $localProcessor);
         $this->assertStringNotContainsString('ports:', $localProcessor);
         $this->assertStringNotContainsString('- default', $localProcessor);
 
