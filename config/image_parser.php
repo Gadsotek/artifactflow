@@ -5,6 +5,7 @@ declare(strict_types=1);
 return [
     'enabled' => env('IMAGE_PARSER_ENABLED', true),
     'url' => env('IMAGE_PARSER_URL', 'http://image-parser:8080'),
+    'socket_path' => env('IMAGE_PARSER_SOCKET_PATH'),
     'shared_secret' => env('IMAGE_PARSER_SHARED_SECRET', ''),
     'connect_timeout_seconds' => (int) env('IMAGE_PARSER_CONNECT_TIMEOUT_SECONDS', 2),
     'timeout_seconds' => (int) env('IMAGE_PARSER_TIMEOUT_SECONDS', 12),

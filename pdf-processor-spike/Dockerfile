@@ -46,6 +46,11 @@ FROM pdf-processor-spike AS pdf-processor-service
 
 USER root
 
+RUN apk add --no-cache socat=1.8.1.3-r0 \
+    && mkdir -p /run/artifactflow/pdf-processor \
+    && chown pdf-spike:pdf-spike /run/artifactflow/pdf-processor \
+    && chmod 0755 /run/artifactflow/pdf-processor
+
 COPY src/PdfProcessor.php /srv/pdf-processor-spike/src/PdfProcessor.php
 COPY public /srv/pdf-processor-spike/public
 COPY start.sh healthcheck.php /srv/pdf-processor-spike/

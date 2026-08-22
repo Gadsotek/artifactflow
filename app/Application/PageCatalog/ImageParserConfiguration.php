@@ -48,6 +48,11 @@ final readonly class ImageParserConfiguration
         return $normalized;
     }
 
+    public function socketPath(): ?string
+    {
+        return $this->optionalAbsolutePath('image_parser.socket_path', 'Image parser socket path');
+    }
+
     public function connectTimeoutSeconds(): int
     {
         $seconds = ImageParserTimeouts::connectSeconds(config('image_parser.connect_timeout_seconds'));
@@ -79,5 +84,20 @@ final readonly class ImageParserConfiguration
         $value = config($key);
 
         return is_string($value) ? $value : '';
+    }
+
+    private function optionalAbsolutePath(string $key, string $label): ?string
+    {
+        $path = trim($this->string($key));
+
+        if ($path === '') {
+            return null;
+        }
+
+        if (!str_starts_with($path, '/') || str_contains($path, "\0")) {
+            throw new LogicException(sprintf('%s must be an absolute filesystem path.', $label));
+        }
+
+        return $path;
     }
 }

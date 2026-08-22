@@ -1,6 +1,6 @@
 # ArtifactFlow Operations
 
-Last updated: 2026-07-23
+Last updated: 2026-08-22
 
 ## Local Runtime
 
@@ -10,8 +10,8 @@ The local stack follows the architecture document:
 | --- | --- |
 | `app` | Main Laravel HTTP origin. |
 | `artifact-host` | Same code image, separate stateless artifact-serving origin. |
-| `image-parser` | Minimal internal-only PNG/JPEG decoder and normalizer; no app source, database, artifact storage, or public port. |
-| `pdf-processor` | Default-running, internal-only PDF validator/text extractor; PDF application behavior remains default-off. |
+| `image-parser` | Minimal networkless PNG/JPEG decoder and normalizer reached through a Unix socket; no app source, database, artifact storage, or public port. |
+| `pdf-processor` | Default-running, networkless PDF validator/text extractor reached through a Unix socket; PDF application behavior remains default-off. |
 | `worker` | Queue worker (`queue:work`). Scans, projections, and audit side effects run synchronously inside the write transaction; the only queued work today is outbound mail. |
 | `scheduler` | Laravel scheduler loop (`schedule:work`): outbox dispatch and the nightly retention jobs. |
 | `reverb` | Local WebSocket runtime; realtime application behavior remains disabled until configured and enabled. |
@@ -354,12 +354,17 @@ Invitation creation is rate-limited with `WORKSPACE_INVITATIONS_PER_MINUTE`; inv
 
 ArtifactFlow supports production self-hosting through its production image and runtime contract. The repository does not ship a one-click production Compose stack: operators provide deployment-specific orchestration, TLS termination, PostgreSQL, secrets, and persistent volumes. The bundled `docker-compose.yml` remains local-only.
 
-Production uses the Caddy/FrankenPHP application image plus the minimal image-parser target:
+The production build gate builds the Caddy/FrankenPHP application image, the
+minimal image-parser target, and the default-off PDF service candidate so every
+shipped native dependency is scanned:
 
 ```sh
 make build-prod
-docker build --pull --target image-parser --tag artifactflow-image-parser:production .
 ```
+
+Tagged releases currently publish only the application image. Build and deploy
+the separately tagged `artifactflow-image-parser:production` image beside it;
+the PDF service remains blocked from production enablement.
 
 The same production image runs every role. `APP_RUNTIME_ROLE` selects the HTTP surface
 (app vs. artifact host) and is validated by the boot gate, but it does **not** by itself
@@ -384,10 +389,10 @@ Run the separately built `image-parser` image as its own service. Give it only
 signs the app's input-byte, output-byte, pixel, and dimension limits; the parser validates them
 against fixed protocol ceilings before native decode. It therefore has no independent copy of
 the installation's `PAGE_IMAGE_*` settings. The parser needs no application env, database access,
-artifact-storage mount, or
-public ingress. Put it and every app replica that accepts writes on a private network with no
-external route, expose its port only on that network, and apply at least the restrictions used by
-local Compose: non-root, read-only root filesystem, all capabilities dropped,
+artifact-storage mount, or public ingress. Prefer the local Compose socket-only topology
+(`IMAGE_PARSER_SOCKET_PATH`) with the parser in network mode `none`; otherwise enforce the same
+directional policy at the orchestrator or host firewall. Apply at least the remaining restrictions
+used by local Compose: non-root, read-only root filesystem, all capabilities dropped,
 `no-new-privileges`, no-exec temporary storage, and CPU, memory, and PID limits. The application
 production image deliberately contains neither GD nor EXIF. Keep one normalization process per
 512 MiB parser cgroup: maximum-pixel decode, EXIF rotation, and re-encoding can approach that
@@ -415,6 +420,15 @@ artifact host serves those exact bytes after signature and access checks; separa
 image volumes produce successful saves followed by 404 previews. Mount the app side read/write
 and the artifact-host side read-only when the storage driver and orchestrator support it. Keep
 the shared mount private and outside the image's public web root.
+
+The artifact host also needs directional containment. It may accept preview ingress and connect
+to its restricted PostgreSQL role and private artifact storage, but it must not initiate
+connections to the app, workers, schedulers, native processors, cloud metadata, or the internet.
+Do not attach it to the app's general-purpose network. If one ingress proxy is dual-homed across
+the app and artifact segments, it is a trusted bridge and must deny app-hostname proxying from the
+artifact segment (or use separate listeners with equivalent network policy). Local Compose puts
+the artifact host on an internal runtime segment and tests both direct app callbacks and the
+dual-homed Caddy denial from a running container.
 
 The `worker` runs `queue:work` (outbound mail is the only queued work today) and the
 `scheduler` runs `schedule:work`, which drives `artifactflow:dispatch-domain-events` (the
@@ -463,11 +477,13 @@ your secret manager; the parser and only app-role replicas that accept image wri
 same parser secret. Artifact-host, worker, and scheduler roles must receive an empty parser secret;
 their production boot gate rejects a non-empty value.
 
-Parser requests and responses are HMAC authenticated and nonce-bound, but plain HTTP does not
-encrypt the private link. The default `http://image-parser:8080` is appropriate only inside one
-trusted, internal-only container network. For a cross-host parser, terminate mutually
-authenticated TLS on both ends and point `IMAGE_PARSER_URL` at that protected origin; never expose
-the bare parser listener to a shared or public network.
+Parser requests and responses are HMAC authenticated and nonce-bound. Local Compose mounts a
+dedicated Unix socket into the app and runs the parser with Docker network mode `none`, so a
+compromised parser has no callback or external route. For a cross-host parser, terminate mutually
+authenticated TLS on both ends, point `IMAGE_PARSER_URL` at that protected origin, and enforce a
+directional destination policy: app-to-parser is allowed, while parser-to-app, metadata-service,
+and internet connections are denied. An `internal` Docker bridge alone is not directional and is
+therefore insufficient.
 
 PostgreSQL transport must verify the server identity in production. Set `DB_SSLMODE=verify-full` and mount a trusted CA bundle or database CA, then point `DB_SSLROOTCERT` at that file. The production boot guard rejects `disable`, `allow`, `prefer`, `require`, and `verify-ca` because those modes either permit cleartext fallback or skip hostname verification.
 
@@ -685,6 +701,7 @@ Content and storage limits:
 | `PAGE_IMAGE_MAX_PIXELS` | 16 Mi pixels | New-upload decoded pixel ceiling; hard-capped at 16 Mi pixels while retained normalized versions remain readable up to 40 Mi pixels |
 | `PAGE_IMAGE_MAX_DIMENSION` | 16,384 px | Maximum width or height |
 | `IMAGE_PARSER_ENABLED` | `true` | Enables new image uploads. Set `false` to run without parser credentials; retained normalized images remain readable. |
+| `IMAGE_PARSER_SOCKET_PATH` | empty | Optional app-runtime-only Unix socket for directional local transport. When set, cURL connects through this socket while `IMAGE_PARSER_URL` supplies the HTTP origin/Host value. Never mount it into artifact-host, worker, or scheduler roles. |
 | `IMAGE_PARSER_CONNECT_TIMEOUT_SECONDS` | 2 seconds | App-to-parser connection timeout (hard-capped at 10 seconds) |
 | `IMAGE_PARSER_TIMEOUT_SECONDS` | 12 seconds | Whole normalization timeout (hard-capped at 30 seconds) |
 | `IMAGE_PARSER_MAX_CLOCK_SKEW_SECONDS` | 120 seconds | Parser request timestamp tolerance (hard-capped at 300 seconds). Keep host clocks synchronized; authenticated skew failures are recorded as `image_parser.request_failed` with reason `clock_skew`. |
@@ -694,6 +711,7 @@ Content and storage limits:
 | `IMAGE_NORMALIZATION_INSTALLATION_WORK_BUDGET_PER_MINUTE` | 256 Mi work units | Installation-wide non-pixel work budget; must be at least the principal budget and cannot exceed 256 Mi work units. |
 | `PDF_PROCESSOR_ENABLED` | `false` | Default-off gate for PDF web/MCP create, replace, restore, reprocess, native preview/download, and MCP PDF read/search. The guided local/test installer can change it through its experimental PDF prompt or persist `true` through `--pdf`; rerun `make up` after either change so Compose reloads it. Authorized retained PDFs remain visible in the normal web catalog/search because this is a processing/delivery safety switch, not access revocation. The production boot gate currently rejects `true` until the PDF roadmap's containment and release gates are complete. Local/E2E app and artifact runtimes use the same boolean when testing, but the artifact host must not receive the processor URL or shared secret. |
 | `PDF_PROCESSOR_URL` | `http://pdf-processor:8080` | App-runtime-only internal PDF processor origin. It must not be public or supplied to the artifact host. |
+| `PDF_PROCESSOR_SOCKET_PATH` | empty | Optional app-runtime-only Unix socket for directional local transport. Local Compose uses it and gives the processor no Docker network. |
 | `PDF_PROCESSOR_SHARED_SECRET` | empty | App-runtime-only HMAC secret shared with the PDF processor. Use at least 32 non-placeholder bytes and never reuse `APP_KEY` or the artifact signing key. |
 | `PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS` | 2 seconds | App-to-processor connection timeout (hard-capped at 60 seconds). |
 | `PDF_PROCESSOR_TIMEOUT_SECONDS` | 15 seconds | Whole app-to-processor request timeout (hard-capped at 60 seconds); the native engine has a shorter internal deadline. |
@@ -782,8 +800,8 @@ CI runs:
 - Vite asset build.
 - Full Playwright E2E suite on Chromium, plus the tagged artifact security corpus—including the
   seeded artifact-parser differential fuzzer—on Firefox and WebKit.
-- Production Caddy/FrankenPHP image build.
-- Trivy image scan with vulnerability, secret, and misconfiguration scanners.
+- Production Caddy/FrankenPHP image plus native parser/processor image builds.
+- Trivy vulnerability, secret, and misconfiguration scans of every built runtime image.
 - Trivy filesystem scan combining repository secret and misconfiguration checks.
 
 Nightly audit repeats dependency audits, production image build, and Trivy so new CVEs are surfaced even when no code has changed. Branch protection for protected release branches must require two status checks, or the gates are advisory rather than enforced: the aggregate `ci-required` check (which folds in the DCO sign-off gate) and the `cla` check from the separate `CLA` workflow. The CLA runs on `pull_request_target` and therefore cannot be a dependency of `ci-required`, so it must be required in branch protection in its own right — otherwise a pull request could merge without a signed CLA.

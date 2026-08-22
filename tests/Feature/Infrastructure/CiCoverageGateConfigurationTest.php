@@ -207,6 +207,12 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('--config p/php', $makefile);
         $this->assertStringContainsString('--config p/security-audit', $makefile);
         $this->assertStringContainsString('--scanners vuln,secret,misconfig', $makefile);
+        $this->assertStringContainsString('IMAGE_PARSER_IMAGE ?= artifactflow-image-parser:production', $makefile);
+        $this->assertStringContainsString('PDF_PROCESSOR_SERVICE_IMAGE ?= artifactflow-pdf-processor-service:local', $makefile);
+        $this->assertStringContainsString('--target image-parser --tag $(IMAGE_PARSER_IMAGE)', $makefile);
+        $this->assertStringContainsString('--target pdf-processor-service', $makefile);
+        $this->assertStringContainsString('$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(IMAGE_PARSER_IMAGE)', $makefile);
+        $this->assertStringContainsString('$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(PDF_PROCESSOR_SERVICE_IMAGE)', $makefile);
         $this->assertStringContainsString('fs $(TRIVY_REPO_SCAN_SKIP_DIRS) --scanners secret,misconfig --severity MEDIUM,HIGH,CRITICAL --exit-code 1 /src', $makefile);
         $this->assertStringNotContainsString('trivy" config $(TRIVY_REPO_SCAN_SKIP_DIRS)', $makefile);
         $this->assertStringContainsString('--skip-dirs /src/vendor', $makefile);
@@ -384,7 +390,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
             $makefile,
         );
         $this->assertStringContainsString(
-            '$(COMPOSE) --profile realtime up -d $(UP_BUILD) app artifact-host worker scheduler reverb',
+            '$(COMPOSE) --profile realtime up -d $(UP_BUILD) app artifact-host artifact-gateway worker scheduler reverb',
             $makefile,
         );
         $this->assertStringContainsString(

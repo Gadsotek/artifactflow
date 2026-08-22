@@ -27,6 +27,7 @@ final class PdfProcessorClientTest extends TestCase
         config([
             'pdf_processor.enabled' => true,
             'pdf_processor.url' => 'http://pdf-processor.test',
+            'pdf_processor.socket_path' => null,
             'pdf_processor.shared_secret' => self::SHARED_SECRET,
             'pdf_processor.connect_timeout_seconds' => 2,
             'pdf_processor.timeout_seconds' => 15,
@@ -38,10 +39,11 @@ final class PdfProcessorClientTest extends TestCase
     {
         $pdf = "%PDF-1.7\nembedded text\n%%EOF";
 
-        Http::fake(function (Request $request) use ($pdf): \GuzzleHttp\Promise\PromiseInterface {
+        Http::fake(function (Request $request, array $options) use ($pdf): \GuzzleHttp\Promise\PromiseInterface {
             $this->assertSame('http://pdf-processor.test/v1/inspect', $request->url());
             $this->assertSame('application/pdf', $request->header('Content-Type')[0] ?? null);
             $this->assertSame($pdf, $request->body());
+            $this->assertTrue($options['stream'] ?? false);
             $timestamp = $request->header('X-ArtifactFlow-Processor-Timestamp')[0] ?? '';
             $nonce = $request->header('X-ArtifactFlow-Processor-Nonce')[0] ?? '';
             $signature = $request->header('X-ArtifactFlow-Processor-Signature')[0] ?? '';

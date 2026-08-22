@@ -41,7 +41,7 @@ final readonly class EnvFileWriter
             // preg_replace_callback (not preg_replace) so a value containing $1, \0,
             // or ${x} is written verbatim instead of being interpreted as a
             // backreference in the replacement string.
-            $replaced = preg_replace_callback($pattern, static fn (): string => $line, $contents, 1);
+            $replaced = preg_replace_callback($pattern, static fn (): string => $line, $contents);
 
             return is_string($replaced) ? $replaced : $contents;
         }

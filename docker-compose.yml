@@ -21,6 +21,9 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+    networks:
+      - default
+      - artifact-runtime
 
   db-test:
     profiles: ["test"]
@@ -42,6 +45,9 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+    networks:
+      - default
+      - e2e-artifact-runtime
 
   image-parser:
     build:
@@ -52,6 +58,7 @@ services:
     environment:
       IMAGE_PARSER_SHARED_SECRET: ${IMAGE_PARSER_SHARED_SECRET:-artifactflow-local-parser-secret-not-for-production}
       IMAGE_PARSER_MAX_CLOCK_SKEW_SECONDS: ${IMAGE_PARSER_MAX_CLOCK_SKEW_SECONDS:-120}
+      IMAGE_PARSER_SOCKET_PATH: /run/artifactflow/image-parser/parser.sock
       PORT: 8080
     read_only: true
     tmpfs:
@@ -63,8 +70,12 @@ services:
     pids_limit: 32
     mem_limit: 512m
     cpus: 1.0
-    networks:
-      - image-parser
+    network_mode: none
+    volumes:
+      - image-parser-socket:/run/artifactflow/image-parser
+    depends_on:
+      image-parser-socket-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "php", "/srv/image-parser/healthcheck.php"]
       interval: 5s
@@ -81,6 +92,7 @@ services:
     environment:
       PDF_PROCESSOR_SHARED_SECRET: ${PDF_PROCESSOR_SHARED_SECRET:-artifactflow-local-pdf-processor-secret-not-for-production}
       PDF_PROCESSOR_MAX_CLOCK_SKEW_SECONDS: 120
+      PDF_PROCESSOR_SOCKET_PATH: /run/artifactflow/pdf-processor/processor.sock
       PORT: 8080
     read_only: true
     tmpfs:
@@ -92,8 +104,12 @@ services:
     pids_limit: 32
     mem_limit: 512m
     cpus: 1.0
-    networks:
-      - local-pdf-processor
+    network_mode: none
+    volumes:
+      - pdf-processor-socket:/run/artifactflow/pdf-processor
+    depends_on:
+      pdf-processor-socket-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "php", "/srv/pdf-processor-spike/healthcheck.php"]
       interval: 1m
@@ -136,12 +152,14 @@ services:
       PAGE_IMAGE_MAX_PIXELS: ${PAGE_IMAGE_MAX_PIXELS:-16777216}
       PAGE_IMAGE_MAX_DIMENSION: ${PAGE_IMAGE_MAX_DIMENSION:-16384}
       IMAGE_PARSER_ENABLED: ${IMAGE_PARSER_ENABLED:-true}
-      IMAGE_PARSER_URL: ${IMAGE_PARSER_URL:-http://image-parser:8080}
+      IMAGE_PARSER_URL: ${IMAGE_PARSER_URL:-http://localhost}
+      IMAGE_PARSER_SOCKET_PATH: /run/artifactflow/image-parser/parser.sock
       IMAGE_PARSER_SHARED_SECRET: ${IMAGE_PARSER_SHARED_SECRET:-artifactflow-local-parser-secret-not-for-production}
       IMAGE_PARSER_CONNECT_TIMEOUT_SECONDS: ${IMAGE_PARSER_CONNECT_TIMEOUT_SECONDS:-2}
       IMAGE_PARSER_TIMEOUT_SECONDS: ${IMAGE_PARSER_TIMEOUT_SECONDS:-12}
       PDF_PROCESSOR_ENABLED: ${PDF_PROCESSOR_ENABLED:-false}
-      PDF_PROCESSOR_URL: ${PDF_PROCESSOR_URL:-http://pdf-processor:8080}
+      PDF_PROCESSOR_URL: ${PDF_PROCESSOR_URL:-http://localhost}
+      PDF_PROCESSOR_SOCKET_PATH: /run/artifactflow/pdf-processor/processor.sock
       PDF_PROCESSOR_SHARED_SECRET: ${PDF_PROCESSOR_SHARED_SECRET:-artifactflow-local-pdf-processor-secret-not-for-production}
       PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS: ${PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS:-2}
       PDF_PROCESSOR_TIMEOUT_SECONDS: ${PDF_PROCESSOR_TIMEOUT_SECONDS:-15}
@@ -200,11 +218,13 @@ services:
       ARTIFACT_STORAGE_ROOT: ${ARTIFACT_STORAGE_ROOT:-/var/www/html/storage/app/private_artifacts}
     ports:
       - "127.0.0.1:${APP_PORT:-18080}:8000"
-    volumes: &app-volumes
+    volumes:
       - ./:/var/www/html:delegated
       - ./vendor:/var/www/html/vendor
       - node-modules:/var/www/html/node_modules
       - composer-cache:/home/app/.composer/cache
+      - image-parser-socket:/run/artifactflow/image-parser:ro
+      - pdf-processor-socket:/run/artifactflow/pdf-processor:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -216,8 +236,6 @@ services:
         condition: service_healthy
     networks:
       - default
-      - image-parser
-      - local-pdf-processor
     healthcheck:
       test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh"]
       interval: 10s
@@ -244,17 +262,27 @@ services:
       SESSION_DRIVER: array
       QUEUE_CONNECTION: sync
       IMAGE_PARSER_URL: ""
+      IMAGE_PARSER_SOCKET_PATH: ""
       IMAGE_PARSER_SHARED_SECRET: ""
       # The same installation gate controls PDF delivery, but this runtime still
       # receives no processor endpoint or credential.
       PDF_PROCESSOR_URL: ""
+      PDF_PROCESSOR_SOCKET_PATH: ""
       PDF_PROCESSOR_SHARED_SECRET: ""
-    ports:
-      - "127.0.0.1:${ARTIFACT_HOST_PORT:-18081}:8000"
-    volumes: *app-volumes
+    volumes: &app-volumes
+      - ./:/var/www/html:delegated
+      - ./vendor:/var/www/html/vendor
+      - node-modules:/var/www/html/node_modules
+      - composer-cache:/home/app/.composer/cache
     depends_on:
       db:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - artifact-runtime
     healthcheck:
       test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh"]
       interval: 10s
@@ -262,16 +290,17 @@ services:
       retries: 12
       start_period: 20s
 
-  e2e-pdf-processor:
+  e2e-image-parser:
     profiles: ["e2e"]
     build:
-      context: ./pdf-processor-spike
+      context: .
       dockerfile: Dockerfile
-      target: pdf-processor-service
-    image: artifactflow-pdf-processor-service:local
+      target: image-parser
+    image: artifactflow-image-parser:dev
     environment:
-      PDF_PROCESSOR_SHARED_SECRET: ${E2E_PDF_PROCESSOR_SHARED_SECRET:-artifactflow-e2e-pdf-processor-secret}
-      PDF_PROCESSOR_MAX_CLOCK_SKEW_SECONDS: 120
+      IMAGE_PARSER_SHARED_SECRET: ${E2E_IMAGE_PARSER_SHARED_SECRET:-artifactflow-e2e-image-parser-secret}
+      IMAGE_PARSER_MAX_CLOCK_SKEW_SECONDS: 120
+      IMAGE_PARSER_SOCKET_PATH: /run/artifactflow/image-parser/parser.sock
       PORT: 8080
     read_only: true
     tmpfs:
@@ -283,8 +312,47 @@ services:
     pids_limit: 32
     mem_limit: 512m
     cpus: 1.0
-    networks:
-      - pdf-processor
+    network_mode: none
+    volumes:
+      - e2e-image-parser-socket:/run/artifactflow/image-parser
+    depends_on:
+      e2e-image-parser-socket-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "php", "/srv/image-parser/healthcheck.php"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+  e2e-pdf-processor:
+    profiles: ["e2e"]
+    build:
+      context: ./pdf-processor-spike
+      dockerfile: Dockerfile
+      target: pdf-processor-service
+    image: artifactflow-pdf-processor-service:local
+    environment:
+      PDF_PROCESSOR_SHARED_SECRET: ${E2E_PDF_PROCESSOR_SHARED_SECRET:-artifactflow-e2e-pdf-processor-secret}
+      PDF_PROCESSOR_MAX_CLOCK_SKEW_SECONDS: 120
+      PDF_PROCESSOR_SOCKET_PATH: /run/artifactflow/pdf-processor/processor.sock
+      PORT: 8080
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 32
+    mem_limit: 512m
+    cpus: 1.0
+    network_mode: none
+    volumes:
+      - e2e-pdf-processor-socket:/run/artifactflow/pdf-processor
+    depends_on:
+      e2e-pdf-processor-socket-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "php", "/srv/pdf-processor-spike/healthcheck.php"]
       interval: 5s
@@ -334,8 +402,13 @@ services:
       # Keep the suite from exhausting the cross-selector production ceiling;
       # focused feature tests verify that ceiling with deliberately low limits.
       EXTERNAL_SHARE_PUBLIC_IP_RATE_LIMIT_PER_MINUTE: ${E2E_EXTERNAL_SHARE_PUBLIC_IP_RATE_LIMIT_PER_MINUTE:-1000}
+      IMAGE_PARSER_ENABLED: "true"
+      IMAGE_PARSER_URL: http://localhost
+      IMAGE_PARSER_SOCKET_PATH: /run/artifactflow/e2e-image-parser/parser.sock
+      IMAGE_PARSER_SHARED_SECRET: ${E2E_IMAGE_PARSER_SHARED_SECRET:-artifactflow-e2e-image-parser-secret}
       PDF_PROCESSOR_ENABLED: "true"
-      PDF_PROCESSOR_URL: http://e2e-pdf-processor:8080
+      PDF_PROCESSOR_URL: http://localhost
+      PDF_PROCESSOR_SOCKET_PATH: /run/artifactflow/e2e-pdf-processor/processor.sock
       PDF_PROCESSOR_SHARED_SECRET: ${E2E_PDF_PROCESSOR_SHARED_SECRET:-artifactflow-e2e-pdf-processor-secret}
     command: ["sh", "/var/www/html/docker/start-e2e-app.sh"]
     ports:
@@ -347,19 +420,19 @@ services:
       - node-modules:/var/www/html/node_modules
       - composer-cache:/home/app/.composer/cache
       - e2e-artifacts:/var/www/html/storage/app/e2e_private_artifacts
+      - e2e-image-parser-socket:/run/artifactflow/e2e-image-parser:ro
+      - e2e-pdf-processor-socket:/run/artifactflow/e2e-pdf-processor:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       db-test:
         condition: service_healthy
-      image-parser:
+      e2e-image-parser:
         condition: service_healthy
       e2e-pdf-processor:
         condition: service_healthy
     networks:
       - default
-      - image-parser
-      - pdf-processor
     healthcheck:
       test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh && PORT=8001 /var/www/html/docker/healthcheck-app.sh"]
       interval: 10s
@@ -405,16 +478,16 @@ services:
       TURNSTILE_SECRET_KEY: ""
       TURNSTILE_EXPECTED_HOSTNAME: ""
       IMAGE_PARSER_URL: ""
+      IMAGE_PARSER_SOCKET_PATH: ""
       IMAGE_PARSER_SHARED_SECRET: ""
       # PDF delivery is under test here, but the artifact runtime still receives
       # no processor endpoint or credential.
       PDF_PROCESSOR_ENABLED: "true"
       PDF_PROCESSOR_URL: ""
+      PDF_PROCESSOR_SOCKET_PATH: ""
       PDF_PROCESSOR_SHARED_SECRET: ""
       ARTIFACT_STORAGE_ROOT: /var/www/html/storage/app/e2e_private_artifacts
       VITE_HOT_FILE: /tmp/artifactflow-e2e-no-hot
-    ports:
-      - "127.0.0.1:${E2E_ARTIFACT_HOST_PORT:-18181}:8000"
     volumes:
       - ./:/var/www/html:delegated
       - ./vendor:/var/www/html/vendor
@@ -424,12 +497,145 @@ services:
     depends_on:
       db-test:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - e2e-artifact-runtime
     healthcheck:
       test: ["CMD-SHELL", "/var/www/html/docker/healthcheck-app.sh"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 20s
+
+  e2e-edge:
+    profiles: ["e2e"]
+    image: caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
+    environment:
+      APP_UPSTREAM: e2e-app:8000
+      ARTIFACT_UPSTREAM: e2e-artifact-host:8000
+      ARTIFACT_RUNTIME_CIDR: ${E2E_ARTIFACT_RUNTIME_NETWORK_SUBNET:-10.254.72.0/24}
+    volumes:
+      - ./docker/Caddyfile.local:/etc/caddy/Caddyfile:ro
+    depends_on:
+      e2e-app:
+        condition: service_healthy
+      e2e-artifact-host:
+        condition: service_healthy
+    networks:
+      - default
+      - e2e-artifact-runtime
+
+  image-parser-socket-init:
+    image: artifactflow-image-parser:dev
+    user: "0:0"
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "chmod 0755 /socket && chown 10001:10001 /socket"]
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+    restart: "no"
+    volumes:
+      - image-parser-socket:/socket
+
+  pdf-processor-socket-init:
+    image: artifactflow-pdf-processor-service:local
+    user: "0:0"
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "chmod 0755 /socket && chown 10002:10002 /socket"]
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+    restart: "no"
+    volumes:
+      - pdf-processor-socket:/socket
+
+  e2e-pdf-processor-socket-init:
+    profiles: ["e2e"]
+    image: artifactflow-pdf-processor-service:local
+    user: "0:0"
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "chmod 0755 /socket && chown 10002:10002 /socket"]
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+    restart: "no"
+    volumes:
+      - e2e-pdf-processor-socket:/socket
+
+  e2e-image-parser-socket-init:
+    profiles: ["e2e"]
+    image: artifactflow-image-parser:dev
+    user: "0:0"
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "chmod 0755 /socket && chown 10001:10001 /socket"]
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+    restart: "no"
+    volumes:
+      - e2e-image-parser-socket:/socket
+
+  artifact-gateway:
+    image: caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
+    environment:
+      ARTIFACT_UPSTREAM: artifact-host:8000
+    ports:
+      - "127.0.0.1:${ARTIFACT_HOST_PORT:-18081}:80"
+    volumes:
+      - ./docker/Caddyfile.artifact-gateway:/etc/caddy/Caddyfile:ro
+    depends_on:
+      artifact-host:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - default
+      - artifact-runtime
+
+  e2e-artifact-gateway:
+    profiles: ["e2e"]
+    image: caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
+    environment:
+      ARTIFACT_UPSTREAM: e2e-artifact-host:8000
+    ports:
+      - "127.0.0.1:${E2E_ARTIFACT_HOST_PORT:-18181}:80"
+    volumes:
+      - ./docker/Caddyfile.artifact-gateway:/etc/caddy/Caddyfile:ro
+    depends_on:
+      e2e-artifact-host:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - default
+      - e2e-artifact-runtime
 
   worker:
     image: artifactflow-app:dev
@@ -438,9 +644,11 @@ services:
       <<: *app-environment
       APP_RUNTIME_ROLE: worker
       IMAGE_PARSER_URL: ""
+      IMAGE_PARSER_SOCKET_PATH: ""
       IMAGE_PARSER_SHARED_SECRET: ""
       PDF_PROCESSOR_ENABLED: "false"
       PDF_PROCESSOR_URL: ""
+      PDF_PROCESSOR_SOCKET_PATH: ""
       PDF_PROCESSOR_SHARED_SECRET: ""
     volumes: *app-volumes
     depends_on:
@@ -460,9 +668,11 @@ services:
       <<: *app-environment
       APP_RUNTIME_ROLE: scheduler
       IMAGE_PARSER_URL: ""
+      IMAGE_PARSER_SOCKET_PATH: ""
       IMAGE_PARSER_SHARED_SECRET: ""
       PDF_PROCESSOR_ENABLED: "false"
       PDF_PROCESSOR_URL: ""
+      PDF_PROCESSOR_SOCKET_PATH: ""
       PDF_PROCESSOR_SHARED_SECRET: ""
     volumes: *app-volumes
     depends_on:
@@ -501,9 +711,11 @@ services:
       # the parser endpoint or its HMAC credential merely because it shares the
       # application environment anchor.
       IMAGE_PARSER_URL: ""
+      IMAGE_PARSER_SOCKET_PATH: ""
       IMAGE_PARSER_SHARED_SECRET: ""
       PDF_PROCESSOR_ENABLED: "false"
       PDF_PROCESSOR_URL: ""
+      PDF_PROCESSOR_SOCKET_PATH: ""
       PDF_PROCESSOR_SHARED_SECRET: ""
       # Reverb must share the app's cache store so `reverb:restart` crosses
       # processes. Before first-install migrations exist, both fall back to the
@@ -561,6 +773,7 @@ services:
     environment:
       APP_UPSTREAM: app:8000
       ARTIFACT_UPSTREAM: artifact-host:8000
+      ARTIFACT_RUNTIME_CIDR: ${ARTIFACT_RUNTIME_NETWORK_SUBNET:-10.254.71.0/24}
     ports:
       - "127.0.0.1:${EDGE_HTTP_PORT:-18085}:80"
     volumes:
@@ -570,6 +783,9 @@ services:
         condition: service_healthy
       artifact-host:
         condition: service_healthy
+    networks:
+      - default
+      - artifact-runtime
 
   # Local-only diagnostic profiles. Keep these loopback-bound and do not enable
   # them on shared, staging, or production hosts.
@@ -599,17 +815,22 @@ volumes:
   db-data:
   db-test-data:
   e2e-artifacts:
+  image-parser-socket:
+  e2e-image-parser-socket:
+  pdf-processor-socket:
+  e2e-pdf-processor-socket:
   node-modules:
   composer-cache:
   npm-cache:
 
 networks:
-  image-parser:
-    internal: true
-  local-pdf-processor:
-    internal: true
-  pdf-processor:
+  artifact-runtime:
     internal: true
     ipam:
       config:
-        - subnet: ${E2E_PDF_PROCESSOR_NETWORK_SUBNET:-10.254.70.0/24}
+        - subnet: ${ARTIFACT_RUNTIME_NETWORK_SUBNET:-10.254.71.0/24}
+  e2e-artifact-runtime:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${E2E_ARTIFACT_RUNTIME_NETWORK_SUBNET:-10.254.72.0/24}

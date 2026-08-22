@@ -47,6 +47,64 @@ final class E2eIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('e2e-artifacts:', $compose);
     }
 
+    public function test_artifact_hosts_have_only_database_and_restricted_ingress_network_reachability(): void
+    {
+        $compose = $this->readProjectFile('docker-compose.yml');
+        $caddy = $this->readProjectFile('docker/Caddyfile.local');
+        $makefile = $this->readProjectFile('Makefile');
+        $runtimeProof = $this->readProjectFile('scripts/verify-runtime-network-isolation.sh');
+        $artifactHost = $this->serviceBlock($compose, 'artifact-host', 'e2e-pdf-processor');
+        $e2eArtifactHost = $this->serviceBlock($compose, 'e2e-artifact-host', 'e2e-edge');
+
+        $this->assertStringContainsString("networks:\n      - artifact-runtime", $artifactHost);
+        $this->assertStringNotContainsString('- default', $artifactHost);
+        $this->assertStringContainsString("networks:\n      - e2e-artifact-runtime", $e2eArtifactHost);
+        $this->assertStringNotContainsString('- default', $e2eArtifactHost);
+        $this->assertStringNotContainsString('ports:', $artifactHost);
+        $this->assertStringNotContainsString('ports:', $e2eArtifactHost);
+        $this->assertStringContainsString('artifact-gateway:', $compose);
+        $this->assertStringContainsString('e2e-artifact-gateway:', $compose);
+        $this->assertStringContainsString(
+            '"127.0.0.1:${E2E_ARTIFACT_HOST_PORT:-18181}:80"',
+            $compose,
+        );
+        $gateway = $this->readProjectFile('docker/Caddyfile.artifact-gateway');
+        $this->assertStringContainsString('reverse_proxy {$ARTIFACT_UPSTREAM}', $gateway);
+        $this->assertStringNotContainsString('APP_UPSTREAM', $gateway);
+        $this->assertStringContainsString('remote_ip {$ARTIFACT_RUNTIME_CIDR}', $caddy);
+        $this->assertStringContainsString('respond @artifactRuntime 403', $caddy);
+        $this->assertStringContainsString('verify-runtime-network-isolation:', $makefile);
+        $this->assertStringContainsString('HostConfig.NetworkMode', $runtimeProof);
+        $this->assertStringContainsString('e2e-edge', $runtimeProof);
+    }
+
+    public function test_e2e_uses_dedicated_networkless_processor_instances_and_socket_volumes(): void
+    {
+        $compose = $this->readProjectFile('docker-compose.yml');
+        $makefile = $this->readProjectFile('Makefile');
+        $e2eApp = $this->serviceBlock($compose, 'e2e-app', 'e2e-artifact-host');
+        $e2eParser = $this->serviceBlock($compose, 'e2e-image-parser', 'e2e-pdf-processor');
+
+        $this->assertStringContainsString('E2E_IMAGE_PARSER_SERVICE ?= e2e-image-parser', $makefile);
+        $this->assertStringContainsString('network_mode: none', $e2eParser);
+        $this->assertStringContainsString('e2e-image-parser-socket:/run/artifactflow/image-parser', $e2eParser);
+        $this->assertStringContainsString('e2e-image-parser:', $e2eApp);
+        $this->assertStringNotContainsString("\n      image-parser:", $e2eApp);
+        $this->assertStringContainsString(
+            'e2e-image-parser-socket:/run/artifactflow/e2e-image-parser:ro',
+            $e2eApp,
+        );
+        $this->assertStringContainsString('$(E2E_IMAGE_PARSER_SERVICE)', $makefile);
+    }
+
+    public function test_php_test_harness_does_not_inherit_real_processor_socket_endpoints(): void
+    {
+        $testCase = $this->readProjectFile('tests/TestCase.php');
+
+        $this->assertStringContainsString("'image_parser.socket_path' => null", $testCase);
+        $this->assertStringContainsString("'pdf_processor.socket_path' => null", $testCase);
+    }
+
     public function test_e2e_runs_the_real_turnstile_widget_with_public_test_credentials(): void
     {
         $compose = $this->readProjectFile('docker-compose.yml');
@@ -174,7 +232,7 @@ final class E2eIsolationConfigurationTest extends TestCase
             $makefile,
         );
         $this->assertStringContainsString(
-            '$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env up -d $(UP_BUILD) --force-recreate $(E2E_PDF_PROCESSOR_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE)',
+            '$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env up -d $(UP_BUILD) --force-recreate $(E2E_IMAGE_PARSER_SERVICE) $(E2E_PDF_PROCESSOR_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) $(E2E_ARTIFACT_GATEWAY_SERVICE) $(E2E_EDGE_SERVICE)',
             $makefile,
         );
     }
@@ -235,5 +293,17 @@ final class E2eIsolationConfigurationTest extends TestCase
         $this->assertIsString($contents);
 
         return $contents;
+    }
+
+    private function serviceBlock(string $compose, string $service, string $nextService): string
+    {
+        $matched = preg_match(
+            sprintf('/\n  %s:(?<block>.*?)\n  %s:/s', preg_quote($service, '/'), preg_quote($nextService, '/')),
+            $compose,
+            $matches,
+        );
+        $this->assertSame(1, $matched, sprintf('Expected Compose service [%s].', $service));
+
+        return $matches['block'];
     }
 }

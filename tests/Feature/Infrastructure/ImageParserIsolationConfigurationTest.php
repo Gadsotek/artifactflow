@@ -9,7 +9,7 @@ use Tests\TestCase;
 
 final class ImageParserIsolationConfigurationTest extends TestCase
 {
-    public function test_image_parser_is_a_private_hardened_service_on_an_internal_network(): void
+    public function test_image_parser_is_a_private_hardened_service_without_a_network_namespace(): void
     {
         $compose = $this->readProjectFile('docker-compose.yml');
         $parserBlock = $this->serviceBlock($compose, 'image-parser', 'app');
@@ -22,12 +22,20 @@ final class ImageParserIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('pids_limit:', $parserBlock);
         $this->assertStringContainsString('mem_limit: 512m', $parserBlock);
         $this->assertStringContainsString('cpus: 1.0', $parserBlock);
-        $this->assertStringContainsString("networks:\n      - image-parser", $parserBlock);
+        $this->assertStringContainsString('network_mode: none', $parserBlock);
+        $this->assertStringContainsString('IMAGE_PARSER_SOCKET_PATH: /run/artifactflow/image-parser/parser.sock', $parserBlock);
+        $this->assertStringContainsString('image-parser-socket:/run/artifactflow/image-parser', $parserBlock);
+        $this->assertStringContainsString(
+            "image-parser-socket-init:\n        condition: service_completed_successfully",
+            $parserBlock,
+        );
+        $this->assertStringNotContainsString('networks:', $parserBlock);
         $this->assertStringNotContainsString('ports:', $parserBlock);
         $this->assertStringNotContainsString('/var/www/html', $parserBlock);
 
-        $networks = $this->afterNeedle($compose, "\nnetworks:");
-        $this->assertStringContainsString("image-parser:\n    internal: true", $networks);
+        $this->assertStringNotContainsString("\n  image-parser:\n    internal: true", $this->afterNeedle($compose, "\nnetworks:"));
+        $this->assertStringContainsString('chmod 0755 /socket && chown 10001:10001 /socket', $compose);
+        $this->assertStringContainsString("cap_add:\n      - CHOWN\n      - FOWNER", $compose);
     }
 
     public function test_parser_image_uses_one_memory_bounded_normalization_process(): void
@@ -56,14 +64,15 @@ final class ImageParserIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('must stay at one worker', $startScript);
         $this->assertStringContainsString('unset PHP_CLI_SERVER_WORKERS', $startScript);
         $this->assertStringContainsString('${PORT:-8080}', $startScript);
-        $this->assertStringContainsString('0.0.0.0:${port}', $startScript);
+        $this->assertStringContainsString('127.0.0.1:${port}', $startScript);
+        $this->assertStringContainsString('UNIX-LISTEN:', $startScript);
         $this->assertStringContainsString('memory_limit=448M', $startScript);
         $this->assertStringContainsString('max_execution_time=15', $startScript);
 
         $healthcheck = $this->readProjectFile('image-parser/healthcheck.php');
         $this->assertStringContainsString('ParserConfiguration::fromEnvironment()', $healthcheck);
-        $this->assertStringContainsString('->verifyHealth()', $healthcheck);
-        $this->assertStringNotContainsString('fsockopen', $healthcheck);
+        $this->assertStringNotContainsString('->verifyHealth()', $healthcheck);
+        $this->assertStringContainsString('unix://', $healthcheck);
         $this->assertStringNotContainsString(
             'imagedestroy(',
             strtolower($this->readProjectFile('image-parser/src/ImageParser.php')),
@@ -125,7 +134,7 @@ final class ImageParserIsolationConfigurationTest extends TestCase
 
         foreach ([
             ['artifact-host', 'e2e-app'],
-            ['e2e-artifact-host', 'worker'],
+            ['e2e-artifact-host', 'e2e-edge'],
             ['worker', 'scheduler'],
             ['scheduler', 'reverb'],
             ['reverb', 'vite'],
@@ -133,6 +142,7 @@ final class ImageParserIsolationConfigurationTest extends TestCase
             $serviceBlock = $this->serviceBlock($compose, $service, $nextService);
 
             $this->assertStringContainsString('IMAGE_PARSER_URL: ""', $serviceBlock, $service);
+            $this->assertStringContainsString('IMAGE_PARSER_SOCKET_PATH: ""', $serviceBlock, $service);
             $this->assertStringContainsString('IMAGE_PARSER_SHARED_SECRET: ""', $serviceBlock, $service);
         }
     }

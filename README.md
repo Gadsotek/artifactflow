@@ -46,7 +46,7 @@ The artifact's JavaScript really *runs*, but in an opaque origin with no cookies
 
 **🔒 Safe artifact rendering**
 - Single‑file HTML artifacts execute only from the isolated, cookieless artifact origin behind sandboxed iframes; saved artifacts are reached through renewable signed short‑lived URLs, and pre‑save drafts through authenticated, content-bound short-lived capabilities. There is no expiry timer or parent-window reload: when a prototype self‑reload encounters an expired saved URL, the authenticated parent renews and restores only the iframe.
-- PNG/JPEG uploads are sent over an authenticated private network to a dedicated, resource-capped decoder container with no application source, database, artifact storage, or outbound network. It decodes under byte, dimension, and pixel limits and returns only a signed, re-encoded derivative, stripping EXIF/GPS, comments, profiles, and appended payloads. The original upload is discarded. The normalized pixels render from the artifact origin in a scriptless sandboxed iframe with a fixed application-owned viewer.
+- PNG/JPEG uploads are sent over an authenticated Unix socket to a dedicated, resource-capped decoder container with no Docker network, application source, database, or artifact storage. It decodes under byte, dimension, and pixel limits and returns only a signed, re-encoded derivative, stripping EXIF/GPS, comments, profiles, and appended payloads. The original upload is discarded. The normalized pixels render from the artifact origin in a scriptless sandboxed iframe with a fixed application-owned viewer.
 - Paste‑or‑upload preview in an opaque, network-restricted sandbox *before* saving.
 - Artifacts must be a **single self‑contained HTML file**: CSP and defense-in-depth guards block ordinary external subresources and connection APIs, so CDN‑linked dependencies (React, Tailwind, Chart.js…) will not load. Script-initiated top-level navigation cannot be fully prevented, and WebRTC blocking is browser-dependent; the opaque origin still keeps app cookies and tenant data out of reach. Ask your AI to inline everything into one file. This is a deliberate boundary, not a limitation to work around; [the threat model documents the residuals and browser boundary](THREAT-MODEL.md).
 - Best‑effort secret‑blocking on save (credentials, private keys, JWTs, provider tokens) without persisting matched values; suspicious JS patterns are recorded as advisory findings. Scanning is advisory and bypassable by light obfuscation — a clean scan is not proof no secret was stored; isolation is the boundary.
@@ -95,8 +95,8 @@ make up            # boots the stack; scaffolds .env and distinct local boundary
 
 The core local stack includes Reverb and the isolated PDF processor. The guided
 installer keeps PDF application behavior disabled by default and offers a local/test
-opt-in that persists `PDF_PROCESSOR_ENABLED=true`. The processor remains internal-only
-with no public port.
+opt-in that persists `PDF_PROCESSOR_ENABLED=true`. Both native processors use
+socket-only transport with no Docker network or public port.
 
 Until Step 2 completes, application pages intentionally return a safe `503 Setup required` response instead of starting a database session against an uninitialized schema. MCP also fails before token lookup with a retryable JSON-RPC 503. The session-free `/up` healthcheck remains available while installation runs.
 
@@ -128,7 +128,7 @@ make run-app-cmd APP_CMD='php artisan artifactflow:doctor'
 
 ## Production self-hosting
 
-ArtifactFlow supports production self-hosting. The supported production unit is the image built by `make build-prod` (and, after tagged releases, the corresponding published image), run with `APP_ENV=production`. The same image runs the separate `app`, `artifact-host`, `worker`, and `scheduler` roles: `APP_RUNTIME_ROLE` selects the role, and the `worker`/`scheduler` roles additionally override the container command to their start script (see the [operations guide](docs/OPERATIONS.md)).
+ArtifactFlow supports production self-hosting. `make build-prod` builds the application image plus the separately isolated native-parser images so the complete runtime set can be scanned; tagged releases currently publish only the application image. Run the application image with `APP_ENV=production`. The same application image runs the separate `app`, `artifact-host`, `worker`, and `scheduler` roles: `APP_RUNTIME_ROLE` selects the role, and the `worker`/`scheduler` roles additionally override the container command to their start script (see the [operations guide](docs/OPERATIONS.md)).
 
 The repository deliberately does **not** present its local Compose file as a one-click production stack. A real deployment must provide environment-specific orchestration, two HTTPS hostnames, PostgreSQL with verified TLS, persistent private storage, a secret manager, a rate-limit cache shared by every app replica, and a correctly scoped reverse proxy. That wiring differs across Docker Compose, Swarm, Kubernetes, and hosting platforms; the production boot gate refuses to start when its security contract is incomplete.
 

@@ -408,7 +408,9 @@ JPEG inspection is capped at 256 pre-frame markers inside the 5 MiB upload envel
 length-prefixed metadata payloads are skipped from their declared sizes; restart markers before scan data are rejected. The
 application does not invoke a native raster decoder.
 
-The original bytes are sent to a dedicated `image-parser` container over an internal-only network.
+The original bytes are sent to a dedicated `image-parser` container over an authenticated Unix
+socket. Local Compose gives the parser Docker network mode `none`; its only listener is the socket
+relay into its own loopback-only HTTP process.
 Timestamped nonce-bearing requests and parser responses are HMAC authenticated with a dedicated
 secret. The parser has no app source, database client or credentials, artifact-storage mount, public
 port, or outbound network route. It runs as a non-root user with a read-only filesystem, no Linux
@@ -519,9 +521,11 @@ The release-blocking attack model is:
   base64, storage, or native work; the generic MCP request limit is not widened to fit the PDF hard
   ceiling.
 - The processor has no app source, database, artifact storage, signing/session credentials, or
-  public listener. Production-shaped tests must deny processor-initiated TCP, UDP, DNS, Unix-socket,
-  loopback, cloud-metadata, private-peer, and public connections. A Docker `internal` network alone
-  is not directional isolation proof. Timeouts kill the entire native process tree.
+  public listener. The socket listener and its loopback-only HTTP relay are confined to the
+  processor and are the sole local communication path. Production-shaped tests must deny every
+  processor-initiated route or mounted socket to the app, other runtimes, cloud metadata, private
+  peers, DNS, and the public network. A Docker `internal` network alone is not directional
+  isolation proof. Timeouts kill the entire native process tree.
 - The first release runs one processor replica with native concurrency `1` and rejects concurrent
   work immediately. This keeps resource admission global for the intended small deployment without
   adding a distributed scheduler. A cross-process engine lease also prevents the container health

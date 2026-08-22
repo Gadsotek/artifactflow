@@ -2,10 +2,12 @@
 	auto_https off
 }
 
-app.artifactflow.test, localhost {
+http://app.artifactflow.test, http://localhost {
+	@artifactRuntime remote_ip {$ARTIFACT_RUNTIME_CIDR}
+	respond @artifactRuntime 403
 	reverse_proxy {$APP_UPSTREAM}
 }
 
-artifacts.artifactflow.test {
+http://artifacts.artifactflow.test {
 	reverse_proxy {$ARTIFACT_UPSTREAM}
 }

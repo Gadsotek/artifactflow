@@ -46,9 +46,10 @@ final class ImageParserClientTest extends TestCase
         $normalized = $this->png();
 
         $this->configureParser();
-        Http::fake(function (Request $request) use ($normalized): \GuzzleHttp\Promise\PromiseInterface {
+        Http::fake(function (Request $request, array $options) use ($normalized): \GuzzleHttp\Promise\PromiseInterface {
             $this->assertSame('http://image-parser.test/v1/normalize', $request->url());
             $this->assertSame('image/png', $request->header('Content-Type')[0] ?? null);
+            $this->assertTrue($options['stream'] ?? false);
 
             $timestamp = $request->header('X-ArtifactFlow-Parser-Timestamp')[0] ?? '';
             $nonce = $request->header('X-ArtifactFlow-Parser-Nonce')[0] ?? '';
@@ -799,6 +800,7 @@ final class ImageParserClientTest extends TestCase
     {
         config([
             'image_parser.url' => 'http://image-parser.test',
+            'image_parser.socket_path' => null,
             'image_parser.shared_secret' => self::SHARED_SECRET,
             'image_parser.connect_timeout_seconds' => 1,
             'image_parser.timeout_seconds' => 3,

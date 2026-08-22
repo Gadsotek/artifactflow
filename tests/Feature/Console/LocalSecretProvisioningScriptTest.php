@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Console;
 
 use App\Application\Diagnostics\InstallationSecret;
+use App\Infrastructure\Security\SecretStrength;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -45,6 +46,22 @@ final class LocalSecretProvisioningScriptTest extends TestCase
     public function test_shell_fallback_generates_distinct_idempotent_boundary_secrets(): void
     {
         $this->assertGeneratesDistinctIdempotentSecrets([
+            'sh',
+            base_path('scripts/ensure-artifact-signing-key.sh'),
+        ]);
+    }
+
+    public function test_php_local_secret_setup_repairs_weak_duplicate_and_reused_boundary_secrets(): void
+    {
+        $this->assertRepairsWeakDuplicateAndReusedBoundarySecrets([
+            PHP_BINARY,
+            base_path('scripts/ensure-artifact-signing-key.php'),
+        ]);
+    }
+
+    public function test_shell_local_secret_setup_repairs_weak_duplicate_and_reused_boundary_secrets(): void
+    {
+        $this->assertRepairsWeakDuplicateAndReusedBoundarySecrets([
             'sh',
             base_path('scripts/ensure-artifact-signing-key.sh'),
         ]);
@@ -98,6 +115,46 @@ final class LocalSecretProvisioningScriptTest extends TestCase
         ]);
     }
 
+    public function test_shell_pdf_secret_setup_rejects_noncanonical_base64_when_only_openssl_can_decode(): void
+    {
+        $toolPath = storage_path('framework/testing/pdf-secret-tools-' . Str::random(12));
+        mkdir($toolPath, 0700);
+        file_put_contents($toolPath . '/base64', "#!/bin/sh\nexit 1\n");
+        chmod($toolPath . '/base64', 0700);
+
+        try {
+            $canonical = base64_encode(str_repeat('x', 32));
+            file_put_contents(
+                $this->envPath,
+                "PDF_PROCESSOR_SHARED_SECRET=base64:{$canonical}=\n",
+            );
+
+            $result = Process::env([
+                'PATH' => $toolPath . ':' . (getenv('PATH') ?: '/usr/bin:/bin'),
+            ])->path(base_path())->run([
+                'sh',
+                base_path('scripts/ensure-pdf-processor-shared-secret.sh'),
+                $this->envPath,
+            ]);
+
+            $this->assertTrue($result->successful(), $result->errorOutput());
+            $generated = $this->value(
+                (string) file_get_contents($this->envPath),
+                'PDF_PROCESSOR_SHARED_SECRET',
+            );
+            $this->assertNotSame('base64:' . $canonical . '=', $generated);
+            $this->assertFalse(InstallationSecret::isMissing($generated));
+        } finally {
+            if (is_file($toolPath . '/base64')) {
+                unlink($toolPath . '/base64');
+            }
+
+            if (is_dir($toolPath)) {
+                rmdir($toolPath);
+            }
+        }
+    }
+
     /**
      * @param list<string> $command
      */
@@ -128,6 +185,55 @@ final class LocalSecretProvisioningScriptTest extends TestCase
 
         $this->assertTrue($second->successful(), $second->errorOutput());
         $this->assertSame($generated, $this->values());
+    }
+
+    /**
+     * @param list<string> $command
+     */
+    private function assertRepairsWeakDuplicateAndReusedBoundarySecrets(array $command): void
+    {
+        $reused = 'base64:' . base64_encode(str_repeat('r', 32));
+        file_put_contents(
+            $this->envPath,
+            "APP_KEY={$reused}\n"
+            . 'ARTIFACT_URL_SIGNING_KEY=' . str_repeat('s', 32) . "\n"
+            . "ARTIFACT_URL_SIGNING_KEY=artifact-preview-test-signing-key # published fixture wins\n"
+            . "IMAGE_PARSER_SHARED_SECRET={$reused}\n"
+            . "IMAGE_PARSER_SHARED_SECRET=short # weak effective value\n"
+            . "PDF_PROCESSOR_SHARED_SECRET={$reused}\n",
+        );
+
+        $result = Process::path(base_path())->run([...$command, $this->envPath]);
+
+        $this->assertTrue($result->successful(), $result->errorOutput());
+        $contents = (string) file_get_contents($this->envPath);
+        $generated = $this->values();
+
+        foreach ($generated as $key => $secret) {
+            $this->assertTrue(SecretStrength::isProductionSafe($secret), $key);
+            $this->assertNotSame(
+                SecretStrength::normalized($reused),
+                SecretStrength::normalized($secret),
+                $key,
+            );
+        }
+
+        $normalized = array_map(
+            static fn (string $secret): ?string => SecretStrength::normalized($secret),
+            array_values($generated),
+        );
+        $this->assertCount(3, array_unique($normalized));
+
+        foreach (['ARTIFACT_URL_SIGNING_KEY', 'IMAGE_PARSER_SHARED_SECRET'] as $key) {
+            preg_match_all('/^' . preg_quote($key, '/') . '=(.+)$/m', $contents, $matches);
+            $this->assertCount(2, $matches[1], $key);
+            $this->assertCount(1, array_unique($matches[1]), $key);
+        }
+
+        $rerun = Process::path(base_path())->run([...$command, $this->envPath]);
+
+        $this->assertTrue($rerun->successful(), $rerun->errorOutput());
+        $this->assertSame($contents, file_get_contents($this->envPath));
     }
 
     /**

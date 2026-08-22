@@ -6,8 +6,10 @@ namespace App\Application\PageCatalog;
 
 use App\Application\Http\BoundedResponseReader;
 use App\Application\Http\BoundedResponseReadFailure;
+use App\Application\Http\BoundedResponseSink;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\PdfProcessingUnavailable;
+use GuzzleHttp\Handler\CurlHandler;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -63,10 +65,7 @@ final readonly class PdfProcessorClient
             $request = Http::connectTimeout($this->configuration->connectTimeoutSeconds())
                 ->timeout($this->configuration->timeoutSeconds())
                 ->withoutRedirecting()
-                ->withOptions([
-                    'stream' => true,
-                    'decode_content' => false,
-                ])
+                ->withOptions($this->transportOptions(PdfProcessorConfiguration::MAX_RESPONSE_BYTES))
                 ->withHeaders([
                     'Accept' => 'application/json',
                     'Accept-Encoding' => 'identity',
@@ -80,6 +79,10 @@ final readonly class PdfProcessorClient
                     ),
                 ])
                 ->withBody($untrustedBytes, 'application/pdf');
+
+            if ($this->configuration->socketPath() !== null) {
+                $request->setHandler(new CurlHandler());
+            }
         } catch (LogicException) {
             $this->unavailable('invalid_client_configuration');
         }
@@ -175,5 +178,27 @@ final readonly class PdfProcessorClient
         ], static fn (mixed $value): bool => $value !== null));
 
         throw new PdfProcessingUnavailable();
+    }
+
+    /**
+     * @return array{stream: true, decode_content: false}|array{stream: true, decode_content: false, sink: BoundedResponseSink, curl: array<int, string>}
+     */
+    private function transportOptions(int $maximumResponseBytes): array
+    {
+        $socketPath = $this->configuration->socketPath();
+
+        if ($socketPath === null) {
+            return [
+                'stream' => true,
+                'decode_content' => false,
+            ];
+        }
+
+        return [
+            'stream' => true,
+            'decode_content' => false,
+            'sink' => new BoundedResponseSink($maximumResponseBytes),
+            'curl' => [CURLOPT_UNIX_SOCKET_PATH => $socketPath],
+        ];
     }
 }
