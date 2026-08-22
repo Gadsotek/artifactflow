@@ -109,6 +109,7 @@ final class LocalSecretProvisioningScriptTest extends TestCase
                 'short' => 'too-short',
                 'invalid base64' => 'base64:not-valid-base64',
                 'published local placeholder' => 'artifactflow-local-pdf-processor-secret-not-for-production',
+                'encoded published local placeholder' => 'base64:YXJ0aWZhY3RmbG93LWxvY2FsLXBkZi1wcm9jZXNzb3Itc2VjcmV0LW5vdC1mb3ItcHJvZHVjdGlvbg==',
             ] as $label => $weakValue
         ) {
             file_put_contents($this->envPath, "PDF_PROCESSOR_SHARED_SECRET={$weakValue}\n");

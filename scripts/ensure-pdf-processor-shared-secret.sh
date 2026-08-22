@@ -38,6 +38,7 @@ pdf_processor_secret_is_strong() {
             fi
 
             decoded_path="$(mktemp)"
+            published_fixture_path="$(mktemp)"
             decoded=false
 
             if printf '%s' "$payload" | base64 -d >"$decoded_path" 2>/dev/null; then
@@ -50,9 +51,18 @@ pdf_processor_secret_is_strong() {
             fi
 
             decoded_bytes="$(wc -c <"$decoded_path" | tr -d '[:space:]')"
-            rm -f "$decoded_path"
+            printf '%s' 'artifactflow-local-pdf-processor-secret-not-for-production' >"$published_fixture_path"
+            decoded_is_published_fixture=false
 
-            [ "$decoded" = true ] && [ "$decoded_bytes" -ge 32 ]
+            if [ "$decoded" = true ] && cmp -s "$decoded_path" "$published_fixture_path"; then
+                decoded_is_published_fixture=true
+            fi
+
+            rm -f "$decoded_path" "$published_fixture_path"
+
+            [ "$decoded" = true ] \
+                && [ "$decoded_bytes" -ge 32 ] \
+                && [ "$decoded_is_published_fixture" = false ]
             ;;
         *)
             candidate_bytes="$(LC_ALL=C printf '%s' "$candidate" | wc -c | tr -d '[:space:]')"
