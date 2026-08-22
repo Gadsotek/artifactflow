@@ -266,6 +266,8 @@ final class InstallCommandTest extends TestCase
         config([
             'app.key' => $this->strongSecret('a'),
             'app.artifact_url_signing_key' => $this->strongSecret('b'),
+            'image_parser.enabled' => true,
+            'image_parser.shared_secret' => $this->strongSecret('c'),
             'pdf_processor.enabled' => false,
             'pdf_processor.shared_secret' => '',
         ]);
