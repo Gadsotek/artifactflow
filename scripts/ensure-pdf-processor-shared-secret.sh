@@ -12,7 +12,7 @@ if [ ! -f "$env_path" ]; then
 fi
 
 pdf_processor_secret_is_strong() {
-    candidate="$(printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/")"
+    candidate="$1"
 
     if [ -z "$candidate" ]; then
         return 1
@@ -71,9 +71,46 @@ pdf_processor_secret_is_strong() {
     esac
 }
 
-configured_pdf_processor_secret="$(sed -n 's/^PDF_PROCESSOR_SHARED_SECRET=//p' "$env_path" | head -n 1)"
+pdf_processor_environment_value() {
+    value="$(printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 
-if pdf_processor_secret_is_strong "$configured_pdf_processor_secret"; then
+    case "$value" in
+        \'*)
+            if ! printf '%s' "$value" | grep -Eq "^'[^']*'[[:space:]]*(#.*)?$"; then
+                return 1
+            fi
+
+            printf '%s' "$value" | sed -e "s/^'\([^']*\)'.*$/\1/"
+            ;;
+        \"*)
+            if ! printf '%s' "$value" | grep -Eq '^"[^"\\]*"[[:space:]]*(#.*)?$'; then
+                return 1
+            fi
+
+            candidate="$(printf '%s' "$value" | sed -e 's/^"\([^"\\]*\)".*$/\1/')"
+
+            case "$candidate" in
+                *'$'*) return 1 ;;
+            esac
+
+            printf '%s' "$candidate"
+            ;;
+        *)
+            value="$(printf '%s' "$value" | sed -e 's/[[:space:]][[:space:]]*#.*$//' -e 's/[[:space:]]*$//')"
+
+            case "$value" in
+                ''|\#*|*'$'*) return 1 ;;
+            esac
+
+            printf '%s' "$value"
+            ;;
+    esac
+}
+
+configured_pdf_processor_secret="$(sed -n 's/^PDF_PROCESSOR_SHARED_SECRET=//p' "$env_path" | tail -n 1)"
+
+if effective_pdf_processor_secret="$(pdf_processor_environment_value "$configured_pdf_processor_secret")" \
+    && pdf_processor_secret_is_strong "$effective_pdf_processor_secret"; then
     echo "PDF_PROCESSOR_SHARED_SECRET already configured."
     exit 0
 fi

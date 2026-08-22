@@ -66,6 +66,38 @@ final class LocalSecretProvisioningScriptTest extends TestCase
         ]);
     }
 
+    public function test_php_pdf_secret_setup_preserves_strong_quoted_values_with_comments(): void
+    {
+        $this->assertPdfSecretSetupPreservesStrongQuotedValues([
+            PHP_BINARY,
+            base_path('scripts/ensure-pdf-processor-shared-secret.php'),
+        ]);
+    }
+
+    public function test_shell_pdf_secret_setup_preserves_strong_quoted_values_with_comments(): void
+    {
+        $this->assertPdfSecretSetupPreservesStrongQuotedValues([
+            'sh',
+            base_path('scripts/ensure-pdf-processor-shared-secret.sh'),
+        ]);
+    }
+
+    public function test_php_pdf_secret_setup_replaces_duplicate_assignments_with_a_weak_effective_value(): void
+    {
+        $this->assertPdfSecretSetupReplacesDuplicateAssignments([
+            PHP_BINARY,
+            base_path('scripts/ensure-pdf-processor-shared-secret.php'),
+        ]);
+    }
+
+    public function test_shell_pdf_secret_setup_replaces_duplicate_assignments_with_a_weak_effective_value(): void
+    {
+        $this->assertPdfSecretSetupReplacesDuplicateAssignments([
+            'sh',
+            base_path('scripts/ensure-pdf-processor-shared-secret.sh'),
+        ]);
+    }
+
     /**
      * @param list<string> $command
      */
@@ -107,6 +139,10 @@ final class LocalSecretProvisioningScriptTest extends TestCase
             [
                 'quoted empty' => '""',
                 'short' => 'too-short',
+                'unquoted inline comment' => 'short # explanatory text long enough to exceed 32 bytes',
+                'single-quoted inline comment' => "'short' # explanatory text long enough to exceed 32 bytes",
+                'double-quoted inline comment' => '"short" # explanatory text long enough to exceed 32 bytes',
+                'interpolated value' => '${PDF_PROCESSOR_SECRET_THAT_IS_NOT_DEFINED}',
                 'invalid base64' => 'base64:not-valid-base64',
                 'published local placeholder' => 'artifactflow-local-pdf-processor-secret-not-for-production',
                 'encoded published local placeholder' => 'base64:YXJ0aWZhY3RmbG93LWxvY2FsLXBkZi1wcm9jZXNzb3Itc2VjcmV0LW5vdC1mb3ItcHJvZHVjdGlvbg==',
@@ -133,6 +169,48 @@ final class LocalSecretProvisioningScriptTest extends TestCase
                 $label,
             );
         }
+    }
+
+    /**
+     * @param list<string> $command
+     */
+    private function assertPdfSecretSetupPreservesStrongQuotedValues(array $command): void
+    {
+        foreach (
+            [
+                'single quoted' => "'" . str_repeat('s', 32) . "' # retained comment",
+                'double quoted' => '"' . str_repeat('d', 32) . '" # retained comment',
+            ] as $label => $configuredValue
+        ) {
+            $contents = "PDF_PROCESSOR_SHARED_SECRET={$configuredValue}\n";
+            file_put_contents($this->envPath, $contents);
+
+            $result = Process::path(base_path())->run([...$command, $this->envPath]);
+
+            $this->assertTrue($result->successful(), $label . ': ' . $result->errorOutput());
+            $this->assertSame($contents, file_get_contents($this->envPath), $label);
+        }
+    }
+
+    /**
+     * @param list<string> $command
+     */
+    private function assertPdfSecretSetupReplacesDuplicateAssignments(array $command): void
+    {
+        file_put_contents(
+            $this->envPath,
+            'PDF_PROCESSOR_SHARED_SECRET=' . str_repeat('s', 32) . "\n"
+            . "PDF_PROCESSOR_SHARED_SECRET=short # effective value\n",
+        );
+
+        $result = Process::path(base_path())->run([...$command, $this->envPath]);
+
+        $this->assertTrue($result->successful(), $result->errorOutput());
+        $contents = (string) file_get_contents($this->envPath);
+        preg_match_all('/^PDF_PROCESSOR_SHARED_SECRET=(.+)$/m', $contents, $matches);
+        $this->assertCount(2, $matches[1]);
+        $this->assertCount(1, array_unique($matches[1]));
+        $this->assertFalse(InstallationSecret::isMissing($matches[1][0]));
     }
 
     /**

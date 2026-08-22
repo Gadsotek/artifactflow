@@ -28,18 +28,21 @@ function ensurePdfProcessorSharedSecret(string $envPath): int
         return 1;
     }
 
-    if (preg_match('/^PDF_PROCESSOR_SHARED_SECRET=(.*)$/m', $contents, $matches) === 1) {
-        if (SecretStrength::isStrong(pdfProcessorEnvironmentValue((string) $matches[1]))) {
+    if (preg_match_all('/^PDF_PROCESSOR_SHARED_SECRET=(.*)$/m', $contents, $matches) >= 1) {
+        $configuredValues = $matches[1];
+        $configuredValue = end($configuredValues);
+
+        if (is_string($configuredValue) && SecretStrength::isStrong(pdfProcessorEnvironmentValue($configuredValue))) {
             echo "PDF_PROCESSOR_SHARED_SECRET already configured.\n";
 
             return 0;
         }
 
+        $generatedSecret = generatedPdfProcessorSecret();
         $updated = preg_replace(
             '/^PDF_PROCESSOR_SHARED_SECRET=.*$/m',
-            'PDF_PROCESSOR_SHARED_SECRET=' . generatedPdfProcessorSecret(),
+            'PDF_PROCESSOR_SHARED_SECRET=' . $generatedSecret,
             $contents,
-            1,
         );
 
         if (!is_string($updated)) {
@@ -48,17 +51,27 @@ function ensurePdfProcessorSharedSecret(string $envPath): int
             return 1;
         }
 
-        file_put_contents($envPath, $updated);
+        if (file_put_contents($envPath, $updated) === false) {
+            fwrite(STDERR, "Unable to write PDF_PROCESSOR_SHARED_SECRET to {$envPath}.\n");
+
+            return 1;
+        }
+
         echo "Generated PDF_PROCESSOR_SHARED_SECRET in .env.\n";
 
         return 0;
     }
 
     $separator = str_ends_with($contents, "\n") ? '' : "\n";
-    file_put_contents(
+    if (file_put_contents(
         $envPath,
         $contents . $separator . 'PDF_PROCESSOR_SHARED_SECRET=' . generatedPdfProcessorSecret() . "\n",
-    );
+    ) === false) {
+        fwrite(STDERR, "Unable to write PDF_PROCESSOR_SHARED_SECRET to {$envPath}.\n");
+
+        return 1;
+    }
+
     echo "Generated PDF_PROCESSOR_SHARED_SECRET in .env.\n";
 
     return 0;
@@ -66,18 +79,59 @@ function ensurePdfProcessorSharedSecret(string $envPath): int
 
 function pdfProcessorEnvironmentValue(string $value): string
 {
+    $value = ltrim($value);
+
+    if ($value === '') {
+        return '';
+    }
+
+    if ($value[0] === "'" || $value[0] === '"') {
+        return pdfProcessorQuotedEnvironmentValue($value, $value[0]);
+    }
+
+    $value = preg_replace('/\s+#.*$/', '', $value);
+
+    if (!is_string($value)) {
+        return '';
+    }
+
     $value = trim($value);
-    $length = strlen($value);
 
-    if ($length >= 2) {
-        $quote = $value[0];
-
-        if (($quote === '"' || $quote === "'") && $value[$length - 1] === $quote) {
-            return substr($value, 1, -1);
-        }
+    // Compose expands unquoted variables before placing this value into both
+    // containers. The host bootstrap cannot safely know that environment, so
+    // replace interpolated values with one unambiguous literal secret.
+    if ($value === '' || $value[0] === '#' || str_contains($value, '$')) {
+        return '';
     }
 
     return $value;
+}
+
+function pdfProcessorQuotedEnvironmentValue(string $value, string $quote): string
+{
+    $length = strlen($value);
+    $candidate = '';
+
+    for ($index = 1; $index < $length; $index++) {
+        $character = $value[$index];
+
+        if ($character === $quote) {
+            $remainder = trim(substr($value, $index + 1));
+
+            return $remainder === '' || str_starts_with($remainder, '#') ? $candidate : '';
+        }
+
+        // Quoted escapes and interpolation require the complete Compose parser
+        // to evaluate exactly. Repair those ambiguous local values rather than
+        // risk validating different bytes from the two containers.
+        if ($quote === '"' && ($character === '\\' || $character === '$')) {
+            return '';
+        }
+
+        $candidate .= $character;
+    }
+
+    return '';
 }
 
 function generatedPdfProcessorSecret(): string

@@ -252,6 +252,7 @@ verify-reverb-origin:
 	$(MAKE) ensure-env
 	@set -euo pipefail; \
 		port="$${REVERB_ORIGIN_PROBE_PORT:-18082}"; \
+		probe_container="artifactflow-reverb-origin-probe-$$(openssl rand -hex 6)"; \
 		export APP_ENV=production; \
 		export APP_DEBUG=false; \
 		smoke_reverb_key="$$(openssl rand -hex 24)"; \
@@ -284,17 +285,19 @@ verify-reverb-origin:
 		export REVERB_APP_MAX_CONNECTIONS=1000; \
 		export REVERB_APP_RATE_LIMITING_ENABLED=true; \
 		export REVERB_PORT="$$port"; \
-		cleanup() { $(COMPOSE) --profile realtime stop reverb >/dev/null 2>&1 || true; }; \
+		cleanup() { docker rm -f "$$probe_container" >/dev/null 2>&1 || true; }; \
 		trap cleanup EXIT; \
 		$(COMPOSE) build app; \
-		$(COMPOSE) --profile realtime up -d $(UP_BUILD) --force-recreate --no-deps reverb; \
-		$(MAKE) wait APP_SERVICE=reverb WAIT_COMPOSE_PROFILES='--profile realtime'; \
-		REVERB_PROBE_HOST=127.0.0.1 \
-		REVERB_PROBE_PORT="$$port" \
-		REVERB_APP_KEY="$$smoke_reverb_key" \
-		REVERB_ALLOWED_ORIGIN=https://app.example.test \
-		REVERB_REJECTED_ORIGIN=https://evil.example.test \
-			node scripts/verify-reverb-origin-handshake.mjs
+		$(COMPOSE) --profile realtime run -d --service-ports --name "$$probe_container" --no-deps reverb >/dev/null; \
+		if ! REVERB_PROBE_HOST=127.0.0.1 \
+			REVERB_PROBE_PORT="$$port" \
+			REVERB_APP_KEY="$$smoke_reverb_key" \
+			REVERB_ALLOWED_ORIGIN=https://app.example.test \
+			REVERB_REJECTED_ORIGIN=https://evil.example.test \
+				node scripts/verify-reverb-origin-handshake.mjs; then \
+			docker logs --tail=100 "$$probe_container" || true; \
+			exit 1; \
+		fi
 
 test-env-up:
 	$(COMPOSE) --profile test up -d $(TEST_DB_SERVICE)

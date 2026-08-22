@@ -322,6 +322,22 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('verify-reverb-origin:', $makefile);
         $this->assertStringContainsString('$(COMPOSE) build app', $makefile);
         $this->assertStringContainsString('node scripts/verify-reverb-origin-handshake.mjs', $makefile);
+        $this->assertStringContainsString(
+            'probe_container="artifactflow-reverb-origin-probe-$$(openssl rand -hex 6)"',
+            $this->afterNeedle($makefile, 'verify-reverb-origin:'),
+        );
+        $this->assertStringContainsString(
+            'cleanup() { docker rm -f "$$probe_container"',
+            $this->afterNeedle($makefile, 'verify-reverb-origin:'),
+        );
+        $this->assertStringContainsString(
+            '$(COMPOSE) --profile realtime run -d --service-ports --name "$$probe_container" --no-deps reverb',
+            $this->afterNeedle($makefile, 'verify-reverb-origin:'),
+        );
+        $this->assertStringNotContainsString(
+            '$(COMPOSE) --profile realtime up -d $(UP_BUILD) --force-recreate --no-deps reverb',
+            $this->afterNeedle($makefile, 'verify-reverb-origin:'),
+        );
         // The smoke target boots the worker in production mode, where the boot
         // gate rejects non-deliverable mail transports. The compose anchor
         // interpolates MAIL_MAILER from the developer's .env (log by default),
