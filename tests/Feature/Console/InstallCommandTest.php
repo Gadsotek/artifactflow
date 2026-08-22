@@ -246,7 +246,7 @@ final class InstallCommandTest extends TestCase
         ])
             ->expectsOutputToContain('- Generating PDF processor shared secret')
             ->expectsConfirmation('Seed starter demo content?', 'no')
-            ->expectsOutputToContain('Exit this container and rerun make up so the local app enables PDF artifacts.')
+            ->expectsOutputToContain('Exit this container and rerun make up so local services reload the new configuration.')
             ->assertExitCode(0);
 
         Process::assertRan(static function (PendingProcess $process): bool {
@@ -257,6 +257,37 @@ final class InstallCommandTest extends TestCase
         $env = (string) file_get_contents($this->envPath);
         $this->assertStringContainsString('APP_ENV=local', $env);
         $this->assertStringContainsString('PDF_PROCESSOR_ENABLED=true', $env);
+    }
+
+    public function test_local_install_disabling_pdf_tells_the_operator_to_reload_services(): void
+    {
+        config([
+            'app.key' => $this->strongSecret('a'),
+            'app.artifact_url_signing_key' => $this->strongSecret('b'),
+            'image_parser.enabled' => false,
+            'pdf_processor.enabled' => true,
+            'pdf_processor.shared_secret' => $this->strongSecret('p'),
+        ]);
+        file_put_contents(
+            $this->envPath,
+            "APP_ENV=local\nAPP_URL=https://app.test\nPDF_PROCESSOR_ENABLED=true\n",
+        );
+
+        $this->runConsoleCommand('artifactflow:install', [
+            '--env' => 'local',
+            '--name' => 'PDF Admin',
+            '--email' => 'pdf-admin@example.test',
+            '--password' => 'correct horse battery staple',
+        ])
+            ->expectsConfirmation('Enable experimental PDF artifacts?', 'no')
+            ->expectsConfirmation('Seed starter demo content?', 'no')
+            ->expectsOutputToContain('Exit this container and rerun make up so local services reload the new configuration.')
+            ->assertExitCode(0);
+
+        $this->assertStringContainsString(
+            'PDF_PROCESSOR_ENABLED=false',
+            (string) file_get_contents($this->envPath),
+        );
     }
 
     public function test_local_pdf_install_stops_when_its_shared_secret_cannot_be_generated(): void

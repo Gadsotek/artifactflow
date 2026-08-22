@@ -13,6 +13,8 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $compose = $this->readProjectFile('docker-compose.yml');
         $localProcessor = $this->serviceBlock($compose, 'pdf-processor', 'app');
         $app = $this->serviceBlock($compose, 'app', 'artifact-host');
+        $networks = $this->afterLastNeedle($compose, "\nnetworks:\n");
+        $localNetwork = $this->serviceBlock($networks, 'local-pdf-processor', 'pdf-processor');
 
         $this->assertStringNotContainsString('profiles:', $localProcessor);
         $this->assertStringContainsString('target: pdf-processor-service', $localProcessor);
@@ -28,12 +30,15 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('pids_limit: 32', $localProcessor);
         $this->assertStringContainsString('mem_limit: 512m', $localProcessor);
         $this->assertStringContainsString('cpus: 1.0', $localProcessor);
-        $this->assertStringContainsString('- pdf-processor', $localProcessor);
+        $this->assertStringContainsString('- local-pdf-processor', $localProcessor);
         $this->assertStringContainsString('test: ["CMD", "php", "/srv/pdf-processor-spike/healthcheck.php"]', $localProcessor);
         $this->assertStringContainsString('interval: 1m', $localProcessor);
         $this->assertStringContainsString('start_interval: 5s', $localProcessor);
         $this->assertStringNotContainsString('ports:', $localProcessor);
         $this->assertStringNotContainsString('- default', $localProcessor);
+        $this->assertStringContainsString('internal: true', $localNetwork);
+        $this->assertStringNotContainsString('ipam:', $localNetwork);
+        $this->assertStringNotContainsString('subnet:', $localNetwork);
 
         $this->assertStringContainsString('PDF_PROCESSOR_ENABLED: ${PDF_PROCESSOR_ENABLED:-false}', $app);
         $this->assertStringContainsString('PDF_PROCESSOR_URL: ${PDF_PROCESSOR_URL:-http://pdf-processor:8080}', $app);
@@ -45,7 +50,7 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
             '/depends_on:.*?pdf-processor:\s+condition: service_healthy/s',
             $app,
         );
-        $this->assertMatchesRegularExpression('/networks:.*?- pdf-processor/s', $app);
+        $this->assertMatchesRegularExpression('/networks:.*?- local-pdf-processor/s', $app);
 
         foreach (
             [
@@ -57,7 +62,7 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         ) {
             $this->assertStringContainsString('PDF_PROCESSOR_URL: ""', $unrelatedRuntime);
             $this->assertStringContainsString('PDF_PROCESSOR_SHARED_SECRET: ""', $unrelatedRuntime);
-            $this->assertStringNotContainsString('- pdf-processor', $unrelatedRuntime);
+            $this->assertStringNotContainsString('- local-pdf-processor', $unrelatedRuntime);
         }
     }
 
@@ -67,6 +72,9 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $stage = $this->afterNeedle($dockerfile, ' AS pdf-processor-service');
         $compose = $this->readProjectFile('docker-compose.yml');
         $makefile = $this->readProjectFile('Makefile');
+        $e2eApp = $this->serviceBlock($compose, 'e2e-app', 'e2e-artifact-host');
+        $networks = $this->afterLastNeedle($compose, "\nnetworks:\n");
+        $e2eNetwork = substr($networks, (int) strpos($networks, "  pdf-processor:\n"));
 
         $this->assertStringContainsString('COPY src/PdfProcessor.php', $stage);
         $this->assertStringContainsString('COPY public', $stage);
@@ -83,9 +91,10 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('PDF_PROCESSOR_URL: http://e2e-pdf-processor:8080', $compose);
         $this->assertStringContainsString('PDF_PROCESSOR_URL: ""', $compose);
         $this->assertStringContainsString('PDF_PROCESSOR_SHARED_SECRET: ""', $compose);
-        $this->assertStringContainsString('pdf-processor:', $compose);
-        $this->assertStringContainsString('internal: true', $compose);
-        $this->assertStringContainsString('subnet: ${E2E_PDF_PROCESSOR_NETWORK_SUBNET:-10.254.70.0/24}', $compose);
+        $this->assertStringContainsString('pdf-processor:', $networks);
+        $this->assertStringContainsString('internal: true', $e2eNetwork);
+        $this->assertStringContainsString('subnet: ${E2E_PDF_PROCESSOR_NETWORK_SUBNET:-10.254.70.0/24}', $e2eNetwork);
+        $this->assertStringContainsString('- pdf-processor', $e2eApp);
         $this->assertStringContainsString('E2E_PDF_PROCESSOR_SERVICE ?= e2e-pdf-processor', $makefile);
         $this->assertStringContainsString('pdf-processor-service-build:', $makefile);
         $this->assertStringContainsString('pdf-processor-service-test:', $makefile);
@@ -153,6 +162,14 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
     private function afterNeedle(string $haystack, string $needle): string
     {
         $position = strpos($haystack, $needle);
+        $this->assertNotFalse($position, sprintf('Expected to find [%s].', $needle));
+
+        return substr($haystack, $position + strlen($needle));
+    }
+
+    private function afterLastNeedle(string $haystack, string $needle): string
+    {
+        $position = strrpos($haystack, $needle);
         $this->assertNotFalse($position, sprintf('Expected to find [%s].', $needle));
 
         return substr($haystack, $position + strlen($needle));

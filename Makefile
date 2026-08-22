@@ -49,7 +49,7 @@ ensure-env:
 	@mkdir -p vendor node_modules
 
 ensure-artifact-signing-key: ensure-env
-	@if command -v php >/dev/null 2>&1; then \
+	@if command -v php >/dev/null 2>&1 && php -r 'exit(PHP_VERSION_ID >= 80300 ? 0 : 1);'; then \
 		php scripts/ensure-artifact-signing-key.php; \
 	else \
 		sh scripts/ensure-artifact-signing-key.sh; \

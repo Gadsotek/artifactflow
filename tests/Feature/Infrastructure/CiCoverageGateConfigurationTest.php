@@ -32,7 +32,10 @@ final class CiCoverageGateConfigurationTest extends TestCase
     {
         $makefile = $this->readProjectFile('Makefile');
 
-        $this->assertStringContainsString("ensure-artifact-signing-key: ensure-env\n\t@if command -v php >/dev/null 2>&1; then", $makefile);
+        $this->assertStringContainsString(
+            "ensure-artifact-signing-key: ensure-env\n\t@if command -v php >/dev/null 2>&1 && php -r 'exit(PHP_VERSION_ID >= 80300 ? 0 : 1);'; then",
+            $makefile,
+        );
         $this->assertStringContainsString('php scripts/ensure-artifact-signing-key.php', $makefile);
         $this->assertStringContainsString('sh scripts/ensure-artifact-signing-key.sh', $makefile);
         $this->assertStringNotContainsString('$(MAKE) scripts/ensure-artifact-signing-key.php', $makefile);
@@ -337,7 +340,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
             $this->afterNeedle($makefile, 'verify-reverb-origin:'),
         );
         $this->assertStringContainsString(
-            'CACHE_STORE: ${REVERB_CACHE_STORE:-file}',
+            'CACHE_STORE: ${REVERB_CACHE_STORE:-${CACHE_STORE:-file}}',
             $this->afterNeedle($compose, 'reverb:'),
         );
         $this->assertStringContainsString(

@@ -29,9 +29,9 @@ This idempotently provisions distinct local `ARTIFACT_URL_SIGNING_KEY`,
 before their consumers start. The PDF processor runs without a public port, while
 the guided local/test installer keeps PDF application behavior disabled by default.
 Accept its experimental PDF prompt, or pass `--pdf` for an unattended install, to
-persist `PDF_PROCESSOR_ENABLED=true`; then exit the app container and rerun `make up`
-so Compose reloads the setting. Production installation rejects this option while
-the PDF release gate remains open.
+persist `PDF_PROCESSOR_ENABLED=true`. After enabling or disabling PDF through the
+installer, exit the app container and rerun `make up` so Compose reloads the setting.
+Production installation rejects this option while the PDF release gate remains open.
 
 Start the full local stack with Vite, Caddy edge routing, Adminer, and Mailpit:
 
@@ -530,7 +530,7 @@ schema creation, or sequence privileges. Grant database `CONNECT` separately acc
 database naming and role-management policy, keep this as a standalone role with no broader role
 memberships, and keep the artifact volume mounted read-only.
 
-Realtime broadcasting is optional and disabled by default. To enable it, deploy the Reverb runtime, set `BROADCAST_CONNECTION=reverb`, configure `REVERB_APP_ID`, `REVERB_APP_KEY`, a dedicated `REVERB_APP_SECRET` of at least 32 bytes, set `REVERB_PUBLIC_URL` to the app origin, keep `REVERB_APP_RATE_LIMITING_ENABLED=true`, and set a bounded `REVERB_APP_MAX_CONNECTIONS`. For a local source install, run `artifactflow:install --reverb`, exit the app container, and rerun `make up` so both the app and Reverb are recreated with the generated values. Local `make up` starts the profiled Reverb service on `127.0.0.1:${REVERB_PORT:-8080}`; the shared local file cache also lets it start before first-install migrations exist. `make reverb-up` and `make reverb-down` remain available for standalone control.
+Realtime broadcasting is optional and disabled by default. To enable it, deploy the Reverb runtime, set `BROADCAST_CONNECTION=reverb`, configure `REVERB_APP_ID`, `REVERB_APP_KEY`, a dedicated `REVERB_APP_SECRET` of at least 32 bytes, set `REVERB_PUBLIC_URL` to the app origin, keep `REVERB_APP_RATE_LIMITING_ENABLED=true`, and set a bounded `REVERB_APP_MAX_CONNECTIONS`. For a local source install, run `artifactflow:install --reverb`, exit the app container, and rerun `make up` so both the app and Reverb are recreated with the generated values. Local `make up` starts the profiled Reverb service on `127.0.0.1:${REVERB_PORT:-8080}`. Reverb shares the app's configured cache so `reverb:restart` crosses processes, with the shared file cache as the pre-install fallback before database migrations exist. `make reverb-up` and `make reverb-down` remain available for standalone control.
 
 Before public release, run `make verify-reverb-origin` once in an environment with Docker and Node available. The target builds the local app image if needed, starts the Reverb runtime with production-shaped configuration, waits for the websocket port to accept connections, and performs two real websocket handshakes: the configured app origin must receive `101 Switching Protocols` plus `pusher:connection_established`, and a foreign origin must upgrade before receiving Pusher error `4009`.
 
@@ -692,7 +692,7 @@ Content and storage limits:
 | `IMAGE_NORMALIZATION_INSTALLATION_PIXEL_BUDGET_PER_MINUTE` | 256 Mi pixels | Shared installation decoded-pixel budget; must be at least the principal budget and cannot exceed 256 Mi pixels |
 | `IMAGE_NORMALIZATION_USER_WORK_BUDGET_PER_MINUTE` | 64 Mi work units | Per-principal non-pixel work budget. Input bytes count once, PNG ancillary/JPEG header metadata bytes count again, and every parsed chunk/marker costs 1 Ki work units. |
 | `IMAGE_NORMALIZATION_INSTALLATION_WORK_BUDGET_PER_MINUTE` | 256 Mi work units | Installation-wide non-pixel work budget; must be at least the principal budget and cannot exceed 256 Mi work units. |
-| `PDF_PROCESSOR_ENABLED` | `false` | Default-off gate for PDF web/MCP create, replace, restore, reprocess, native preview/download, and MCP PDF read/search. The guided local/test installer can persist `true` through its experimental PDF prompt or `--pdf`; rerun `make up` afterwards so Compose reloads it. Authorized retained PDFs remain visible in the normal web catalog/search because this is a processing/delivery safety switch, not access revocation. The production boot gate currently rejects `true` until the PDF roadmap's containment and release gates are complete. Local/E2E app and artifact runtimes use the same boolean when testing, but the artifact host must not receive the processor URL or shared secret. |
+| `PDF_PROCESSOR_ENABLED` | `false` | Default-off gate for PDF web/MCP create, replace, restore, reprocess, native preview/download, and MCP PDF read/search. The guided local/test installer can change it through its experimental PDF prompt or persist `true` through `--pdf`; rerun `make up` after either change so Compose reloads it. Authorized retained PDFs remain visible in the normal web catalog/search because this is a processing/delivery safety switch, not access revocation. The production boot gate currently rejects `true` until the PDF roadmap's containment and release gates are complete. Local/E2E app and artifact runtimes use the same boolean when testing, but the artifact host must not receive the processor URL or shared secret. |
 | `PDF_PROCESSOR_URL` | `http://pdf-processor:8080` | App-runtime-only internal PDF processor origin. It must not be public or supplied to the artifact host. |
 | `PDF_PROCESSOR_SHARED_SECRET` | empty | App-runtime-only HMAC secret shared with the PDF processor. Use at least 32 non-placeholder bytes and never reuse `APP_KEY` or the artifact signing key. |
 | `PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS` | 2 seconds | App-to-processor connection timeout (hard-capped at 60 seconds). |

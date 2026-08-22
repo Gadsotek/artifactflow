@@ -58,6 +58,7 @@ final class InstallCommand extends Command
                 ? $this->confirm('Enable experimental PDF artifacts?', $pdfWasEnabled)
                 : $pdfWasEnabled)
         );
+        $pdfSettingChanged = $shouldPersistPdfChoice && $wantsPdf !== $pdfWasEnabled;
         $needsPdfProcessorSecret = $wantsPdf
             && InstallationSecret::isMissing($this->configString('pdf_processor.shared_secret'));
         $targetAppEnv = $local ? 'local' : 'production';
@@ -226,12 +227,9 @@ final class InstallCommand extends Command
             || $plan->hasStep('image_parser_secret')
             || $plan->hasStep('reverb_keys')
             || $plan->hasStep('pdf_processor_secret')
+            || $pdfSettingChanged
         )) {
             $this->line('Exit this container and rerun make up so local services reload the new configuration.');
-        }
-
-        if ($shouldPersistPdfChoice && $wantsPdf && !$pdfWasEnabled) {
-            $this->line('Exit this container and rerun make up so the local app enables PDF artifacts.');
         }
 
         return 0;
