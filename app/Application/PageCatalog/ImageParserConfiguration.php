@@ -6,6 +6,7 @@ namespace App\Application\PageCatalog;
 
 use App\Infrastructure\Security\OriginNormalizer;
 use App\Infrastructure\Security\SecretStrength;
+use App\Infrastructure\Security\UnixSocketPath;
 use LogicException;
 
 final readonly class ImageParserConfiguration
@@ -50,7 +51,10 @@ final readonly class ImageParserConfiguration
 
     public function socketPath(): ?string
     {
-        return $this->optionalAbsolutePath('image_parser.socket_path', 'Image parser socket path');
+        return UnixSocketPath::optional(
+            $this->string('image_parser.socket_path'),
+            'Image parser socket path',
+        );
     }
 
     public function connectTimeoutSeconds(): int
@@ -84,20 +88,5 @@ final readonly class ImageParserConfiguration
         $value = config($key);
 
         return is_string($value) ? $value : '';
-    }
-
-    private function optionalAbsolutePath(string $key, string $label): ?string
-    {
-        $path = trim($this->string($key));
-
-        if ($path === '') {
-            return null;
-        }
-
-        if (!str_starts_with($path, '/') || str_contains($path, "\0")) {
-            throw new LogicException(sprintf('%s must be an absolute filesystem path.', $label));
-        }
-
-        return $path;
     }
 }

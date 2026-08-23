@@ -196,6 +196,36 @@ final class DeploymentDoctorTest extends TestCase
         }
     }
 
+    public function test_doctor_rejects_invalid_enabled_processor_socket_paths(): void
+    {
+        $imageReport = (new DeploymentDoctor($this->config('production', array_merge(
+            $this->hardenedProductionConfig(),
+            ['image_parser.socket_path' => 'relative/parser.sock'],
+        ))))->run();
+        $imageCheck = $this->check($imageReport->checks, 'image_parser');
+
+        $this->assertSame(DoctorCheckStatus::Fail, $imageCheck->status);
+        $this->assertStringContainsString('IMAGE_PARSER_SOCKET_PATH', $imageCheck->detail);
+
+        $imageNulReport = (new DeploymentDoctor($this->config('production', array_merge(
+            $this->hardenedProductionConfig(),
+            ['image_parser.socket_path' => "/run/artifactflow/parser.sock\0"],
+        ))))->run();
+        $imageNulCheck = $this->check($imageNulReport->checks, 'image_parser');
+
+        $this->assertSame(DoctorCheckStatus::Fail, $imageNulCheck->status);
+        $this->assertStringContainsString('IMAGE_PARSER_SOCKET_PATH', $imageNulCheck->detail);
+
+        $pdfReport = (new DeploymentDoctor($this->config('local', [
+            'pdf_processor.enabled' => true,
+            'pdf_processor.socket_path' => 'relative/processor.sock',
+        ])))->run();
+        $pdfCheck = $this->check($pdfReport->checks, 'pdf_release_gate');
+
+        $this->assertSame(DoctorCheckStatus::Fail, $pdfCheck->status);
+        $this->assertStringContainsString('PDF_PROCESSOR_SOCKET_PATH', $pdfCheck->detail);
+    }
+
     public function test_production_fails_when_image_normalization_work_budgets_are_unsafe(): void
     {
         $minimumWorkBudget = ImageNormalizationConfiguration::maximumWorkUnitsForInputBytes(1_000_000);

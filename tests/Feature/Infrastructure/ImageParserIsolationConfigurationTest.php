@@ -71,8 +71,10 @@ final class ImageParserIsolationConfigurationTest extends TestCase
 
         $healthcheck = $this->readProjectFile('image-parser/healthcheck.php');
         $this->assertStringContainsString('ParserConfiguration::fromEnvironment()', $healthcheck);
-        $this->assertStringNotContainsString('->verifyHealth()', $healthcheck);
-        $this->assertStringContainsString('unix://', $healthcheck);
+        $this->assertStringContainsString('new RasterNormalizer($configuration)', $healthcheck);
+        $this->assertStringContainsString('->verifyHealth()', $healthcheck);
+        $this->assertStringNotContainsString('stream_socket_client', $healthcheck);
+        $this->assertStringNotContainsString('unix://', $healthcheck);
         $this->assertStringNotContainsString(
             'imagedestroy(',
             strtolower($this->readProjectFile('image-parser/src/ImageParser.php')),

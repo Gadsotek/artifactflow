@@ -6,6 +6,7 @@ namespace App\Application\PageCatalog;
 
 use App\Infrastructure\Security\OriginNormalizer;
 use App\Infrastructure\Security\SecretStrength;
+use App\Infrastructure\Security\UnixSocketPath;
 use LogicException;
 
 final readonly class PdfProcessorConfiguration
@@ -56,17 +57,10 @@ final readonly class PdfProcessorConfiguration
 
     public function socketPath(): ?string
     {
-        $path = trim($this->string('pdf_processor.socket_path'));
-
-        if ($path === '') {
-            return null;
-        }
-
-        if (!str_starts_with($path, '/') || str_contains($path, "\0")) {
-            throw new LogicException('PDF processor socket path must be an absolute filesystem path.');
-        }
-
-        return $path;
+        return UnixSocketPath::optional(
+            $this->string('pdf_processor.socket_path'),
+            'PDF processor socket path',
+        );
     }
 
     public function connectTimeoutSeconds(): int

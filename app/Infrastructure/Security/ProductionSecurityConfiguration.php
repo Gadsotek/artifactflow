@@ -180,6 +180,10 @@ final readonly class ProductionSecurityConfiguration
             throw new RuntimeException('Image parser URL must be a pure HTTP or HTTPS origin.');
         }
 
+        if (!UnixSocketPath::isValidOptional($this->untrimmedString('image_parser.socket_path'))) {
+            throw new RuntimeException('Image parser socket path must be an absolute filesystem path.');
+        }
+
         $configured = $this->string('image_parser.shared_secret');
 
         if (!SecretStrength::isProductionSafe($configured)) {
@@ -685,6 +689,13 @@ final readonly class ProductionSecurityConfiguration
         $value = $this->config->get($key);
 
         return is_string($value) ? trim($value) : '';
+    }
+
+    private function untrimmedString(string $key): string
+    {
+        $value = $this->config->get($key);
+
+        return is_string($value) ? $value : '';
     }
 
     /**

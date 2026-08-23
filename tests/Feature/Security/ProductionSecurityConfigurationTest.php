@@ -1097,6 +1097,18 @@ final class ProductionSecurityConfigurationTest extends TestCase
         }
     }
 
+    public function test_image_parser_socket_path_must_be_absolute_at_boot(): void
+    {
+        foreach (['relative/parser.sock', "/run/artifactflow/parser.sock\0"] as $socketPath) {
+            $this->configureSafeProductionValues();
+            config(['image_parser.socket_path' => $socketPath]);
+
+            $this->assertUnsafeConfiguration(
+                'Image parser socket path must be an absolute filesystem path.',
+            );
+        }
+    }
+
     private function configureSafeProductionValues(): void
     {
         config([
