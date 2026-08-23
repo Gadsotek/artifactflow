@@ -139,19 +139,21 @@ RUN apk add --no-cache --virtual .image-parser-build-deps \
         "c-ares>=1.34.8-r0" \
         libjpeg-turbo \
         libpng \
+        socat=1.8.1.3-r0 \
     && apk del .image-parser-build-deps
 
 COPY image-parser /srv/image-parser
 
 RUN addgroup -S -g 10001 image-parser \
     && adduser -S -D -H -u 10001 -G image-parser -s /sbin/nologin image-parser \
+    && mkdir -p /run/artifactflow/image-parser \
+    && chown image-parser:image-parser /run/artifactflow/image-parser \
+    && chmod 0755 /run/artifactflow/image-parser \
     && chmod 0555 /srv/image-parser/start.sh
 
 WORKDIR /srv/image-parser
 
 USER image-parser
-
-EXPOSE 8080
 
 # Keep one normalization process inside the 512 MiB service cgroup. A prefork
 # pool multiplies native GD decode/rotate/encode memory, and a killed child can

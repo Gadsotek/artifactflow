@@ -6,6 +6,7 @@ namespace App\Application\PageCatalog;
 
 use App\Infrastructure\Security\OriginNormalizer;
 use App\Infrastructure\Security\SecretStrength;
+use App\Infrastructure\Security\UnixSocketPath;
 use LogicException;
 
 final readonly class ImageParserConfiguration
@@ -46,6 +47,14 @@ final readonly class ImageParserConfiguration
         }
 
         return $normalized;
+    }
+
+    public function socketPath(): ?string
+    {
+        return UnixSocketPath::optional(
+            $this->string('image_parser.socket_path'),
+            'Image parser socket path',
+        );
     }
 
     public function connectTimeoutSeconds(): int

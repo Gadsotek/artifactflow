@@ -11,51 +11,16 @@ if (!is_string($envPath) || $envPath === '') {
 }
 
 require_once __DIR__ . '/ensure-image-parser-shared-secret.php';
+require_once __DIR__ . '/ensure-pdf-processor-shared-secret.php';
+
+if (ensureLocalBoundarySecret($envPath, 'ARTIFACT_URL_SIGNING_KEY', ['APP_KEY']) !== 0) {
+    exit(1);
+}
 
 if (ensureImageParserSharedSecret($envPath) !== 0) {
     exit(1);
 }
 
-if (!is_file($envPath)) {
-    fwrite(STDERR, "Environment file does not exist: {$envPath}\n");
+if (ensurePdfProcessorSharedSecret($envPath) !== 0) {
     exit(1);
-}
-
-$contents = file_get_contents($envPath);
-
-if (!is_string($contents)) {
-    fwrite(STDERR, "Unable to read environment file: {$envPath}\n");
-    exit(1);
-}
-
-if (preg_match('/^ARTIFACT_URL_SIGNING_KEY=(.*)$/m', $contents, $matches) === 1) {
-    if (trim((string) $matches[1]) !== '') {
-        echo "ARTIFACT_URL_SIGNING_KEY already configured.\n";
-        exit(0);
-    }
-
-    $updated = preg_replace(
-        '/^ARTIFACT_URL_SIGNING_KEY=.*$/m',
-        'ARTIFACT_URL_SIGNING_KEY=' . generatedSigningKey(),
-        $contents,
-        1,
-    );
-
-    if (!is_string($updated)) {
-        fwrite(STDERR, "Unable to update ARTIFACT_URL_SIGNING_KEY in {$envPath}.\n");
-        exit(1);
-    }
-
-    file_put_contents($envPath, $updated);
-    echo "Generated ARTIFACT_URL_SIGNING_KEY in .env.\n";
-    exit(0);
-}
-
-$separator = str_ends_with($contents, "\n") ? '' : "\n";
-file_put_contents($envPath, $contents . $separator . 'ARTIFACT_URL_SIGNING_KEY=' . generatedSigningKey() . "\n");
-echo "Generated ARTIFACT_URL_SIGNING_KEY in .env.\n";
-
-function generatedSigningKey(): string
-{
-    return 'base64:' . base64_encode(random_bytes(32));
 }

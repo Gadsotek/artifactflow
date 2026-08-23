@@ -1,10 +1,11 @@
 SHELL := /bin/bash
 
 COMPOSE ?= docker compose
-COMPOSE_ALL ?= $(COMPOSE) --profile frontend --profile edge --profile adminer --profile mail --profile test
+COMPOSE_ALL ?= $(COMPOSE) --profile frontend --profile edge --profile adminer --profile mail --profile realtime --profile test
 DOCKER_BUILD ?= docker build
 DOCKER_BUILD_CACHE_ARGS ?=
 APP_SERVICE ?= app
+ARTIFACT_GATEWAY_SERVICE ?= artifact-gateway
 export APP_UID ?= $(shell id -u)
 export APP_GID ?= $(shell id -g)
 UP_BUILD ?= --build
@@ -24,7 +25,10 @@ TEST_DB_RUN_ID ?= $(shell uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-')
 TEST_DB_NAME ?= $(TEST_DB_DATABASE)_$(TEST_DB_RUN_ID)
 E2E_APP_SERVICE ?= e2e-app
 E2E_ARTIFACT_SERVICE ?= e2e-artifact-host
+E2E_IMAGE_PARSER_SERVICE ?= e2e-image-parser
 E2E_PDF_PROCESSOR_SERVICE ?= e2e-pdf-processor
+E2E_ARTIFACT_GATEWAY_SERVICE ?= e2e-artifact-gateway
+E2E_EDGE_SERVICE ?= e2e-edge
 E2E_APP_PORT ?= 18180
 E2E_ARTIFACT_HOST_PORT ?= 18181
 E2E_APP_URL ?= http://localhost:$(E2E_APP_PORT)
@@ -32,6 +36,7 @@ E2E_ARTIFACT_URL ?= http://127.0.0.1:$(E2E_ARTIFACT_HOST_PORT)
 E2E_DB_NAME ?= $(TEST_DB_DATABASE)_e2e_$(TEST_DB_RUN_ID)
 E2E_LOCK_DIR ?= storage/framework/testing/e2e.lock
 PRODUCTION_IMAGE ?= artifactflow-app:production
+IMAGE_PARSER_IMAGE ?= artifactflow-image-parser:production
 PDF_PROCESSOR_SPIKE_IMAGE ?= artifactflow-pdf-processor-spike:local
 PDF_PROCESSOR_SERVICE_IMAGE ?= artifactflow-pdf-processor-service:local
 TRIVY_IMAGE ?= aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
@@ -42,14 +47,14 @@ TYPE_COVERAGE_MIN ?= 100
 TYPE_COVERAGE_REPORT ?= storage/framework/testing/type-coverage.json
 COVERAGE_MIN ?= 94
 
-.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps run-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test fuzz-capabilities type-coverage coverage audit audit-php audit-js ai-hooks-test codex-permissions-test verify-reverb-origin reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty pdf-processor-spike-build pdf-processor-spike-test pdf-processor-service-build pdf-processor-service-test scan-image quality quality-full config-refresh lint-js doctor install
+.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps run-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test fuzz-capabilities type-coverage coverage audit audit-php audit-js ai-hooks-test codex-permissions-test verify-reverb-origin verify-runtime-network-isolation reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty pdf-processor-spike-build pdf-processor-spike-test pdf-processor-service-build pdf-processor-service-test scan-image quality quality-full config-refresh lint-js doctor install
 
 ensure-env:
 	@test -f .env || cp .env.example .env
 	@mkdir -p vendor node_modules
 
 ensure-artifact-signing-key: ensure-env
-	@if command -v php >/dev/null 2>&1; then \
+	@if command -v php >/dev/null 2>&1 && php -r 'exit(PHP_VERSION_ID >= 80300 ? 0 : 1);'; then \
 		php scripts/ensure-artifact-signing-key.php; \
 	else \
 		sh scripts/ensure-artifact-signing-key.sh; \
@@ -64,9 +69,11 @@ up:
 	$(MAKE) ensure-artifact-signing-key
 	$(COMPOSE) up -d $(UP_BUILD) db
 	$(MAKE) deps
-	$(COMPOSE) up -d $(UP_BUILD) app artifact-host worker scheduler
+	$(COMPOSE) --profile realtime up -d $(UP_BUILD) app artifact-host artifact-gateway worker scheduler reverb
 	$(MAKE) wait APP_SERVICE=app
 	$(MAKE) wait APP_SERVICE=artifact-host
+	$(MAKE) wait APP_SERVICE=$(ARTIFACT_GATEWAY_SERVICE)
+	$(MAKE) wait APP_SERVICE=reverb WAIT_COMPOSE_PROFILES='--profile realtime'
 	$(COMPOSE) --profile frontend up -d vite
 
 up-local: up edge-up adminer-up mail-up
@@ -254,6 +261,7 @@ verify-reverb-origin:
 	$(MAKE) ensure-env
 	@set -euo pipefail; \
 		port="$${REVERB_ORIGIN_PROBE_PORT:-18082}"; \
+		probe_container="artifactflow-reverb-origin-probe-$$(openssl rand -hex 6)"; \
 		export APP_ENV=production; \
 		export APP_DEBUG=false; \
 		smoke_reverb_key="$$(openssl rand -hex 24)"; \
@@ -286,17 +294,19 @@ verify-reverb-origin:
 		export REVERB_APP_MAX_CONNECTIONS=1000; \
 		export REVERB_APP_RATE_LIMITING_ENABLED=true; \
 		export REVERB_PORT="$$port"; \
-		cleanup() { $(COMPOSE) --profile realtime stop reverb >/dev/null 2>&1 || true; }; \
+		cleanup() { docker rm -f "$$probe_container" >/dev/null 2>&1 || true; }; \
 		trap cleanup EXIT; \
 		$(COMPOSE) build app; \
-		$(COMPOSE) --profile realtime up -d $(UP_BUILD) --force-recreate --no-deps reverb; \
-		$(MAKE) wait APP_SERVICE=reverb WAIT_COMPOSE_PROFILES='--profile realtime'; \
-		REVERB_PROBE_HOST=127.0.0.1 \
-		REVERB_PROBE_PORT="$$port" \
-		REVERB_APP_KEY="$$smoke_reverb_key" \
-		REVERB_ALLOWED_ORIGIN=https://app.example.test \
-		REVERB_REJECTED_ORIGIN=https://evil.example.test \
-			node scripts/verify-reverb-origin-handshake.mjs
+		$(COMPOSE) --profile realtime run -d --service-ports --name "$$probe_container" --no-deps reverb >/dev/null; \
+		if ! REVERB_PROBE_HOST=127.0.0.1 \
+			REVERB_PROBE_PORT="$$port" \
+			REVERB_APP_KEY="$$smoke_reverb_key" \
+			REVERB_ALLOWED_ORIGIN=https://app.example.test \
+			REVERB_REJECTED_ORIGIN=https://evil.example.test \
+				node scripts/verify-reverb-origin-handshake.mjs; then \
+			docker logs --tail=100 "$$probe_container" || true; \
+			exit 1; \
+		fi
 
 test-env-up:
 	$(COMPOSE) --profile test up -d $(TEST_DB_SERVICE)
@@ -407,7 +417,7 @@ e2e:
 			exit 1; \
 		fi; \
 		cleanup() { \
-			$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env stop $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) $(E2E_PDF_PROCESSOR_SERVICE) >/dev/null 2>&1 || true; \
+			$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env stop $(E2E_EDGE_SERVICE) $(E2E_ARTIFACT_GATEWAY_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) $(E2E_IMAGE_PARSER_SERVICE) $(E2E_PDF_PROCESSOR_SERVICE) >/dev/null 2>&1 || true; \
 			$(MAKE) test-db-drop TEST_DB_NAME="$$db_name"; \
 			rmdir "$$lock_dir" >/dev/null 2>&1 || true; \
 		}; \
@@ -427,10 +437,14 @@ e2e:
 		E2E_APP_URL="$(E2E_APP_URL)" \
 		E2E_ARTIFACT_URL="$(E2E_ARTIFACT_URL)" \
 		E2E_ARTIFACT_FRAME_ANCESTORS="$(E2E_APP_URL)" \
-			$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env up -d $(UP_BUILD) --force-recreate $(E2E_PDF_PROCESSOR_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE); \
+			$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env up -d $(UP_BUILD) --force-recreate $(E2E_IMAGE_PARSER_SERVICE) $(E2E_PDF_PROCESSOR_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) $(E2E_ARTIFACT_GATEWAY_SERVICE) $(E2E_EDGE_SERVICE); \
+		$(MAKE) wait APP_SERVICE=$(E2E_IMAGE_PARSER_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
 		$(MAKE) wait APP_SERVICE=$(E2E_PDF_PROCESSOR_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
 		$(MAKE) wait APP_SERVICE=$(E2E_APP_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
 		$(MAKE) wait APP_SERVICE=$(E2E_ARTIFACT_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
+		$(MAKE) wait APP_SERVICE=$(E2E_ARTIFACT_GATEWAY_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
+		$(MAKE) wait APP_SERVICE=$(E2E_EDGE_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
+		$(MAKE) verify-runtime-network-isolation; \
 		E2E_DB_DATABASE="$$db_name" \
 		E2E_APP_PORT="$(E2E_APP_PORT)" \
 		E2E_ARTIFACT_HOST_PORT="$(E2E_ARTIFACT_HOST_PORT)" \
@@ -440,12 +454,18 @@ e2e:
 		E2E_APP_COMMAND_TARGET=run-e2e-app-cmd \
 			npx playwright test
 
+verify-runtime-network-isolation:
+	bash scripts/verify-runtime-network-isolation.sh
+
 e2e-install:
 	if [ -f package-lock.json ]; then npm ci; else npm install; fi
 	npx playwright install --with-deps chromium firefox webkit
 
 build-prod:
 	$(DOCKER_BUILD) --pull --target production --tag $(PRODUCTION_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) .
+	$(DOCKER_BUILD) --pull --target image-parser --tag $(IMAGE_PARSER_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) .
+	$(DOCKER_BUILD) --pull -f pdf-processor-spike/Dockerfile --target pdf-processor-service \
+		--tag $(PDF_PROCESSOR_SERVICE_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) pdf-processor-spike
 	$(MAKE) assert-prod-storage-empty
 
 assert-prod-storage-empty:
@@ -471,11 +491,30 @@ pdf-processor-service-build:
 		--tag $(PDF_PROCESSOR_SERVICE_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) pdf-processor-spike
 
 pdf-processor-service-test: pdf-processor-service-build
-	docker run --rm --network none --read-only --cap-drop ALL \
-		--security-opt no-new-privileges --pids-limit 32 --memory 512m --cpus 1 \
-		--tmpfs /tmp:rw,noexec,nosuid,size=32m \
-		--env PDF_PROCESSOR_SHARED_SECRET=artifactflow-local-pdf-processor-secret-not-for-production \
-		--entrypoint php $(PDF_PROCESSOR_SERVICE_IMAGE) /srv/pdf-processor-spike/healthcheck.php
+	@set -euo pipefail; \
+		processor_container="artifactflow-pdf-processor-probe-$$(openssl rand -hex 6)"; \
+		cleanup() { docker rm -f "$$processor_container" >/dev/null 2>&1 || true; }; \
+		trap cleanup EXIT; \
+		docker run -d --name "$$processor_container" --network none --read-only --cap-drop ALL \
+			--security-opt no-new-privileges --pids-limit 32 --memory 512m --cpus 1 \
+			--tmpfs /tmp:rw,noexec,nosuid,size=32m \
+			--tmpfs /run/artifactflow/pdf-processor:rw,noexec,nosuid,size=1m,uid=10002,gid=10002,mode=0755 \
+			--health-interval 1s --health-timeout 15s --health-start-period 1s --health-retries 15 \
+			--env PDF_PROCESSOR_SHARED_SECRET=artifactflow-local-pdf-processor-secret-not-for-production \
+			$(PDF_PROCESSOR_SERVICE_IMAGE) >/dev/null; \
+		for attempt in $$(seq 1 45); do \
+			status="$$(docker inspect --format='{{.State.Health.Status}}' "$$processor_container" 2>/dev/null || true)"; \
+			if [ "$$status" = healthy ]; then \
+				echo "PDF processor UDS health probe passed."; \
+				break; \
+			fi; \
+			if [ "$$status" = unhealthy ] || [ "$$attempt" -eq 45 ]; then \
+				docker logs "$$processor_container" 2>&1 || true; \
+				echo "PDF processor did not become healthy (status: $$status)." >&2; \
+				exit 1; \
+			fi; \
+			sleep 1; \
+		done
 	@if docker run --rm --network none --read-only --cap-drop ALL \
 		--security-opt no-new-privileges --pids-limit 32 --memory 512m --cpus 1 \
 		--tmpfs /tmp:rw,noexec,nosuid,size=32m \
@@ -489,6 +528,12 @@ scan-image:
 	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
 		-v "$(TRIVY_CACHE_DIR):/root/.cache/trivy" \
 		$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(PRODUCTION_IMAGE)
+	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+		-v "$(TRIVY_CACHE_DIR):/root/.cache/trivy" \
+		$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(IMAGE_PARSER_IMAGE)
+	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+		-v "$(TRIVY_CACHE_DIR):/root/.cache/trivy" \
+		$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(PDF_PROCESSOR_SERVICE_IMAGE)
 	docker run --rm \
 		-v "$(TRIVY_CACHE_DIR):/root/.cache/trivy" \
 		-v "$(PWD):/src:ro" \

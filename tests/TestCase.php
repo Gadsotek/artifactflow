@@ -32,7 +32,13 @@ abstract class TestCase extends BaseTestCase
 
         $this->ensureConfiguredDatabaseIsIsolated();
         $this->withoutVite();
-        config(['app.artifact_url_signing_key' => 'artifact-preview-test-signing-key']);
+        config([
+            'app.artifact_url_signing_key' => 'artifact-preview-test-signing-key',
+            // The isolated PHP suite exercises processor clients through
+            // Http::fake(). Real Unix-socket transport is covered by e2e.
+            'image_parser.socket_path' => null,
+            'pdf_processor.socket_path' => null,
+        ]);
     }
 
     /**

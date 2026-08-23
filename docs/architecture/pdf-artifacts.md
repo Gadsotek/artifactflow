@@ -103,8 +103,14 @@ users, choose storage paths, or access the database.
 The production service follows the existing internal-parser pattern: a pinned
 non-root read-only container, strict request/response schema, authenticated
 internal requests, dropped capabilities, `no-new-privileges`, PID/CPU/memory/
-tmpfs/time limits, and an internal-only network whose effective outbound denial
-is tested from the running container.
+tmpfs/time limits, and a Unix-socket-only local transport in a container with
+Docker network mode `none`. The socket relay may reach only the processor's own
+loopback-bound HTTP process; neither endpoint provides a callback path into the
+application runtime. Cross-host deployments require an equivalently
+directional network policy: the app may initiate requests to the processor, but
+the processor cannot initiate connections to the app, metadata services, or the
+internet. Effective callback and outbound denial are tested from the running
+container.
 
 The application validates the response schema, request nonce, input hash,
 engine/profile, sizes, and completeness. An authenticated response does not

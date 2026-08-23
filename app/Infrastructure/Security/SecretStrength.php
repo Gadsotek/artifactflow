@@ -49,6 +49,8 @@ final readonly class SecretStrength
         'base64:YXJ0aWZhY3RmbG93LWUyZS1hcHAta2V5LTAwMDAwMDA=',
         // docker-compose.yml local image-parser authentication default.
         'artifactflow-local-parser-secret-not-for-production',
+        // docker-compose.yml local PDF-processor authentication default.
+        'artifactflow-local-pdf-processor-secret-not-for-production',
     ];
 
     /**

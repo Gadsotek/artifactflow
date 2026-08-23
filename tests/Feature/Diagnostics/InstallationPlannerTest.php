@@ -72,6 +72,41 @@ final class InstallationPlannerTest extends TestCase
         );
     }
 
+    public function test_pdf_secret_generation_is_added_only_when_pdf_is_requested_and_the_secret_is_missing(): void
+    {
+        $requested = (new InstallationPlanner())->plan(
+            env: 'local',
+            needsAppKey: false,
+            needsSigningKey: false,
+            needsImageParserSecret: false,
+            wantsPdf: true,
+            needsPdfProcessorSecret: true,
+        );
+        $notRequested = (new InstallationPlanner())->plan(
+            env: 'local',
+            needsAppKey: false,
+            needsSigningKey: false,
+            needsImageParserSecret: false,
+            wantsPdf: false,
+            needsPdfProcessorSecret: true,
+        );
+        $alreadyProvisioned = (new InstallationPlanner())->plan(
+            env: 'local',
+            needsAppKey: false,
+            needsSigningKey: false,
+            needsImageParserSecret: false,
+            wantsPdf: true,
+            needsPdfProcessorSecret: false,
+        );
+
+        $this->assertSame(
+            ['pdf_processor_secret', 'migrate', 'admin', 'demo', 'dev_tools', 'login_url'],
+            $requested->stepIds(),
+        );
+        $this->assertFalse($notRequested->hasStep('pdf_processor_secret'));
+        $this->assertFalse($alreadyProvisioned->hasStep('pdf_processor_secret'));
+    }
+
     public function test_production_plan_never_generates_secrets_and_ends_on_doctor(): void
     {
         $plan = (new InstallationPlanner())->plan(
@@ -95,6 +130,7 @@ final class InstallationPlannerTest extends TestCase
         $this->assertTrue(InstallationSecret::isMissing(''));
         $this->assertTrue(InstallationSecret::isMissing('base64:replace-with-a-real-key'));
         $this->assertTrue(InstallationSecret::isMissing('base64:' . base64_encode('too-short')));
+        $this->assertTrue(InstallationSecret::isMissing('artifactflow-local-pdf-processor-secret-not-for-production'));
         $this->assertFalse(InstallationSecret::isMissing('base64:' . base64_encode(str_repeat('a', 32))));
         $this->assertFalse(InstallationSecret::isMissing(str_repeat('x', 40)));
     }

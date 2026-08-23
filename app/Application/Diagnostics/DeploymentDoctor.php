@@ -15,6 +15,7 @@ use App\Infrastructure\Security\PreviousApplicationKeyConfiguration;
 use App\Infrastructure\Security\ProductionSecurityConfiguration;
 use App\Infrastructure\Security\SecretStrength;
 use App\Infrastructure\Security\SecurityInvariants;
+use App\Infrastructure\Security\UnixSocketPath;
 use Illuminate\Contracts\Config\Repository;
 
 /**
@@ -84,6 +85,14 @@ final readonly class DeploymentDoctor
                 'pdf_release_gate',
                 'PDF release gate',
                 'PDF_PROCESSOR_ENABLED must be true or false.',
+            );
+        }
+
+        if ($enabled && !UnixSocketPath::isValidOptional($this->untrimmedString('pdf_processor.socket_path'))) {
+            return $this->fail(
+                'pdf_release_gate',
+                'PDF release gate',
+                'PDF_PROCESSOR_SOCKET_PATH must be empty or an absolute filesystem path.',
             );
         }
 
@@ -200,6 +209,14 @@ final readonly class DeploymentDoctor
                     'Image parser isolation',
                     'IMAGE_PARSER_SHARED_SECRET must be absent when image artifacts are disabled.',
                 );
+        }
+
+        if (!UnixSocketPath::isValidOptional($this->untrimmedString('image_parser.socket_path'))) {
+            return $this->fail(
+                'image_parser',
+                'Image parser isolation',
+                'IMAGE_PARSER_SOCKET_PATH must be empty or an absolute filesystem path.',
+            );
         }
 
         $origin = OriginNormalizer::tryParsePureOrigin($this->string('image_parser.url'));
@@ -1131,5 +1148,12 @@ final readonly class DeploymentDoctor
         $value = $this->config->get($key);
 
         return is_string($value) ? trim($value) : '';
+    }
+
+    private function untrimmedString(string $key): string
+    {
+        $value = $this->config->get($key);
+
+        return is_string($value) ? $value : '';
     }
 }

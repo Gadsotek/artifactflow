@@ -29,6 +29,13 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   plus safe facts; restore/reprocess verify retained original hashes before
   processing, and PDF diagnostics stay out of audit/event metadata.
 
+### Changed
+
+- Local `make up` starts the isolated PDF processor and Reverb while retaining their
+  application-level feature gates. The guided local/test installer now offers a
+  default-No experimental PDF choice, with `--pdf` for unattended installs; production
+  installation continues to reject PDF enablement until its release gate is accepted.
+
 ## v0.0.10 — 2026-08-19
 
 Dependency and CI maintenance release. It refreshes the PHP and frontend

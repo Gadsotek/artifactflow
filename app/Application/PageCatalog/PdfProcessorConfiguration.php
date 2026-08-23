@@ -6,6 +6,7 @@ namespace App\Application\PageCatalog;
 
 use App\Infrastructure\Security\OriginNormalizer;
 use App\Infrastructure\Security\SecretStrength;
+use App\Infrastructure\Security\UnixSocketPath;
 use LogicException;
 
 final readonly class PdfProcessorConfiguration
@@ -52,6 +53,14 @@ final readonly class PdfProcessorConfiguration
         }
 
         return $normalized;
+    }
+
+    public function socketPath(): ?string
+    {
+        return UnixSocketPath::optional(
+            $this->string('pdf_processor.socket_path'),
+            'PDF processor socket path',
+        );
     }
 
     public function connectTimeoutSeconds(): int

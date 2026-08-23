@@ -1097,6 +1097,18 @@ final class ProductionSecurityConfigurationTest extends TestCase
         }
     }
 
+    public function test_image_parser_socket_path_must_be_absolute_at_boot(): void
+    {
+        foreach (['relative/parser.sock', "/run/artifactflow/parser.sock\0"] as $socketPath) {
+            $this->configureSafeProductionValues();
+            config(['image_parser.socket_path' => $socketPath]);
+
+            $this->assertUnsafeConfiguration(
+                'Image parser socket path must be an absolute filesystem path.',
+            );
+        }
+    }
+
     private function configureSafeProductionValues(): void
     {
         config([
@@ -1141,6 +1153,9 @@ final class ProductionSecurityConfigurationTest extends TestCase
             'image_parser.installation_pixel_budget_per_minute' => 256 * 1024 * 1024,
             'image_parser.user_work_budget_per_minute' => 64 * 1024 * 1024,
             'image_parser.installation_work_budget_per_minute' => 256 * 1024 * 1024,
+            'pdf_processor.enabled' => false,
+            'pdf_processor.url' => 'http://pdf-processor.internal:8080',
+            'pdf_processor.shared_secret' => '',
             'reverb.apps.apps.0.configured_allowed_origins' => ['https://app.example.test'],
             'reverb.apps.apps.0.allowed_origins' => ['app.example.test'],
             'reverb.apps.apps.0.max_connections' => 1000,

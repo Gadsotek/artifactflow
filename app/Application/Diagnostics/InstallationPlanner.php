@@ -7,8 +7,8 @@ namespace App\Application\Diagnostics;
 /**
  * Decides the ordered first-run steps for artifactflow:install. The plan is aware
  * of the operator-chosen target environment (local / test / production). Local and
- * test environments generate app-internal secrets they are missing, then diverge:
- * `local` adds developer
+ * test environments generate requested app-internal secrets they are missing, then
+ * diverge: `local` adds developer
  * conveniences (demo content, dev-tooling hints); `test` is local semantics on a
  * non-dev box, so it skips demo data and ends on the doctor punch list; and
  * `production` skips all filesystem-writing generators and ends on the doctor;
@@ -22,6 +22,8 @@ final readonly class InstallationPlanner
         bool $needsSigningKey,
         bool $needsImageParserSecret,
         bool $wantsReverb = false,
+        bool $wantsPdf = false,
+        bool $needsPdfProcessorSecret = false,
     ): InstallationPlan {
         $local = $env !== 'production';
         $steps = [];
@@ -40,6 +42,10 @@ final readonly class InstallationPlanner
 
         if ($local && $wantsReverb) {
             $steps[] = new InstallationStep('reverb_keys', 'Generate the Reverb realtime keys');
+        }
+
+        if ($local && $wantsPdf && $needsPdfProcessorSecret) {
+            $steps[] = new InstallationStep('pdf_processor_secret', 'Generate the PDF processor shared secret');
         }
 
         $steps[] = new InstallationStep('migrate', 'Run database migrations');

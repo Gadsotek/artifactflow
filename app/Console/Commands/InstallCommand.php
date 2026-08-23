@@ -16,7 +16,9 @@ use Throwable;
 
 final class InstallCommand extends Command
 {
-    protected $signature = 'artifactflow:install {--env=} {--seed-demo} {--reverb} {--name=} {--email=} {--password=}';
+    protected $signature = 'artifactflow:install {--env=} {--seed-demo} {--reverb} '
+        . '{--pdf : Enable experimental PDF artifacts in local or test mode} '
+        . '{--name=} {--email=} {--password=}';
 
     protected $description = 'Guided first-run install: pick the target environment, provision keys, migrate, and create the system admin.';
 
@@ -39,6 +41,26 @@ final class InstallCommand extends Command
         $needsImageParserSecret = $this->imageParserIsEnabled()
             && InstallationSecret::isMissing($this->configString('image_parser.shared_secret'));
         $wantsReverb = (bool) $this->option('reverb');
+        $pdfWasEnabled = config('pdf_processor.enabled', false) === true;
+        $pdfWasRequested = (bool) $this->option('pdf');
+
+        if (!$local && $pdfWasRequested) {
+            $this->error('PDF artifacts can be enabled by the installer only in local or test mode.');
+
+            return 1;
+        }
+
+        $shouldPromptForPdf = $local && !$pdfWasRequested && $this->input->isInteractive();
+        $shouldPersistPdfChoice = $local && ($pdfWasRequested || $shouldPromptForPdf);
+        $wantsPdf = $local && (
+            $pdfWasRequested
+            || ($shouldPromptForPdf
+                ? $this->confirm('Enable experimental PDF artifacts?', $pdfWasEnabled)
+                : $pdfWasEnabled)
+        );
+        $pdfSettingChanged = $shouldPersistPdfChoice && $wantsPdf !== $pdfWasEnabled;
+        $needsPdfProcessorSecret = $wantsPdf
+            && InstallationSecret::isMissing($this->configString('pdf_processor.shared_secret'));
         $targetAppEnv = $local ? 'local' : 'production';
 
         if (!$local && ($needsAppKey || $needsSigningKey || $wantsReverb)) {
@@ -55,6 +77,8 @@ final class InstallCommand extends Command
             $needsSigningKey,
             $needsImageParserSecret,
             $wantsReverb,
+            $wantsPdf,
+            $needsPdfProcessorSecret,
         );
         $this->info(sprintf('Installing ArtifactFlow (%s mode).', $env));
 
@@ -108,6 +132,16 @@ final class InstallCommand extends Command
             }
         }
 
+        if ($plan->hasStep('pdf_processor_secret')) {
+            $this->line('- Generating PDF processor shared secret');
+
+            if (!$this->runGeneratorScript('scripts/ensure-pdf-processor-shared-secret.php')) {
+                $this->error('Could not generate the PDF processor shared secret.');
+
+                return 1;
+            }
+        }
+
         $this->line('- Running database migrations');
         $migrationExitCode = Artisan::call('migrate', ['--force' => true]);
 
@@ -128,7 +162,14 @@ final class InstallCommand extends Command
         // immutable and receive APP_ENV plus every secret from their orchestrator, so
         // production installation must never attempt to write inside the image.
         if ($local) {
-            $envWriter->upsert(['APP_ENV' => $targetAppEnv]);
+            $environmentValues = ['APP_ENV' => $targetAppEnv];
+
+            if ($shouldPersistPdfChoice) {
+                $environmentValues['PDF_PROCESSOR_ENABLED'] = $wantsPdf ? 'true' : 'false';
+                config(['pdf_processor.enabled' => $wantsPdf]);
+            }
+
+            $envWriter->upsert($environmentValues);
         }
 
         if ($plan->hasStep('demo') && ($this->option('seed-demo') || $this->confirm('Seed starter demo content?', true))) {
@@ -184,8 +225,11 @@ final class InstallCommand extends Command
             $plan->hasStep('app_key')
             || $plan->hasStep('signing_key')
             || $plan->hasStep('image_parser_secret')
+            || $plan->hasStep('reverb_keys')
+            || $plan->hasStep('pdf_processor_secret')
+            || $pdfSettingChanged
         )) {
-            $this->line('If a dev server is already running, restart it so the new keys take effect.');
+            $this->line('Exit this container and rerun make up so local services reload the new configuration.');
         }
 
         return 0;

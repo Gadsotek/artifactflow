@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Application\PageCatalog;
 
+use App\Application\Http\BoundedResponseSink;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\ImageNormalizationUnavailable;
+use GuzzleHttp\Handler\CurlHandler;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -70,10 +72,7 @@ final readonly class RasterImageNormalizer
             $request = Http::connectTimeout($this->configuration->connectTimeoutSeconds())
                 ->timeout($this->configuration->timeoutSeconds())
                 ->withoutRedirecting()
-                ->withOptions([
-                    'stream' => true,
-                    'decode_content' => false,
-                ])
+                ->withOptions($this->transportOptions($maxOutputBytes))
                 ->withHeaders([
                     'Accept' => 'application/octet-stream',
                     'Accept-Encoding' => 'identity',
@@ -96,6 +95,10 @@ final readonly class RasterImageNormalizer
                     ),
                 ])
                 ->withBody($untrustedBytes, $input->mediaType);
+
+            if ($this->configuration->socketPath() !== null) {
+                $request->setHandler(new CurlHandler());
+            }
         } catch (LogicException) {
             $this->unavailable('invalid_client_configuration');
         }
@@ -219,5 +222,27 @@ final readonly class RasterImageNormalizer
         ], static fn (mixed $value): bool => $value !== null));
 
         throw new ImageNormalizationUnavailable();
+    }
+
+    /**
+     * @return array{stream: true, decode_content: false}|array{stream: true, decode_content: false, sink: BoundedResponseSink, curl: array<int, string>}
+     */
+    private function transportOptions(int $maximumResponseBytes): array
+    {
+        $socketPath = $this->configuration->socketPath();
+
+        if ($socketPath === null) {
+            return [
+                'stream' => true,
+                'decode_content' => false,
+            ];
+        }
+
+        return [
+            'stream' => true,
+            'decode_content' => false,
+            'sink' => new BoundedResponseSink($maximumResponseBytes),
+            'curl' => [CURLOPT_UNIX_SOCKET_PATH => $socketPath],
+        ];
     }
 }

@@ -40,6 +40,21 @@ final class EnvFileWriterTest extends TestCase
         );
     }
 
+    public function test_it_replaces_every_duplicate_assignment_so_the_effective_value_cannot_disagree(): void
+    {
+        file_put_contents(
+            $this->path,
+            "PDF_PROCESSOR_ENABLED=false\nAPP_ENV=local\nPDF_PROCESSOR_ENABLED=true # stale duplicate\n",
+        );
+
+        (new EnvFileWriter($this->path))->upsert(['PDF_PROCESSOR_ENABLED' => 'false']);
+
+        $this->assertSame(
+            "PDF_PROCESSOR_ENABLED=false\nAPP_ENV=local\nPDF_PROCESSOR_ENABLED=false\n",
+            (string) file_get_contents($this->path),
+        );
+    }
+
     public function test_it_appends_a_missing_key_with_a_trailing_newline(): void
     {
         file_put_contents($this->path, "APP_ENV=local\n");
