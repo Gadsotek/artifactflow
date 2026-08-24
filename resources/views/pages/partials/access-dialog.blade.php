@@ -57,41 +57,39 @@
 
             @if ($canManageAccess)
                 <section>
-                    <h3>Grant user access</h3>
+                    <h3>Grant existing coworker access</h3>
                     <form
                         class="mt-4 space-y-3"
                         method="POST"
                         action="{{ route('pages.access.store', $page) }}"
                         data-known-user-picker
                         data-known-user-value-key="email"
+                        data-known-user-require-selection
                         data-search-url="{{ route('pages.access-users.search', $page) }}"
                     >
                         @csrf
                         <input name="subject_type" type="hidden" value="user">
+                        <input name="user_email" type="hidden" value="" data-known-user-value required>
                         <p class="text-sm leading-6 text-zinc-600 dark:text-zinc-400">
-                            Reader and Editor grants apply only to this page and do not require workspace membership. Page Admin grants require workspace membership.
+                            This does not send an invitation. Select an existing registered coworker from the results. Reader and Editor grants apply only to this page; Page Admin grants require workspace membership. To invite a new person, use <strong>Invite teammate</strong> from the Library.
                         </p>
                         <div>
                             <label class="block">
-                                <span class="text-sm font-medium">User</span>
+                                <span class="text-sm font-medium">Registered coworker</span>
                                 <input
                                     class="mt-2 w-full"
-                                    name="user_email"
                                     type="search"
-                                    value="{{ old('user_email') }}"
                                     autocomplete="off"
                                     placeholder="Search by name or email"
                                     data-known-user-search
-                                    data-known-user-value
                                     aria-controls="page-access-user-results"
                                     aria-expanded="false"
                                     aria-autocomplete="list"
                                     role="combobox"
-                                    required
                                 >
                             </label>
                             <ul id="page-access-user-results" class="af-collaborator-results mt-2 hidden" role="listbox" data-known-user-results></ul>
-                            <p class="af-collaborator-empty mt-2 hidden text-sm text-zinc-500 dark:text-zinc-400" data-known-user-empty>No matching eligible people.</p>
+                            <p class="af-collaborator-empty mt-2 hidden text-sm text-zinc-500 dark:text-zinc-400" data-known-user-empty>No matching registered coworkers.</p>
                         </div>
                         <p class="af-collaborator-selected hidden text-sm text-zinc-700 dark:text-zinc-300" data-known-user-selected>
                             Granting access to <span class="font-semibold text-zinc-950 dark:text-zinc-50" data-known-user-selected-label></span>.
@@ -104,7 +102,7 @@
                                 @endforeach
                             </select>
                         </label>
-                        <button class="af-primary-button w-full" type="submit" data-known-user-submit>Grant user access</button>
+                        <button class="af-primary-button w-full" type="submit" data-known-user-submit disabled>Grant user access</button>
                     </form>
 
                     @if ($pageAccessWorkspaceTargets !== [])

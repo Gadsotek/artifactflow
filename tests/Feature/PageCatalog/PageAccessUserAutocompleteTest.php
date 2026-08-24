@@ -58,6 +58,10 @@ final class PageAccessUserAutocompleteTest extends TestCase
             ->get(route('pages.show', $page))
             ->assertOk()
             ->assertSee('data-known-user-picker', false)
+            ->assertSee('data-known-user-require-selection', false)
+            ->assertSee('This does not send an invitation.', false)
+            ->assertSee('name="user_email" type="hidden"', false)
+            ->assertSee('data-known-user-submit disabled', false)
             ->assertSee('data-search-url="' . route('pages.access-users.search', $page) . '"', false)
             ->assertDontSee($pageMember->email)
             ->assertDontSee($otherMember->email);
