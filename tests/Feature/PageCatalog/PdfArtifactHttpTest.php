@@ -186,6 +186,62 @@ final class PdfArtifactHttpTest extends TestCase
         $this->assertSame([], Storage::disk('artifacts')->allFiles());
     }
 
+    public function test_rejected_interactive_pdf_preserves_create_form_input_and_shows_an_inline_reason(): void
+    {
+        Http::fake([
+            '*' => Http::response([
+                'error' => 'pdf_rejected',
+                'reason' => 'interactive_form',
+            ], 422),
+        ]);
+        $editor = $this->user('PDF Form Editor', 'pdf-form-editor@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($editor, 'PDF Form Team');
+        $submitted = [
+            'workspace_uid' => $workspace->uid,
+            'type' => PageType::Pdf->value,
+            'mode' => 'pdf_upload',
+            'title' => 'House form',
+            'description' => 'Keep this context after rejection.',
+            'status' => 'approved',
+            'tags' => 'property, family',
+            'pdf_file' => UploadedFile::fake()->createWithContent('house-form.pdf', $this->pdf('form fixture')),
+        ];
+
+        $response = $this->actingAs($editor)
+            ->from('/pages/create')
+            ->post('/pages', $submitted);
+
+        $message = 'PDF contains fillable form fields. ArtifactFlow does not accept interactive PDF forms.';
+        $response
+            ->assertRedirect('/pages/create')
+            ->assertSessionHasErrors(['pdf_file' => $message])
+            ->assertSessionHasInput([
+                'workspace_uid' => $workspace->uid,
+                'type' => PageType::Pdf->value,
+                'mode' => 'pdf_upload',
+                'title' => 'House form',
+                'description' => 'Keep this context after rejection.',
+                'status' => 'approved',
+                'tags' => 'property, family',
+            ]);
+
+        $this->get('/pages/create')
+            ->assertOk()
+            ->assertSee($message)
+            ->assertSee('data-native-submit', false)
+            ->assertSee('data-pdf-upload-error', false)
+            ->assertSee('role="alert"', false)
+            ->assertSee('aria-describedby="create-pdf-file-error"', false)
+            ->assertSee('autofocus', false)
+            ->assertSee('value="House form"', false)
+            ->assertSee('Keep this context after rejection.')
+            ->assertSee('value="pdf" selected', false)
+            ->assertSee('value="approved" selected', false);
+
+        $this->assertSame(0, Page::query()->count());
+        $this->assertSame([], Storage::disk('artifacts')->allFiles());
+    }
+
     public function test_web_pdf_upload_is_capped_at_the_configured_artifact_read_ceiling(): void
     {
         config([
@@ -305,16 +361,30 @@ final class PdfArtifactHttpTest extends TestCase
         $workspace = app(CreateSharedWorkspace::class)->handle($editor, 'PDF Retry Team');
 
         $this->actingAs($editor)
+            ->from('/pages/create')
             ->post('/pages', [
                 'workspace_uid' => $workspace->uid,
                 'type' => PageType::Pdf->value,
                 'mode' => 'pdf_upload',
                 'title' => 'Unavailable PDF',
+                'description' => 'Preserve this retry context.',
                 'status' => 'draft',
                 'pdf_file' => UploadedFile::fake()->createWithContent('unavailable.pdf', $this->pdf('unavailable')),
             ])
-            ->assertStatus(503)
-            ->assertHeader('Retry-After', '5');
+            ->assertStatus(303)
+            ->assertRedirect('/pages/create')
+            ->assertHeader('Retry-After', '5')
+            ->assertSessionHasErrors([
+                'pdf_file' => 'PDF processing service is unavailable. Try again shortly.',
+            ])
+            ->assertSessionHasInput([
+                'workspace_uid' => $workspace->uid,
+                'type' => PageType::Pdf->value,
+                'mode' => 'pdf_upload',
+                'title' => 'Unavailable PDF',
+                'description' => 'Preserve this retry context.',
+                'status' => 'draft',
+            ]);
 
         $page = app(CreatePage::class)->handle($editor, new CreatePageCommand(
             workspaceUid: $workspace->uid,
@@ -334,20 +404,30 @@ final class PdfArtifactHttpTest extends TestCase
         ));
 
         $this->actingAs($editor)
+            ->from("/pages/{$page->uid}")
             ->post("/pages/{$page->uid}/versions", [
                 'mode' => PageVersionSource::Upload->value,
                 'base_version_uid' => $secondVersion->uid,
                 'pdf_file' => UploadedFile::fake()->createWithContent('replacement.pdf', $this->pdf('third')),
             ])
-            ->assertStatus(503)
-            ->assertHeader('Retry-After', '5');
+            ->assertStatus(303)
+            ->assertRedirect("/pages/{$page->uid}")
+            ->assertHeader('Retry-After', '5')
+            ->assertSessionHasErrors([
+                'pdf_file' => 'PDF processing service is unavailable. Try again shortly.',
+            ]);
 
         $this->actingAs($editor)
+            ->from("/pages/{$page->uid}")
             ->post("/pages/{$page->uid}/versions/{$firstVersion->uid}/restore", [
                 'current_version_uid' => $secondVersion->uid,
             ])
-            ->assertStatus(503)
-            ->assertHeader('Retry-After', '5');
+            ->assertStatus(303)
+            ->assertRedirect("/pages/{$page->uid}")
+            ->assertHeader('Retry-After', '5')
+            ->assertSessionHasErrors([
+                'version_uid' => 'PDF processing service is unavailable. Try again shortly.',
+            ]);
     }
 
     public function test_disabled_pdf_setting_hides_creation_and_closes_existing_delivery_surfaces(): void

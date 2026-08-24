@@ -16,7 +16,7 @@
 
         <main class="af-editor-page mx-auto max-w-5xl px-6 py-8">
             @if ($errors->any())
-                <div class="mb-6 border-l-4 border-red-600 bg-red-50 px-4 py-3 text-sm text-red-950 dark:bg-red-950 dark:text-red-100">
+                <div class="mb-6 border-l-4 border-red-600 bg-red-50 px-4 py-3 text-sm text-red-950 dark:bg-red-950 dark:text-red-100" role="alert" aria-live="assertive">
                     @foreach ($errors->all() as $error)
                         <p>{{ $error }}</p>
                     @endforeach
@@ -29,6 +29,7 @@
                 action="{{ route('pages.store') }}"
                 enctype="multipart/form-data"
                 data-create-page-form
+                data-native-submit
                 data-content-editor
                 data-editor-capabilities="rich-markdown source-code"
                 data-editor-language="markdown"
@@ -221,7 +222,10 @@
                         <label class="af-file-drop block">
                             <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">PDF document</span>
                             <span class="mt-1 block text-xs text-zinc-500">Encrypted, malformed, active, or over-limit PDFs are rejected. Image-only PDFs are accepted without OCR.</span>
-                            <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="pdf_file" type="file" accept=".pdf,application/pdf">
+                            <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="pdf_file" type="file" accept=".pdf,application/pdf" @error('pdf_file') aria-invalid="true" aria-describedby="create-pdf-file-error" autofocus @enderror>
+                            @error('pdf_file')
+                                <span class="mt-3 block text-sm font-medium text-red-700 dark:text-red-300" data-pdf-upload-error id="create-pdf-file-error" role="alert">{{ $message }} Select the PDF again after correcting the issue.</span>
+                            @enderror
                         </label>
                     </section>
                 @endif

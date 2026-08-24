@@ -116,6 +116,12 @@ The application validates the response schema, request nonce, input hash,
 engine/profile, sizes, and completeness. An authenticated response does not
 make parser output trusted.
 
+Document rejections may return one bounded, allowlisted reason category such as
+encryption, invalid structure, active content, or an interactive form. The app
+maps that category to fixed user-facing copy; raw engine stderr, parser
+exceptions, document content, and unrecognized diagnostics never cross the
+processor boundary or enter logs.
+
 The first release runs exactly one processor replica with native concurrency
 `1`. It rejects concurrent work immediately with a bounded retry response
 instead of building a queue. If a future deployment needs multiple processor

@@ -146,7 +146,9 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString("'Cache-Control' => 'no-store'", $index);
         $this->assertStringContainsString("'X-Content-Type-Options' => 'nosniff'", $index);
         $this->assertStringContainsString('catch (ProcessorAuthenticationFailure)', $index);
-        $this->assertStringContainsString('catch (ProcessorRejection|EngineRejection)', $index);
+        $this->assertStringContainsString('catch (EngineRejection $exception)', $index);
+        $this->assertStringContainsString('$exception->reason', $index);
+        $this->assertStringContainsString('catch (ProcessorRejection)', $index);
         $this->assertStringContainsString('catch (Throwable)', $index);
         $this->assertStringNotContainsString('getMessage()', $index);
 

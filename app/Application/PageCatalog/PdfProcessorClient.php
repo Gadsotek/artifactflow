@@ -9,6 +9,7 @@ use App\Application\Http\BoundedResponseReadFailure;
 use App\Application\Http\BoundedResponseSink;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\PdfProcessingUnavailable;
+use App\Domain\PageCatalog\PdfRejectionReason;
 use GuzzleHttp\Handler\CurlHandler;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
@@ -107,7 +108,9 @@ final readonly class PdfProcessorClient
         }
 
         if ($response->status() === 422 && $this->errorCode($body) === 'pdf_rejected') {
-            throw new DomainRuleViolation('PDF could not be validated or processed.');
+            throw new DomainRuleViolation(
+                $this->rejectionReason($body)?->message() ?? 'PDF could not be validated or processed.',
+            );
         }
 
         if (!$response->successful()) {
@@ -168,6 +171,23 @@ final readonly class PdfProcessorClient
         $error = $decoded['error'] ?? null;
 
         return is_string($error) ? $error : null;
+    }
+
+    private function rejectionReason(string $body): ?PdfRejectionReason
+    {
+        try {
+            $decoded = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        if (!is_array($decoded)) {
+            return null;
+        }
+
+        $reason = $decoded['reason'] ?? null;
+
+        return is_string($reason) ? PdfRejectionReason::tryFrom($reason) : null;
     }
 
     private function unavailable(string $reason, ?int $status = null): never

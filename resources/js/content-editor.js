@@ -408,6 +408,14 @@ async function initialiseContentEditor(form) {
       status.textContent = 'Saving…';
     }
 
+    // Creation failures redirect back with one-request flash errors and old
+    // input. A fetch would follow and consume that response before navigating
+    // again, leaving the user on an empty form. Let the browser own the
+    // submission while keeping the editor-to-textarea synchronization above.
+    if (form.hasAttribute('data-native-submit')) {
+      return;
+    }
+
     if (typeof window.fetch !== 'function') {
       return;
     }

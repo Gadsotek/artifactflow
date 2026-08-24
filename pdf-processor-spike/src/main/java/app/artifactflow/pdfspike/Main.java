@@ -198,7 +198,9 @@ public final class Main {
 
             COSBase subtype = dictionary.getDictionaryObject(COSName.SUBTYPE);
             if (subtype instanceof COSName subtypeName && isRejectedAnnotationSubtype(subtypeName.getName())) {
-                throw new RejectedPdf("active_content");
+                throw new RejectedPdf(
+                    "Widget".equals(subtypeName.getName()) ? "interactive_form" : "active_content"
+                );
             }
 
             for (COSName key : dictionary.keySet()) {
@@ -218,7 +220,11 @@ public final class Main {
                         || "3DA".equals(keyName)
                         || "3DV".equals(keyName)
                 ) {
-                    throw new RejectedPdf("active_content");
+                    throw new RejectedPdf(
+                        "AcroForm".equals(keyName) || "XFA".equals(keyName)
+                            ? "interactive_form"
+                            : "active_content"
+                    );
                 }
 
                 if (COSName.S.equals(key)) {
@@ -281,7 +287,7 @@ public final class Main {
         expectRejected("encrypted PDF", createEncryptedPdf());
         expectRejected("page cap", createTextPdf("page", 2), new Limits(MAX_INPUT_BYTES, 1, MAX_TEXT_CHARACTERS));
         expectRejected("JavaScript action", createJavaScriptPdf());
-        expectRejected("AcroForm", createAcroFormPdf());
+        expectRejectedReason("AcroForm", createAcroFormPdf(), "interactive_form");
         expectRejected("embedded files", createEmbeddedFilesPdf());
         expectRejected("external URI action", createExternalUriActionPdf());
         expectRejected("named print action", createActionPdf("Named"));
@@ -443,6 +449,15 @@ public final class Main {
             throw new IllegalStateException("expected rejection: " + label);
         } catch (RejectedPdf expected) {
             // Expected by the synthetic hostile corpus.
+        }
+    }
+
+    private static void expectRejectedReason(String label, byte[] bytes, String reason) {
+        try {
+            inspect(bytes, Limits.defaults());
+            throw new IllegalStateException("expected rejection: " + label);
+        } catch (RejectedPdf expected) {
+            require(reason.equals(expected.reason), label + " rejection reason");
         }
     }
 

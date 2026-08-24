@@ -116,12 +116,36 @@ final class PdfProcessorClientTest extends TestCase
     public function test_document_rejection_is_distinct_from_retryable_service_failure(): void
     {
         Http::fake([
-            '*' => Http::response(['error' => 'pdf_rejected'], 422),
+            '*' => Http::response([
+                'error' => 'pdf_rejected',
+                'reason' => 'interactive_form',
+            ], 422),
         ]);
 
         try {
             app(PdfProcessorClient::class)->inspect("%PDF-1.7\n%%EOF");
             $this->fail('A rejected document must not be treated as a transient outage.');
+        } catch (DomainRuleViolation $exception) {
+            $this->assertNotInstanceOf(PdfProcessingUnavailable::class, $exception);
+            $this->assertSame(
+                'PDF contains fillable form fields. ArtifactFlow does not accept interactive PDF forms.',
+                $exception->getMessage(),
+            );
+        }
+    }
+
+    public function test_unknown_document_rejection_reason_uses_the_generic_message(): void
+    {
+        Http::fake([
+            '*' => Http::response([
+                'error' => 'pdf_rejected',
+                'reason' => 'unrecognized_engine_diagnostic',
+            ], 422),
+        ]);
+
+        try {
+            app(PdfProcessorClient::class)->inspect("%PDF-1.7\n%%EOF");
+            $this->fail('An unknown rejection reason must still fail closed.');
         } catch (DomainRuleViolation $exception) {
             $this->assertNotInstanceOf(PdfProcessingUnavailable::class, $exception);
             $this->assertSame('PDF could not be validated or processed.', $exception->getMessage());

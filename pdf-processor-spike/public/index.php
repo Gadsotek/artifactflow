@@ -61,7 +61,12 @@ try {
     respond(401, '{"error":"clock_skew"}', ['Content-Type' => 'application/json']);
 } catch (ProcessorAuthenticationFailure) {
     respond(401, '{"error":"unauthenticated"}', ['Content-Type' => 'application/json']);
-} catch (ProcessorRejection|EngineRejection) {
+} catch (EngineRejection $exception) {
+    respond(422, sprintf(
+        '{"error":"pdf_rejected","reason":"%s"}',
+        $exception->reason,
+    ), ['Content-Type' => 'application/json']);
+} catch (ProcessorRejection) {
     respond(422, '{"error":"pdf_rejected"}', ['Content-Type' => 'application/json']);
 } catch (Throwable) {
     respond(503, '{"error":"service_unavailable"}', ['Content-Type' => 'application/json']);

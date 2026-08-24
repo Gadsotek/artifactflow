@@ -194,15 +194,28 @@ PHP;
     public function test_engine_runner_distinguishes_rejection_from_failure(): void
     {
         $rejection = new PdfBoxEngine(
-            command: [PHP_BINARY, '-r', 'exit(65);'],
+            command: [PHP_BINARY, '-r', 'fwrite(STDERR, "rejected: interactive_form\\n"); exit(65);'],
             timeoutSeconds: 2,
         );
 
         try {
             $rejection->inspect('pdf bytes');
             $this->fail('Exit status 65 must be a document rejection.');
-        } catch (EngineRejection) {
-            $this->addToAssertionCount(1);
+        } catch (EngineRejection $exception) {
+            $this->assertSame('interactive_form', $exception->reason);
+        }
+
+        $unrecognizedRejection = new PdfBoxEngine(
+            command: [PHP_BINARY, '-r', 'fwrite(STDERR, "private parser detail\\n"); exit(65);'],
+            timeoutSeconds: 2,
+        );
+
+        try {
+            $unrecognizedRejection->inspect('pdf bytes');
+            $this->fail('Raw engine diagnostics must not cross the processor boundary.');
+        } catch (EngineRejection $exception) {
+            $this->assertSame('invalid_pdf', $exception->reason);
+            $this->assertStringNotContainsString('private parser detail', $exception->getMessage());
         }
 
         $failure = new PdfBoxEngine(
