@@ -59,18 +59,28 @@ test('page access autocomplete finds and grants a registered coworker', async ({
   );
   await accessButton.click();
   const dialog = page.getByRole('dialog', { name: 'Access overrides' });
-  const picker = dialog.getByRole('combobox', { name: 'User' });
+  const picker = dialog.getByRole('combobox', { name: 'Registered coworker' });
+  const grantButton = dialog.getByRole('button', { name: 'Grant user access' });
+
+  await expect(dialog.getByText('This does not send an invitation.')).toBeVisible();
+  await expect(grantButton).toBeDisabled();
+  await picker.fill(`unregistered-${suffix}@example.test`);
+  await expect(dialog.getByText('No matching registered coworkers.')).toBeVisible();
+  await expect(grantButton).toBeDisabled();
+
   await picker.fill(coworkerName);
 
   const option = dialog.getByRole('option', { name: new RegExp(coworkerEmail, 'u') });
   await expect(option).toBeVisible();
   await option.click();
-  await expect(picker).toHaveValue(coworkerEmail);
+  await expect(picker).toHaveValue(coworkerName);
+  await expect(dialog.locator('input[name="user_email"]')).toHaveValue(coworkerEmail);
   await expect(
     dialog.getByText(`Granting access to ${coworkerName} (${coworkerEmail}).`),
   ).toBeVisible();
+  await expect(grantButton).toBeEnabled();
 
-  await dialog.getByRole('button', { name: 'Grant user access' }).click();
+  await grantButton.click();
   await expect(page).toHaveURL(/\/pages\/[0-9a-hjkmnp-tv-z]{26}$/u);
   await expect(
     page.getByText(
