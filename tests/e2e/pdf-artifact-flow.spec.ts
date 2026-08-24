@@ -33,15 +33,7 @@ async function login(page: Page, email: string, password: string): Promise<void>
   await expect(page).toHaveURL(/\/dashboard$/u);
 }
 
-function buildPdf(text: string): Buffer {
-  const content = `BT /F1 24 Tf 72 700 Td (${text}) Tj ET`;
-  const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    `<< /Length ${Buffer.byteLength(content, 'ascii')} >>\nstream\n${content}\nendstream`,
-  ];
+function assemblePdf(objects: string[]): Buffer {
   let document = '%PDF-1.4\n';
   const offsets = [0];
 
@@ -61,6 +53,75 @@ function buildPdf(text: string): Buffer {
 
   return Buffer.from(document, 'ascii');
 }
+
+function buildPdf(text: string): Buffer {
+  const content = `BT /F1 24 Tf 72 700 Td (${text}) Tj ET`;
+
+  return assemblePdf([
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${Buffer.byteLength(content, 'ascii')} >>\nstream\n${content}\nendstream`,
+  ]);
+}
+
+function buildInteractiveFormPdf(): Buffer {
+  return assemblePdf([
+    '<< /Type /Catalog /Pages 2 0 R /AcroForm 5 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Annots [4 0 R] >>',
+    '<< /Type /Annot /Subtype /Widget /FT /Tx /T (Property) /Rect [72 700 300 730] /P 3 0 R >>',
+    '<< /Fields [4 0 R] /NeedAppearances true >>',
+  ]);
+}
+
+test('rejected interactive PDF keeps the creation form and exposes the reason @artifact-security', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+
+  const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
+  const email = `pdf-rejection-${suffix}@example.test`;
+  const password = `af${randomUUID().replaceAll('-', '')}`;
+  const title = `Rejected PDF ${suffix}`;
+  const description = 'Keep this property context after rejection.';
+
+  runAppCommand(
+    `php artisan artifactflow:create-user --name=PdfRejectionE2E --email=${email} --password=${password}`,
+    'Failed to prepare the PDF rejection e2e account.',
+  );
+
+  await login(page, email, password);
+  await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('[data-create-page-form]')).toHaveAttribute(
+    'data-create-page-mode-ready',
+    'true',
+  );
+  await page.locator('select[name="type"]').selectOption('pdf');
+  await page.locator('input[name="title"]').fill(title);
+  await page.locator('textarea[name="description"]').fill(description);
+  await page.locator('select[name="status"]').selectOption('approved');
+  await page.locator('input[name="pdf_file"]').setInputFiles({
+    name: 'interactive-form.pdf',
+    mimeType: 'application/pdf',
+    buffer: buildInteractiveFormPdf(),
+  });
+
+  await page.getByRole('button', { name: 'Save page' }).click();
+
+  await expect(page).toHaveURL(/\/pages\/create$/u);
+  await expect(page.locator('[data-pdf-upload-error]')).toContainText(
+    'PDF contains fillable form fields. ArtifactFlow does not accept interactive PDF forms.',
+  );
+  await expect(page.locator('select[name="type"]')).toHaveValue('pdf');
+  await expect(page.locator('select[name="mode"]')).toHaveValue('pdf_upload');
+  await expect(page.locator('input[name="title"]')).toHaveValue(title);
+  await expect(page.locator('textarea[name="description"]')).toHaveValue(description);
+  await expect(page.locator('select[name="status"]')).toHaveValue('approved');
+  await expect(page.locator('input[name="pdf_file"]')).toHaveValue('');
+  await expect(page.getByText('Select the PDF again after correcting the issue.')).toBeVisible();
+});
 
 test('PDF upload, replacement, and restore are processed, searchable, isolated, and downloadable while renamed HTML is rejected @artifact-security', async ({
   page,

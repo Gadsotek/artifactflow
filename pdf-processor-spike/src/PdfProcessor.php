@@ -25,6 +25,35 @@ final class EngineProtocolFailure extends RuntimeException
 
 final class EngineRejection extends RuntimeException
 {
+    private const array ALLOWED_REASONS = [
+        'active_content',
+        'encrypted',
+        'input_size',
+        'interactive_form',
+        'invalid_eof',
+        'invalid_header',
+        'invalid_pdf',
+        'object_limit',
+        'page_limit',
+    ];
+
+    public function __construct(public readonly string $reason)
+    {
+        parent::__construct('PDF engine rejected the document.');
+    }
+
+    public static function fromStderr(string $stderr): self
+    {
+        $matches = [];
+
+        if (preg_match('/\Arejected: ([a-z_]{1,40})\r?\n?\z/D', $stderr, $matches) !== 1) {
+            return new self('invalid_pdf');
+        }
+
+        $reason = $matches[1];
+
+        return new self(in_array($reason, self::ALLOWED_REASONS, true) ? $reason : 'invalid_pdf');
+    }
 }
 
 final class EngineUnavailable extends RuntimeException
@@ -488,6 +517,7 @@ final readonly class PdfBoxEngine
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
         $stdout = '';
+        $stderr = '';
         $stderrBytes = 0;
         $deadline = microtime(true) + $this->timeoutSeconds;
         $exitCode = -1;
@@ -504,6 +534,7 @@ final readonly class PdfBoxEngine
                 }
 
                 if (is_string($stderrChunk)) {
+                    $stderr .= $stderrChunk;
                     $stderrBytes += strlen($stderrChunk);
                 }
 
@@ -540,6 +571,7 @@ final readonly class PdfBoxEngine
             }
 
             if (is_string($stderrChunk)) {
+                $stderr .= $stderrChunk;
                 $stderrBytes += strlen($stderrChunk);
             }
         } finally {
@@ -565,7 +597,7 @@ final readonly class PdfBoxEngine
         }
 
         if ($exitCode === 65) {
-            throw new EngineRejection('PDF engine rejected the document.');
+            throw EngineRejection::fromStderr($stderr);
         }
 
         if ($exitCode !== 0) {

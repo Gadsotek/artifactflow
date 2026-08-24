@@ -169,7 +169,7 @@ final class PageController
         } catch (ImageNormalizationRejected $exception) {
             return ImageNormalizationRejectionResponse::make($exception);
         } catch (PdfProcessingRejected $exception) {
-            return PdfProcessingRejectionResponse::make($exception);
+            return PdfProcessingRejectionResponse::make($exception, $request, 'pdf_file');
         } catch (CategoryRuleViolation $exception) {
             throw ValidationException::withMessages([
                 'category_name' => $exception->getMessage(),

@@ -17,6 +17,9 @@
             <label class="block">
                 <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">PDF document</span>
                 <input class="mt-3 block w-full text-sm" name="pdf_file" type="file" accept=".pdf,application/pdf" required>
+                @error('pdf_file')
+                    <span class="mt-3 block text-sm font-medium text-red-700 dark:text-red-300" data-pdf-upload-error role="alert">{{ $message }} Select the PDF again after correcting the issue.</span>
+                @enderror
             </label>
             <div class="flex justify-end">
                 <button class="af-primary-button" type="submit">Replace PDF</button>

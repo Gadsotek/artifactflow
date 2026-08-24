@@ -50,7 +50,7 @@ final class PageVersionController
         } catch (ImageNormalizationRejected $exception) {
             return ImageNormalizationRejectionResponse::make($exception);
         } catch (PdfProcessingRejected $exception) {
-            return PdfProcessingRejectionResponse::make($exception);
+            return PdfProcessingRejectionResponse::make($exception, $request, 'pdf_file');
         } catch (BlockedPageContentException $exception) {
             throw ValidationException::withMessages([
                 'content' => $exception->getMessage(),
@@ -105,7 +105,7 @@ final class PageVersionController
                 expectedCurrentVersionUid: $expectedCurrentVersionUid,
             ));
         } catch (PdfProcessingRejected $exception) {
-            return PdfProcessingRejectionResponse::make($exception);
+            return PdfProcessingRejectionResponse::make($exception, $request, 'version_uid');
         } catch (BlockedPageContentException $exception) {
             throw ValidationException::withMessages([
                 'content' => $exception->getMessage(),

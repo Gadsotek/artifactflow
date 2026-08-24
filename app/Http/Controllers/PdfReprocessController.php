@@ -53,7 +53,7 @@ final class PdfReprocessController
         } catch (StalePageVersionException $exception) {
             return response($exception->getMessage(), 409);
         } catch (PdfProcessingRejected $exception) {
-            return PdfProcessingRejectionResponse::make($exception);
+            return PdfProcessingRejectionResponse::make($exception, $request, 'pdf');
         } catch (DomainRuleViolation $exception) {
             throw ValidationException::withMessages([
                 'pdf' => $exception->getMessage(),
