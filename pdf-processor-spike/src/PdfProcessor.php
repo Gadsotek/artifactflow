@@ -424,6 +424,7 @@ final readonly class PdfBoxEngine
     {
         return new self(
             command: [
+                '/usr/local/bin/artifactflow-process-deny',
                 '/usr/bin/java',
                 '-Xms32m',
                 '-Xmx384m',

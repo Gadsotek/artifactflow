@@ -19,9 +19,12 @@ self-test log, SCTP socket denial, and a health boundary that fails when the
 listener or PDFBox engine is unavailable. A fixed health process outside the
 parser filter may connect only to the container's loopback `/health` endpoint
 and handles no document bytes; the server and every PDFBox child stay inside
-the inherited filter. Passing proves only the image-level contract. A
-production deployment must still prove private-only reachability, resource
-limits, digest/attestation verification, and the operator gates in
+the inherited filter. Both service targets wrap each native engine in a second
+seccomp boundary that permits JVM threads but denies child-process creation.
+Their runtime probes prove a timed-out engine cannot retain a descendant or
+observe a later request's temporary input. Passing proves only the image-level
+contract. A production deployment must still prove private-only reachability,
+resource limits, digest/attestation verification, and the operator gates in
 `docs/architecture/pdf-artifacts.md`.
 The target also starts an intentionally hung spike command and proves that the
 external harness kills the entire container at its wall-clock deadline. The

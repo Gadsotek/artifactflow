@@ -223,6 +223,51 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringNotContainsString('--network none', $privateTest);
     }
 
+    public function test_native_engine_process_creation_is_denied_in_both_service_topologies(): void
+    {
+        $dockerfile = $this->readProjectFile('pdf-processor-spike/Dockerfile');
+        $processor = $this->readProjectFile('pdf-processor-spike/src/PdfProcessor.php');
+        $launcher = $this->readProjectFile('pdf-processor-spike/process-deny-exec.c');
+        $containmentProbe = $this->readProjectFile('pdf-processor-spike/process-containment-test.php');
+        $containmentHarness = $this->readProjectFile('pdf-processor-spike/process-containment-harness.sh');
+        $makefile = $this->readProjectFile('Makefile');
+
+        $this->assertStringContainsString(
+            '-o /opt/artifactflow-process-deny /src/process-deny-exec.c -lseccomp',
+            $dockerfile,
+        );
+        $this->assertSame(
+            2,
+            substr_count(
+                $dockerfile,
+                'COPY --from=pdf-processor-spike-builder /opt/artifactflow-process-deny '
+                    . '/usr/local/bin/artifactflow-process-deny',
+            ),
+        );
+        $this->assertGreaterThanOrEqual(2, substr_count($dockerfile, 'libseccomp=2.6.0-r2'));
+        $this->assertStringContainsString("'/usr/local/bin/artifactflow-process-deny'", $processor);
+
+        $this->assertStringContainsString('PR_SET_NO_NEW_PRIVS', $launcher);
+        $this->assertStringContainsString('SCMP_SYS(fork)', $launcher);
+        $this->assertStringContainsString('SCMP_SYS(vfork)', $launcher);
+        $this->assertStringContainsString('SCMP_SYS(clone)', $launcher);
+        $this->assertStringContainsString('SCMP_CMP_MASKED_EQ', $launcher);
+        $this->assertStringContainsString('CLONE_THREAD', $launcher);
+        $this->assertStringContainsString('SCMP_SYS(clone3)', $launcher);
+        $this->assertStringContainsString('SCMP_ACT_ERRNO(ENOSYS)', $launcher);
+        $this->assertStringContainsString('execvp', $launcher);
+
+        $this->assertStringContainsString('descendant_alive_after_timeout', $containmentProbe);
+        $this->assertStringContainsString('later_input_observed', $containmentProbe);
+        $this->assertStringContainsString('process-containment-test.php', $containmentHarness);
+        $this->assertStringContainsString('PDF processor descendant containment probe passed.', $containmentHarness);
+        $this->assertSame(2, substr_count($makefile, 'process-containment-harness.sh'));
+        $this->assertSame(
+            2,
+            substr_count($makefile, 'ArtifactFlow PDF engine process creation deny active.'),
+        );
+    }
+
     private function readProjectFile(string $path): string
     {
         $contents = file_get_contents(base_path($path));

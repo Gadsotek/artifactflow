@@ -29,6 +29,7 @@ if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
 fi
 
 /usr/local/bin/artifactflow-network-deny --self-test
+/usr/local/bin/artifactflow-process-deny --self-test
 
 exec /usr/local/bin/artifactflow-network-deny \
     php \

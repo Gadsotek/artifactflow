@@ -22,6 +22,10 @@ Unix-socket processor topology is unchanged.
   fails unless TCP, UDP, and SCTP denial self-tests return `EPERM`. Its health
   probe now fails when either the HTTP listener or the PDFBox engine is
   unavailable.
+- Added a fail-closed per-engine seccomp boundary to both PDF processor
+  topologies. It permits JVM threads while denying child-process creation, with
+  a production-image regression proving timed-out native work cannot survive to
+  inspect a later request's temporary PDF input.
 - Tagged releases now publish, scan, attest, and attach an SBOM for
   `ghcr.io/gadsotek/artifactflow-pdf-processor` independently of the main app
   image so deployments can pin each immutable digest.

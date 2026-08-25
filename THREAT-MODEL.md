@@ -529,7 +529,10 @@ The release-blocking attack model is:
   PDFBox under the server's inherited filter, so listener or engine failure makes the container
   unhealthy. Both topologies deny processor-initiated routes to the app, other runtimes, cloud
   metadata, private peers, DNS, and the public network. A Docker `internal` network alone is not
-  directional isolation proof. Timeouts kill the entire native process tree.
+  directional isolation proof. Every native-engine invocation installs an additional seccomp
+  filter that denies `fork`/`vfork`, makes `clone3` unavailable, and permits `clone` only for JVM
+  threads carrying `CLONE_THREAD`. The timed process therefore cannot create a descendant that
+  survives its forced termination or observes a later request's temporary input.
 - The first release runs one processor replica with native concurrency `1` and rejects concurrent
   work immediately. This keeps resource admission global for the intended small deployment without
   adding a distributed scheduler. A cross-process engine lease also prevents the container health

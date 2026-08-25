@@ -127,6 +127,14 @@ policy in addition to authenticated encrypted transport. Effective callback
 and outbound denial are tested from the running container; an ordinary Docker
 `internal` network is not proof of this property.
 
+Every PDFBox invocation also passes through a fail-closed process-containment
+launcher. Its seccomp filter denies `fork` and `vfork`, reports `clone3` as
+unavailable so the JVM falls back to the inspectable `clone` path, and permits
+`clone` only when `CLONE_THREAD` is present. PDFBox may therefore create JVM
+threads but cannot leave a child process behind after a timeout or output-limit
+kill. Runtime probes exercise the production image and verify that a timed-out
+engine cannot retain a descendant or read a later request's temporary input.
+
 The application validates the response schema, request nonce, input hash,
 engine/profile, sizes, and completeness. An authenticated response does not
 make parser output trusted.

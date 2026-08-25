@@ -14,6 +14,7 @@ RUN apk add --no-cache \
     && echo "${PDFBOX_SHA512}  /opt/pdfbox-app.jar" | sha512sum -c -
 
 COPY network-deny-exec.c /src/network-deny-exec.c
+COPY process-deny-exec.c /src/process-deny-exec.c
 COPY src/main/java /src/main/java
 
 RUN mkdir -p /opt/pdf-spike-classes \
@@ -21,7 +22,10 @@ RUN mkdir -p /opt/pdf-spike-classes \
         /src/main/java/app/artifactflow/pdfspike/Main.java \
     && cc -std=c17 -O2 -Wall -Wextra -Werror \
         -fstack-protector-strong -Wl,-z,relro,-z,now \
-        -o /opt/artifactflow-network-deny /src/network-deny-exec.c -lseccomp
+        -o /opt/artifactflow-network-deny /src/network-deny-exec.c -lseccomp \
+    && cc -std=c17 -O2 -Wall -Wextra -Werror \
+        -fstack-protector-strong -Wl,-z,relro,-z,now \
+        -o /opt/artifactflow-process-deny /src/process-deny-exec.c -lseccomp
 
 FROM php:8.5.9-cli-alpine3.24@sha256:0554eb53778b5316f6b9a3447c9dfa3cf2141c0c02ff816c42cdc9aa240a34aa AS pdf-processor-spike
 
@@ -52,7 +56,9 @@ FROM pdf-processor-spike AS pdf-processor-service
 
 USER root
 
-RUN apk add --no-cache socat=1.8.1.3-r0 \
+RUN apk add --no-cache \
+        libseccomp=2.6.0-r2 \
+        socat=1.8.1.3-r0 \
     && mkdir -p /run/artifactflow/pdf-processor \
     && chown pdf-spike:pdf-spike /run/artifactflow/pdf-processor \
     && chmod 0755 /run/artifactflow/pdf-processor
@@ -60,8 +66,10 @@ RUN apk add --no-cache socat=1.8.1.3-r0 \
 COPY src/PdfProcessor.php /srv/pdf-processor-spike/src/PdfProcessor.php
 COPY public /srv/pdf-processor-spike/public
 COPY start.sh healthcheck.php /srv/pdf-processor-spike/
+COPY --from=pdf-processor-spike-builder /opt/artifactflow-process-deny /usr/local/bin/artifactflow-process-deny
 
-RUN chmod 0444 /srv/pdf-processor-spike/src/PdfProcessor.php /srv/pdf-processor-spike/public/index.php \
+RUN chmod 0555 /usr/local/bin/artifactflow-process-deny \
+    && chmod 0444 /srv/pdf-processor-spike/src/PdfProcessor.php /srv/pdf-processor-spike/public/index.php \
     && chmod 0555 /srv/pdf-processor-spike/start.sh /srv/pdf-processor-spike/healthcheck.php
 
 USER pdf-spike
@@ -84,11 +92,12 @@ USER root
 RUN apk add --no-cache libseccomp=2.6.0-r2
 
 COPY --from=pdf-processor-spike-builder /opt/artifactflow-network-deny /usr/local/bin/artifactflow-network-deny
+COPY --from=pdf-processor-spike-builder /opt/artifactflow-process-deny /usr/local/bin/artifactflow-process-deny
 COPY src/PdfProcessor.php /srv/pdf-processor-spike/src/PdfProcessor.php
 COPY public /srv/pdf-processor-spike/public
 COPY start-private.sh healthcheck-private.php /srv/pdf-processor-spike/
 
-RUN chmod 0555 /usr/local/bin/artifactflow-network-deny \
+RUN chmod 0555 /usr/local/bin/artifactflow-network-deny /usr/local/bin/artifactflow-process-deny \
     && chmod 0444 /srv/pdf-processor-spike/src/PdfProcessor.php /srv/pdf-processor-spike/public/index.php \
     && chmod 0555 /srv/pdf-processor-spike/start-private.sh /srv/pdf-processor-spike/healthcheck-private.php
 

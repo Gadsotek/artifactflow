@@ -384,12 +384,16 @@ enable it, use exactly one reviewed processor topology:
   read-only, drop all capabilities, retain `no-new-privileges`, cap PIDs at 32,
   memory at 512 MiB, CPU at one core, and provide only a 32 MiB noexec/nosuid
   `/tmp` tmpfs. Its startup log must contain
-  `ArtifactFlow processor outbound syscall deny active.`; absence of that line
-  or a failed healthcheck is a deployment failure, not a warning.
+  `ArtifactFlow processor outbound syscall deny active.` and
+  `ArtifactFlow PDF engine process creation deny active.`; absence of either
+  line or a failed healthcheck is a deployment failure, not a warning.
   The fixed health probe reaches only the container's loopback `/health`
   endpoint and fails unless both the listener and PDFBox engine respond. It
   handles no document input; the server and every PDFBox child remain under the
-  inherited outbound-denial filter.
+  inherited outbound-denial filter. In both supported topologies, each native
+  engine also inherits a process-containment filter that permits JVM threads
+  but denies creation of child processes, so forced termination cannot leave a
+  descendant able to inspect later temporary inputs.
 
 Set one strong dedicated `PDF_PROCESSOR_SHARED_SECRET` only on the app runtime
 and processor; do not reuse the image-parser secret. On the app set

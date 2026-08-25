@@ -518,7 +518,9 @@ pdf-processor-service-test: pdf-processor-service-build
 				exit 1; \
 			fi; \
 			sleep 1; \
-		done
+		done; \
+		logs="$$(docker logs "$$processor_container" 2>&1)"; \
+		printf '%s\n' "$$logs" | grep -F 'ArtifactFlow PDF engine process creation deny active.' >/dev/null
 	@if docker run --rm --network none --read-only --cap-drop ALL \
 		--security-opt no-new-privileges --pids-limit 32 --memory 512m --cpus 1 \
 		--tmpfs /tmp:rw,noexec,nosuid,size=32m \
@@ -526,6 +528,7 @@ pdf-processor-service-test: pdf-processor-service-build
 		--env PHP_CLI_SERVER_WORKERS=2 $(PDF_PROCESSOR_SERVICE_IMAGE); then \
 		echo "PDF processor accepted more than one HTTP worker." >&2; exit 1; \
 	fi
+	bash pdf-processor-spike/process-containment-harness.sh "$(PDF_PROCESSOR_SERVICE_IMAGE)"
 
 pdf-processor-private-service-build:
 	$(DOCKER_BUILD) -f pdf-processor-spike/Dockerfile --target pdf-processor-private-service \
@@ -589,7 +592,9 @@ pdf-processor-private-service-runtime-test:
 		fi; \
 		logs="$$(docker logs "$$processor_container" 2>&1)"; \
 		printf '%s\n' "$$logs" | grep -F 'ArtifactFlow processor outbound syscall deny active.' >/dev/null; \
+		printf '%s\n' "$$logs" | grep -F 'ArtifactFlow PDF engine process creation deny active.' >/dev/null; \
 		echo "Private-network PDF processor inbound health, engine-failure health, and inherited outbound syscall deny probes passed."
+	bash pdf-processor-spike/process-containment-harness.sh "$(PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE)"
 
 scan-image:
 	@mkdir -p "$(TRIVY_CACHE_DIR)"
