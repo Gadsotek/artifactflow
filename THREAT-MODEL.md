@@ -523,10 +523,13 @@ The release-blocking attack model is:
 - The processor has no app source, database, artifact storage, signing/session credentials, or
   public listener. Unix-socket deployments combine the loopback-only relay with Docker network
   mode `none`. Private-network deployments use the dedicated image whose PHP and PDFBox processes
-  inherit a self-installed seccomp deny for outbound connection/send paths and whose startup
-  self-test must succeed. Both topologies deny processor-initiated routes to the app, other
-  runtimes, cloud metadata, private peers, DNS, and the public network. A Docker `internal` network
-  alone is not directional isolation proof. Timeouts kill the entire native process tree.
+  inherit a self-installed seccomp deny for outbound connection/send paths, SCTP socket creation,
+  packet/netlink sockets, and io_uring, and whose startup self-test must succeed. Its fixed Docker
+  health process accepts no document bytes and reaches only loopback `/health`; the endpoint checks
+  PDFBox under the server's inherited filter, so listener or engine failure makes the container
+  unhealthy. Both topologies deny processor-initiated routes to the app, other runtimes, cloud
+  metadata, private peers, DNS, and the public network. A Docker `internal` network alone is not
+  directional isolation proof. Timeouts kill the entire native process tree.
 - The first release runs one processor replica with native concurrency `1` and rejects concurrent
   work immediately. This keeps resource admission global for the intended small deployment without
   adding a distributed scheduler. A cross-process engine lease also prevents the container health

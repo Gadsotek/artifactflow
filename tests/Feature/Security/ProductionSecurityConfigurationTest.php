@@ -94,6 +94,10 @@ final class ProductionSecurityConfigurationTest extends TestCase
                 'PDF processor shared secret must be strong and dedicated.',
             ],
             [
+                ['image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32))],
+                'PDF processor shared secret must be strong and dedicated.',
+            ],
+            [
                 ['pdf_processor.connect_timeout_seconds' => 0],
                 'PDF processor connect and request timeouts must be integers between 1 and 60.',
             ],

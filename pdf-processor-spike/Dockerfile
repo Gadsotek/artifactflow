@@ -99,6 +99,6 @@ ENTRYPOINT ["/usr/local/bin/artifactflow-network-deny"]
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=15s --start-period=10s --retries=3 \
-    CMD ["/usr/local/bin/artifactflow-network-deny", "php", "/srv/pdf-processor-spike/healthcheck-private.php"]
+    CMD ["php", "/srv/pdf-processor-spike/healthcheck-private.php"]
 
 CMD ["/srv/pdf-processor-spike/start-private.sh"]

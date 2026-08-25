@@ -15,9 +15,13 @@ The first service target runs without a network, writable root filesystem,
 Linux capabilities, or elevated privileges. The private-network target runs on
 an ordinary container network but starts PHP and every PDFBox child through an
 inherited seccomp launcher; its runtime test requires the outbound-denial
-self-test log and a healthy HTTP boundary. Passing proves only the image-level
-contract. A production deployment must still prove private-only reachability,
-resource limits, digest/attestation verification, and the operator gates in
+self-test log, SCTP socket denial, and a health boundary that fails when the
+listener or PDFBox engine is unavailable. A fixed health process outside the
+parser filter may connect only to the container's loopback `/health` endpoint
+and handles no document bytes; the server and every PDFBox child stay inside
+the inherited filter. Passing proves only the image-level contract. A
+production deployment must still prove private-only reachability, resource
+limits, digest/attestation verification, and the operator gates in
 `docs/architecture/pdf-artifacts.md`.
 The target also starts an intentionally hung spike command and proves that the
 external harness kills the entire container at its wall-clock deadline. The

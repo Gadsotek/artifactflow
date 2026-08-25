@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <linux/if_packet.h>
 #include <linux/netlink.h>
+#include <netinet/in.h>
 #include <seccomp.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -64,6 +65,13 @@ static void install_filter(void)
         SCMP_SYS(socket),
         1,
         SCMP_A0(SCMP_CMP_EQ, AF_NETLINK)
+    ));
+    require_rule(seccomp_rule_add(
+        filter,
+        denied,
+        SCMP_SYS(socket),
+        1,
+        SCMP_A2(SCMP_CMP_EQ, IPPROTO_SCTP)
     ));
     require_rule(seccomp_rule_add(filter, denied, SCMP_SYS(io_uring_setup), 0));
     require_rule(seccomp_rule_add(filter, denied, SCMP_SYS(io_uring_enter), 0));
@@ -133,6 +141,21 @@ static void self_test_udp(void)
     }
 }
 
+static void self_test_sctp(void)
+{
+    errno = 0;
+    const int socket_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_SCTP);
+    const int error = errno;
+
+    if (socket_fd >= 0) {
+        close(socket_fd);
+    }
+
+    if (socket_fd != -1 || error != EPERM) {
+        fail("SCTP socket was not denied with EPERM");
+    }
+}
+
 int main(int argc, char **argv)
 {
     install_filter();
@@ -140,6 +163,7 @@ int main(int argc, char **argv)
     if (argc == 2 && strcmp(argv[1], "--self-test") == 0) {
         self_test_tcp();
         self_test_udp();
+        self_test_sctp();
         puts("ArtifactFlow processor outbound syscall deny active.");
 
         return 0;

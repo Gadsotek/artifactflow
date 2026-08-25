@@ -112,9 +112,13 @@ tmpfs/time limits, and one of two reviewed directional transports:
   `pdf-processor-private-service` image. Before binding its HTTP listener, the
   launcher enables `PR_SET_NO_NEW_PRIVS`, installs a seccomp filter that every
   PHP/PDFBox child inherits, and proves TCP `connect` plus destination-bearing
-  UDP `sendto` fail with `EPERM`. The filter also denies `sendmsg`, `sendmmsg`,
-  packet/netlink sockets, and io_uring so a compromised parser cannot choose an
-  alternate outbound syscall path. The service receives no public domain.
+  UDP `sendto` fail with `EPERM`. The filter also denies SCTP socket creation,
+  `sendmsg`, `sendmmsg`, packet/netlink sockets, and io_uring so a compromised
+  parser cannot choose an alternate outbound syscall path. The service receives
+  no public domain. Its fixed Docker health process handles no document input
+  and may connect only to loopback `/health`; that endpoint exercises PDFBox
+  under the server's inherited filter, so listener or engine failure makes the
+  container unhealthy.
 
 Both modes let the app initiate an authenticated request while denying the
 processor a callback path into the app, cloud metadata, private peers, DNS, or

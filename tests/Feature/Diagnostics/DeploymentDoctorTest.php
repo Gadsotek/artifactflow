@@ -870,6 +870,20 @@ final class DeploymentDoctorTest extends TestCase
             $this->check($productionEnabled->checks, 'pdf_release_gate')->status,
         );
 
+        $productionReusedParserSecret = (new DeploymentDoctor($this->config('production', [
+            'image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'http://pdf-processor.internal:8080',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+        ])))->run();
+        $this->assertSame(
+            DoctorCheckStatus::Fail,
+            $this->check($productionReusedParserSecret->checks, 'pdf_release_gate')->status,
+        );
+
         $productionDisabled = (new DeploymentDoctor($this->config('production', [
             'pdf_processor.enabled' => false,
         ])))->run();

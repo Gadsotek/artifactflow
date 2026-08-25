@@ -154,6 +154,7 @@ final readonly class DeploymentDoctor
         $secret = SecretStrength::normalized($configured);
         $applicationSecret = SecretStrength::normalized($this->string('app.key'));
         $signingSecret = SecretStrength::normalized($this->string('app.artifact_url_signing_key'));
+        $imageParserSecret = SecretStrength::normalized($this->string('image_parser.shared_secret'));
         $previousApplicationSecrets = $this->previousApplicationSecrets();
 
         if ($previousApplicationSecrets === null) {
@@ -168,6 +169,10 @@ final readonly class DeploymentDoctor
 
         if ($signingSecret !== null) {
             $comparisonSecrets[] = $signingSecret;
+        }
+
+        if ($imageParserSecret !== null) {
+            $comparisonSecrets[] = $imageParserSecret;
         }
 
         if (

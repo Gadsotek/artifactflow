@@ -163,7 +163,7 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringNotContainsString('--entrypoint php', $serviceTest);
     }
 
-    public function test_private_network_service_installs_and_proves_an_inherited_outbound_syscall_deny(): void
+    public function test_private_network_service_proves_outbound_denial_and_live_engine_health(): void
     {
         $dockerfile = $this->readProjectFile('pdf-processor-spike/Dockerfile');
         $stage = $this->afterNeedle($dockerfile, ' AS pdf-processor-private-service');
@@ -180,7 +180,7 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('ENTRYPOINT ["/usr/local/bin/artifactflow-network-deny"]', $stage);
         $this->assertStringContainsString('CMD ["/srv/pdf-processor-spike/start-private.sh"]', $stage);
         $this->assertStringContainsString(
-            'CMD ["/usr/local/bin/artifactflow-network-deny", "php", "/srv/pdf-processor-spike/healthcheck-private.php"]',
+            'CMD ["php", "/srv/pdf-processor-spike/healthcheck-private.php"]',
             $stage,
         );
         $this->assertStringNotContainsString('socat', $stage);
@@ -192,6 +192,9 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('SCMP_SYS(sendmsg)', $launcher);
         $this->assertStringContainsString('SCMP_SYS(sendmmsg)', $launcher);
         $this->assertStringContainsString('SCMP_CMP_NE', $launcher);
+        $this->assertStringContainsString('IPPROTO_SCTP', $launcher);
+        $this->assertStringContainsString('SCMP_A2(SCMP_CMP_EQ, IPPROTO_SCTP)', $launcher);
+        $this->assertStringContainsString('SCTP socket was not denied with EPERM', $launcher);
         $this->assertStringContainsString('SCMP_SYS(io_uring_setup)', $launcher);
         $this->assertStringContainsString('EPERM', $launcher);
         $this->assertStringContainsString('execvp', $launcher);
@@ -200,8 +203,11 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('exec /usr/local/bin/artifactflow-network-deny', $start);
         $this->assertStringContainsString('0.0.0.0:${port}', $start);
         $this->assertStringNotContainsString('UNIX-LISTEN:', $start);
-        $this->assertStringNotContainsString('stream_socket_client', $healthcheck);
-        $this->assertStringNotContainsString('tcp://', $healthcheck);
+        $this->assertStringContainsString('ProcessorConfiguration::fromEnvironment()', $healthcheck);
+        $this->assertStringContainsString('stream_socket_client', $healthcheck);
+        $this->assertStringContainsString('tcp://127.0.0.1:', $healthcheck);
+        $this->assertStringContainsString('GET /health HTTP/1.1', $healthcheck);
+        $this->assertStringContainsString('{"status":"ok"}', $healthcheck);
 
         $privateTest = $this->afterNeedle($makefile, 'pdf-processor-private-service-test:');
         $this->assertStringContainsString('--target pdf-processor-private-service', $makefile);
@@ -212,6 +218,8 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('--publish 127.0.0.1::8080', $privateTest);
         $this->assertStringContainsString('curl --fail --silent --show-error --max-time 20', $privateTest);
         $this->assertStringContainsString('/health', $privateTest);
+        $this->assertStringContainsString('artifactflow-health-lock-held', $privateTest);
+        $this->assertStringContainsString('engine failure did not make the container unhealthy', $privateTest);
         $this->assertStringNotContainsString('--network none', $privateTest);
     }
 

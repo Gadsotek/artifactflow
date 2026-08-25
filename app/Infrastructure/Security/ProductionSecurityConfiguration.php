@@ -280,6 +280,7 @@ final readonly class ProductionSecurityConfiguration
         $secret = SecretStrength::normalized($configured);
         $applicationSecret = SecretStrength::normalized($this->string('app.key'));
         $signingSecret = SecretStrength::normalized($this->string('app.artifact_url_signing_key'));
+        $imageParserSecret = SecretStrength::normalized($this->string('image_parser.shared_secret'));
         $comparisonSecrets = [
             $applicationSecret ?? '',
             ...$this->previousApplicationKeys(),
@@ -287,6 +288,10 @@ final readonly class ProductionSecurityConfiguration
 
         if ($signingSecret !== null) {
             $comparisonSecrets[] = $signingSecret;
+        }
+
+        if ($imageParserSecret !== null) {
+            $comparisonSecrets[] = $imageParserSecret;
         }
 
         if (

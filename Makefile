@@ -543,7 +543,7 @@ pdf-processor-private-service-runtime-test:
 			--security-opt no-new-privileges --pids-limit 32 --memory 512m --cpus 1 \
 			--publish 127.0.0.1::8080 \
 			--tmpfs /tmp:rw,noexec,nosuid,size=32m \
-			--health-interval 1s --health-timeout 15s --health-start-period 1s --health-retries 15 \
+			--health-interval 1s --health-timeout 15s --health-start-period 10s --health-retries 1 \
 			--env PDF_PROCESSOR_SHARED_SECRET=artifactflow-private-processor-runtime-test-secret \
 			$(PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE) >/dev/null; \
 		for attempt in $$(seq 1 45); do \
@@ -566,9 +566,30 @@ pdf-processor-private-service-runtime-test:
 			echo "Private-network PDF processor returned an invalid health response." >&2; \
 			exit 1; \
 		fi; \
+		docker exec -d "$$processor_container" php -r \
+			'$$handle = fopen("/tmp/artifactflow-pdf-engine.lock", "c"); if (!is_resource($$handle) || !flock($$handle, LOCK_EX)) { exit(1); } touch("/tmp/artifactflow-health-lock-held"); sleep(30);' >/dev/null; \
+		for attempt in $$(seq 1 10); do \
+			if docker exec "$$processor_container" test -f /tmp/artifactflow-health-lock-held; then break; fi; \
+			if [ "$$attempt" -eq 10 ]; then \
+				echo "Private-network PDF processor engine fault probe did not acquire the engine lease." >&2; \
+				exit 1; \
+			fi; \
+			sleep 1; \
+		done; \
+		status=""; \
+		for attempt in $$(seq 1 40); do \
+			status="$$(docker inspect --format='{{.State.Health.Status}}' "$$processor_container" 2>/dev/null || true)"; \
+			if [ "$$status" = unhealthy ]; then break; fi; \
+			sleep 1; \
+		done; \
+		if [ "$$status" != unhealthy ]; then \
+			docker logs "$$processor_container" 2>&1 || true; \
+			echo "Private-network PDF processor engine failure did not make the container unhealthy (status: $$status)." >&2; \
+			exit 1; \
+		fi; \
 		logs="$$(docker logs "$$processor_container" 2>&1)"; \
 		printf '%s\n' "$$logs" | grep -F 'ArtifactFlow processor outbound syscall deny active.' >/dev/null; \
-		echo "Private-network PDF processor inbound health and inherited outbound syscall deny probes passed."
+		echo "Private-network PDF processor inbound health, engine-failure health, and inherited outbound syscall deny probes passed."
 
 scan-image:
 	@mkdir -p "$(TRIVY_CACHE_DIR)"
