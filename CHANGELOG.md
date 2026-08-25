@@ -6,6 +6,14 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.0.11 — 2026-08-25
+
+Feature, security, and dependency maintenance release. It adds the default-off
+searchable PDF artifact milestone, completes its isolated local processor and
+installer path, and refreshes the PHP and frontend toolchains. PDF support is
+still experimental and must remain disabled in production; existing
+installations must run the new migrations before serving this release.
+
 ### Added
 
 - Added a default-off searchable PDF application boundary: bounded synchronous
@@ -16,7 +24,7 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   External PDF sharing is implemented behind the default-off PDF feature gate,
   reusing the existing revocable anonymous session capability and isolated
   native viewer. OCR, raster/HTML preview conversion, raw PDF MCP responses,
-  and production enablement remain deliberately closed.
+  and production enablement remain deliberately closed. (#83)
 
 ### Security
 
@@ -27,14 +35,43 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   concurrency-one memory boundary during health probes. MCP checks exact
   authority before Base64 decoding/native work and returns only enveloped text
   plus safe facts; restore/reprocess verify retained original hashes before
-  processing, and PDF diagnostics stay out of audit/event metadata.
+  processing, and PDF diagnostics stay out of audit/event metadata. (#83)
+- Hardened local image/PDF processor isolation, socket-path validation, health
+  checks, bounded response handling, and secret provisioning. Published or
+  encoded secrets are rejected instead of reused or overwritten, and runtime
+  network-isolation checks pin the processors' no-network boundary. (#87)
 
 ### Changed
 
-- Local `make up` starts the isolated PDF processor and Reverb while retaining their
-  application-level feature gates. The guided local/test installer now offers a
-  default-No experimental PDF choice, with `--pdf` for unattended installs; production
-  installation continues to reject PDF enablement until its release gate is accepted.
+- Local `make up` starts the isolated PDF processor and Reverb while retaining
+  their application-level feature gates. The guided local/test installer now
+  offers a default-No experimental PDF choice, with `--pdf` for unattended
+  installs; production installation continues to reject PDF enablement until
+  its release gate is accepted. (#87)
+
+### Fixed
+
+- PDF validation failures now report a stable, format-specific rejection reason,
+  preserve selected mode and metadata across create-form redirects, and clearly
+  prompt for the file to be selected again. Reprocessing presents the same safe
+  reason without exposing native parser diagnostics. (#92)
+- Clarified that page-access autocomplete grants existing registered human
+  coworkers access and does not invite or email external recipients. (#93)
+
+### Dependencies
+
+- Updated Laravel Framework 13.25.0 → 13.26.1, Mockery 1.6.13 → 1.6.15,
+  and Rector 2.6.2 → 2.6.3. (#85, #88)
+- Updated Resend PHP 1.9.0 → 1.10.0 and Easy Coding Standard 13.2.17 →
+  13.2.18. (#90)
+- Updated Mermaid 11.16.1 → 11.17.0 and Vite 8.2.1 → 8.2.2, and refreshed
+  the pinned Mermaid security invariant for the reviewed release. (#91)
+
+### Internal / Tooling
+
+- Added a checked Codex filesystem-permission profile and aligned the AI guard
+  harness with it so repository access restrictions are continuously verified.
+  (#86)
 
 ## v0.0.10 — 2026-08-19
 
