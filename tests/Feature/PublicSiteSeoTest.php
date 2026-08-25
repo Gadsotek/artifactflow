@@ -521,7 +521,7 @@ final class PublicSiteSeoTest extends TestCase
         $this->assertStringContainsString('Available now', $roadmapPage);
         $this->assertStringContainsString('Shipped in v0.0.7', $roadmapPage);
         $this->assertStringContainsString('Shipped in v0.0.9', $roadmapPage);
-        $this->assertStringContainsString('Next format milestone', $roadmapPage);
+        $this->assertStringContainsString('Document formats', $roadmapPage);
         $this->assertStringContainsString('Explicitly not promised', $roadmapPage);
         $this->assertStringContainsString(
             'https://github.com/Gadsotek/artifactflow/blob/main/ROADMAP.md',
@@ -818,7 +818,7 @@ final class PublicSiteSeoTest extends TestCase
         }
     }
 
-    public function test_roadmap_prioritizes_pdf_after_released_nested_workspaces(): void
+    public function test_roadmap_tracks_opt_in_pdf_after_released_nested_workspaces(): void
     {
         $roadmap = file_get_contents(base_path('ROADMAP.md'));
         $roadmapPage = file_get_contents(base_path('site/roadmap/index.html'));
@@ -826,7 +826,7 @@ final class PublicSiteSeoTest extends TestCase
         $this->assertIsString($roadmap);
         $this->assertIsString($roadmapPage);
         $this->assertStringContainsString('## Released in v0.0.9: nested shared workspaces', $roadmap);
-        $this->assertStringContainsString('## Next focus: searchable PDF artifacts', $roadmap);
+        $this->assertStringContainsString('## Opt-in searchable PDF artifacts', $roadmap);
         $this->assertStringContainsString('## Later focus: searchable Word document artifacts', $roadmap);
         $this->assertStringContainsString('Nested shared workspaces', $roadmapPage);
         $this->assertStringContainsString('Searchable PDF artifacts', $roadmapPage);
@@ -879,7 +879,7 @@ final class PublicSiteSeoTest extends TestCase
             $this->assertStringContainsString('metadata revision', $workflow);
             $this->assertStringContainsString('not a content-version snapshot', $workflow);
             $this->assertStringContainsString(
-                'PDF implementation is default-off and not shipped; DOCX remains roadmap direction only',
+                'PDF support is a default-off production opt-in; DOCX remains roadmap direction only',
                 $workflow,
             );
             $this->assertStringContainsString('Per-version catalog metadata is not promised', $workflow);

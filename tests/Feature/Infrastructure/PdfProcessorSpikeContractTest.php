@@ -12,7 +12,7 @@ final class PdfProcessorSpikeContractTest extends TestCase
 
     private const string PDFBOX_SHA512 = '768847238f683568507bf73570a2b6fedcbe58b25c7b4f97fba536ba110b290fe96ba065aed58629d41fb94857d76bc1978c2f31d294b553c69f287f71ee9600';
 
-    public function test_spike_is_pinned_isolated_and_absent_from_production_topology(): void
+    public function test_spike_is_pinned_and_local_topology_remains_networkless(): void
     {
         $dockerfile = $this->readProjectFile('pdf-processor-spike/Dockerfile');
         $productionDockerfile = $this->readProjectFile('Dockerfile');
@@ -35,8 +35,10 @@ final class PdfProcessorSpikeContractTest extends TestCase
 
         $this->assertStringNotContainsString('pdf-processor-spike:', $compose);
         $this->assertStringNotContainsString('pdf-processor-spike', $productionDockerfile);
-        $this->assertStringContainsString('Non-production', $readme);
-        $this->assertStringContainsString('must not be enabled', $readme);
+        $this->assertStringContainsString('both reviewed processor topologies', $readme);
+        $this->assertStringContainsString('private-network target', $readme);
+        $this->assertStringContainsString('Passing proves only the image-level', $readme);
+        $this->assertStringContainsString('production deployment must still prove private-only reachability', $readme);
 
         $this->assertStringContainsString('pdf-processor-spike-build:', $makefile);
         $this->assertStringContainsString('pdf-processor-spike-test:', $makefile);

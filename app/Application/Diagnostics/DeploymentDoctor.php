@@ -79,57 +79,131 @@ final readonly class DeploymentDoctor
     private function pdfReleaseGateCheck(bool $production): DoctorCheck
     {
         $enabled = $this->config->get('pdf_processor.enabled', false);
+        $id = 'pdf_release_gate';
+        $label = 'PDF processor isolation';
 
         if (!is_bool($enabled)) {
             return $this->fail(
-                'pdf_release_gate',
-                'PDF release gate',
+                $id,
+                $label,
                 'PDF_PROCESSOR_ENABLED must be true or false.',
             );
         }
 
         if ($enabled && !UnixSocketPath::isValidOptional($this->untrimmedString('pdf_processor.socket_path'))) {
             return $this->fail(
-                'pdf_release_gate',
-                'PDF release gate',
+                $id,
+                $label,
                 'PDF_PROCESSOR_SOCKET_PATH must be empty or an absolute filesystem path.',
             );
         }
 
         if (!$production) {
             return $this->skipped(
-                'pdf_release_gate',
-                'PDF release gate',
+                $id,
+                $label,
                 $enabled
-                    ? 'PDF is enabled only for local/E2E verification; production remains blocked.'
-                    : 'PDF remains disabled while its production release gate is open.',
+                    ? 'PDF is enabled locally; production additionally requires a strong dedicated processor boundary.'
+                    : 'PDF remains disabled by default.',
             );
         }
 
-        if (
-            $this->string('app.runtime_role') !== 'app'
-            && $this->string('pdf_processor.shared_secret') !== ''
-        ) {
+        $runtimeRole = $this->string('app.runtime_role');
+
+        if ($runtimeRole !== 'app' && $this->string('pdf_processor.shared_secret') !== '') {
             return $this->fail(
-                'pdf_release_gate',
-                'PDF release gate',
+                $id,
+                $label,
                 'Remove PDF_PROCESSOR_SHARED_SECRET from every non-app runtime role.',
             );
         }
 
-        if ($enabled) {
-            return $this->fail(
-                'pdf_release_gate',
-                'PDF release gate',
-                'Set PDF_PROCESSOR_ENABLED=false until the PDF production release gate is accepted.',
+        if ($runtimeRole !== 'app') {
+            if ($enabled && $runtimeRole !== 'artifact-host') {
+                return $this->fail(
+                    $id,
+                    $label,
+                    'Set PDF_PROCESSOR_ENABLED=false for worker and scheduler runtime roles.',
+                );
+            }
+
+            return $this->pass(
+                $id,
+                $label,
+                $runtimeRole === 'artifact-host' && $enabled
+                    ? 'PDF presentation is enabled without processor credentials on the artifact host.'
+                    : sprintf("Runtime role '%s' has no PDF processor credential.", $runtimeRole),
             );
         }
 
-        return $this->pass(
-            'pdf_release_gate',
-            'PDF release gate',
-            'PDF remains disabled in production.',
-        );
+        if (!$enabled) {
+            return $this->pass($id, $label, 'PDF remains disabled by default.');
+        }
+
+        $origin = OriginNormalizer::tryParsePureOrigin($this->string('pdf_processor.url'));
+
+        if ($origin === null) {
+            return $this->fail(
+                $id,
+                $label,
+                'PDF_PROCESSOR_URL must be a pure HTTP or HTTPS origin.',
+            );
+        }
+
+        $configured = $this->string('pdf_processor.shared_secret');
+        $secret = SecretStrength::normalized($configured);
+        $applicationSecret = SecretStrength::normalized($this->string('app.key'));
+        $signingSecret = SecretStrength::normalized($this->string('app.artifact_url_signing_key'));
+        $previousApplicationSecrets = $this->previousApplicationSecrets();
+
+        if ($previousApplicationSecrets === null) {
+            return $this->fail(
+                $id,
+                $label,
+                'APP_PREVIOUS_KEYS must be valid before PDF processor secret isolation can be verified.',
+            );
+        }
+
+        $comparisonSecrets = [$applicationSecret ?? '', ...$previousApplicationSecrets];
+
+        if ($signingSecret !== null) {
+            $comparisonSecrets[] = $signingSecret;
+        }
+
+        if (
+            !SecretStrength::isProductionSafe($configured)
+            || $secret === null
+            || $this->invariants->secretReusesAny($secret, $comparisonSecrets)
+        ) {
+            return $this->fail(
+                $id,
+                $label,
+                'PDF_PROCESSOR_SHARED_SECRET must be a strong dedicated secret.',
+            );
+        }
+
+        $connectTimeout = $this->config->get('pdf_processor.connect_timeout_seconds');
+        $requestTimeout = $this->config->get('pdf_processor.timeout_seconds');
+
+        if (
+            !is_int($connectTimeout)
+            || $connectTimeout < 1
+            || $connectTimeout > 60
+            || !is_int($requestTimeout)
+            || $requestTimeout < 1
+            || $requestTimeout > 60
+        ) {
+            return $this->fail(
+                $id,
+                $label,
+                'PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS and PDF_PROCESSOR_TIMEOUT_SECONDS must be integers between 1 and 60.',
+            );
+        }
+
+        return $this->pass($id, $label, sprintf(
+            'Processor origin is %s with dedicated authentication and bounded timeouts.',
+            $origin->compact(),
+        ));
     }
 
     private function cacheStoreCheck(bool $production): DoctorCheck

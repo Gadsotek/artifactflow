@@ -163,6 +163,58 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringNotContainsString('--entrypoint php', $serviceTest);
     }
 
+    public function test_private_network_service_installs_and_proves_an_inherited_outbound_syscall_deny(): void
+    {
+        $dockerfile = $this->readProjectFile('pdf-processor-spike/Dockerfile');
+        $stage = $this->afterNeedle($dockerfile, ' AS pdf-processor-private-service');
+        $launcher = $this->readProjectFile('pdf-processor-spike/network-deny-exec.c');
+        $start = $this->readProjectFile('pdf-processor-spike/start-private.sh');
+        $healthcheck = $this->readProjectFile('pdf-processor-spike/healthcheck-private.php');
+        $makefile = $this->readProjectFile('Makefile');
+
+        $this->assertStringContainsString('libseccomp-dev=2.6.0-r2', $dockerfile);
+        $this->assertStringContainsString('libseccomp=2.6.0-r2', $stage);
+        $this->assertStringContainsString('COPY --from=pdf-processor-spike-builder /opt/artifactflow-network-deny', $stage);
+        $this->assertStringContainsString('COPY start-private.sh healthcheck-private.php', $stage);
+        $this->assertStringContainsString('USER pdf-spike', $stage);
+        $this->assertStringContainsString('ENTRYPOINT ["/usr/local/bin/artifactflow-network-deny"]', $stage);
+        $this->assertStringContainsString('CMD ["/srv/pdf-processor-spike/start-private.sh"]', $stage);
+        $this->assertStringContainsString(
+            'CMD ["/usr/local/bin/artifactflow-network-deny", "php", "/srv/pdf-processor-spike/healthcheck-private.php"]',
+            $stage,
+        );
+        $this->assertStringNotContainsString('socat', $stage);
+        $this->assertStringNotContainsString('COPY app ', $stage);
+        $this->assertStringNotContainsString('COPY . ', $stage);
+
+        $this->assertStringContainsString('PR_SET_NO_NEW_PRIVS', $launcher);
+        $this->assertStringContainsString('SCMP_SYS(connect)', $launcher);
+        $this->assertStringContainsString('SCMP_SYS(sendmsg)', $launcher);
+        $this->assertStringContainsString('SCMP_SYS(sendmmsg)', $launcher);
+        $this->assertStringContainsString('SCMP_CMP_NE', $launcher);
+        $this->assertStringContainsString('SCMP_SYS(io_uring_setup)', $launcher);
+        $this->assertStringContainsString('EPERM', $launcher);
+        $this->assertStringContainsString('execvp', $launcher);
+
+        $this->assertStringContainsString('artifactflow-network-deny --self-test', $start);
+        $this->assertStringContainsString('exec /usr/local/bin/artifactflow-network-deny', $start);
+        $this->assertStringContainsString('0.0.0.0:${port}', $start);
+        $this->assertStringNotContainsString('UNIX-LISTEN:', $start);
+        $this->assertStringNotContainsString('stream_socket_client', $healthcheck);
+        $this->assertStringNotContainsString('tcp://', $healthcheck);
+
+        $privateTest = $this->afterNeedle($makefile, 'pdf-processor-private-service-test:');
+        $this->assertStringContainsString('--target pdf-processor-private-service', $makefile);
+        $this->assertStringContainsString('--cap-drop ALL', $privateTest);
+        $this->assertStringContainsString('--security-opt no-new-privileges', $privateTest);
+        $this->assertStringContainsString('ArtifactFlow processor outbound syscall deny active.', $privateTest);
+        $this->assertStringContainsString('.State.Health.Status', $privateTest);
+        $this->assertStringContainsString('--publish 127.0.0.1::8080', $privateTest);
+        $this->assertStringContainsString('curl --fail --silent --show-error --max-time 20', $privateTest);
+        $this->assertStringContainsString('/health', $privateTest);
+        $this->assertStringNotContainsString('--network none', $privateTest);
+    }
+
     private function readProjectFile(string $path): string
     {
         $contents = file_get_contents(base_path($path));

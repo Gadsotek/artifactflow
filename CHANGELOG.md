@@ -6,6 +6,34 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.0.12 — 2026-08-25
+
+Security and deployment release. It makes the completed native-text PDF slice
+available as an explicit production opt-in without changing existing installs:
+`PDF_PROCESSOR_ENABLED` remains `false` by default, and the local networkless
+Unix-socket processor topology is unchanged.
+
+### Added
+
+- Added a dedicated non-root private-network PDF processor image for platforms
+  that cannot mount the local Unix socket. Its PHP server and every PDFBox child
+  inherit a self-installed seccomp filter that denies outbound connects,
+  destination-bearing sends, packet/netlink sockets, and io_uring; startup
+  fails unless TCP and UDP denial self-tests return `EPERM`.
+- Tagged releases now publish, scan, attest, and attach an SBOM for
+  `ghcr.io/gadsotek/artifactflow-pdf-processor` independently of the main app
+  image so deployments can pin each immutable digest.
+
+### Changed
+
+- Replaced the unconditional production PDF block with strict opt-in
+  validation of the processor origin, optional Unix socket, dedicated HMAC
+  secret, and bounded timeouts. Artifact hosts may present enabled PDFs without
+  processor credentials; worker and scheduler roles reject PDF enablement.
+- Extended `artifactflow:doctor`, production image gates, and operator docs to
+  verify both supported processor topologies while preserving the default-off
+  backward-compatible behavior.
+
 ## v0.0.11 — 2026-08-25
 
 Feature, security, and dependency maintenance release. It adds the default-off

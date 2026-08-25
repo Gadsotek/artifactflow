@@ -298,6 +298,18 @@ final class CiCoverageGateConfigurationTest extends TestCase
         );
     }
 
+    public function test_release_publishes_and_attests_the_dedicated_pdf_processor_image(): void
+    {
+        $releaseWorkflow = $this->readProjectFile('.github/workflows/release.yml');
+
+        $this->assertStringContainsString('PDF_PROCESSOR_IMAGE: ghcr.io/gadsotek/artifactflow-pdf-processor', $releaseWorkflow);
+        $this->assertStringContainsString('artifactflow-pdf-processor-service:production', $releaseWorkflow);
+        $this->assertStringContainsString('sbom.pdf-processor.cdx.json', $releaseWorkflow);
+        $this->assertStringContainsString('id: push-pdf-processor', $releaseWorkflow);
+        $this->assertStringContainsString('steps.push-pdf-processor.outputs.digest_only', $releaseWorkflow);
+        $this->assertStringContainsString('subject-name: ${{ env.PDF_PROCESSOR_IMAGE }}', $releaseWorkflow);
+    }
+
     public function test_production_image_keeps_runtime_storage_out_of_the_build_context(): void
     {
         $dockerignore = $this->readProjectFile('.dockerignore');

@@ -39,6 +39,7 @@ PRODUCTION_IMAGE ?= artifactflow-app:production
 IMAGE_PARSER_IMAGE ?= artifactflow-image-parser:production
 PDF_PROCESSOR_SPIKE_IMAGE ?= artifactflow-pdf-processor-spike:local
 PDF_PROCESSOR_SERVICE_IMAGE ?= artifactflow-pdf-processor-service:local
+PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE ?= artifactflow-pdf-processor-service:production
 TRIVY_IMAGE ?= aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
 TRIVY_CACHE_DIR ?= $(HOME)/.cache/trivy
 TRIVY_REPO_SCAN_SKIP_DIRS ?= --skip-dirs /src/vendor --skip-dirs /src/node_modules --skip-dirs /src/public/build --skip-dirs /src/storage --skip-dirs /src/bootstrap/cache --skip-dirs /src/.git
@@ -47,7 +48,7 @@ TYPE_COVERAGE_MIN ?= 100
 TYPE_COVERAGE_REPORT ?= storage/framework/testing/type-coverage.json
 COVERAGE_MIN ?= 94
 
-.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps run-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test fuzz-capabilities type-coverage coverage audit audit-php audit-js ai-hooks-test codex-permissions-test verify-reverb-origin verify-runtime-network-isolation reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty pdf-processor-spike-build pdf-processor-spike-test pdf-processor-service-build pdf-processor-service-test scan-image quality quality-full config-refresh lint-js doctor install
+.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps run-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test fuzz-capabilities type-coverage coverage audit audit-php audit-js ai-hooks-test codex-permissions-test verify-reverb-origin verify-runtime-network-isolation reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty pdf-processor-spike-build pdf-processor-spike-test pdf-processor-service-build pdf-processor-service-test pdf-processor-private-service-build pdf-processor-private-service-test pdf-processor-private-service-runtime-test scan-image quality quality-full config-refresh lint-js doctor install
 
 ensure-env:
 	@test -f .env || cp .env.example .env
@@ -466,6 +467,9 @@ build-prod:
 	$(DOCKER_BUILD) --pull --target image-parser --tag $(IMAGE_PARSER_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) .
 	$(DOCKER_BUILD) --pull -f pdf-processor-spike/Dockerfile --target pdf-processor-service \
 		--tag $(PDF_PROCESSOR_SERVICE_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) pdf-processor-spike
+	$(DOCKER_BUILD) --pull -f pdf-processor-spike/Dockerfile --target pdf-processor-private-service \
+		--tag $(PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) pdf-processor-spike
+	$(MAKE) pdf-processor-private-service-runtime-test
 	$(MAKE) assert-prod-storage-empty
 
 assert-prod-storage-empty:
@@ -523,6 +527,49 @@ pdf-processor-service-test: pdf-processor-service-build
 		echo "PDF processor accepted more than one HTTP worker." >&2; exit 1; \
 	fi
 
+pdf-processor-private-service-build:
+	$(DOCKER_BUILD) -f pdf-processor-spike/Dockerfile --target pdf-processor-private-service \
+		--tag $(PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) pdf-processor-spike
+
+pdf-processor-private-service-test: pdf-processor-private-service-build
+	$(MAKE) pdf-processor-private-service-runtime-test
+
+pdf-processor-private-service-runtime-test:
+	@set -euo pipefail; \
+		processor_container="artifactflow-pdf-processor-private-probe-$$(openssl rand -hex 6)"; \
+		cleanup() { docker rm -f "$$processor_container" >/dev/null 2>&1 || true; }; \
+		trap cleanup EXIT; \
+		docker run -d --name "$$processor_container" --read-only --cap-drop ALL \
+			--security-opt no-new-privileges --pids-limit 32 --memory 512m --cpus 1 \
+			--publish 127.0.0.1::8080 \
+			--tmpfs /tmp:rw,noexec,nosuid,size=32m \
+			--health-interval 1s --health-timeout 15s --health-start-period 1s --health-retries 15 \
+			--env PDF_PROCESSOR_SHARED_SECRET=artifactflow-private-processor-runtime-test-secret \
+			$(PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE) >/dev/null; \
+		for attempt in $$(seq 1 45); do \
+			status="$$(docker inspect --format='{{.State.Health.Status}}' "$$processor_container" 2>/dev/null || true)"; \
+			if [ "$$status" = healthy ]; then \
+				break; \
+			fi; \
+			if [ "$$status" = unhealthy ] || [ "$$attempt" -eq 45 ]; then \
+				docker logs "$$processor_container" 2>&1 || true; \
+				echo "Private-network PDF processor did not become healthy (status: $$status)." >&2; \
+				exit 1; \
+			fi; \
+			sleep 1; \
+		done; \
+		mapping="$$(docker port "$$processor_container" 8080/tcp)"; \
+		host_port="$${mapping##*:}"; \
+		case "$$host_port" in ''|*[!0-9]*) echo "Private-network PDF processor did not publish a loopback probe port." >&2; exit 1;; esac; \
+		response="$$(curl --fail --silent --show-error --max-time 20 "http://127.0.0.1:$$host_port/health")"; \
+		if [ "$$response" != '{"status":"ok"}' ]; then \
+			echo "Private-network PDF processor returned an invalid health response." >&2; \
+			exit 1; \
+		fi; \
+		logs="$$(docker logs "$$processor_container" 2>&1)"; \
+		printf '%s\n' "$$logs" | grep -F 'ArtifactFlow processor outbound syscall deny active.' >/dev/null; \
+		echo "Private-network PDF processor inbound health and inherited outbound syscall deny probes passed."
+
 scan-image:
 	@mkdir -p "$(TRIVY_CACHE_DIR)"
 	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
@@ -534,6 +581,9 @@ scan-image:
 	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
 		-v "$(TRIVY_CACHE_DIR):/root/.cache/trivy" \
 		$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(PDF_PROCESSOR_SERVICE_IMAGE)
+	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+		-v "$(TRIVY_CACHE_DIR):/root/.cache/trivy" \
+		$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE)
 	docker run --rm \
 		-v "$(TRIVY_CACHE_DIR):/root/.cache/trivy" \
 		-v "$(PWD):/src:ro" \

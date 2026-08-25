@@ -1,8 +1,8 @@
 # Searchable PDF Artifacts: Architecture Decision
 
-Status: Accepted and implemented default-off; production enablement requires
-directional containment proof and final review
-Date: 2026-08-16
+Status: Accepted and implemented default-off; production opt-in requires the
+documented deployment containment and operator evidence
+Date: 2026-08-25
 
 Supporting product requirements, delivery sequencing, and point-in-time spike
 evidence are maintained as private working records. This public decision is the
@@ -103,14 +103,25 @@ users, choose storage paths, or access the database.
 The production service follows the existing internal-parser pattern: a pinned
 non-root read-only container, strict request/response schema, authenticated
 internal requests, dropped capabilities, `no-new-privileges`, PID/CPU/memory/
-tmpfs/time limits, and a Unix-socket-only local transport in a container with
-Docker network mode `none`. The socket relay may reach only the processor's own
-loopback-bound HTTP process; neither endpoint provides a callback path into the
-application runtime. Cross-host deployments require an equivalently
-directional network policy: the app may initiate requests to the processor, but
-the processor cannot initiate connections to the app, metadata services, or the
-internet. Effective callback and outbound denial are tested from the running
-container.
+tmpfs/time limits, and one of two reviewed directional transports:
+
+- Local and compatible orchestrators use the Unix-socket-only
+  `pdf-processor-service` target with Docker network mode `none`. The socket
+  relay may reach only the processor's own loopback-bound HTTP process.
+- Private-network-only orchestrators use the separately published
+  `pdf-processor-private-service` image. Before binding its HTTP listener, the
+  launcher enables `PR_SET_NO_NEW_PRIVS`, installs a seccomp filter that every
+  PHP/PDFBox child inherits, and proves TCP `connect` plus destination-bearing
+  UDP `sendto` fail with `EPERM`. The filter also denies `sendmsg`, `sendmmsg`,
+  packet/netlink sockets, and io_uring so a compromised parser cannot choose an
+  alternate outbound syscall path. The service receives no public domain.
+
+Both modes let the app initiate an authenticated request while denying the
+processor a callback path into the app, cloud metadata, private peers, DNS, or
+the internet. Cross-host deployments need an equivalently directional network
+policy in addition to authenticated encrypted transport. Effective callback
+and outbound denial are tested from the running container; an ordinary Docker
+`internal` network is not proof of this property.
 
 The application validates the response schema, request nonce, input hash,
 engine/profile, sizes, and completeness. An authenticated response does not
@@ -254,21 +265,21 @@ closes future loads. There is no separate anonymous download endpoint, but
 native viewing is download-equivalent because the browser receives the exact
 retained bytes and may offer save, print, and copy controls.
 
-## Focused security gate
+## Focused production-enablement gate
 
-Before production enablement:
+Before enabling PDF in a production deployment:
 
-1. A disabled engine spike records the selected engine/version/license/checksum
-   and demonstrates bounded extraction, termination, network denial, and the
-   focused hostile corpus.
+1. Pin the dedicated processor image by digest and verify its provenance/SBOM.
+   The running deployment must show the outbound-denial startup proof, stay
+   private, and preserve single-replica/concurrency-one resource limits.
 2. Browser tests cover Chromium, Firefox, and WebKit; released Safari/iOS gets
    the existing manual security pass. Evidence covers origin/cookie isolation,
    CSP/sandbox compatibility, signed URL expiry/revision, Range behavior, and
    deliberate fallback.
-3. Once production behavior exists, freeze an exact target and run an
-   evidence-first read-only security review of authorization, parser admission,
-   storage/concurrency, logs/events, and browser boundaries. Fix confirmed
-   defects and repeat before enabling PDF support.
+3. Freeze the exact app and processor targets and run an evidence-first read-only
+   security review of authorization, parser admission, storage/concurrency,
+   logs/events, and browser boundaries. Fix confirmed defects and repeat before
+   enabling PDF support.
 
 This is a focused feature gate, not a requirement to prove the safety of every
 valid PDF feature or replace the browser vendor's security work.
