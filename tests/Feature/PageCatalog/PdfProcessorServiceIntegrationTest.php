@@ -15,6 +15,7 @@ use ArtifactFlow\PdfProcessor\ProcessorConfiguration;
 use ArtifactFlow\PdfProcessor\ProcessorRejection;
 use ArtifactFlow\PdfProcessor\ProcessorRequest;
 use ArtifactFlow\PdfProcessor\ProcessorResult;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 final class PdfProcessorServiceIntegrationTest extends TestCase
@@ -169,6 +170,32 @@ final class PdfProcessorServiceIntegrationTest extends TestCase
             ]), self::SHARED_SECRET),
             $signature,
         );
+    }
+
+    public function test_health_route_rejects_a_non_loopback_peer_with_a_forged_forwarding_header(): void
+    {
+        $process = new Process(
+            [dirname(PHP_BINARY) . '/php-cgi', '-d', 'display_errors=0'],
+            base_path(),
+            [
+                'REDIRECT_STATUS' => '1',
+                'REQUEST_METHOD' => 'GET',
+                'REQUEST_URI' => '/health',
+                'SCRIPT_FILENAME' => base_path('pdf-processor-spike/public/index.php'),
+                'REMOTE_ADDR' => '10.20.30.40',
+                'HTTP_X_FORWARDED_FOR' => '127.0.0.1',
+                'PDF_PROCESSOR_SHARED_SECRET' => self::SHARED_SECRET,
+            ],
+        );
+        $process->setTimeout(5);
+        $process->run();
+
+        $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
+        $response = $process->getOutput();
+        $separator = strpos($response, "\r\n\r\n");
+        $this->assertNotFalse($separator);
+        $this->assertStringStartsWith('Status: 404 ', $response);
+        $this->assertSame('{"error":"not_found"}', substr($response, $separator + 4));
     }
 
     public function test_engine_runner_uses_an_argument_array_and_bounded_temporary_input(): void

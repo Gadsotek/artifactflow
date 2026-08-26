@@ -118,7 +118,9 @@ tmpfs/time limits, and one of two reviewed directional transports:
   no public domain. Its fixed Docker health process handles no document input
   and may connect only to loopback `/health`; that endpoint exercises PDFBox
   under the server's inherited filter, so listener or engine failure makes the
-  container unhealthy.
+  container unhealthy. The route checks the direct peer address, ignores
+  forwarding headers, and returns the bounded not-found response to every
+  non-loopback caller before native-engine admission.
 
 Both modes let the app initiate an authenticated request while denying the
 processor a callback path into the app, cloud metadata, private peers, DNS, or

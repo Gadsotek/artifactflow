@@ -18,8 +18,10 @@ inherited seccomp launcher; its runtime test requires the outbound-denial
 self-test log, SCTP socket denial, and a health boundary that fails when the
 listener or PDFBox engine is unavailable. A fixed health process outside the
 parser filter may connect only to the container's loopback `/health` endpoint
-and handles no document bytes; the server and every PDFBox child stay inside
-the inherited filter. Both service targets wrap each native engine in a second
+and handles no document bytes. That route admits only the direct loopback peer,
+ignores forwarded client-address claims, and rejects private-network callers
+before engine admission; the server and every PDFBox child stay inside the
+inherited filter. Both service targets wrap each native engine in a second
 seccomp boundary that permits JVM threads but denies child-process creation.
 Their runtime probes prove a timed-out engine cannot retain a descendant or
 observe a later request's temporary input. Passing proves only the image-level

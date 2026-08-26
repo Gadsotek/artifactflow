@@ -139,6 +139,10 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $makefile = $this->readProjectFile('Makefile');
 
         $this->assertStringContainsString('$path === \'/health\'', $index);
+        $this->assertStringContainsString("\$_SERVER['REMOTE_ADDR']", $index);
+        $this->assertStringContainsString("['127.0.0.1', '::1']", $index);
+        $this->assertStringContainsString('in_array($remoteAddress, $loopbackAddresses, true)', $index);
+        $this->assertStringNotContainsString('HTTP_X_FORWARDED_FOR', $index);
         $this->assertStringContainsString('$path !== \'/v1/inspect\'', $index);
         $this->assertStringContainsString('ProcessorRequest::fromGlobals', $index);
         $this->assertStringContainsString('PdfBoxEngine::production()', $index);
@@ -216,8 +220,10 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('ArtifactFlow processor outbound syscall deny active.', $privateTest);
         $this->assertStringContainsString('.State.Health.Status', $privateTest);
         $this->assertStringContainsString('--publish 127.0.0.1::8080', $privateTest);
-        $this->assertStringContainsString('curl --fail --silent --show-error --max-time 20', $privateTest);
-        $this->assertStringContainsString('/health', $privateTest);
+        $this->assertStringContainsString('curl --silent --show-error --max-time 20 --write-out', $privateTest);
+        $this->assertStringContainsString('X-Forwarded-For: 127.0.0.1', $privateTest);
+        $this->assertStringContainsString('{"error":"not_found"}|404', $privateTest);
+        $this->assertStringContainsString('exposed health route was not denied', $privateTest);
         $this->assertStringContainsString('artifactflow-health-lock-held', $privateTest);
         $this->assertStringContainsString('engine failure did not make the container unhealthy', $privateTest);
         $this->assertStringNotContainsString('--network none', $privateTest);

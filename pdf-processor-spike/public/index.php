@@ -41,6 +41,13 @@ try {
     $path = is_string($requestTarget) ? parse_url($requestTarget, PHP_URL_PATH) : null;
 
     if ($method === 'GET' && $path === '/health') {
+        $remoteAddress = $_SERVER['REMOTE_ADDR'] ?? null;
+        $loopbackAddresses = ['127.0.0.1', '::1'];
+
+        if (!is_string($remoteAddress) || !in_array($remoteAddress, $loopbackAddresses, true)) {
+            respond(404, '{"error":"not_found"}', ['Content-Type' => 'application/json']);
+        }
+
         PdfBoxEngine::production()->verifyHealth();
         respond(200, '{"status":"ok"}', ['Content-Type' => 'application/json']);
     }

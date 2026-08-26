@@ -26,6 +26,10 @@ Unix-socket processor topology is unchanged.
   topologies. It permits JVM threads while denying child-process creation, with
   a production-image regression proving timed-out native work cannot survive to
   inspect a later request's temporary PDF input.
+- Restricted the private-network processor's engine-aware `/health` route to
+  direct loopback peers. Private-network requests, including forged forwarding
+  headers, receive the bounded not-found response without acquiring the native
+  engine lease.
 - Tagged releases now publish, scan, attest, and attach an SBOM for
   `ghcr.io/gadsotek/artifactflow-pdf-processor` independently of the main app
   image so deployments can pin each immutable digest.

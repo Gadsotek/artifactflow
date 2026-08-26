@@ -389,8 +389,10 @@ enable it, use exactly one reviewed processor topology:
   line or a failed healthcheck is a deployment failure, not a warning.
   The fixed health probe reaches only the container's loopback `/health`
   endpoint and fails unless both the listener and PDFBox engine respond. It
-  handles no document input; the server and every PDFBox child remain under the
-  inherited outbound-denial filter. In both supported topologies, each native
+  handles no document input; the endpoint accepts only a direct loopback peer,
+  ignores forwarded client-address headers, and returns not-found to every
+  private-network caller before engine admission. The server and every PDFBox
+  child remain under the inherited outbound-denial filter. In both supported topologies, each native
   engine also inherits a process-containment filter that permits JVM threads
   but denies creation of child processes, so forced termination cannot leave a
   descendant able to inspect later temporary inputs.

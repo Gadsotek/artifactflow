@@ -564,9 +564,10 @@ pdf-processor-private-service-runtime-test:
 		mapping="$$(docker port "$$processor_container" 8080/tcp)"; \
 		host_port="$${mapping##*:}"; \
 		case "$$host_port" in ''|*[!0-9]*) echo "Private-network PDF processor did not publish a loopback probe port." >&2; exit 1;; esac; \
-		response="$$(curl --fail --silent --show-error --max-time 20 "http://127.0.0.1:$$host_port/health")"; \
-		if [ "$$response" != '{"status":"ok"}' ]; then \
-			echo "Private-network PDF processor returned an invalid health response." >&2; \
+		response="$$(curl --silent --show-error --max-time 20 --write-out '|%{http_code}' \
+			--header 'X-Forwarded-For: 127.0.0.1' "http://127.0.0.1:$$host_port/health")"; \
+		if [ "$$response" != '{"error":"not_found"}|404' ]; then \
+			echo "Private-network PDF processor exposed health route was not denied." >&2; \
 			exit 1; \
 		fi; \
 		docker exec -d "$$processor_container" php -r \
@@ -593,7 +594,7 @@ pdf-processor-private-service-runtime-test:
 		logs="$$(docker logs "$$processor_container" 2>&1)"; \
 		printf '%s\n' "$$logs" | grep -F 'ArtifactFlow processor outbound syscall deny active.' >/dev/null; \
 		printf '%s\n' "$$logs" | grep -F 'ArtifactFlow PDF engine process creation deny active.' >/dev/null; \
-		echo "Private-network PDF processor inbound health, engine-failure health, and inherited outbound syscall deny probes passed."
+		echo "Private-network PDF processor loopback-only health, engine-failure health, and inherited outbound syscall deny probes passed."
 	bash pdf-processor-spike/process-containment-harness.sh "$(PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE)"
 
 scan-image:
