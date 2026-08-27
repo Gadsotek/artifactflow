@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\PageCatalog;
 
 use App\Application\Identity\CreateSharedWorkspace;
+use App\Application\Mcp\Input\McpReadInput;
+use App\Application\Mcp\Input\McpSearchInput;
 use App\Application\Mcp\McpAccessTokenIssuer;
 use App\Application\Mcp\McpReadTool;
 use App\Application\Mcp\McpSearchTool;
@@ -670,13 +672,16 @@ final class PdfArtifactWriteTest extends TestCase
             ->assertJsonPath('url', fn (string $url): bool => str_contains($url, '/pdf-artifacts/'));
         $mcp = app(McpReadTool::class)->handle(
             $editor,
-            McpToolArguments::fromValue(['page_uid' => $page->uid], 'arguments'),
+            McpReadInput::fromArguments(McpToolArguments::fromValue([
+                'page_uid' => $page->uid,
+            ], 'arguments')),
         );
         $this->assertFalse($mcp->isError);
-        $this->assertSame('Internal PDF text', data_get($mcp->payload, 'content.data'));
-        $this->assertSame('indexed', data_get($mcp->payload, 'pdf.extraction_state'));
-        $this->assertFalse((bool) data_get($mcp->payload, 'pdf.ocr_indexed'));
-        $mcpJson = json_encode($mcp->payload, JSON_THROW_ON_ERROR);
+        $mcpPayload = $mcp->payload->toWire();
+        $this->assertSame('Internal PDF text', data_get($mcpPayload, 'content.data'));
+        $this->assertSame('indexed', data_get($mcpPayload, 'pdf.extraction_state'));
+        $this->assertFalse((bool) data_get($mcpPayload, 'pdf.ocr_indexed'));
+        $mcpJson = json_encode($mcpPayload, JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString($pdf, $mcpJson);
         $this->assertStringNotContainsString('content_storage_path', $mcpJson);
         $this->assertStringNotContainsString('processor_profile', $mcpJson);
@@ -698,22 +703,25 @@ final class PdfArtifactWriteTest extends TestCase
         $search = app(McpSearchTool::class)->handle(
             $service,
             $token,
-            McpToolArguments::fromValue([
+            McpSearchInput::fromArguments(McpToolArguments::fromValue([
                 'query' => 'Internal PDF text',
                 'include_snippet' => true,
-            ], 'arguments'),
+            ], 'arguments')),
         );
         $this->assertFalse($search->isError);
-        $this->assertSame($page->uid, data_get($search->payload, 'results.0.uid'));
-        $this->assertSame('Internal PDF text', data_get($search->payload, 'results.0.snippet.data'));
+        $searchPayload = $search->payload->toWire();
+        $this->assertSame($page->uid, data_get($searchPayload, 'results.0.uid'));
+        $this->assertSame('Internal PDF text', data_get($searchPayload, 'results.0.snippet.data'));
 
         $typedSearch = app(McpSearchTool::class)->handle(
             $service,
             $token,
-            McpToolArguments::fromValue(['type' => PageType::Pdf->value], 'arguments'),
+            McpSearchInput::fromArguments(McpToolArguments::fromValue([
+                'type' => PageType::Pdf->value,
+            ], 'arguments')),
         );
         $this->assertFalse($typedSearch->isError);
-        $this->assertSame($page->uid, data_get($typedSearch->payload, 'results.0.uid'));
+        $this->assertSame($page->uid, data_get($typedSearch->payload->toWire(), 'results.0.uid'));
 
         config([
             'app.artifact_url' => 'http://artifacts.example.test',

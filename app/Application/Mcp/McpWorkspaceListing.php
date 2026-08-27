@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Application\Mcp;
 
 use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
+use App\Application\Mcp\Output\McpUntrustedText;
+use App\Application\Mcp\Output\McpWorkspaceView;
 use App\Models\McpAccessToken;
 use App\Models\User;
 use App\Models\Workspace;
@@ -21,7 +23,7 @@ final readonly class McpWorkspaceListing
     }
 
     /**
-     * @return list<array{uid: string, name: array{prompt_read_first: string, kind: string, media_type: string, data: string}}>
+     * @return list<McpWorkspaceView>
      */
     public function forActor(User $actor, McpAccessToken $token): array
     {
@@ -34,10 +36,10 @@ final readonly class McpWorkspaceListing
             ->whereIn('uid', $workspaceUids)
             ->orderBy('name')
             ->get(['uid', 'name'])
-            ->map(static fn (Workspace $workspace): array => [
-                'uid' => $workspace->uid,
-                'name' => McpDataEnvelope::text($workspace->name),
-            ])
+            ->map(static fn (Workspace $workspace): McpWorkspaceView => new McpWorkspaceView(
+                uid: $workspace->uid,
+                name: new McpUntrustedText($workspace->name),
+            ))
             ->all());
     }
 

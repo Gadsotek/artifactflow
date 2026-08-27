@@ -25,9 +25,10 @@ final class ListWorkspacesTool extends ArtifactFlowTool
         \App\Application\Mcp\McpRequestContext $mcpContext,
         \App\Application\Mcp\McpToolGuard $guard,
         \Illuminate\Http\Request $httpRequest,
+        \App\Application\Mcp\McpPayloadEncoder $payloadEncoder,
         private readonly Handler $handler,
     ) {
-        parent::__construct($mcpContext, $guard, $httpRequest);
+        parent::__construct($mcpContext, $guard, $httpRequest, $payloadEncoder);
     }
 
     public function handle(Request $request): Response|\Laravel\Mcp\ResponseFactory

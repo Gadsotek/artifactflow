@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Application\Mcp;
 
+use App\Application\Mcp\Input\McpUpdateDescriptionInput;
+use App\Application\Mcp\Output\McpDescriptionUpdatedPayload;
+use App\Application\Mcp\Output\McpUntrustedText;
 use App\Application\PageCatalog\UpdatePageDescription;
 use App\Application\PageCatalog\UpdatePageDescriptionCommand;
 use App\Models\Page;
@@ -22,28 +25,30 @@ final readonly class McpUpdateDescriptionTool
     ) {
     }
 
-    public function handle(User $actor, McpToolArguments $arguments): McpToolResult
+    public function handle(User $actor, McpUpdateDescriptionInput $input): McpToolResult
     {
-        $page = $this->pages->editablePage($actor, $arguments->requiredString('page_uid'));
+        $page = $this->pages->editablePage($actor, $input->pageUid);
 
         if (!$page instanceof Page) {
             return McpToolResult::notFound();
         }
 
-        return $this->errors->guard(function () use ($actor, $arguments, $page): McpToolResult {
+        return $this->errors->guard(function () use ($actor, $input, $page): McpToolResult {
             $updated = $this->updatePageDescription->handle($actor, new UpdatePageDescriptionCommand(
                 pageUid: $page->uid,
-                expectedCurrentVersionUid: $arguments->requiredString('expected_current_version_uid'),
-                expectedMetadataRevision: $arguments->requiredNonNegativeInt('expected_metadata_revision'),
-                description: $arguments->nullableString('description'),
+                expectedCurrentVersionUid: $input->expectedCurrentVersionUid,
+                expectedMetadataRevision: $input->expectedMetadataRevision,
+                description: $input->description,
             ));
 
-            return McpToolResult::success([
-                'page_uid' => $updated->uid,
-                'current_version_uid' => $updated->current_version_uid,
-                'metadata_revision' => $updated->metadata_revision,
-                'description' => McpDataEnvelope::text($updated->description),
-            ]);
+            return McpToolResult::success(new McpDescriptionUpdatedPayload(
+                pageUid: $updated->uid,
+                currentVersionUid: $updated->current_version_uid,
+                metadataRevision: $updated->metadata_revision,
+                description: $updated->description === null
+                    ? null
+                    : new McpUntrustedText($updated->description),
+            ));
         });
     }
 }

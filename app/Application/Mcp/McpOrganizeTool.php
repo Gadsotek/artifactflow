@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Mcp;
 
+use App\Application\Mcp\Input\McpOrganizeInput;
+use App\Application\Mcp\Output\McpPageOrganizedPayload;
 use App\Application\PageCatalog\UpdatePageMetadata;
 use App\Application\PageCatalog\UpdatePageMetadataCommand;
 use App\Domain\DomainRuleViolation;
@@ -16,13 +18,6 @@ use App\Models\User;
  */
 final readonly class McpOrganizeTool
 {
-    private const array MUTABLE_ARGUMENTS = [
-        'title',
-        'parent_page_uid',
-        'category_uid',
-        'tags',
-    ];
-
     public function __construct(
         private McpPageResolver $pages,
         private UpdatePageMetadata $updatePageMetadata,
@@ -31,16 +26,16 @@ final readonly class McpOrganizeTool
     ) {
     }
 
-    public function handle(User $actor, McpToolArguments $arguments): McpToolResult
+    public function handle(User $actor, McpOrganizeInput $input): McpToolResult
     {
-        $page = $this->pages->editablePage($actor, $arguments->requiredString('page_uid'));
+        $page = $this->pages->editablePage($actor, $input->pageUid);
 
         if (!$page instanceof Page) {
             return McpToolResult::notFound();
         }
 
-        return $this->errors->guard(function () use ($actor, $arguments, $page): McpToolResult {
-            if (!$this->hasMutation($arguments)) {
+        return $this->errors->guard(function () use ($actor, $input, $page): McpToolResult {
+            if (!$input->hasMutation()) {
                 throw new DomainRuleViolation('At least one organizational field is required.');
             }
 
@@ -53,35 +48,25 @@ final readonly class McpOrganizeTool
 
             $updated = $this->updatePageMetadata->handle($actor, new UpdatePageMetadataCommand(
                 pageUid: $page->uid,
-                expectedMetadataRevision: $arguments->requiredNonNegativeInt('expected_metadata_revision'),
-                title: $arguments->has('title') ? $arguments->requiredString('title') : $page->title,
+                expectedMetadataRevision: $input->expectedMetadataRevision,
+                title: $input->titleProvided ? (string) $input->title : $page->title,
                 description: $page->description,
-                categoryUid: $arguments->has('category_uid')
-                    ? $arguments->nullableString('category_uid')
+                categoryUid: $input->categoryUidProvided
+                    ? $input->categoryUid
                     : $page->category_uid,
-                parentPageUid: $arguments->has('parent_page_uid')
-                    ? $arguments->nullableString('parent_page_uid')
+                parentPageUid: $input->parentPageUidProvided
+                    ? $input->parentPageUid
                     : $page->parent_page_uid,
                 ownerUserUid: $page->owner_user_uid,
-                tagNames: $arguments->has('tags') ? $arguments->stringList('tags') : $tagNames,
+                tagNames: $input->tagsProvided ? $input->tags : $tagNames,
             ));
 
-            return McpToolResult::success($this->payload->forPage($updated) + [
-                'current_version_uid' => $updated->current_version_uid,
-                'parent_page_uid' => $updated->parent_page_uid,
-                'category_uid' => $updated->category_uid,
-            ]);
+            return McpToolResult::success(new McpPageOrganizedPayload(
+                page: $this->payload->forPage($updated),
+                currentVersionUid: $updated->current_version_uid,
+                parentPageUid: $updated->parent_page_uid,
+                categoryUid: $updated->category_uid,
+            ));
         });
-    }
-
-    private function hasMutation(McpToolArguments $arguments): bool
-    {
-        foreach (self::MUTABLE_ARGUMENTS as $argument) {
-            if ($arguments->has($argument)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

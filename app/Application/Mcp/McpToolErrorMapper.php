@@ -33,46 +33,34 @@ final class McpToolErrorMapper
         try {
             return $run();
         } catch (StalePageMetadataException $exception) {
-            return McpToolResult::error([
-                'type' => 'conflict',
-                'message' => $exception->getMessage(),
-                'retryable' => true,
-                'current_metadata_revision' => $exception->currentRevision,
-            ]);
+            return McpToolResult::error(McpToolError::metadataConflict(
+                $exception->getMessage(),
+                $exception->currentRevision,
+            ));
         } catch (StalePageVersionException $exception) {
-            return McpToolResult::error([
-                'type' => 'conflict',
-                'message' => $staleConflictMessage ?? $exception->getMessage(),
-                'retryable' => true,
-                'current_version_uid' => $exception->currentVersionUid,
-            ]);
+            return McpToolResult::error(McpToolError::versionConflict(
+                $staleConflictMessage ?? $exception->getMessage(),
+                $exception->currentVersionUid,
+            ));
         } catch (BlockedPageContentException $exception) {
-            return McpToolResult::error([
-                'type' => 'blocked_content',
-                'message' => $exception->getMessage(),
-                'finding_codes' => $exception->findingCodes(),
-            ]);
+            return McpToolResult::error(McpToolError::blockedContent(
+                $exception->getMessage(),
+                $exception->findingCodes(),
+            ));
         } catch (ImageNormalizationRejected $exception) {
-            return McpToolResult::error([
-                'type' => 'temporarily_unavailable',
-                'message' => $exception->getMessage(),
-                'retryable' => true,
-                'retry_after' => $exception->retryAfterSeconds,
-            ]);
+            return McpToolResult::error(McpToolError::temporarilyUnavailable(
+                $exception->getMessage(),
+                $exception->retryAfterSeconds,
+            ));
         } catch (PdfProcessingRejected $exception) {
-            return McpToolResult::error([
-                'type' => 'temporarily_unavailable',
-                'message' => $exception->getMessage(),
-                'retryable' => true,
-                'retry_after' => $exception->retryAfterSeconds,
-            ]);
+            return McpToolResult::error(McpToolError::temporarilyUnavailable(
+                $exception->getMessage(),
+                $exception->retryAfterSeconds,
+            ));
         } catch (AuthorizationException) {
             return McpToolResult::notFound($authorizationResource);
         } catch (DomainRuleViolation $exception) {
-            return McpToolResult::error([
-                'type' => 'invalid_request',
-                'message' => $exception->getMessage(),
-            ]);
+            return McpToolResult::error(McpToolError::invalidRequest($exception->getMessage()));
         }
     }
 }

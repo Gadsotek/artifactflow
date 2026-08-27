@@ -20,13 +20,12 @@ final readonly class McpPdfUpload
     ) {
     }
 
-    public function decode(McpToolArguments $arguments): string
+    public function decode(string $encoded): string
     {
         if (!$this->configuration->enabled()) {
             throw new DomainRuleViolation('PDF artifacts are disabled for this installation.');
         }
 
-        $encoded = $arguments->requiredRawString('pdf_base64');
         $maxUploadBytes = $this->limits->maxUploadBytes();
         $maxEncodedBytes = 4 * intdiv($maxUploadBytes + 2, 3);
 

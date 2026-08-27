@@ -171,6 +171,16 @@ content authority in browser or MCP contexts. `McpEffectiveAuthority` additional
 workspace/page Admin to Editor while an MCP context is active, so a token can never exceed the Editor cap. Read
 text content is framed as an untrusted-data envelope, while normalized image reads add a standard MCP image content block beside an untrusted metadata envelope. Neither authorizes a write; every write
 still needs write scope, live access, and the matching content-version or metadata-revision token required by that operation.
+
+Laravel request objects and schema arrays stop at the MCP adapter. Every argument-bearing application
+tool receives a dedicated immutable input DTO, and every success or tool error is a named payload
+composed from typed page, hierarchy, taxonomy, provenance, and format-fact views. One explicit encoder
+calls whitelisted `toWire()` methods at the transport edge. It does not reflect over objects, retain
+Eloquent models in response DTOs, or call model `toArray()`, so a newly added persistence attribute
+cannot silently become part of the MCP contract. Typed lists and final JSON projections remain arrays
+where they represent the framework or wire format; anonymous associative arrays are not application
+tool contracts.
+
 Each tool invocation takes a shared credential-scoped PostgreSQL advisory lease, reloads the live
 token and principal after acquiring it, and holds the lease until the tool finishes. Manual and
 principal-wide token revocation take the matching exclusive lease, making use and revocation a
@@ -178,7 +188,7 @@ single ordering: an invocation either finishes before revocation commits or obse
 credential and does not enter the tool. The lease is session-scoped rather than an outer database
 transaction, so image parser, scanner, and storage work does not hold transactional locks open.
 
-`update_description` requires both the observed current-version UID and the page's separate optimistic metadata revision, then deliberately changes only the description. This prevents image-derived text from being attached after the pixels are replaced while preserving human-managed title, owner, parent, category, and tags and reusing the normal description scanner, search projection, audit event, and MCP token/session attribution.
+`update_description` requires both the observed current-version UID and the page's separate optimistic metadata revision, then deliberately changes only the description. The version value binds observation-derived text to the exact content or pixels the caller inspected; the metadata revision prevents overwriting a concurrent description or other catalog edit. Together they prevent image-derived text from being attached after the pixels are replaced while preserving human-managed title, owner, parent, category, and tags and reusing the normal description scanner, search projection, audit event, and MCP token/session attribution.
 
 `create_external_share` requires the separately opt-in `mcp:share` write scope.
 It does not inherit browser access-management authority: the page must be
@@ -205,6 +215,14 @@ first inaccessible page, child counts use the same exact page authorization as s
 all page-derived titles remain inside untrusted-data envelopes. A hidden relative therefore
 never becomes a UID, title, count, or structural metadata side channel.
 
+`read` accepts optional `content` and `provenance` sections. Omitting `include` selects both and
+preserves full-read behavior; `include: []` returns core page/version/catalog/hierarchy metadata and
+lightweight type facts only. Content-only and provenance-only requests omit the other section.
+Authorization and PDF feature checks still happen before selective work, while absent content skips
+artifact storage, image inspection, response-byte checks, and image blocks, and absent provenance
+skips its read model. Metadata-only success therefore makes no claim that retained bytes are currently
+available.
+
 `list_taxonomy` exposes the filter vocabulary needed to call `search`: global tag UIDs plus
 workspace-qualified category UIDs. It includes categories from the principal's reachable
 workspaces and tags/categories attached to individually granted pages. It uses the same token
@@ -227,11 +245,16 @@ provider/model or attested implementation identity. Every retained provenance st
 for the same obvious credential patterns that block artifact writes. Extension keys also reject
 prompt/reasoning, credential, authorization, URL, and content-payload classes; values are bounded
 and URLs must use typed external references.
-`read` returns ingest facts, page-origin producers, direct-version producers, and effective
-byte-origin lineage. Restore writes resolve the root content-origin UID so reads need at most one
-origin lookup regardless of lineage depth. All declared strings use the existing untrusted-data
-envelope. Successful MCP content writes return a `stored_provenance` receipt with the persisted
-direct assertions and computed `none`, `partial`, or `complete` state.
+Full `read` returns ingest facts and defines each visible assertion once in a deterministic
+`producers` catalog. Ordered `page_origin_producer_uids`, `direct_version_producer_uids`, and
+`effective_content_origin.producer_uids` identify the lineage roles without repeating producer
+blocks. Every referenced UID resolves in that same response; contradictory definitions for one UID
+are treated as an internal invariant failure. Restore writes resolve the root content-origin UID so
+reads need at most one origin lookup regardless of lineage depth. All present declared strings use
+the existing untrusted-data envelope, while absent optional description, change-summary, identity,
+client, and reference values are omitted instead of becoming empty-string envelopes. Successful MCP
+content writes retain the self-contained `stored_provenance` receipt with persisted direct assertions
+and computed `none`, `partial`, or `complete` state.
 
 ## Artifact Security Boundary
 

@@ -20,9 +20,8 @@ final readonly class McpImageUpload
     ) {
     }
 
-    public function decode(McpToolArguments $arguments): string
+    public function decode(string $encoded, string $declaredMediaType): string
     {
-        $encoded = $arguments->requiredRawString('image_base64');
         $maxEncodedBytes = 4 * intdiv($this->limits->maxUploadBytes() + 2, 3);
 
         if (strlen($encoded) > $maxEncodedBytes || preg_match('/\s/', $encoded) === 1) {
@@ -40,7 +39,6 @@ final readonly class McpImageUpload
             throw new DomainRuleViolation('Argument [image_base64] must be canonical Base64 within the configured size limit.');
         }
 
-        $declaredMediaType = $arguments->requiredString('media_type');
         $image = $this->inspector->inspectUpload($decoded);
 
         if ($image->mediaType !== $declaredMediaType) {

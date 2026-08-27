@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Mcp;
 
+use App\Application\Mcp\Output\McpPageView;
+use App\Application\Mcp\Output\McpUntrustedText;
 use App\Domain\PageCatalog\PageType;
 use App\Models\Page;
 use App\Models\Tag;
@@ -16,26 +18,23 @@ use LogicException;
  */
 final readonly class McpPagePayload
 {
-    /**
-     * @return array<string, mixed>
-     */
-    public function forPage(Page $page): array
+    public function forPage(Page $page): McpPageView
     {
         $page->loadMissing('tags');
 
-        return [
-            'uid' => $page->uid,
-            'title' => McpDataEnvelope::text($page->title),
-            'description' => McpDataEnvelope::text($page->description),
-            'type' => $page->type->value,
-            'status' => $page->status->value,
-            'metadata_revision' => $page->metadata_revision,
-            'tags' => array_map(
-                static fn (Tag $tag): array => McpDataEnvelope::text($tag->name),
+        return new McpPageView(
+            uid: $page->uid,
+            title: new McpUntrustedText($page->title),
+            description: $page->description === null ? null : new McpUntrustedText($page->description),
+            type: $page->type->value,
+            status: $page->status->value,
+            metadataRevision: $page->metadata_revision,
+            tags: array_values(array_map(
+                static fn (Tag $tag): McpUntrustedText => new McpUntrustedText($tag->name),
                 $page->tags->sortBy('name')->values()->all(),
-            ),
-            'updated_at' => $page->updated_at?->toISOString(),
-        ];
+            )),
+            updatedAt: $page->updated_at?->toISOString(),
+        );
     }
 
     /**

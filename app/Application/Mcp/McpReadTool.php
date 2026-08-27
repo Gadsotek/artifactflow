@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace App\Application\Mcp;
 
+use App\Application\Mcp\Input\McpReadInput;
+use App\Application\Mcp\Output\McpImageSearchabilityView;
+use App\Application\Mcp\Output\McpReadPayload;
+use App\Application\Mcp\Output\McpUntrustedImage;
+use App\Application\Mcp\Output\McpUntrustedText;
 use App\Application\PageCatalog\ArtifactContentReader;
 use App\Application\PageCatalog\ImageArtifactLimits;
 use App\Application\PageCatalog\PdfProcessorConfiguration;
@@ -35,51 +40,52 @@ final readonly class McpReadTool
     ) {
     }
 
-    public function handle(User $actor, McpToolArguments $arguments): McpToolResult
+    public function handle(User $actor, McpReadInput $input): McpToolResult
     {
-        $page = $this->pages->viewablePage($actor, $arguments->requiredString('page_uid'));
+        $page = $this->pages->viewablePage($actor, $input->pageUid);
 
         if (!$page instanceof Page) {
             return McpToolResult::notFound();
         }
 
         if ($page->type === PageType::Pdf && !$this->pdfConfiguration->enabled()) {
-            return McpToolResult::error([
-                'type' => 'unsupported_content_type',
-                'message' => 'PDF content is not available through MCP yet.',
-            ]);
+            return McpToolResult::error(McpToolError::unsupportedContentType(
+                'PDF content is not available through MCP yet.',
+            ));
         }
 
         $version = $page->currentVersion;
 
-        if ($page->type === PageType::Pdf) {
-            if (!$version instanceof PageVersion) {
-                return McpToolResult::error([
-                    'type' => 'content_unavailable',
-                    'message' => 'Page content is unavailable.',
-                ]);
-            }
+        if (!$version instanceof PageVersion) {
+            return McpToolResult::error(McpToolError::contentUnavailable(
+                'Page content is unavailable.',
+            ));
+        }
 
+        if ($page->type === PageType::Pdf) {
             $pdf = $this->pdfPayload->forVersion($version);
 
             if ($pdf === null) {
-                return McpToolResult::error([
-                    'type' => 'content_unavailable',
-                    'message' => 'Page content is unavailable.',
-                ]);
+                return McpToolResult::error(McpToolError::contentUnavailable(
+                    'Page content is unavailable.',
+                ));
             }
 
             $hierarchy = $this->hierarchy->forPages($actor, [$page]);
-            $text = McpDataEnvelope::text($version->extracted_text);
 
-            return McpToolResult::success($this->payload->forPage($page) + [
-                'current_version_uid' => $version->uid,
-                'current_version_change_summary' => McpDataEnvelope::text($version->change_summary),
-                'hierarchy' => $hierarchy[$page->uid],
-                'provenance' => $this->provenancePayload->make($this->provenance->forVersion($version)),
-                'content' => $text,
-                'pdf' => $pdf,
-            ]);
+            return McpToolResult::success(new McpReadPayload(
+                page: $this->payload->forPage($page),
+                currentVersionUid: $version->uid,
+                currentVersionChangeSummary: $this->changeSummary($version),
+                hierarchy: $hierarchy[$page->uid],
+                provenance: $input->includes(McpReadSection::Provenance)
+                    ? $this->provenancePayload->make($this->provenance->forVersion($version))
+                    : null,
+                content: $input->includes(McpReadSection::Content)
+                    ? McpUntrustedText::fromNullable($version->extracted_text)
+                    : null,
+                pdf: $pdf,
+            ));
         }
 
         // Image reads share the installation's configured artifact byte limit
@@ -89,80 +95,95 @@ final readonly class McpReadTool
         $imageReadLimit = $this->limits->maxStoredBytes();
 
         if (
-            $page->type === PageType::Image
-            && $version instanceof PageVersion
+            $input->includes(McpReadSection::Content)
+            && $page->type === PageType::Image
             && $version->byte_size > $imageReadLimit
         ) {
-            return McpToolResult::error([
-                'type' => 'content_too_large',
-                'message' => 'Image content exceeds the MCP response size limit.',
-            ]);
+            return McpToolResult::error(McpToolError::contentTooLarge(
+                'Image content exceeds the MCP response size limit.',
+            ));
         }
 
-        $content = $version instanceof PageVersion
+        $content = $input->includes(McpReadSection::Content)
             ? $this->contentReader->read(
                 $version->content_storage_path,
                 $page->type === PageType::Image ? $imageReadLimit : null,
             )
             : null;
 
-        if ($content === null) {
-            return McpToolResult::error([
-                'type' => 'content_unavailable',
-                'message' => 'Page content is unavailable.',
-            ]);
+        if ($input->includes(McpReadSection::Content) && $content === null) {
+            return McpToolResult::error(McpToolError::contentUnavailable(
+                'Page content is unavailable.',
+            ));
         }
 
         $hierarchy = $this->hierarchy->forPages($actor, [$page]);
-        $payload = $this->payload->forPage($page) + [
-            'current_version_uid' => $version?->uid,
-            'current_version_change_summary' => McpDataEnvelope::text($version?->change_summary),
-            'hierarchy' => $hierarchy[$page->uid],
-            'provenance' => $version instanceof PageVersion
-                ? $this->provenancePayload->make($this->provenance->forVersion($version))
-                : null,
-        ];
+        $provenance = $input->includes(McpReadSection::Provenance)
+            ? $this->provenancePayload->make($this->provenance->forVersion($version))
+            : null;
+
+        if (!$input->includes(McpReadSection::Content)) {
+            return McpToolResult::success(new McpReadPayload(
+                page: $this->payload->forPage($page),
+                currentVersionUid: $version->uid,
+                currentVersionChangeSummary: $this->changeSummary($version),
+                hierarchy: $hierarchy[$page->uid],
+                provenance: $provenance,
+                imageSearchability: $page->type === PageType::Image
+                    ? $this->imageSearchability($page)
+                    : null,
+            ));
+        }
+
+        if (!is_string($content)) {
+            return McpToolResult::error(McpToolError::contentUnavailable(
+                'Page content is unavailable.',
+            ));
+        }
 
         if ($page->type === PageType::Image) {
             try {
                 $image = $this->images->inspectStored($content);
             } catch (DomainRuleViolation) {
-                return McpToolResult::error([
-                    'type' => 'content_unavailable',
-                    'message' => 'Page content is unavailable.',
-                ]);
+                return McpToolResult::error(McpToolError::contentUnavailable(
+                    'Page content is unavailable.',
+                ));
             }
 
-            return McpToolResult::success($payload + [
-                'content' => McpDataEnvelope::image($image->mediaType),
-                'extracted_text' => McpDataEnvelope::text(null),
-                'image_searchability' => $this->imageSearchability($page),
-            ], new McpImageContent($content, $image->mediaType));
+            return McpToolResult::success(new McpReadPayload(
+                page: $this->payload->forPage($page),
+                currentVersionUid: $version->uid,
+                currentVersionChangeSummary: $this->changeSummary($version),
+                hierarchy: $hierarchy[$page->uid],
+                provenance: $provenance,
+                content: new McpUntrustedImage($image->mediaType),
+                extractedText: McpUntrustedText::fromNullable(null),
+                imageSearchability: $this->imageSearchability($page),
+            ), new McpImageContent($content, $image->mediaType));
         }
 
-        return McpToolResult::success($payload + [
-            'content' => McpDataEnvelope::text($content, $this->payload->mediaType($page)),
-            'extracted_text' => McpDataEnvelope::text($version?->extracted_text),
-        ]);
+        return McpToolResult::success(new McpReadPayload(
+            page: $this->payload->forPage($page),
+            currentVersionUid: $version->uid,
+            currentVersionChangeSummary: $this->changeSummary($version),
+            hierarchy: $hierarchy[$page->uid],
+            provenance: $provenance,
+            content: new McpUntrustedText($content, $this->payload->mediaType($page)),
+            extractedText: McpUntrustedText::fromNullable($version->extracted_text),
+        ));
     }
 
-    /**
-     * @return array{
-     *     ocr_indexed: false,
-     *     description_indexed: true,
-     *     description_status: 'missing'|'present',
-     *     recommended_tool: 'update_description'|null
-     * }
-     */
-    private function imageSearchability(Page $page): array
+    private function imageSearchability(Page $page): McpImageSearchabilityView
     {
-        $descriptionMissing = $page->description === null || trim($page->description) === '';
+        return new McpImageSearchabilityView(
+            $page->description === null || trim($page->description) === '',
+        );
+    }
 
-        return [
-            'ocr_indexed' => false,
-            'description_indexed' => true,
-            'description_status' => $descriptionMissing ? 'missing' : 'present',
-            'recommended_tool' => $descriptionMissing ? 'update_description' : null,
-        ];
+    private function changeSummary(PageVersion $version): ?McpUntrustedText
+    {
+        return $version->change_summary === null
+            ? null
+            : new McpUntrustedText($version->change_summary);
     }
 }

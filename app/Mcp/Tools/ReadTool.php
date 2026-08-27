@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Application\Mcp\Input\McpReadInput;
 use App\Application\Mcp\McpAccessTokenIssuer;
+use App\Application\Mcp\McpReadSection;
 use App\Application\Mcp\McpReadTool as Handler;
 use App\Application\Mcp\McpToolArguments;
 use App\Application\Mcp\McpToolResult;
@@ -18,7 +20,7 @@ use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('read')]
-#[Description('Read one reachable page as explicitly untrusted data, including visibility-filtered hierarchy metadata. Image reads report whether the searchable description is missing.')]
+#[Description('Read one reachable page as explicitly untrusted data with visibility-filtered hierarchy. Omit include for content plus provenance, or select content/provenance; an empty list returns metadata only. Image content reads report whether the searchable description is missing.')]
 #[IsReadOnly]
 final class ReadTool extends ArtifactFlowTool
 {
@@ -26,9 +28,10 @@ final class ReadTool extends ArtifactFlowTool
         \App\Application\Mcp\McpRequestContext $mcpContext,
         \App\Application\Mcp\McpToolGuard $guard,
         \Illuminate\Http\Request $httpRequest,
+        \App\Application\Mcp\McpPayloadEncoder $payloadEncoder,
         private readonly Handler $handler,
     ) {
-        parent::__construct($mcpContext, $guard, $httpRequest);
+        parent::__construct($mcpContext, $guard, $httpRequest, $payloadEncoder);
     }
 
     /**
@@ -38,6 +41,9 @@ final class ReadTool extends ArtifactFlowTool
     {
         return [
             'page_uid' => $schema->string()->required(),
+            'include' => $schema->array()
+                ->description('Optional response sections. Omit for content plus provenance; use an empty list for metadata only.')
+                ->items($schema->string()->enum(McpReadSection::class)),
         ];
     }
 
@@ -47,7 +53,10 @@ final class ReadTool extends ArtifactFlowTool
             $request,
             McpAccessTokenIssuer::SCOPE_READ,
             false,
-            fn (User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult => $this->handler->handle($actor, $arguments),
+            fn (User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult => $this->handler->handle(
+                $actor,
+                McpReadInput::fromArguments($arguments),
+            ),
         );
     }
 }

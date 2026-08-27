@@ -11,6 +11,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
     public function test_makefile_exposes_type_and_line_coverage_through_the_isolated_test_wrapper(): void
     {
         $makefile = $this->readProjectFile('Makefile');
+        $testMemoryConfiguration = $this->readProjectFile('docker/php/test-conf.d/99-memory.ini');
 
         $this->assertStringContainsString('COVERAGE_MIN ?= 94', $makefile);
         $this->assertStringContainsString('type-coverage:', $makefile);
@@ -24,6 +25,12 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString("run-app-cmd APP_CMD='php scripts/type-coverage-guard.php", $makefile);
         $this->assertStringContainsString('PCOV is required for line coverage.', $makefile);
         $this->assertStringContainsString('pcov.enabled=$(if $(COVERAGE),1,0)', $makefile);
+        $this->assertStringContainsString(
+            'TEST_PHP_INI_SCAN_DIR ?= /usr/local/etc/php/conf.d:/var/www/html/docker/php/test-conf.d',
+            $makefile,
+        );
+        $this->assertStringContainsString('PHP_INI_SCAN_DIR=$(TEST_PHP_INI_SCAN_DIR)', $makefile);
+        $this->assertStringContainsString('memory_limit=1024M', $testMemoryConfiguration);
         $this->assertStringContainsString('XDEBUG_MODE=off', $makefile);
         $this->assertStringNotContainsString('XDEBUG_MODE=$(if $(COVERAGE),coverage,off)', $makefile);
     }

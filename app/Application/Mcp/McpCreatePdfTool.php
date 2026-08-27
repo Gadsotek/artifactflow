@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace App\Application\Mcp;
 
+use App\Application\Mcp\Input\McpCreatePdfInput;
+use App\Application\Mcp\Output\McpPageCreatedPayload;
 use App\Application\PageCatalog\CreatePage;
 use App\Application\PageCatalog\CreatePageCommand;
 use App\Application\PageCatalog\PageAccess;
 use App\Domain\DomainRuleViolation;
-use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PageVersionSource;
 use App\Models\McpAccessToken;
@@ -23,47 +24,44 @@ final readonly class McpCreatePdfTool
         private McpPagePayload $payload,
         private McpPdfVersionPayload $pdfPayload,
         private McpToolErrorMapper $errors,
-        private McpProvenanceArguments $provenance,
         private McpStoredProvenancePayload $storedProvenance,
     ) {
     }
 
-    public function handle(User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult
+    public function handle(User $actor, McpAccessToken $token, McpCreatePdfInput $input): McpToolResult
     {
-        return $this->errors->guard(function () use ($actor, $token, $arguments): McpToolResult {
-            $workspaceUid = $arguments->requiredString('workspace_uid');
+        return $this->errors->guard(function () use ($actor, $token, $input): McpToolResult {
+            $workspaceUid = $input->workspaceUid;
 
             // Scope checks happen in the transport guard. Resolve exact workspace
-            // authority next, before touching the large Base64 field or parser.
+            // authority next, before decoding the Base64 field or invoking the parser.
             $this->access->ensureCanCreateInWorkspace($actor, $workspaceUid);
-            $tagNames = $arguments->stringList('tags');
+            $tagNames = $input->tags;
 
             if (
-                ($arguments->nullableString('category_name') !== null || $tagNames !== [])
+                ($input->categoryName !== null || $tagNames !== [])
                 && !$token->hasScope(McpAccessTokenIssuer::SCOPE_ORGANIZE)
             ) {
-                return McpToolResult::error([
-                    'type' => 'insufficient_scope',
-                    'message' => sprintf('The %s scope is required.', McpAccessTokenIssuer::SCOPE_ORGANIZE),
-                ]);
+                return McpToolResult::error(McpToolError::insufficientScope(
+                    sprintf('The %s scope is required.', McpAccessTokenIssuer::SCOPE_ORGANIZE),
+                ));
             }
 
-            $declaredProvenance = $this->provenance->fromArguments($arguments);
             $page = $this->createPage->handle($actor, new CreatePageCommand(
                 workspaceUid: $workspaceUid,
                 type: PageType::Pdf,
-                title: $arguments->requiredString('title'),
-                description: $arguments->nullableString('description'),
-                content: $this->upload->decode($arguments),
-                status: $arguments->pageStatus('status') ?? PageStatus::Draft,
-                categoryUid: $arguments->nullableString('category_uid'),
-                parentPageUid: $arguments->nullableString('parent_page_uid'),
+                title: $input->title,
+                description: $input->description,
+                content: $this->upload->decode($input->encodedPdf),
+                status: $input->status,
+                categoryUid: $input->categoryUid,
+                parentPageUid: $input->parentPageUid,
                 tagNames: $tagNames,
                 sourceFilename: 'document.pdf',
                 source: PageVersionSource::Mcp,
-                categoryName: $arguments->nullableString('category_name'),
-                provenance: $declaredProvenance,
-                changeSummary: $arguments->requiredString('change_summary'),
+                categoryName: $input->categoryName,
+                provenance: $input->provenance,
+                changeSummary: $input->changeSummary,
             ));
             $version = $page->currentVersion()->sole();
             $pdf = $this->pdfPayload->forVersion($version);
@@ -72,10 +70,12 @@ final readonly class McpCreatePdfTool
                 throw new DomainRuleViolation('PDF processing facts are unavailable.');
             }
 
-            return McpToolResult::success($this->payload->forPage($page) + [
-                'current_version_uid' => $page->current_version_uid,
-                'pdf' => $pdf,
-            ] + $this->storedProvenance->forVersion($version));
+            return McpToolResult::success(new McpPageCreatedPayload(
+                page: $this->payload->forPage($page),
+                currentVersionUid: $page->current_version_uid,
+                storedProvenance: $this->storedProvenance->forVersion($version),
+                pdf: $pdf,
+            ));
         }, authorizationResource: McpNotFoundResource::Workspace);
     }
 }

@@ -4,118 +4,165 @@ declare(strict_types=1);
 
 namespace App\Application\Mcp;
 
-use App\Application\Provenance\ExternalOriginReferenceView;
+use App\Application\Mcp\Output\McpExternalReferenceView;
+use App\Application\Mcp\Output\McpProducerExtensionView;
+use App\Application\Mcp\Output\McpProducerView;
+use App\Application\Mcp\Output\McpProvenanceView;
+use App\Application\Mcp\Output\McpUntrustedText;
+use App\Application\Mcp\Output\McpVersionIngestPayload;
+use App\Application\Mcp\Output\McpVersionOriginPayload;
+use App\Application\Provenance\ExternalOriginReferenceView as SourceExternalOriginReferenceView;
 use App\Application\Provenance\PageVersionProvenanceView;
 use App\Application\Provenance\ProducerAssertionView;
 use App\Application\Provenance\ProducerClaimExtension;
 use App\Application\Provenance\VersionIngestView;
 use App\Application\Provenance\VersionOriginView;
+use LogicException;
 
 final readonly class McpProvenancePayload
 {
-    /**
-     * @return array<string, mixed>
-     */
-    public function make(PageVersionProvenanceView $view): array
+    public function make(PageVersionProvenanceView $view): McpProvenanceView
     {
-        return [
-            'provenance_completeness' => $view->completeness->value,
-            'strongest_evidence' => $view->strongestEvidence !== null
+        /** @var array<string, McpProducerView> $definitions */
+        $definitions = [];
+        /** @var list<McpProducerView> $producers */
+        $producers = [];
+        $pageOriginProducerUids = $this->producerUids(
+            $view->pageOriginProducers,
+            $definitions,
+            $producers,
+        );
+        $directVersionProducerUids = $this->producerUids(
+            $view->directVersionProducers,
+            $definitions,
+            $producers,
+        );
+        $effectiveContentOrigin = null;
+
+        if ($view->effectiveContentOrigin instanceof VersionOriginView) {
+            $origin = $view->effectiveContentOrigin;
+            $effectiveContentOrigin = new McpVersionOriginPayload(
+                pageVersionUid: $origin->versionUid,
+                versionNumber: $origin->versionNumber,
+                contentHash: $origin->contentHash,
+                producerUids: $this->producerUids($origin->producers, $definitions, $producers),
+            );
+        }
+
+        return new McpProvenanceView(
+            completeness: $view->completeness->value,
+            strongestEvidence: $view->strongestEvidence !== null
                 ? $view->strongestEvidence->value
                 : 'none',
-            'version_ingest' => $view->versionIngest instanceof VersionIngestView
+            versionIngest: $view->versionIngest instanceof VersionIngestView
                 ? $this->ingest($view->versionIngest)
                 : null,
-            'page_origin_producers' => array_map($this->producer(...), $view->pageOriginProducers),
-            'direct_version_producers' => array_map($this->producer(...), $view->directVersionProducers),
-            'effective_content_origin' => $view->effectiveContentOrigin instanceof VersionOriginView
-                ? $this->origin($view->effectiveContentOrigin)
-                : null,
-        ];
+            producers: $producers,
+            pageOriginProducerUids: $pageOriginProducerUids,
+            directVersionProducerUids: $directVersionProducerUids,
+            effectiveContentOrigin: $effectiveContentOrigin,
+        );
+    }
+
+    private function ingest(VersionIngestView $ingest): McpVersionIngestPayload
+    {
+        return new McpVersionIngestPayload(
+            uid: $ingest->uid,
+            pageVersionUid: $ingest->pageVersionUid,
+            versionNumber: $ingest->versionNumber,
+            contentHash: $ingest->contentHash,
+            operation: $ingest->operation->value,
+            ingestMethod: $ingest->ingestMethod->value,
+            actorUserUid: $ingest->actorUserUid,
+            actorName: McpUntrustedText::fromNullable($ingest->actorName),
+            mcpAccessTokenUid: $ingest->mcpAccessTokenUid,
+            mcpTransportSessionId: $ingest->mcpTransportSessionId,
+            mcpReportedClientName: $ingest->mcpReportedClientName === null
+                ? null
+                : new McpUntrustedText($ingest->mcpReportedClientName),
+            mcpReportedClientVersion: $ingest->mcpReportedClientVersion === null
+                ? null
+                : new McpUntrustedText($ingest->mcpReportedClientVersion),
+            provenanceSuppliedAtIngest: $ingest->provenanceSuppliedAtIngest,
+            derivedFromVersionUid: $ingest->derivedFromVersionUid,
+            contentEquivalentToVersionUid: $ingest->contentEquivalentToVersionUid,
+            contentOriginVersionUid: $ingest->contentOriginVersionUid,
+            recordedAt: $ingest->recordedAt->toISOString()
+                ?? throw new LogicException('Version ingest has no recorded timestamp.'),
+        );
+    }
+
+    public function producer(ProducerAssertionView $producer): McpProducerView
+    {
+        return new McpProducerView(
+            uid: $producer->uid,
+            kind: $producer->kind->value,
+            name: $producer->producerName === null ? null : new McpUntrustedText($producer->producerName),
+            version: $producer->producerVersion === null ? null : new McpUntrustedText($producer->producerVersion),
+            provider: $producer->providerKey === null ? null : new McpUntrustedText($producer->providerKey),
+            reportedProvider: $producer->reportedProvider === null
+                ? null
+                : new McpUntrustedText($producer->reportedProvider),
+            modelId: $producer->modelId === null ? null : new McpUntrustedText($producer->modelId),
+            modelLabel: $producer->modelLabel === null ? null : new McpUntrustedText($producer->modelLabel),
+            modelVersion: $producer->modelVersion === null
+                ? null
+                : new McpUntrustedText($producer->modelVersion),
+            generatedAt: $producer->generatedAt?->toISOString(),
+            evidenceType: $producer->evidenceType->value,
+            identityPrecision: $producer->identityPrecision()->value,
+            extensions: array_map($this->extension(...), $producer->claimExtensions),
+            references: array_map($this->reference(...), $producer->references),
+        );
+    }
+
+    private function extension(ProducerClaimExtension $extension): McpProducerExtensionView
+    {
+        return new McpProducerExtensionView(
+            key: new McpUntrustedText($extension->key),
+            value: new McpUntrustedText($extension->value),
+        );
+    }
+
+    private function reference(SourceExternalOriginReferenceView $reference): McpExternalReferenceView
+    {
+        return new McpExternalReferenceView(
+            kind: $reference->kind->value,
+            reference: $reference->externalRef === null ? null : new McpUntrustedText($reference->externalRef),
+            url: $reference->url === null ? null : new McpUntrustedText($reference->url),
+        );
     }
 
     /**
-     * @return array<string, mixed>
+     * @param list<ProducerAssertionView> $source
+     * @param array<string, McpProducerView> $definitions
+     * @param list<McpProducerView> $catalog
+     *
+     * @return list<string>
      */
-    private function ingest(VersionIngestView $ingest): array
+    private function producerUids(array $source, array &$definitions, array &$catalog): array
     {
-        return [
-            'uid' => $ingest->uid,
-            'page_version_uid' => $ingest->pageVersionUid,
-            'version_number' => $ingest->versionNumber,
-            'content_hash' => $ingest->contentHash,
-            'operation' => $ingest->operation->value,
-            'ingest_method' => $ingest->ingestMethod->value,
-            'actor_user_uid' => $ingest->actorUserUid,
-            'actor_name' => McpDataEnvelope::text($ingest->actorName),
-            'mcp_access_token_uid' => $ingest->mcpAccessTokenUid,
-            'mcp_transport_session_id' => $ingest->mcpTransportSessionId,
-            'mcp_reported_client_name' => McpDataEnvelope::text($ingest->mcpReportedClientName),
-            'mcp_reported_client_version' => McpDataEnvelope::text($ingest->mcpReportedClientVersion),
-            'provenance_supplied_at_ingest' => $ingest->provenanceSuppliedAtIngest,
-            'derived_from_version_uid' => $ingest->derivedFromVersionUid,
-            'content_equivalent_to_version_uid' => $ingest->contentEquivalentToVersionUid,
-            'content_origin_version_uid' => $ingest->contentOriginVersionUid,
-            'recorded_at' => $ingest->recordedAt->toISOString(),
-        ];
-    }
+        $uids = [];
 
-    /**
-     * @return array<string, mixed>
-     */
-    private function producer(ProducerAssertionView $producer): array
-    {
-        return [
-            'uid' => $producer->uid,
-            'kind' => $producer->kind->value,
-            'name' => McpDataEnvelope::text($producer->producerName),
-            'version' => McpDataEnvelope::text($producer->producerVersion),
-            'provider' => McpDataEnvelope::text($producer->providerKey),
-            'reported_provider' => McpDataEnvelope::text($producer->reportedProvider),
-            'model_id' => McpDataEnvelope::text($producer->modelId),
-            'model_label' => McpDataEnvelope::text($producer->modelLabel),
-            'model_version' => McpDataEnvelope::text($producer->modelVersion),
-            'generated_at' => $producer->generatedAt?->toISOString(),
-            'evidence_type' => $producer->evidenceType->value,
-            'identity_precision' => $producer->identityPrecision()->value,
-            'extensions' => array_map($this->extension(...), $producer->claimExtensions),
-            'references' => array_map($this->reference(...), $producer->references),
-        ];
-    }
+        foreach ($source as $sourceProducer) {
+            $producer = $this->producer($sourceProducer);
+            $existing = $definitions[$producer->uid] ?? null;
 
-    /**
-     * @return array<string, mixed>
-     */
-    private function extension(ProducerClaimExtension $extension): array
-    {
-        return [
-            'key' => McpDataEnvelope::text($extension->key),
-            'value' => McpDataEnvelope::text($extension->value),
-        ];
-    }
+            if ($existing !== null && $existing->toWire() !== $producer->toWire()) {
+                throw new LogicException(sprintf(
+                    'Conflicting MCP producer definitions share UID [%s].',
+                    $producer->uid,
+                ));
+            }
 
-    /**
-     * @return array<string, mixed>
-     */
-    private function reference(ExternalOriginReferenceView $reference): array
-    {
-        return [
-            'kind' => $reference->kind->value,
-            'ref' => McpDataEnvelope::text($reference->externalRef),
-            'url' => McpDataEnvelope::text($reference->url),
-        ];
-    }
+            if ($existing === null) {
+                $definitions[$producer->uid] = $producer;
+                $catalog[] = $producer;
+            }
 
-    /**
-     * @return array<string, mixed>
-     */
-    private function origin(VersionOriginView $origin): array
-    {
-        return [
-            'page_version_uid' => $origin->versionUid,
-            'version_number' => $origin->versionNumber,
-            'content_hash' => $origin->contentHash,
-            'producers' => array_map($this->producer(...), $origin->producers),
-        ];
+            $uids[] = $producer->uid;
+        }
+
+        return $uids;
     }
 }

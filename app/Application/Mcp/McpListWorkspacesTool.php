@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Mcp;
 
+use App\Application\Mcp\Output\McpWorkspaceListPayload;
 use App\Models\McpAccessToken;
 use App\Models\User;
 
@@ -20,8 +21,8 @@ final readonly class McpListWorkspacesTool
 
     public function handle(User $actor, McpAccessToken $token): McpToolResult
     {
-        return McpToolResult::success([
-            'workspaces' => $this->workspaceListing->forActor($actor, $token),
-        ]);
+        return McpToolResult::success(new McpWorkspaceListPayload(
+            $this->workspaceListing->forActor($actor, $token),
+        ));
     }
 }
