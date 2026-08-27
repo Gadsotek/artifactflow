@@ -145,7 +145,7 @@
         <section id="documents">
           <p class="kicker">Roadmap direction</p>
           <h2>Document formats keep the original and derive bounded ways to use it.</h2>
-          <p>PDF implementation is default-off and not shipped; DOCX remains roadmap direction only. Each PDF replacement appends an immutable version with a private original. The implemented PDF slice derives bounded untrusted embedded text through an isolated processor and uses the browser's native viewer on the existing cookieless artifact origin; embedded strings may not be visible in the document, and OCR remains a later milestone.</p>
+          <p>PDF support is a default-off production opt-in; DOCX remains roadmap direction only. Each PDF replacement appends an immutable version with a private original. The implemented PDF slice derives bounded untrusted embedded text through an isolated processor and uses the browser's native viewer on the existing cookieless artifact origin; embedded strings may not be visible in the document, and OCR remains a later milestone.</p>
           <p>The planned boundary keeps authorization consistent across search, native viewing, forced-attachment download, version history, MCP, extraction status, workspace moves, and deletion. Preview deliberately transfers the authorized original. Per-version catalog metadata is not promised; that needs a separate product and data-model decision.</p>
           <p>For generated DOCX, preserving an optional generator source such as Markdown or Python beside the binary original remains an open design question. ArtifactFlow must not pretend every uploaded document has one.</p>
           <div class="page-links">

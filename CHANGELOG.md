@@ -6,6 +6,59 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.0.12 — 2026-08-25
+
+Security and deployment release. It makes the completed native-text PDF slice
+available as an explicit production opt-in without changing existing installs:
+`PDF_PROCESSOR_ENABLED` remains `false` by default, and the local networkless
+Unix-socket processor topology is unchanged.
+
+### Added
+
+- Added a dedicated non-root private-network PDF processor image for platforms
+  that cannot mount the local Unix socket. Its PHP server and every PDFBox child
+  inherit a self-installed seccomp filter that denies outbound connects,
+  destination-bearing sends, SCTP/packet/netlink sockets, and io_uring; startup
+  fails unless TCP, UDP, and SCTP denial self-tests return `EPERM`. Its health
+  probe now fails when either the HTTP listener or the PDFBox engine is
+  unavailable.
+- Added a fail-closed per-engine seccomp boundary to both PDF processor
+  topologies. It permits JVM threads while denying child-process creation, with
+  a production-image regression proving timed-out native work cannot survive to
+  inspect a later request's temporary PDF input.
+- Restricted the private-network processor's engine-aware `/health` route to
+  direct loopback peers and added a fresh domain-separated HMAC to both service
+  health probes. Private-network requests, including traffic forwarded by a
+  loopback TLS sidecar, cannot acquire the native engine lease without the
+  processor secret.
+- Tagged releases now publish, scan, attest, and attach an SBOM for
+  `ghcr.io/gadsotek/artifactflow-pdf-processor` independently of the main app
+  image so deployments can pin each immutable digest.
+
+### Changed
+
+- Replaced the unconditional production PDF block with strict opt-in
+  validation of the processor origin, optional Unix socket, dedicated HMAC
+  secret distinct from the image-parser credential, and bounded timeouts.
+  Artifact hosts may present enabled PDFs without processor credentials;
+  worker and scheduler roles reject PDF enablement.
+- Extended `artifactflow:doctor`, production image gates, and operator docs to
+  verify both supported processor topologies while preserving the default-off
+  backward-compatible behavior.
+- Required HTTPS for production PDF processor traffic whenever no Unix socket
+  is configured, preventing private PDF bytes and extracted text from crossing
+  a network in plaintext.
+
+### Fixed
+
+- Made production boot and `artifactflow:doctor` reject PDF processor URL,
+  socket, or credential configuration on every non-app runtime role, while
+  removing the unused built-in URL so default-off roles start without an
+  explicit empty override.
+- Updated the application, isolated image-parser, and PDF processor OpenSSL
+  packages to the Alpine revisions that fix CVE-2026-14456 and restored the
+  production-image Trivy gate.
+
 ## v0.0.11 — 2026-08-25
 
 Feature, security, and dependency maintenance release. It adds the default-off

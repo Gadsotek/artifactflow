@@ -281,6 +281,97 @@ final readonly class ProcessorRequest
     }
 }
 
+final readonly class ProcessorHealthRequest
+{
+    public function __construct(public string $nonce)
+    {
+    }
+
+    /**
+     * @param array<string, string> $server
+     */
+    public static function authenticated(
+        ProcessorConfiguration $configuration,
+        array $server,
+        ?int $currentTime = null,
+    ): self {
+        $timestamp = self::serverValue($server, 'HTTP_X_ARTIFACTFLOW_PROCESSOR_TIMESTAMP');
+        $nonce = self::serverValue($server, 'HTTP_X_ARTIFACTFLOW_PROCESSOR_NONCE');
+        $signature = self::serverValue($server, 'HTTP_X_ARTIFACTFLOW_PROCESSOR_SIGNATURE');
+        $timestampSeconds = filter_var(
+            $timestamp,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]],
+        );
+
+        if (
+            !is_int($timestampSeconds)
+            || preg_match('/^[a-f0-9]{32}$/D', $nonce) !== 1
+            || preg_match('/^[a-f0-9]{64}$/D', $signature) !== 1
+        ) {
+            throw new ProcessorAuthenticationFailure('Unauthenticated PDF processor health request.');
+        }
+
+        $expected = self::signature($configuration, $timestamp, $nonce);
+
+        if (!hash_equals($expected, $signature)) {
+            throw new ProcessorAuthenticationFailure('Unauthenticated PDF processor health request.');
+        }
+
+        if (abs(($currentTime ?? time()) - $timestampSeconds) > $configuration->maxClockSkewSeconds) {
+            throw new ProcessorClockSkewFailure('Authenticated PDF processor health request is outside the clock-skew window.');
+        }
+
+        return new self($nonce);
+    }
+
+    public static function fromGlobals(ProcessorConfiguration $configuration): self
+    {
+        /** @var array<string, string> $server */
+        $server = array_filter(
+            $_SERVER,
+            static fn (mixed $value): bool => is_string($value),
+        );
+
+        return self::authenticated($configuration, $server);
+    }
+
+    /** @return array<string, string> */
+    public static function signedHeaders(ProcessorConfiguration $configuration): array
+    {
+        $timestamp = (string) time();
+        $nonce = bin2hex(random_bytes(16));
+
+        return [
+            'X-ArtifactFlow-Processor-Timestamp' => $timestamp,
+            'X-ArtifactFlow-Processor-Nonce' => $nonce,
+            'X-ArtifactFlow-Processor-Signature' => self::signature($configuration, $timestamp, $nonce),
+        ];
+    }
+
+    private static function signature(
+        ProcessorConfiguration $configuration,
+        string $timestamp,
+        string $nonce,
+    ): string {
+        return hash_hmac('sha256', implode("\n", [
+            'artifactflow-pdf-processor-health-v1',
+            $timestamp,
+            $nonce,
+            'GET',
+            '/health',
+        ]), $configuration->sharedSecret);
+    }
+
+    /**
+     * @param array<string, string> $server
+     */
+    private static function serverValue(array $server, string $key): string
+    {
+        return $server[$key] ?? '';
+    }
+}
+
 final readonly class EngineInspection
 {
     public function __construct(
@@ -424,6 +515,7 @@ final readonly class PdfBoxEngine
     {
         return new self(
             command: [
+                '/usr/local/bin/artifactflow-process-deny',
                 '/usr/bin/java',
                 '-Xms32m',
                 '-Xmx384m',

@@ -4,7 +4,7 @@
 
 ArtifactFlow preserves the output, not the conversation. It keeps the authoritative source or normalized original, immutable content versions, searchable content, ownership, permissions, safe previews, and audit history. It is not agent memory, a vector database, a chat archive, an AI generator, or a static site generator.
 
-The current public alpha supports Markdown pages with Mermaid diagrams, self-contained HTML artifacts, and normalized PNG/JPEG images. It searches authoritative text and metadata, keeps retained versions, and exposes approved read and write operations through scoped MCP access. Searchable PDF and Word document artifacts are the next product focus. Untrusted HTML executes only on a separate cookieless artifact origin; image uploads are decoded in a dedicated parser service and only normalized pixels are retained. The security page and threat model document these boundaries and their residual risks.
+The current public alpha supports Markdown pages with Mermaid diagrams, self-contained HTML artifacts, normalized PNG/JPEG images, and default-off native-text PDF artifacts. It searches authoritative text and metadata, keeps retained versions, and exposes approved read and write operations through scoped MCP access. PDF requires an explicitly enabled isolated processor; Word documents and PDF OCR remain later candidates. Untrusted HTML executes only on a separate cookieless artifact origin; image uploads are decoded in a dedicated parser service and only normalized pixels are retained. The security page and threat model document these boundaries and their residual risks.
 
 ## Product
 

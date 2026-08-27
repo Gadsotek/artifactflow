@@ -228,6 +228,12 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringNotContainsString('apk upgrade --no-cache', $dockerfile);
         $this->assertStringContainsString('"libpq>=18.5-r0"', $dockerfile);
         $this->assertStringContainsString('"libecpg>=18.5-r0"', $dockerfile);
+        $productionStagePosition = strpos($dockerfile, " AS production\n");
+        $this->assertNotFalse($productionStagePosition);
+        $productionStage = substr($dockerfile, $productionStagePosition);
+        $this->assertStringContainsString('"libcrypto3>=3.5.8-r0"', $productionStage);
+        $this->assertStringContainsString('"libssl3>=3.5.8-r0"', $productionStage);
+        $this->assertStringContainsString('"openssl>=3.5.8-r0"', $productionStage);
         $this->assertStringContainsString('/var/www/html/docker/healthcheck-app.sh', $dockerfile);
         $this->assertStringContainsString('worker|scheduler', $healthcheck);
         $workerHealthcheckPosition = strpos($healthcheck, 'worker|scheduler');
@@ -296,6 +302,18 @@ final class CiCoverageGateConfigurationTest extends TestCase
             strpos($releaseWorkflow, '    needs: quality'),
             'The exact release SHA must pass CI before any image is pushed.',
         );
+    }
+
+    public function test_release_publishes_and_attests_the_dedicated_pdf_processor_image(): void
+    {
+        $releaseWorkflow = $this->readProjectFile('.github/workflows/release.yml');
+
+        $this->assertStringContainsString('PDF_PROCESSOR_IMAGE: ghcr.io/gadsotek/artifactflow-pdf-processor', $releaseWorkflow);
+        $this->assertStringContainsString('artifactflow-pdf-processor-service:production', $releaseWorkflow);
+        $this->assertStringContainsString('sbom.pdf-processor.cdx.json', $releaseWorkflow);
+        $this->assertStringContainsString('id: push-pdf-processor', $releaseWorkflow);
+        $this->assertStringContainsString('steps.push-pdf-processor.outputs.digest_only', $releaseWorkflow);
+        $this->assertStringContainsString('subject-name: ${{ env.PDF_PROCESSOR_IMAGE }}', $releaseWorkflow);
     }
 
     public function test_production_image_keeps_runtime_storage_out_of_the_build_context(): void

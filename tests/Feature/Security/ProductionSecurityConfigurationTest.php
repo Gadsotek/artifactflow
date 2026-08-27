@@ -21,28 +21,163 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
-    public function test_default_off_pdf_slice_cannot_be_enabled_in_production_before_its_release_gate(): void
-    {
-        $this->configureSafeProductionValues();
-        config(['pdf_processor.enabled' => true]);
-
-        $this->assertUnsafeConfiguration(
-            'PDF artifacts must remain disabled in production until their release gate is accepted.',
-        );
-    }
-
-    public function test_non_app_runtime_roles_reject_the_pdf_processor_credential(): void
+    public function test_pdf_slice_can_be_enabled_in_production_with_a_dedicated_processor_boundary(): void
     {
         $this->configureSafeProductionValues();
         config([
-            'app.runtime_role' => 'worker',
-            'image_parser.shared_secret' => '',
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
+            'pdf_processor.socket_path' => null,
             'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
         ]);
 
-        $this->assertUnsafeConfiguration(
-            'PDF processor shared secret must not be available to non-app runtime roles.',
-        );
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_pdf_slice_remains_backward_compatible_and_default_off_in_production(): void
+    {
+        $this->configureSafeProductionValues();
+
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_pdf_enabled_artifact_host_requires_no_processor_endpoint_or_credential(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'app.runtime_role' => 'artifact-host',
+            'image_parser.shared_secret' => '',
+            'cache.limiter' => 'database_artifact_limiter',
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => '',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => '',
+        ]);
+
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_enabled_pdf_processor_configuration_fails_closed_in_production(): void
+    {
+        $valid = [
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+        ];
+
+        foreach ([
+            [
+                ['pdf_processor.url' => 'http://pdf-processor.internal:8080'],
+                'PDF processor URL must use HTTPS when no Unix socket is configured.',
+            ],
+            [
+                ['pdf_processor.url' => 'http://pdf-processor.internal:8080/path'],
+                'PDF processor URL must be a pure HTTP or HTTPS origin.',
+            ],
+            [
+                ['pdf_processor.socket_path' => 'relative/processor.sock'],
+                'PDF processor socket path must be an absolute filesystem path.',
+            ],
+            [
+                ['pdf_processor.shared_secret' => 'artifactflow-local-pdf-processor-secret-not-for-production'],
+                'PDF processor shared secret must be strong and dedicated.',
+            ],
+            [
+                ['pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('a', 32))],
+                'PDF processor shared secret must be strong and dedicated.',
+            ],
+            [
+                ['image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32))],
+                'PDF processor shared secret must be strong and dedicated.',
+            ],
+            [
+                ['pdf_processor.connect_timeout_seconds' => 0],
+                'PDF processor connect and request timeouts must be integers between 1 and 60.',
+            ],
+            [
+                ['pdf_processor.timeout_seconds' => 61],
+                'PDF processor connect and request timeouts must be integers between 1 and 60.',
+            ],
+        ] as [$unsafe, $message]) {
+            $this->configureSafeProductionValues();
+            config([...$valid, ...$unsafe]);
+
+            $this->assertUnsafeConfiguration($message);
+        }
+    }
+
+    public function test_pdf_slice_can_use_plain_http_only_through_a_unix_socket_in_production(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'http://localhost',
+            'pdf_processor.socket_path' => '/run/artifactflow/pdf-processor/processor.sock',
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+        ]);
+
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_non_app_runtime_roles_reject_pdf_processor_connection_configuration(): void
+    {
+        foreach (['artifact-host', 'worker', 'scheduler'] as $runtimeRole) {
+            foreach ([
+                ['pdf_processor.url' => 'https://pdf-processor.internal:8443'],
+                ['pdf_processor.socket_path' => '/run/artifactflow/pdf-processor/processor.sock'],
+                ['pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32))],
+            ] as $connectionConfiguration) {
+                $this->configureSafeProductionValues();
+                config([
+                    'app.runtime_role' => $runtimeRole,
+                    'image_parser.shared_secret' => '',
+                    'cache.limiter' => $runtimeRole === 'artifact-host'
+                        ? 'database_artifact_limiter'
+                        : 'database_limiter',
+                    'pdf_processor.enabled' => false,
+                    'pdf_processor.url' => '',
+                    'pdf_processor.socket_path' => null,
+                    'pdf_processor.shared_secret' => '',
+                    ...$connectionConfiguration,
+                ]);
+
+                $this->assertUnsafeConfiguration(
+                    'PDF processor URL, socket path, and shared secret must not be available to non-app runtime roles.',
+                );
+            }
+        }
+    }
+
+    public function test_worker_and_scheduler_runtime_roles_cannot_enable_pdf_artifacts(): void
+    {
+        foreach (['worker', 'scheduler'] as $runtimeRole) {
+            $this->configureSafeProductionValues();
+            config([
+                'app.runtime_role' => $runtimeRole,
+                'image_parser.shared_secret' => '',
+                'pdf_processor.enabled' => true,
+                'pdf_processor.url' => '',
+            ]);
+
+            $this->assertUnsafeConfiguration(
+                'PDF artifacts must not be enabled for worker or scheduler runtime roles.',
+            );
+        }
     }
 
     public function test_turnstile_is_optional_but_enabled_configuration_must_be_complete_and_production_safe(): void
@@ -124,6 +259,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
                 [
                     'app.runtime_role' => 'worker',
                     'image_parser.shared_secret' => '',
+                    'pdf_processor.url' => '',
                     'turnstile.site_key' => 'production-site-key',
                     'turnstile.secret_key' => 'production-secret-key',
                     'turnstile.expected_hostname' => 'app.example.test',
@@ -612,6 +748,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
         config([
             'app.runtime_role' => 'artifact-host',
             'image_parser.shared_secret' => null,
+            'pdf_processor.url' => '',
             'cache.limiter' => 'database_limiter',
             'cache.app_limiter' => 'database_limiter',
             'cache.artifact_limiter' => 'database_artifact_limiter',
@@ -1004,6 +1141,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
                     : 'database_limiter',
                 'image_parser.url' => '',
                 'image_parser.shared_secret' => '',
+                'pdf_processor.url' => '',
             ]);
 
             app(ProductionSecurityConfiguration::class)->ensureSafe();
@@ -1154,8 +1292,11 @@ final class ProductionSecurityConfigurationTest extends TestCase
             'image_parser.user_work_budget_per_minute' => 64 * 1024 * 1024,
             'image_parser.installation_work_budget_per_minute' => 256 * 1024 * 1024,
             'pdf_processor.enabled' => false,
-            'pdf_processor.url' => 'http://pdf-processor.internal:8080',
+            'pdf_processor.url' => '',
+            'pdf_processor.socket_path' => null,
             'pdf_processor.shared_secret' => '',
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
             'reverb.apps.apps.0.configured_allowed_origins' => ['https://app.example.test'],
             'reverb.apps.apps.0.allowed_origins' => ['app.example.test'],
             'reverb.apps.apps.0.max_connections' => 1000,

@@ -9,6 +9,8 @@ fi
 
 unset PHP_CLI_SERVER_WORKERS
 
+/usr/local/bin/artifactflow-process-deny --self-test
+
 port="${PORT:-8080}"
 socket_path="${PDF_PROCESSOR_SOCKET_PATH:-/run/artifactflow/pdf-processor/processor.sock}"
 

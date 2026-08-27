@@ -128,6 +128,9 @@ CMD ["sh", "/var/www/html/docker/start-local.sh"]
 # application source, database client, credentials, or artifact storage.
 FROM php:8.5.9-cli-alpine3.24@sha256:0554eb53778b5316f6b9a3447c9dfa3cf2141c0c02ff816c42cdc9aa240a34aa AS image-parser
 
+# The pinned base digest freezes its Alpine packages. Patch only the OpenSSL
+# packages Trivy reports for CVE-2026-14456 rather than running a blanket
+# `apk upgrade`; the published image digest and SBOM identify the exact result.
 RUN apk add --no-cache --virtual .image-parser-build-deps \
         $PHPIZE_DEPS \
         libjpeg-turbo-dev \
@@ -139,6 +142,9 @@ RUN apk add --no-cache --virtual .image-parser-build-deps \
         "c-ares>=1.34.8-r0" \
         libjpeg-turbo \
         libpng \
+        "libcrypto3>=3.5.8-r0" \
+        "libssl3>=3.5.8-r0" \
+        "openssl>=3.5.8-r0" \
         socat=1.8.1.3-r0 \
     && apk del .image-parser-build-deps
 
@@ -201,12 +207,16 @@ COPY --from=frankenphp-security-builder /usr/local/bin/frankenphp /usr/local/bin
 # CVE-2026-46600, upgrades grpc-go for GHSA-hrxh-6v49-42gf, and upgrades
 # kin-openapi for GHSA-r277-6w6q-xmqw.
 # Current apk minimums: c-ares CVE-2026-33630 is fixed in 1.34.8-r0;
-# PostgreSQL client library findings reported against 18.4-r0 are fixed in 18.5-r0.
+# OpenSSL CVE-2026-14456 is fixed in 3.5.8-r0; PostgreSQL client library
+# findings reported against 18.4-r0 are fixed in 18.5-r0.
 RUN setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp \
     && apk add --no-cache \
         "c-ares>=1.34.8-r0" \
+        "libcrypto3>=3.5.8-r0" \
         "libecpg>=18.5-r0" \
-        "libpq>=18.5-r0"
+        "libpq>=18.5-r0" \
+        "libssl3>=3.5.8-r0" \
+        "openssl>=3.5.8-r0"
 
 RUN install-php-extensions \
     bcmath \

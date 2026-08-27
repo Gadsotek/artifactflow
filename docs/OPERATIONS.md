@@ -1,6 +1,6 @@
 # ArtifactFlow Operations
 
-Last updated: 2026-08-22
+Last updated: 2026-08-25
 
 ## Local Runtime
 
@@ -31,7 +31,8 @@ the guided local/test installer keeps PDF application behavior disabled by defau
 Accept its experimental PDF prompt, or pass `--pdf` for an unattended install, to
 persist `PDF_PROCESSOR_ENABLED=true`. After enabling or disabling PDF through the
 installer, exit the app container and rerun `make up` so Compose reloads the setting.
-Production installation rejects this option while the PDF release gate remains open.
+Production installation remains default-off; production enablement is an
+explicit deployment operation governed by the PDF checklist below.
 
 Start the full local stack with Vite, Caddy edge routing, Adminer, and Mailpit:
 
@@ -355,16 +356,64 @@ Invitation creation is rate-limited with `WORKSPACE_INVITATIONS_PER_MINUTE`; inv
 ArtifactFlow supports production self-hosting through its production image and runtime contract. The repository does not ship a one-click production Compose stack: operators provide deployment-specific orchestration, TLS termination, PostgreSQL, secrets, and persistent volumes. The bundled `docker-compose.yml` remains local-only.
 
 The production build gate builds the Caddy/FrankenPHP application image, the
-minimal image-parser target, and the default-off PDF service candidate so every
-shipped native dependency is scanned:
+minimal image-parser target, the networkless PDF service, and the private-network
+PDF service so every shipped native dependency is runtime-checked and scanned:
 
 ```sh
 make build-prod
 ```
 
-Tagged releases currently publish only the application image. Build and deploy
-the separately tagged `artifactflow-image-parser:production` image beside it;
-the PDF service remains blocked from production enablement.
+Tagged releases publish the application image and the dedicated
+`ghcr.io/gadsotek/artifactflow-pdf-processor` image, each with its own digest,
+provenance attestation, CycloneDX SBOM, and Trivy gate. Pin both by digest. Build
+and deploy the separately tagged `artifactflow-image-parser:production` image
+beside them when image uploads are enabled.
+
+### Production PDF processor
+
+PDF remains backward-compatible and default-off. Deploy no PDF processor and
+leave `PDF_PROCESSOR_ENABLED=false` if the installation does not need it. To
+enable it, use exactly one reviewed processor topology:
+
+- An orchestrator with shared Unix sockets may use the
+  `pdf-processor-service` target with `network_mode: none`, matching local
+  Compose.
+- A private-network platform without shared sockets must use the separately
+  published `pdf-processor-private-service` image. Give it no public domain,
+  expose it to the app through authenticated HTTPS (for example, a trusted
+  private proxy or sidecar that terminates TLS),
+  run one replica as its built-in non-root user, keep the root filesystem
+  read-only, drop all capabilities, retain `no-new-privileges`, cap PIDs at 32,
+  memory at 512 MiB, CPU at one core, and provide only a 32 MiB noexec/nosuid
+  `/tmp` tmpfs. Its startup log must contain
+  `ArtifactFlow processor outbound syscall deny active.` and
+  `ArtifactFlow PDF engine process creation deny active.`; absence of either
+  line or a failed healthcheck is a deployment failure, not a warning.
+  The fixed health probe reaches only the container's loopback `/health`
+  endpoint and fails unless both the listener and PDFBox engine respond. It
+  handles no document input and signs each request with a fresh timestamp and
+  nonce under the dedicated processor secret. The endpoint accepts only a
+  direct loopback peer, ignores forwarded client-address headers, and verifies
+  that signature before engine admission; a TLS sidecar forwarding external
+  `/health` requests to loopback therefore grants no native work. The server and
+  every PDFBox child remain under the inherited outbound-denial filter. In both supported topologies, each native
+  engine also inherits a process-containment filter that permits JVM threads
+  but denies creation of child processes, so forced termination cannot leave a
+  descendant able to inspect later temporary inputs.
+
+Set one strong dedicated `PDF_PROCESSOR_SHARED_SECRET` only on the app runtime
+and processor; do not reuse the image-parser secret. On the app set
+`PDF_PROCESSOR_URL` to the processor's private HTTPS origin and leave
+`PDF_PROCESSOR_SOCKET_PATH` empty for private networking. Production boot and
+`artifactflow:doctor` reject socketless HTTP because HMAC authenticates bytes
+but does not encrypt PDF content or extracted text. Plain HTTP is supported
+only when `PDF_PROCESSOR_SOCKET_PATH` is set and the actual transport is the
+local Unix socket. The artifact host
+receives `PDF_PROCESSOR_ENABLED=true` only for presentation and must receive an
+empty URL/socket/secret. Worker and scheduler roles must keep the flag false
+and all three processor connection values empty. Complete the PDF
+production-enablement gates in `RELEASE-CHECKLIST.md` before changing the
+app/artifact flags to true.
 
 The same production image runs every role. `APP_RUNTIME_ROLE` selects the HTTP surface
 (app vs. artifact host) and is validated by the boot gate, but it does **not** by itself
@@ -709,10 +758,10 @@ Content and storage limits:
 | `IMAGE_NORMALIZATION_INSTALLATION_PIXEL_BUDGET_PER_MINUTE` | 256 Mi pixels | Shared installation decoded-pixel budget; must be at least the principal budget and cannot exceed 256 Mi pixels |
 | `IMAGE_NORMALIZATION_USER_WORK_BUDGET_PER_MINUTE` | 64 Mi work units | Per-principal non-pixel work budget. Input bytes count once, PNG ancillary/JPEG header metadata bytes count again, and every parsed chunk/marker costs 1 Ki work units. |
 | `IMAGE_NORMALIZATION_INSTALLATION_WORK_BUDGET_PER_MINUTE` | 256 Mi work units | Installation-wide non-pixel work budget; must be at least the principal budget and cannot exceed 256 Mi work units. |
-| `PDF_PROCESSOR_ENABLED` | `false` | Default-off gate for PDF web/MCP create, replace, restore, reprocess, native preview/download, and MCP PDF read/search. The guided local/test installer can change it through its experimental PDF prompt or persist `true` through `--pdf`; rerun `make up` after either change so Compose reloads it. Authorized retained PDFs remain visible in the normal web catalog/search because this is a processing/delivery safety switch, not access revocation. The production boot gate currently rejects `true` until the PDF roadmap's containment and release gates are complete. Local/E2E app and artifact runtimes use the same boolean when testing, but the artifact host must not receive the processor URL or shared secret. |
-| `PDF_PROCESSOR_URL` | `http://pdf-processor:8080` | App-runtime-only internal PDF processor origin. It must not be public or supplied to the artifact host. |
-| `PDF_PROCESSOR_SOCKET_PATH` | empty | Optional app-runtime-only Unix socket for directional local transport. Local Compose uses it and gives the processor no Docker network. |
-| `PDF_PROCESSOR_SHARED_SECRET` | empty | App-runtime-only HMAC secret shared with the PDF processor. Use at least 32 non-placeholder bytes and never reuse `APP_KEY` or the artifact signing key. |
+| `PDF_PROCESSOR_ENABLED` | `false` | Default-off gate for PDF web/MCP create, replace, restore, reprocess, native preview/download, and MCP PDF read/search. Existing installations remain compatible without a processor. Production accepts `true` only with a valid app-runtime processor origin, optional absolute Unix socket, dedicated secret, and bounded timeouts. The artifact host may receive `true` for presentation but no endpoint/secret; worker and scheduler roles must keep `false`. Authorized retained PDFs remain visible in normal catalog/search because this is a processing/delivery switch, not access revocation. |
+| `PDF_PROCESSOR_URL` | empty | App-runtime-only processor origin used by cURL. Enabling PDF requires an explicit value. Local Compose supplies `http://localhost` while cURL uses the mounted Unix socket; production must use HTTPS when no Unix socket is configured, and the value must never be public or supplied to a non-app runtime role. |
+| `PDF_PROCESSOR_SOCKET_PATH` | empty | Optional app-runtime-only Unix socket for directional local transport. Local Compose uses it and gives the processor no Docker network; plain HTTP is accepted in production only when this path is set. |
+| `PDF_PROCESSOR_SHARED_SECRET` | empty | App-runtime-only HMAC secret shared with the PDF processor. Use at least 32 non-placeholder bytes and never reuse `APP_KEY`, the artifact signing key, or the image-parser secret. |
 | `PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS` | 2 seconds | App-to-processor connection timeout (hard-capped at 60 seconds). |
 | `PDF_PROCESSOR_TIMEOUT_SECONDS` | 15 seconds | Whole app-to-processor request timeout (hard-capped at 60 seconds); the native engine has a shorter internal deadline. |
 | `ARTIFACT_MAX_BYTES` | 10 MiB | Artifact size stored/served on read and signed normalized-image output budget (must be ≥ every Markdown/HTML/image upload limit in production; hard-capped at 64 MiB for image derivatives) |

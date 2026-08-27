@@ -104,11 +104,9 @@ Current image artifacts have no OCR or extracted text. Their searchable content 
 
 Previews use a fixed scriptless viewer on the separate artifact origin. MCP `read` returns normalized rasters up to the configured `ARTIFACT_MAX_BYTES` read limit (10 MiB by default, hard-capped at 64 MiB; base64 framing expands the response by roughly a third) as image content (`content_too_large` is returned before reading a derivative above that limit), and an authorized `update_description` call can revise only the page description when both the observed content-version UID and metadata revision remain current. MCP `create_image` and `replace_image` accept only canonical Base64 PNG/JPEG bytes under the combined page-operation and `mcp:upload` scopes, then use this same isolated normalization path; they do not fetch URLs or retain the submitted container. MCP image revert copies a retained normalized derivative exactly and therefore needs `mcp:update`, not `mcp:upload`.
 
-## PDF milestone and DOCX direction
+## PDF artifacts and DOCX direction
 
-**Current implementation, not shipped behavior:** PDF implementation is default-off and not shipped; DOCX remains roadmap direction only. The native-text PDF application boundary exists
-behind `PDF_PROCESSOR_ENABLED=false`; production startup rejects enabling it until the remaining
-containment and release gates are complete.
+**Current opt-in implementation:** PDF support is a default-off production opt-in; DOCX remains roadmap direction only. Production PDF enablement requires the dedicated isolated processor and the deployment evidence in the public architecture decision.
 
 Each PDF replacement appends an immutable artifact version that retains its private original. The first PDF slice derives bounded embedded text through an isolated processor; OCR remains a later milestone. Authorized users view the exact original with their browser's native PDF viewer on the existing cookieless artifact origin. Embedded text is untrusted and is not proof that a string is visible or that the document was visually redacted. Preview is download-equivalent and may expose the browser's normal save, print, copy, and link controls.
 
@@ -146,6 +144,6 @@ For generated DOCX, preserving an optional generator source such as Markdown or 
 
 - [Architecture](ARCHITECTURE.md) documents application handlers, storage, preview flows, and runtime roles.
 - AI provenance records observed ingestion separately from declared producers, unverified MCP-reported client metadata, evidence, lineage, sensitive references, search, and retention. Detailed product and decision records remain internal.
-- The public PDF [architecture decision](architecture/pdf-artifacts.md) defines the implemented default-off native-text-first boundary; supporting product, delivery, and spike records remain private working material. PDF is not production-enabled or shipped support yet.
+- The public PDF [architecture decision](architecture/pdf-artifacts.md) defines the implemented default-off native-text-first boundary and its production-enablement gate; supporting product, delivery, and spike records remain private working material.
 - [Roadmap](../ROADMAP.md) is authoritative for PDF and DOCX candidate scope and required proof.
 - [Threat model](../THREAT-MODEL.md) documents executable HTML isolation and residual risks.

@@ -476,8 +476,12 @@ authenticated encrypted transport rather than expose the parser endpoint. DOCX p
 requires its own deliberately reviewed isolation and resource model before that format ships. The
 default-off native-text PDF processor, transactional write boundary, and artifact-origin delivery
 slice are documented in [`docs/architecture/pdf-artifacts.md`](docs/architecture/pdf-artifacts.md).
-PDF remains outside the current enabled threat boundary until the remaining containment proof and
-release review are complete.
+PDF remains outside an installation's enabled threat boundary by default. An operator may opt in
+only after verifying the exact processor deployment and completing the browser/review gates in the
+public PDF architecture decision. The processor HMAC provides authentication and integrity, not
+confidentiality: production rejects a plain-HTTP processor origin unless the configured Unix socket
+is the actual transport, while cross-host deployments must terminate HTTPS on the trusted private
+path to the processor.
 
 There is deliberately no OCR for image artifacts. Search indexes catalog metadata only. MCP
 `read` returns the normalized raster as a standard image content block beside an explicit
@@ -491,10 +495,9 @@ side by enforcement rather than framing: any `update_description` the model is c
 needs write scope, live Editor-capped authority, the observed current version UID, a fresh metadata
 revision, scanner success, and rate-limit budget.
 
-## 10A. Default-off PDF application boundary (implemented, not production-enabled)
+## 10A. Default-off PDF application boundary (production opt-in)
 
-PDF remains roadmap work rather than shipped behavior. With the default-off setting deliberately
-enabled in the isolated E2E stack, the application can create, replace, restore, and reprocess a
+With the default-off setting deliberately enabled, the application can create, replace, restore, and reprocess a
 PDF, extract bounded embedded text synchronously, search it through the normal permission-first
 query, expose enveloped text through authorized MCP operations, and issue native current/history
 preview or forced-download capabilities on the artifact origin. Disabling the setting removes
@@ -510,8 +513,8 @@ download-equivalent, has no separate anonymous download endpoint, and cannot
 prevent an authorized recipient from saving or forwarding delivered bytes.
 Disabling PDF support closes future anonymous viewer and artifact loads. The complete decision is
 [`docs/architecture/pdf-artifacts.md`](docs/architecture/pdf-artifacts.md). Production enablement
-remains blocked until directional containment, the manual released-Safari/iOS check, and the final
-release gates are complete.
+is an explicit operator decision and remains prohibited until the running deployment proves
+directional containment, the manual released-Safari/iOS check, and the final review are complete.
 
 The release-blocking attack model is:
 
@@ -521,11 +524,22 @@ The release-blocking attack model is:
   base64, storage, or native work; the generic MCP request limit is not widened to fit the PDF hard
   ceiling.
 - The processor has no app source, database, artifact storage, signing/session credentials, or
-  public listener. The socket listener and its loopback-only HTTP relay are confined to the
-  processor and are the sole local communication path. Production-shaped tests must deny every
-  processor-initiated route or mounted socket to the app, other runtimes, cloud metadata, private
-  peers, DNS, and the public network. A Docker `internal` network alone is not directional
-  isolation proof. Timeouts kill the entire native process tree.
+  public listener. Unix-socket deployments combine the loopback-only relay with Docker network
+  mode `none`. Private-network deployments use the dedicated image whose PHP and PDFBox processes
+  inherit a self-installed seccomp deny for outbound connection/send paths, SCTP socket creation,
+  packet/netlink sockets, and io_uring, and whose startup self-test must succeed. Its fixed Docker
+  health process accepts no document bytes and reaches only loopback `/health`; the endpoint checks
+  PDFBox under the server's inherited filter, so listener or engine failure makes the container
+  unhealthy. Each probe carries a fresh timestamp, nonce, and domain-separated HMAC under the
+  dedicated processor secret. The endpoint admits only a direct loopback peer, ignores forwarded
+  client claims, and authenticates that probe before it can acquire the engine lease, including
+  when an app-facing TLS sidecar forwards an untrusted caller from its own loopback address. Both topologies deny
+  processor-initiated routes to the app, other runtimes, cloud
+  metadata, private peers, DNS, and the public network. A Docker `internal` network alone is not
+  directional isolation proof. Every native-engine invocation installs an additional seccomp
+  filter that denies `fork`/`vfork`, makes `clone3` unavailable, and permits `clone` only for JVM
+  threads carrying `CLONE_THREAD`. The timed process therefore cannot create a descendant that
+  survives its forced termination or observes a later request's temporary input.
 - The first release runs one processor replica with native concurrency `1` and rejects concurrent
   work immediately. This keeps resource admission global for the intended small deployment without
   adding a distributed scheduler. A cross-process engine lease also prevents the container health

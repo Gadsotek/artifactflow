@@ -74,7 +74,7 @@ final readonly class ProductionSecurityConfiguration
             );
         }
 
-        $this->ensurePdfArtifactsDisabledUntilRelease();
+        $this->ensurePdfProcessorConfiguration();
 
         $this->ensureArtifactReadLimitCanServeHtmlWrites();
         $this->ensureDatabaseDriver();
@@ -238,7 +238,7 @@ final readonly class ProductionSecurityConfiguration
         }
     }
 
-    private function ensurePdfArtifactsDisabledUntilRelease(): void
+    private function ensurePdfProcessorConfiguration(): void
     {
         $enabled = $this->config->get('pdf_processor.enabled', false);
 
@@ -246,18 +246,89 @@ final readonly class ProductionSecurityConfiguration
             throw new RuntimeException('PDF_PROCESSOR_ENABLED must be true or false.');
         }
 
-        if (
-            $this->string('app.runtime_role') !== 'app'
-            && $this->string('pdf_processor.shared_secret') !== ''
-        ) {
+        $runtimeRole = $this->string('app.runtime_role');
+
+        if ($runtimeRole !== 'app' && (
+            $this->string('pdf_processor.url') !== ''
+            || $this->string('pdf_processor.socket_path') !== ''
+            || $this->string('pdf_processor.shared_secret') !== ''
+        )) {
             throw new RuntimeException(
-                'PDF processor shared secret must not be available to non-app runtime roles.',
+                'PDF processor URL, socket path, and shared secret must not be available to non-app runtime roles.',
             );
         }
 
-        if ($enabled) {
+        if ($runtimeRole !== 'app') {
+            if ($enabled && $runtimeRole !== 'artifact-host') {
+                throw new RuntimeException(
+                    'PDF artifacts must not be enabled for worker or scheduler runtime roles.',
+                );
+            }
+
+            return;
+        }
+
+        if (!$enabled) {
+            return;
+        }
+
+        $origin = OriginNormalizer::tryParsePureOrigin($this->string('pdf_processor.url'));
+
+        if ($origin === null) {
+            throw new RuntimeException('PDF processor URL must be a pure HTTP or HTTPS origin.');
+        }
+
+        $socketPath = $this->untrimmedString('pdf_processor.socket_path');
+
+        if (!UnixSocketPath::isValidOptional($socketPath)) {
+            throw new RuntimeException('PDF processor socket path must be an absolute filesystem path.');
+        }
+
+        if (!$origin->isHttps() && trim($socketPath) === '') {
+            throw new RuntimeException('PDF processor URL must use HTTPS when no Unix socket is configured.');
+        }
+
+        $configured = $this->string('pdf_processor.shared_secret');
+        $secret = SecretStrength::normalized($configured);
+        $applicationSecret = SecretStrength::normalized($this->string('app.key'));
+        $signingSecret = SecretStrength::normalized($this->string('app.artifact_url_signing_key'));
+        $imageParserSecret = SecretStrength::normalized($this->string('image_parser.shared_secret'));
+        $comparisonSecrets = [
+            $applicationSecret ?? '',
+            ...$this->previousApplicationKeys(),
+        ];
+
+        if ($signingSecret !== null) {
+            $comparisonSecrets[] = $signingSecret;
+        }
+
+        if ($imageParserSecret !== null) {
+            $comparisonSecrets[] = $imageParserSecret;
+        }
+
+        if (
+            !SecretStrength::isProductionSafe($configured)
+            || $secret === null
+            || $this->invariants->secretReusesAny($secret, $comparisonSecrets)
+        ) {
             throw new RuntimeException(
-                'PDF artifacts must remain disabled in production until their release gate is accepted.',
+                'PDF processor shared secret must be strong and dedicated.',
+            );
+        }
+
+        $connectTimeout = $this->config->get('pdf_processor.connect_timeout_seconds');
+        $requestTimeout = $this->config->get('pdf_processor.timeout_seconds');
+
+        if (
+            !is_int($connectTimeout)
+            || $connectTimeout < 1
+            || $connectTimeout > 60
+            || !is_int($requestTimeout)
+            || $requestTimeout < 1
+            || $requestTimeout > 60
+        ) {
+            throw new RuntimeException(
+                'PDF processor connect and request timeouts must be integers between 1 and 60.',
             );
         }
     }

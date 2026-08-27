@@ -12,9 +12,11 @@ use ArtifactFlow\PdfProcessor\PdfBoxEngine;
 use ArtifactFlow\PdfProcessor\ProcessorAuthenticationFailure;
 use ArtifactFlow\PdfProcessor\ProcessorClockSkewFailure;
 use ArtifactFlow\PdfProcessor\ProcessorConfiguration;
+use ArtifactFlow\PdfProcessor\ProcessorHealthRequest;
 use ArtifactFlow\PdfProcessor\ProcessorRejection;
 use ArtifactFlow\PdfProcessor\ProcessorRequest;
 use ArtifactFlow\PdfProcessor\ProcessorResult;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 final class PdfProcessorServiceIntegrationTest extends TestCase
@@ -171,6 +173,96 @@ final class PdfProcessorServiceIntegrationTest extends TestCase
         );
     }
 
+    public function test_health_signature_binds_the_probe_timestamp_and_nonce(): void
+    {
+        $timestamp = (string) time();
+        $nonce = str_repeat('e', 32);
+        $server = [
+            'HTTP_X_ARTIFACTFLOW_PROCESSOR_TIMESTAMP' => $timestamp,
+            'HTTP_X_ARTIFACTFLOW_PROCESSOR_NONCE' => $nonce,
+            'HTTP_X_ARTIFACTFLOW_PROCESSOR_SIGNATURE' => $this->healthSignature($timestamp, $nonce),
+        ];
+
+        $request = ProcessorHealthRequest::authenticated($this->configuration(), $server);
+
+        $this->assertSame($nonce, $request->nonce);
+
+        $server['HTTP_X_ARTIFACTFLOW_PROCESSOR_NONCE'] = str_repeat('f', 32);
+
+        $this->expectException(ProcessorAuthenticationFailure::class);
+
+        ProcessorHealthRequest::authenticated($this->configuration(), $server);
+    }
+
+    public function test_authenticated_stale_health_probe_reports_clock_skew(): void
+    {
+        $timestamp = (string) (time() - 31);
+        $nonce = str_repeat('f', 32);
+
+        $this->expectException(ProcessorClockSkewFailure::class);
+
+        ProcessorHealthRequest::authenticated(
+            $this->configuration(maxClockSkewSeconds: 30),
+            [
+                'HTTP_X_ARTIFACTFLOW_PROCESSOR_TIMESTAMP' => $timestamp,
+                'HTTP_X_ARTIFACTFLOW_PROCESSOR_NONCE' => $nonce,
+                'HTTP_X_ARTIFACTFLOW_PROCESSOR_SIGNATURE' => $this->healthSignature($timestamp, $nonce),
+            ],
+        );
+    }
+
+    public function test_health_route_rejects_a_non_loopback_peer_with_a_forged_forwarding_header(): void
+    {
+        $process = new Process(
+            [dirname(PHP_BINARY) . '/php-cgi', '-d', 'display_errors=0'],
+            base_path(),
+            [
+                'REDIRECT_STATUS' => '1',
+                'REQUEST_METHOD' => 'GET',
+                'REQUEST_URI' => '/health',
+                'SCRIPT_FILENAME' => base_path('pdf-processor-spike/public/index.php'),
+                'REMOTE_ADDR' => '10.20.30.40',
+                'HTTP_X_FORWARDED_FOR' => '127.0.0.1',
+                'PDF_PROCESSOR_SHARED_SECRET' => self::SHARED_SECRET,
+            ],
+        );
+        $process->setTimeout(5);
+        $process->run();
+
+        $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
+        $response = $process->getOutput();
+        $separator = strpos($response, "\r\n\r\n");
+        $this->assertNotFalse($separator);
+        $this->assertStringStartsWith('Status: 404 ', $response);
+        $this->assertSame('{"error":"not_found"}', substr($response, $separator + 4));
+    }
+
+    public function test_health_route_rejects_an_unauthenticated_request_forwarded_by_a_loopback_proxy(): void
+    {
+        $process = new Process(
+            [dirname(PHP_BINARY) . '/php-cgi', '-d', 'display_errors=0'],
+            base_path(),
+            [
+                'REDIRECT_STATUS' => '1',
+                'REQUEST_METHOD' => 'GET',
+                'REQUEST_URI' => '/health',
+                'SCRIPT_FILENAME' => base_path('pdf-processor-spike/public/index.php'),
+                'REMOTE_ADDR' => '127.0.0.1',
+                'HTTP_X_FORWARDED_FOR' => '10.20.30.40',
+                'PDF_PROCESSOR_SHARED_SECRET' => self::SHARED_SECRET,
+            ],
+        );
+        $process->setTimeout(5);
+        $process->run();
+
+        $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
+        $response = $process->getOutput();
+        $separator = strpos($response, "\r\n\r\n");
+        $this->assertNotFalse($separator);
+        $this->assertStringStartsWith('Status: 401 ', $response);
+        $this->assertSame('{"error":"unauthenticated"}', substr($response, $separator + 4));
+    }
+
     public function test_engine_runner_uses_an_argument_array_and_bounded_temporary_input(): void
     {
         $script = <<<'PHP'
@@ -313,6 +405,17 @@ PHP;
             'application/pdf',
             (string) strlen($body),
             hash('sha256', $body),
+        ]), self::SHARED_SECRET);
+    }
+
+    private function healthSignature(string $timestamp, string $nonce): string
+    {
+        return hash_hmac('sha256', implode("\n", [
+            'artifactflow-pdf-processor-health-v1',
+            $timestamp,
+            $nonce,
+            'GET',
+            '/health',
         ]), self::SHARED_SECRET);
     }
 }

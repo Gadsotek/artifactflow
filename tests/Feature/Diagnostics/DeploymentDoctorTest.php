@@ -261,6 +261,9 @@ final class DeploymentDoctorTest extends TestCase
                         : 'database_limiter',
                     'image_parser.url' => '',
                     'image_parser.shared_secret' => '',
+                    'pdf_processor.url' => '',
+                    'pdf_processor.socket_path' => null,
+                    'pdf_processor.shared_secret' => '',
                 ],
             ))))->run();
 
@@ -777,7 +780,7 @@ final class DeploymentDoctorTest extends TestCase
             'signing_key',         // ensureDedicatedSigningKey
             'image_parser',        // ensureImageParserConfiguration
             'image_parser',        // ensureImageNormalizationBudgets
-            'pdf_release_gate',     // ensurePdfArtifactsDisabledUntilRelease
+            'pdf_release_gate',     // ensurePdfProcessorConfiguration
             'frame_ancestors',     // ensureArtifactFrameAncestors
             'artifact_limits',     // ensureArtifactReadLimitCanServeHtmlWrites
             'https_origins',       // productionOrigin HTTPS requirement
@@ -831,7 +834,7 @@ final class DeploymentDoctorTest extends TestCase
                 'ensureImageNormalizationBudgets',
                 'ensureImageParserConfiguration',
                 'ensureMailTransportIsDeliverable',
-                'ensurePdfArtifactsDisabledUntilRelease',
+                'ensurePdfProcessorConfiguration',
                 'ensureReverbConfiguration',
                 'ensureReverbMaxConnectionsBounded',
                 'ensureRuntimeRole',
@@ -847,7 +850,7 @@ final class DeploymentDoctorTest extends TestCase
         );
     }
 
-    public function test_pdf_release_gate_is_visible_locally_and_fails_closed_in_production(): void
+    public function test_pdf_release_gate_reports_default_off_and_valid_enabled_production_states(): void
     {
         $local = (new DeploymentDoctor($this->config('local', [
             'pdf_processor.enabled' => true,
@@ -859,10 +862,54 @@ final class DeploymentDoctorTest extends TestCase
 
         $productionEnabled = (new DeploymentDoctor($this->config('production', [
             'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+        ])))->run();
+        $this->assertSame(
+            DoctorCheckStatus::Pass,
+            $this->check($productionEnabled->checks, 'pdf_release_gate')->status,
+        );
+
+        $productionPlaintextNetwork = (new DeploymentDoctor($this->config('production', [
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'http://pdf-processor.internal:8080',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+        ])))->run();
+        $plaintextCheck = $this->check($productionPlaintextNetwork->checks, 'pdf_release_gate');
+        $this->assertSame(DoctorCheckStatus::Fail, $plaintextCheck->status);
+        $this->assertStringContainsString('HTTPS', $plaintextCheck->detail);
+
+        $productionUnixSocket = (new DeploymentDoctor($this->config('production', [
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'http://localhost',
+            'pdf_processor.socket_path' => '/run/artifactflow/pdf-processor/processor.sock',
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+        ])))->run();
+        $this->assertSame(
+            DoctorCheckStatus::Pass,
+            $this->check($productionUnixSocket->checks, 'pdf_release_gate')->status,
+        );
+
+        $productionReusedParserSecret = (new DeploymentDoctor($this->config('production', [
+            'image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
         ])))->run();
         $this->assertSame(
             DoctorCheckStatus::Fail,
-            $this->check($productionEnabled->checks, 'pdf_release_gate')->status,
+            $this->check($productionReusedParserSecret->checks, 'pdf_release_gate')->status,
         );
 
         $productionDisabled = (new DeploymentDoctor($this->config('production', [
@@ -882,6 +929,42 @@ final class DeploymentDoctorTest extends TestCase
             DoctorCheckStatus::Fail,
             $this->check($productionCredentialLeak->checks, 'pdf_release_gate')->status,
         );
+
+        $productionWorkerEnabled = (new DeploymentDoctor($this->config('production', [
+            'app.runtime_role' => 'worker',
+            'pdf_processor.enabled' => true,
+        ])))->run();
+        $this->assertSame(
+            DoctorCheckStatus::Fail,
+            $this->check($productionWorkerEnabled->checks, 'pdf_release_gate')->status,
+        );
+    }
+
+    public function test_pdf_release_gate_rejects_connection_configuration_on_every_non_app_runtime_role(): void
+    {
+        foreach (['artifact-host', 'worker', 'scheduler'] as $runtimeRole) {
+            foreach ([
+                ['pdf_processor.url' => 'https://pdf-processor.internal:8443'],
+                ['pdf_processor.socket_path' => '/run/artifactflow/pdf-processor/processor.sock'],
+                ['pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32))],
+            ] as $connectionConfiguration) {
+                $report = (new DeploymentDoctor($this->config('production', [
+                    'app.runtime_role' => $runtimeRole,
+                    'pdf_processor.enabled' => false,
+                    'pdf_processor.url' => '',
+                    'pdf_processor.socket_path' => null,
+                    'pdf_processor.shared_secret' => '',
+                    ...$connectionConfiguration,
+                ])))->run();
+                $check = $this->check($report->checks, 'pdf_release_gate');
+
+                $this->assertSame(DoctorCheckStatus::Fail, $check->status, $runtimeRole);
+                $this->assertStringContainsString(
+                    'PDF_PROCESSOR_URL, PDF_PROCESSOR_SOCKET_PATH, and PDF_PROCESSOR_SHARED_SECRET',
+                    $check->detail,
+                );
+            }
+        }
     }
 
     public function test_non_delivering_or_unknown_mail_transport_fails_in_production_and_is_skipped_locally(): void
@@ -1039,6 +1122,12 @@ final class DeploymentDoctorTest extends TestCase
             'image_parser.installation_pixel_budget_per_minute' => 256 * 1024 * 1024,
             'image_parser.user_work_budget_per_minute' => 64 * 1024 * 1024,
             'image_parser.installation_work_budget_per_minute' => 256 * 1024 * 1024,
+            'pdf_processor.enabled' => false,
+            'pdf_processor.url' => '',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => '',
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
             'database.default' => 'pgsql',
             'database.connections.pgsql.sslmode' => 'prefer',
             'database.connections.pgsql.sslrootcert' => '',

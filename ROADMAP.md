@@ -2,7 +2,7 @@
 
 ArtifactFlow is a self-hosted, versioned artifact vault for deliberate outputs created with AI. It preserves the artifact, its authoritative source or original, retained versions, searchable content, ownership, permissions, previews, and audit history. It is not agent memory, a chat archive, or an AI generation platform.
 
-The open-source alpha has shipped. Its current bounded formats are Markdown, self-contained HTML, and normalized PNG/JPEG screenshots or images. Three-level nested shared workspaces shipped in v0.0.9. Alpha work should stay focused on security, correctness, release readiness, documentation, and deliberately scoped feature slices. Searchable PDF artifacts are the next format milestone; searchable Word documents follow only after the PDF processing boundary is proven.
+The open-source alpha has shipped. Its current bounded formats are Markdown, self-contained HTML, normalized PNG/JPEG screenshots or images, and default-off native-text PDF artifacts. Three-level nested shared workspaces shipped in v0.0.9. Alpha work should stay focused on security, correctness, release readiness, documentation, and deliberately scoped feature slices. Searchable Word documents remain the next format candidate after the PDF processing boundary; PDF OCR is a separate later milestone.
 
 This roadmap records direction, not a release promise. Every item still requires tests-first implementation and the security gates in `AGENTS.md`.
 
@@ -92,7 +92,7 @@ Implemented security properties:
 7. Prove the MCP path requires `mcp:share`, token-workspace reach, page ownership, live edit authority, and the workspace's live editor-sharing permission for both human and service-account principals, without leaking the returned URL into persistence, events, or audit metadata.
 8. Add browser-level proof for token leakage, one-time concurrency, revocation/expiry, uniform failures, and the HTML sandbox boundary before enabling the feature.
 
-## Next focus: searchable PDF artifacts
+## Opt-in searchable PDF artifacts
 
 Tracking: [GitHub issue #32](https://github.com/Gadsotek/artifactflow/issues/32)
 
@@ -100,12 +100,14 @@ Public security contract: [PDF architecture decision](docs/architecture/pdf-arti
 Supporting product, delivery, and point-in-time spike records remain private
 working material rather than published roadmap dependencies.
 
-Implementation status (2026-08-17): the native-text application boundary is
-implemented end to end behind `PDF_PROCESSOR_ENABLED=false`, including web and
-MCP ingestion, extraction/search, native preview/download, version restore,
-derived-fact reprocessing, and lifecycle/operations coverage. It is not shipped
-or production-enabled: directional processor containment, the manual released
-Safari/iOS pass, final adversarial review, and the release gates remain open.
+Implementation status (2026-08-25): the native-text application boundary is
+implemented end to end and released as a default-off production opt-in,
+including web and MCP ingestion, extraction/search, native preview/download,
+version restore, derived-fact reprocessing, and lifecycle/operations coverage.
+The dedicated private-network processor image provides inherited outbound
+syscall denial for platforms without shared Unix sockets. Each deployment must
+still complete the released-Safari/iOS pass, verify its running containment,
+and close the final evidence-first review before enabling the flag.
 
 A PDF should participate in the same workspace catalog, permissions, lifecycle, versioning, tags, and search experience as existing pages while remaining a distinct document type. The first delivery is deliberately native-text PDF only: OCR follows as a separate milestone after the parser, storage, artifact-origin, authorization, and deletion boundaries are proven.
 
@@ -129,7 +131,7 @@ PDFs must not be converted into executable HTML or displayed in the authenticate
 5. Index only normalized extracted text and non-secret metadata. Extraction failures must not make the original public or silently mark it as fully searchable.
 6. Apply workspace/page authorization consistently to upload, extraction status, native viewing, download, search snippets, MCP access, version history, archival, moves, and deletion. PDF adds no artifact-host database grant beyond the established read-only page/version presentation tables.
 
-### Required proof before release
+### Required proof before deployment enablement
 
 - native-text PDFs become searchable, while image-only PDFs are clearly marked as not text-searchable without OCR;
 - replacing a PDF creates a version and removes stale text from current search results;

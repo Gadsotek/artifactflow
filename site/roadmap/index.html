@@ -3,19 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ArtifactFlow Roadmap | Searchable PDF Focus</title>
-<meta name="description" content="ArtifactFlow's public direction: the shipped alpha with nested workspaces, searchable PDF artifacts next, Word documents later, and explicit non-promises.">
+<title>ArtifactFlow Roadmap | PDF Opt-in, Word Next</title>
+<meta name="description" content="ArtifactFlow's public direction: the shipped alpha with nested workspaces and opt-in native-text PDF artifacts, with Word documents and PDF OCR later.">
 <link rel="canonical" href="https://artifactflow.app/roadmap/">
-<meta property="og:title" content="ArtifactFlow Roadmap | Searchable PDF Focus">
-<meta property="og:description" content="Shipped alpha boundaries, released nested workspaces, searchable PDF artifacts next, and the proof required before ArtifactFlow expands.">
+<meta property="og:title" content="ArtifactFlow Roadmap | PDF Opt-in, Word Next">
+<meta property="og:description" content="Shipped alpha boundaries, released nested workspaces, opt-in native-text PDF artifacts, and the proof required before ArtifactFlow expands.">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://artifactflow.app/roadmap/">
 <meta property="og:site_name" content="ArtifactFlow">
 <meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="ArtifactFlow Roadmap | Searchable PDF Focus">
-<meta name="twitter:description" content="Direction without invented dates: nested workspaces shipped, searchable native-text PDF next, and DOCX later.">
+<meta name="twitter:title" content="ArtifactFlow Roadmap | PDF Opt-in, Word Next">
+<meta name="twitter:description" content="Direction without invented dates: nested workspaces and opt-in native-text PDF shipped; DOCX and PDF OCR remain later.">
 <meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
@@ -28,7 +28,7 @@
   "@context": "https://schema.org",
   "@type": "WebPage",
   "name": "ArtifactFlow Roadmap",
-  "description": "Shipped alpha boundaries, released nested workspaces, searchable PDF artifacts next, and required security proof.",
+  "description": "Shipped alpha boundaries, released nested workspaces, opt-in native-text PDF artifacts, and required security proof.",
   "url": "https://artifactflow.app/roadmap/",
   "isPartOf": { "@id": "https://artifactflow.app/#website" }
 }
@@ -59,7 +59,7 @@
     <div class="shell">
       <p class="eyebrow">Product direction</p>
       <h1>Build the boundary before expanding the surface.</h1>
-      <p class="lede">Direction, not a release promise. Three-level nested shared workspaces shipped in v0.0.9. Searchable, versioned native-text PDF artifacts are the next format milestone; Word documents follow only after the PDF processing boundary is proven.</p>
+      <p class="lede">Direction, not a release promise. Three-level nested shared workspaces shipped in v0.0.9. Searchable, versioned native-text PDF artifacts are now a default-off production opt-in; Word documents follow only after the PDF processing boundary is proven.</p>
       <div class="detail-actions">
         <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/ROADMAP.md">Read the source roadmap ↗</a>
         <a class="button" href="https://github.com/Gadsotek/artifactflow/releases">View releases ↗</a>
@@ -78,6 +78,7 @@
             <li><strong>HTML, Markdown, and Mermaid</strong>Preserve, search, version, and share artifacts through authenticated personal and shared workspaces.</li>
             <li><strong>Visible page hierarchy</strong>The Library, Overview, page detail, and MCP expose authorization-filtered parent and child context within one workspace.</li>
             <li><strong>Normalized raster images</strong>PNG/JPEG uploads cross an isolated parser boundary and retain only re-encoded pixels.</li>
+            <li><strong>Opt-in searchable PDFs</strong>Native-text PDFs retain private originals, extract bounded untrusted text in a dedicated processor, and use native artifact-origin viewing.</li>
             <li><strong>Nested shared workspaces</strong>Root, child, and grandchild workspaces preserve exact content boundaries while parent authority flows through explicit inheritance rules.</li>
             <li><strong>Isolated HTML execution</strong>Generated HTML runs on the separate artifact origin under the documented iframe, CSP, and signed-preview boundary.</li>
             <li><strong>Scoped MCP access</strong>Nine operations cover workspace discovery, taxonomy, search, read, create, update, and revert without granting preview capabilities.</li>
@@ -115,12 +116,12 @@
         </section>
 
         <section id="documents">
-          <p class="kicker">Next format milestone</p>
-          <h2>Searchable PDF comes next; Word follows.</h2>
+          <p class="kicker">Document formats</p>
+          <h2>Searchable PDF is opt-in; Word follows.</h2>
           <div class="split-cards">
             <article class="split-card">
               <h3>Searchable PDF artifacts</h3>
-              <p>Native-text PDFs would join the permission-aware catalog and version history with private originals, bounded isolated extraction, browser-native viewing on the existing cookieless artifact origin, normal forced-attachment downloads, and proof that restricted content never leaks. Preview deliberately transfers the authorized original. Embedded text remains untrusted and may not be visible in the document. OCR remains a later PDF milestone.</p>
+              <p>Native-text PDFs join the permission-aware catalog and version history with private originals, bounded isolated extraction, browser-native viewing on the existing cookieless artifact origin, normal forced-attachment downloads, and proof that restricted content never leaks. Preview deliberately transfers the authorized original. Embedded text remains untrusted and may not be visible in the document. OCR remains a later PDF milestone.</p>
               <a class="roadmap-issue-link" href="https://github.com/Gadsotek/artifactflow/issues/32">Track PDF issue #32 ↗</a>
             </article>
             <article class="split-card">
@@ -132,7 +133,7 @@
         </section>
 
         <section id="proof">
-          <p class="kicker">Before PDF release</p>
+          <p class="kicker">Before PDF production enablement</p>
           <h2>Scheduling follows proof, not the other way around.</h2>
           <ol class="flow-steps">
             <li>Write the product rule and architecture decision before changing schema or authorization behavior.</li>
