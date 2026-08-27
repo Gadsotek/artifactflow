@@ -530,8 +530,10 @@ The release-blocking attack model is:
   packet/netlink sockets, and io_uring, and whose startup self-test must succeed. Its fixed Docker
   health process accepts no document bytes and reaches only loopback `/health`; the endpoint checks
   PDFBox under the server's inherited filter, so listener or engine failure makes the container
-  unhealthy. The endpoint admits only a direct loopback peer, ignores forwarded client claims, and
-  rejects private-network callers before they can acquire the engine lease. Both topologies deny
+  unhealthy. Each probe carries a fresh timestamp, nonce, and domain-separated HMAC under the
+  dedicated processor secret. The endpoint admits only a direct loopback peer, ignores forwarded
+  client claims, and authenticates that probe before it can acquire the engine lease, including
+  when an app-facing TLS sidecar forwards an untrusted caller from its own loopback address. Both topologies deny
   processor-initiated routes to the app, other runtimes, cloud
   metadata, private peers, DNS, and the public network. A Docker `internal` network alone is not
   directional isolation proof. Every native-engine invocation installs an additional seccomp

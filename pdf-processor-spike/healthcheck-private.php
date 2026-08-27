@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ArtifactFlow\PdfProcessor\ProcessorConfiguration;
+use ArtifactFlow\PdfProcessor\ProcessorHealthRequest;
 
 require __DIR__ . '/src/PdfProcessor.php';
 
@@ -10,7 +11,7 @@ $socket = null;
 $healthy = false;
 
 try {
-    ProcessorConfiguration::fromEnvironment();
+    $configuration = ProcessorConfiguration::fromEnvironment();
 
     $configuredPort = getenv('PORT');
     $portText = is_string($configuredPort) && $configuredPort !== '' ? $configuredPort : '8080';
@@ -38,7 +39,13 @@ try {
     }
 
     stream_set_timeout($socket, 14);
-    $request = "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    $request = "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n";
+
+    foreach (ProcessorHealthRequest::signedHeaders($configuration) as $name => $value) {
+        $request .= $name . ': ' . $value . "\r\n";
+    }
+
+    $request .= "Connection: close\r\n\r\n";
 
     if (fwrite($socket, $request) !== strlen($request)) {
         throw new RuntimeException('Healthcheck request failed.');

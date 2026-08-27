@@ -7,6 +7,7 @@ use ArtifactFlow\PdfProcessor\PdfBoxEngine;
 use ArtifactFlow\PdfProcessor\ProcessorAuthenticationFailure;
 use ArtifactFlow\PdfProcessor\ProcessorClockSkewFailure;
 use ArtifactFlow\PdfProcessor\ProcessorConfiguration;
+use ArtifactFlow\PdfProcessor\ProcessorHealthRequest;
 use ArtifactFlow\PdfProcessor\ProcessorRejection;
 use ArtifactFlow\PdfProcessor\ProcessorRequest;
 use ArtifactFlow\PdfProcessor\ProcessorResult;
@@ -48,6 +49,7 @@ try {
             respond(404, '{"error":"not_found"}', ['Content-Type' => 'application/json']);
         }
 
+        ProcessorHealthRequest::fromGlobals($configuration);
         PdfBoxEngine::production()->verifyHealth();
         respond(200, '{"status":"ok"}', ['Content-Type' => 'application/json']);
     }

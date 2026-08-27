@@ -27,9 +27,10 @@ Unix-socket processor topology is unchanged.
   a production-image regression proving timed-out native work cannot survive to
   inspect a later request's temporary PDF input.
 - Restricted the private-network processor's engine-aware `/health` route to
-  direct loopback peers. Private-network requests, including forged forwarding
-  headers, receive the bounded not-found response without acquiring the native
-  engine lease.
+  direct loopback peers and added a fresh domain-separated HMAC to both service
+  health probes. Private-network requests, including traffic forwarded by a
+  loopback TLS sidecar, cannot acquire the native engine lease without the
+  processor secret.
 - Tagged releases now publish, scan, attest, and attach an SBOM for
   `ghcr.io/gadsotek/artifactflow-pdf-processor` independently of the main app
   image so deployments can pin each immutable digest.
@@ -51,7 +52,9 @@ Unix-socket processor topology is unchanged.
 ### Fixed
 
 - Made production boot and `artifactflow:doctor` reject PDF processor URL,
-  socket, or credential configuration on every non-app runtime role.
+  socket, or credential configuration on every non-app runtime role, while
+  removing the unused built-in URL so default-off roles start without an
+  explicit empty override.
 - Updated the application, isolated image-parser, and PDF processor OpenSSL
   packages to the Alpine revisions that fix CVE-2026-14456 and restored the
   production-image Trivy gate.

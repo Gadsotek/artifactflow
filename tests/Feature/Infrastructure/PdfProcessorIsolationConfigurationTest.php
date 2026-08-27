@@ -8,6 +8,13 @@ use Tests\TestCase;
 
 final class PdfProcessorIsolationConfigurationTest extends TestCase
 {
+    public function test_pdf_processor_origin_has_no_implicit_endpoint(): void
+    {
+        $configuration = $this->readProjectFile('config/pdf_processor.php');
+
+        $this->assertStringContainsString("'url' => env('PDF_PROCESSOR_URL', ''),", $configuration);
+    }
+
     public function test_local_processor_is_started_with_the_app_but_pdf_capability_stays_default_off(): void
     {
         $compose = $this->readProjectFile('docker-compose.yml');
@@ -143,6 +150,7 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString("['127.0.0.1', '::1']", $index);
         $this->assertStringContainsString('in_array($remoteAddress, $loopbackAddresses, true)', $index);
         $this->assertStringNotContainsString('HTTP_X_FORWARDED_FOR', $index);
+        $this->assertStringContainsString('ProcessorHealthRequest::fromGlobals', $index);
         $this->assertStringContainsString('$path !== \'/v1/inspect\'', $index);
         $this->assertStringContainsString('ProcessorRequest::fromGlobals', $index);
         $this->assertStringContainsString('PdfBoxEngine::production()', $index);
@@ -158,6 +166,7 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
 
         $healthcheck = $this->readProjectFile('pdf-processor-spike/healthcheck.php');
         $this->assertStringContainsString('ProcessorConfiguration::fromEnvironment()', $healthcheck);
+        $this->assertStringContainsString('ProcessorHealthRequest::signedHeaders', $healthcheck);
         $this->assertStringNotContainsString('PdfBoxEngine::production()->verifyHealth()', $healthcheck);
         $this->assertStringContainsString('unix://', $healthcheck);
 
@@ -208,6 +217,7 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('0.0.0.0:${port}', $start);
         $this->assertStringNotContainsString('UNIX-LISTEN:', $start);
         $this->assertStringContainsString('ProcessorConfiguration::fromEnvironment()', $healthcheck);
+        $this->assertStringContainsString('ProcessorHealthRequest::signedHeaders', $healthcheck);
         $this->assertStringContainsString('stream_socket_client', $healthcheck);
         $this->assertStringContainsString('tcp://127.0.0.1:', $healthcheck);
         $this->assertStringContainsString('GET /health HTTP/1.1', $healthcheck);

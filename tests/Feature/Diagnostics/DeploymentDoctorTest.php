@@ -1123,7 +1123,7 @@ final class DeploymentDoctorTest extends TestCase
             'image_parser.user_work_budget_per_minute' => 64 * 1024 * 1024,
             'image_parser.installation_work_budget_per_minute' => 256 * 1024 * 1024,
             'pdf_processor.enabled' => false,
-            'pdf_processor.url' => 'http://pdf-processor:8080',
+            'pdf_processor.url' => '',
             'pdf_processor.socket_path' => null,
             'pdf_processor.shared_secret' => '',
             'pdf_processor.connect_timeout_seconds' => 2,

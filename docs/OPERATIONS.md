@@ -391,10 +391,12 @@ enable it, use exactly one reviewed processor topology:
   line or a failed healthcheck is a deployment failure, not a warning.
   The fixed health probe reaches only the container's loopback `/health`
   endpoint and fails unless both the listener and PDFBox engine respond. It
-  handles no document input; the endpoint accepts only a direct loopback peer,
-  ignores forwarded client-address headers, and returns not-found to every
-  private-network caller before engine admission. The server and every PDFBox
-  child remain under the inherited outbound-denial filter. In both supported topologies, each native
+  handles no document input and signs each request with a fresh timestamp and
+  nonce under the dedicated processor secret. The endpoint accepts only a
+  direct loopback peer, ignores forwarded client-address headers, and verifies
+  that signature before engine admission; a TLS sidecar forwarding external
+  `/health` requests to loopback therefore grants no native work. The server and
+  every PDFBox child remain under the inherited outbound-denial filter. In both supported topologies, each native
   engine also inherits a process-containment filter that permits JVM threads
   but denies creation of child processes, so forced termination cannot leave a
   descendant able to inspect later temporary inputs.
@@ -757,7 +759,7 @@ Content and storage limits:
 | `IMAGE_NORMALIZATION_USER_WORK_BUDGET_PER_MINUTE` | 64 Mi work units | Per-principal non-pixel work budget. Input bytes count once, PNG ancillary/JPEG header metadata bytes count again, and every parsed chunk/marker costs 1 Ki work units. |
 | `IMAGE_NORMALIZATION_INSTALLATION_WORK_BUDGET_PER_MINUTE` | 256 Mi work units | Installation-wide non-pixel work budget; must be at least the principal budget and cannot exceed 256 Mi work units. |
 | `PDF_PROCESSOR_ENABLED` | `false` | Default-off gate for PDF web/MCP create, replace, restore, reprocess, native preview/download, and MCP PDF read/search. Existing installations remain compatible without a processor. Production accepts `true` only with a valid app-runtime processor origin, optional absolute Unix socket, dedicated secret, and bounded timeouts. The artifact host may receive `true` for presentation but no endpoint/secret; worker and scheduler roles must keep `false`. Authorized retained PDFs remain visible in normal catalog/search because this is a processing/delivery switch, not access revocation. |
-| `PDF_PROCESSOR_URL` | `http://pdf-processor:8080` | App-runtime-only processor origin used by cURL. In production it must use HTTPS when no Unix socket is configured, and it must never be public or supplied to the artifact host. The HTTP default is for the local Unix-socket topology. |
+| `PDF_PROCESSOR_URL` | empty | App-runtime-only processor origin used by cURL. Enabling PDF requires an explicit value. Local Compose supplies `http://localhost` while cURL uses the mounted Unix socket; production must use HTTPS when no Unix socket is configured, and the value must never be public or supplied to a non-app runtime role. |
 | `PDF_PROCESSOR_SOCKET_PATH` | empty | Optional app-runtime-only Unix socket for directional local transport. Local Compose uses it and gives the processor no Docker network; plain HTTP is accepted in production only when this path is set. |
 | `PDF_PROCESSOR_SHARED_SECRET` | empty | App-runtime-only HMAC secret shared with the PDF processor. Use at least 32 non-placeholder bytes and never reuse `APP_KEY`, the artifact signing key, or the image-parser secret. |
 | `PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS` | 2 seconds | App-to-processor connection timeout (hard-capped at 60 seconds). |
