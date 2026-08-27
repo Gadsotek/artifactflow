@@ -268,12 +268,20 @@ final readonly class ProductionSecurityConfiguration
             return;
         }
 
-        if (OriginNormalizer::tryParsePureOrigin($this->string('pdf_processor.url')) === null) {
+        $origin = OriginNormalizer::tryParsePureOrigin($this->string('pdf_processor.url'));
+
+        if ($origin === null) {
             throw new RuntimeException('PDF processor URL must be a pure HTTP or HTTPS origin.');
         }
 
-        if (!UnixSocketPath::isValidOptional($this->untrimmedString('pdf_processor.socket_path'))) {
+        $socketPath = $this->untrimmedString('pdf_processor.socket_path');
+
+        if (!UnixSocketPath::isValidOptional($socketPath)) {
             throw new RuntimeException('PDF processor socket path must be an absolute filesystem path.');
+        }
+
+        if (!$origin->isHttps() && trim($socketPath) === '') {
+            throw new RuntimeException('PDF processor URL must use HTTPS when no Unix socket is configured.');
         }
 
         $configured = $this->string('pdf_processor.shared_secret');

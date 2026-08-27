@@ -26,8 +26,11 @@ seccomp boundary that permits JVM threads but denies child-process creation.
 Their runtime probes prove a timed-out engine cannot retain a descendant or
 observe a later request's temporary input. Passing proves only the image-level
 contract. A production deployment must still prove private-only reachability,
-resource limits, digest/attestation verification, and the operator gates in
-`docs/architecture/pdf-artifacts.md`.
+authenticated HTTPS from the app when no Unix socket is available, resource
+limits, digest/attestation verification, and the operator gates in
+`docs/architecture/pdf-artifacts.md`. The processor image does not terminate
+TLS itself; use a trusted private proxy or sidecar without assigning the
+processor a public domain.
 The target also starts an intentionally hung spike command and proves that the
 external harness kills the entire container at its wall-clock deadline. The
 HTTP shell holds a cross-process lease for every JVM invocation, so its health

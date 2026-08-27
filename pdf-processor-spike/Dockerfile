@@ -32,9 +32,14 @@ FROM php:8.5.9-cli-alpine3.24@sha256:0554eb53778b5316f6b9a3447c9dfa3cf2141c0c02f
 ARG PDFBOX_VERSION=3.0.8
 ARG PDFBOX_SHA512=768847238f683568507bf73570a2b6fedcbe58b25c7b4f97fba536ba110b290fe96ba065aed58629d41fb94857d76bc1978c2f31d294b553c69f287f71ee9600
 
+# The pinned PHP base freezes its Alpine packages. Patch only the OpenSSL
+# packages affected by CVE-2026-14456 instead of running a blanket upgrade.
 RUN apk add --no-cache \
         ca-certificates=20260611-r0 \
+        "libcrypto3>=3.5.8-r0" \
+        "libssl3>=3.5.8-r0" \
         openjdk21-jre-headless=21.0.12_p8-r0 \
+        "openssl>=3.5.8-r0" \
     && addgroup -S -g 10002 pdf-spike \
     && adduser -S -D -H -u 10002 -G pdf-spike -s /sbin/nologin pdf-spike
 

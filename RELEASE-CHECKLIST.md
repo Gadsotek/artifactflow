@@ -35,6 +35,8 @@ Set tester expectations explicitly:
 - Keep `PDF_PROCESSOR_ENABLED=false` unless this exact deployment has completed
   the PDF production-enablement gate: pin and verify the dedicated processor
   image, prove its outbound-denial startup check and private-only reachability,
+  require HTTPS on the trusted private app-to-processor path when no Unix
+  socket is configured,
   preserve one replica/concurrency one and hard resource limits, complete the
   released-Safari/iOS check, and close the final evidence-first security review.
   Existing installs remain default-off and require no processor service.

@@ -44,6 +44,15 @@ Unix-socket processor topology is unchanged.
 - Extended `artifactflow:doctor`, production image gates, and operator docs to
   verify both supported processor topologies while preserving the default-off
   backward-compatible behavior.
+- Required HTTPS for production PDF processor traffic whenever no Unix socket
+  is configured, preventing private PDF bytes and extracted text from crossing
+  a network in plaintext.
+
+### Fixed
+
+- Updated the application, isolated image-parser, and PDF processor OpenSSL
+  packages to the Alpine revisions that fix CVE-2026-14456 and restored the
+  production-image Trivy gate.
 
 ## v0.0.11 — 2026-08-25
 

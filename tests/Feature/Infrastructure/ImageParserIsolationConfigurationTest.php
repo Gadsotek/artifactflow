@@ -52,6 +52,9 @@ final class ImageParserIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('USER image-parser', $parserStage);
         $this->assertStringContainsString('gd', $parserStage);
         $this->assertStringContainsString('exif', $parserStage);
+        $this->assertStringContainsString('"libcrypto3>=3.5.8-r0"', $parserStage);
+        $this->assertStringContainsString('"libssl3>=3.5.8-r0"', $parserStage);
+        $this->assertStringContainsString('"openssl>=3.5.8-r0"', $parserStage);
         $this->assertStringNotContainsString('webp', strtolower($parserStage));
         $this->assertStringNotContainsString('PHP_CLI_SERVER_WORKERS=', $parserStage);
         $this->assertStringContainsString('CMD ["/srv/image-parser/start.sh"]', $parserStage);

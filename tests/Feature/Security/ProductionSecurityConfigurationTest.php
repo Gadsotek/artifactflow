@@ -26,7 +26,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->configureSafeProductionValues();
         config([
             'pdf_processor.enabled' => true,
-            'pdf_processor.url' => 'http://pdf-processor.internal:8080',
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
             'pdf_processor.socket_path' => null,
             'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
             'pdf_processor.connect_timeout_seconds' => 2,
@@ -69,7 +69,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
     {
         $valid = [
             'pdf_processor.enabled' => true,
-            'pdf_processor.url' => 'http://pdf-processor.internal:8080',
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
             'pdf_processor.socket_path' => null,
             'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
             'pdf_processor.connect_timeout_seconds' => 2,
@@ -77,6 +77,10 @@ final class ProductionSecurityConfigurationTest extends TestCase
         ];
 
         foreach ([
+            [
+                ['pdf_processor.url' => 'http://pdf-processor.internal:8080'],
+                'PDF processor URL must use HTTPS when no Unix socket is configured.',
+            ],
             [
                 ['pdf_processor.url' => 'http://pdf-processor.internal:8080/path'],
                 'PDF processor URL must be a pure HTTP or HTTPS origin.',
@@ -111,6 +115,23 @@ final class ProductionSecurityConfigurationTest extends TestCase
 
             $this->assertUnsafeConfiguration($message);
         }
+    }
+
+    public function test_pdf_slice_can_use_plain_http_only_through_a_unix_socket_in_production(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'http://localhost',
+            'pdf_processor.socket_path' => '/run/artifactflow/pdf-processor/processor.sock',
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+        ]);
+
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+
+        $this->addToAssertionCount(1);
     }
 
     public function test_non_app_runtime_roles_reject_the_pdf_processor_credential(): void

@@ -859,7 +859,7 @@ final class DeploymentDoctorTest extends TestCase
 
         $productionEnabled = (new DeploymentDoctor($this->config('production', [
             'pdf_processor.enabled' => true,
-            'pdf_processor.url' => 'http://pdf-processor.internal:8080',
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
             'pdf_processor.socket_path' => null,
             'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
             'pdf_processor.connect_timeout_seconds' => 2,
@@ -870,10 +870,35 @@ final class DeploymentDoctorTest extends TestCase
             $this->check($productionEnabled->checks, 'pdf_release_gate')->status,
         );
 
+        $productionPlaintextNetwork = (new DeploymentDoctor($this->config('production', [
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'http://pdf-processor.internal:8080',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+        ])))->run();
+        $plaintextCheck = $this->check($productionPlaintextNetwork->checks, 'pdf_release_gate');
+        $this->assertSame(DoctorCheckStatus::Fail, $plaintextCheck->status);
+        $this->assertStringContainsString('HTTPS', $plaintextCheck->detail);
+
+        $productionUnixSocket = (new DeploymentDoctor($this->config('production', [
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'http://localhost',
+            'pdf_processor.socket_path' => '/run/artifactflow/pdf-processor/processor.sock',
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+        ])))->run();
+        $this->assertSame(
+            DoctorCheckStatus::Pass,
+            $this->check($productionUnixSocket->checks, 'pdf_release_gate')->status,
+        );
+
         $productionReusedParserSecret = (new DeploymentDoctor($this->config('production', [
             'image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
             'pdf_processor.enabled' => true,
-            'pdf_processor.url' => 'http://pdf-processor.internal:8080',
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
             'pdf_processor.socket_path' => null,
             'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
             'pdf_processor.connect_timeout_seconds' => 2,

@@ -228,6 +228,12 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringNotContainsString('apk upgrade --no-cache', $dockerfile);
         $this->assertStringContainsString('"libpq>=18.5-r0"', $dockerfile);
         $this->assertStringContainsString('"libecpg>=18.5-r0"', $dockerfile);
+        $productionStagePosition = strpos($dockerfile, " AS production\n");
+        $this->assertNotFalse($productionStagePosition);
+        $productionStage = substr($dockerfile, $productionStagePosition);
+        $this->assertStringContainsString('"libcrypto3>=3.5.8-r0"', $productionStage);
+        $this->assertStringContainsString('"libssl3>=3.5.8-r0"', $productionStage);
+        $this->assertStringContainsString('"openssl>=3.5.8-r0"', $productionStage);
         $this->assertStringContainsString('/var/www/html/docker/healthcheck-app.sh', $dockerfile);
         $this->assertStringContainsString('worker|scheduler', $healthcheck);
         $workerHealthcheckPosition = strpos($healthcheck, 'worker|scheduler');

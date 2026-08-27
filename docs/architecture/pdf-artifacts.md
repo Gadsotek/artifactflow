@@ -125,8 +125,12 @@ tmpfs/time limits, and one of two reviewed directional transports:
 Both modes let the app initiate an authenticated request while denying the
 processor a callback path into the app, cloud metadata, private peers, DNS, or
 the internet. Cross-host deployments need an equivalently directional network
-policy in addition to authenticated encrypted transport. Effective callback
-and outbound denial are tested from the running container; an ordinary Docker
+policy in addition to authenticated encrypted transport. When no Unix socket
+is configured, production boot and `artifactflow:doctor` therefore require the
+app-facing processor origin to use HTTPS; a trusted private proxy or sidecar may
+terminate TLS in front of the processor. Plain HTTP is accepted only when cURL
+uses the configured Unix socket as its actual transport. Effective callback and
+outbound denial are tested from the running container; an ordinary Docker
 `internal` network is not proof of this property.
 
 Every PDFBox invocation also passes through a fail-closed process-containment

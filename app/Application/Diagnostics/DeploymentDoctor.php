@@ -150,6 +150,14 @@ final readonly class DeploymentDoctor
             );
         }
 
+        if (!$origin->isHttps() && trim($this->untrimmedString('pdf_processor.socket_path')) === '') {
+            return $this->fail(
+                $id,
+                $label,
+                'PDF_PROCESSOR_URL must use HTTPS when PDF_PROCESSOR_SOCKET_PATH is empty.',
+            );
+        }
+
         $configured = $this->string('pdf_processor.shared_secret');
         $secret = SecretStrength::normalized($configured);
         $applicationSecret = SecretStrength::normalized($this->string('app.key'));

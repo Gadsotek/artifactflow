@@ -380,6 +380,8 @@ enable it, use exactly one reviewed processor topology:
   Compose.
 - A private-network platform without shared sockets must use the separately
   published `pdf-processor-private-service` image. Give it no public domain,
+  expose it to the app through authenticated HTTPS (for example, a trusted
+  private proxy or sidecar that terminates TLS),
   run one replica as its built-in non-root user, keep the root filesystem
   read-only, drop all capabilities, retain `no-new-privileges`, cap PIDs at 32,
   memory at 512 MiB, CPU at one core, and provide only a 32 MiB noexec/nosuid
@@ -399,8 +401,12 @@ enable it, use exactly one reviewed processor topology:
 
 Set one strong dedicated `PDF_PROCESSOR_SHARED_SECRET` only on the app runtime
 and processor; do not reuse the image-parser secret. On the app set
-`PDF_PROCESSOR_URL` to the processor's private origin and leave
-`PDF_PROCESSOR_SOCKET_PATH` empty for private networking. The artifact host
+`PDF_PROCESSOR_URL` to the processor's private HTTPS origin and leave
+`PDF_PROCESSOR_SOCKET_PATH` empty for private networking. Production boot and
+`artifactflow:doctor` reject socketless HTTP because HMAC authenticates bytes
+but does not encrypt PDF content or extracted text. Plain HTTP is supported
+only when `PDF_PROCESSOR_SOCKET_PATH` is set and the actual transport is the
+local Unix socket. The artifact host
 receives `PDF_PROCESSOR_ENABLED=true` only for presentation and must receive an
 empty URL/socket/secret. Worker and scheduler roles must keep the flag false
 and all three processor connection values empty. Complete the PDF
@@ -751,8 +757,8 @@ Content and storage limits:
 | `IMAGE_NORMALIZATION_USER_WORK_BUDGET_PER_MINUTE` | 64 Mi work units | Per-principal non-pixel work budget. Input bytes count once, PNG ancillary/JPEG header metadata bytes count again, and every parsed chunk/marker costs 1 Ki work units. |
 | `IMAGE_NORMALIZATION_INSTALLATION_WORK_BUDGET_PER_MINUTE` | 256 Mi work units | Installation-wide non-pixel work budget; must be at least the principal budget and cannot exceed 256 Mi work units. |
 | `PDF_PROCESSOR_ENABLED` | `false` | Default-off gate for PDF web/MCP create, replace, restore, reprocess, native preview/download, and MCP PDF read/search. Existing installations remain compatible without a processor. Production accepts `true` only with a valid app-runtime processor origin, optional absolute Unix socket, dedicated secret, and bounded timeouts. The artifact host may receive `true` for presentation but no endpoint/secret; worker and scheduler roles must keep `false`. Authorized retained PDFs remain visible in normal catalog/search because this is a processing/delivery switch, not access revocation. |
-| `PDF_PROCESSOR_URL` | `http://pdf-processor:8080` | App-runtime-only internal PDF processor origin. It must not be public or supplied to the artifact host. |
-| `PDF_PROCESSOR_SOCKET_PATH` | empty | Optional app-runtime-only Unix socket for directional local transport. Local Compose uses it and gives the processor no Docker network. |
+| `PDF_PROCESSOR_URL` | `http://pdf-processor:8080` | App-runtime-only processor origin used by cURL. In production it must use HTTPS when no Unix socket is configured, and it must never be public or supplied to the artifact host. The HTTP default is for the local Unix-socket topology. |
+| `PDF_PROCESSOR_SOCKET_PATH` | empty | Optional app-runtime-only Unix socket for directional local transport. Local Compose uses it and gives the processor no Docker network; plain HTTP is accepted in production only when this path is set. |
 | `PDF_PROCESSOR_SHARED_SECRET` | empty | App-runtime-only HMAC secret shared with the PDF processor. Use at least 32 non-placeholder bytes and never reuse `APP_KEY`, the artifact signing key, or the image-parser secret. |
 | `PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS` | 2 seconds | App-to-processor connection timeout (hard-capped at 60 seconds). |
 | `PDF_PROCESSOR_TIMEOUT_SECONDS` | 15 seconds | Whole app-to-processor request timeout (hard-capped at 60 seconds); the native engine has a shorter internal deadline. |

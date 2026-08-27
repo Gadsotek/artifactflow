@@ -27,6 +27,9 @@ final class PdfProcessorSpikeContractTest extends TestCase
         $this->assertStringContainsString('PDFBOX_VERSION=' . self::PDFBOX_VERSION, $spikeStage);
         $this->assertStringContainsString('PDFBOX_SHA512=' . self::PDFBOX_SHA512, $spikeStage);
         $this->assertStringContainsString('openjdk21-jre-headless=21.0.12_p8-r0', $spikeStage);
+        $this->assertStringContainsString('"libcrypto3>=3.5.8-r0"', $spikeStage);
+        $this->assertStringContainsString('"libssl3>=3.5.8-r0"', $spikeStage);
+        $this->assertStringContainsString('"openssl>=3.5.8-r0"', $spikeStage);
         $this->assertStringContainsString('COPY --from=pdf-processor-spike-builder', $spikeStage);
         $this->assertStringContainsString('COPY README.md', $spikeStage);
         $this->assertStringContainsString('USER pdf-spike', $spikeStage);

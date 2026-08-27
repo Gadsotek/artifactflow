@@ -478,7 +478,10 @@ default-off native-text PDF processor, transactional write boundary, and artifac
 slice are documented in [`docs/architecture/pdf-artifacts.md`](docs/architecture/pdf-artifacts.md).
 PDF remains outside an installation's enabled threat boundary by default. An operator may opt in
 only after verifying the exact processor deployment and completing the browser/review gates in the
-public PDF architecture decision.
+public PDF architecture decision. The processor HMAC provides authentication and integrity, not
+confidentiality: production rejects a plain-HTTP processor origin unless the configured Unix socket
+is the actual transport, while cross-host deployments must terminate HTTPS on the trusted private
+path to the processor.
 
 There is deliberately no OCR for image artifacts. Search indexes catalog metadata only. MCP
 `read` returns the normalized raster as a standard image content block beside an explicit
