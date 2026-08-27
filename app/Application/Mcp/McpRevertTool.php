@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Application\Mcp;
 
+use App\Application\Mcp\Input\McpRevertInput;
+use App\Application\Mcp\Output\McpPdfFactsView;
+use App\Application\Mcp\Output\McpRevertedPayload;
 use App\Application\PageCatalog\RevertToPreviousVersion;
 use App\Application\PageCatalog\RevertToPreviousVersionCommand;
 use App\Domain\PageCatalog\PageType;
@@ -26,39 +29,38 @@ final readonly class McpRevertTool
     ) {
     }
 
-    public function handle(User $actor, McpToolArguments $arguments): McpToolResult
+    public function handle(User $actor, McpRevertInput $input): McpToolResult
     {
-        $page = $this->pages->editablePage($actor, $arguments->requiredString('page_uid'));
+        $page = $this->pages->editablePage($actor, $input->pageUid);
 
         if (!$page instanceof Page) {
             return McpToolResult::notFound();
         }
 
-        return $this->errors->guard(function () use ($actor, $arguments, $page): McpToolResult {
+        return $this->errors->guard(function () use ($actor, $input, $page): McpToolResult {
             $result = $this->revertToPreviousVersion->handle($actor, new RevertToPreviousVersionCommand(
                 pageUid: $page->uid,
-                baseVersionUid: $arguments->requiredString('base_version_uid'),
-                changeSummary: $arguments->requiredString('change_summary'),
+                baseVersionUid: $input->baseVersionUid,
+                changeSummary: $input->changeSummary,
             ));
 
-            $payload = [
-                'page_uid' => $page->uid,
-                'version_uid' => $result->restoredVersion->uid,
-                'current_version_uid' => $result->restoredVersion->uid,
-                'restored_from_version_uid' => $result->restoredFromVersion->uid,
-            ];
+            $pdf = null;
 
             if ($page->type === PageType::Pdf) {
                 $pdf = $this->pdfPayload->forVersion($result->restoredVersion);
 
-                if ($pdf === null) {
+                if (!$pdf instanceof McpPdfFactsView) {
                     throw new \App\Domain\DomainRuleViolation('PDF processing facts are unavailable.');
                 }
-
-                $payload['pdf'] = $pdf;
             }
 
-            return McpToolResult::success($payload);
+            return McpToolResult::success(new McpRevertedPayload(
+                pageUid: $page->uid,
+                versionUid: $result->restoredVersion->uid,
+                currentVersionUid: $result->restoredVersion->uid,
+                restoredFromVersionUid: $result->restoredFromVersion->uid,
+                pdf: $pdf,
+            ));
         }, self::STALE_CONFLICT_MESSAGE);
     }
 }

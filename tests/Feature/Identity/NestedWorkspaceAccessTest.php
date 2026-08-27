@@ -8,6 +8,7 @@ use App\Application\Identity\CreateSharedWorkspace;
 use App\Application\Identity\WorkspaceContext;
 use App\Application\Mcp\McpRequestContext;
 use App\Application\Mcp\McpWorkspaceListing;
+use App\Application\Mcp\Output\McpWorkspaceView;
 use App\Application\PageCatalog\PageAccess;
 use App\Application\PageCatalog\PageSearch;
 use App\Application\PageCatalog\PageSearchFilters;
@@ -172,7 +173,7 @@ final class NestedWorkspaceAccessTest extends TestCase
     private function listedWorkspaceUids(User $actor, McpAccessToken $token): array
     {
         return array_map(
-            static fn (array $workspace): string => $workspace['uid'],
+            static fn (McpWorkspaceView $workspace): string => $workspace->uid,
             app(McpWorkspaceListing::class)->forActor($actor, $token),
         );
     }

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Application\Mcp\McpPayloadEncoder;
 use App\Application\Mcp\McpRequestContext;
 use App\Application\Mcp\McpToolArguments;
+use App\Application\Mcp\McpToolError;
 use App\Application\Mcp\McpToolGuard;
 use App\Application\Mcp\McpToolResult;
 use App\Domain\DomainRuleViolation;
@@ -30,6 +32,7 @@ abstract class ArtifactFlowTool extends Tool
         private readonly McpRequestContext $mcpContext,
         private readonly McpToolGuard $guard,
         private readonly HttpRequest $httpRequest,
+        private readonly McpPayloadEncoder $payloadEncoder,
     ) {
     }
 
@@ -56,10 +59,9 @@ abstract class ArtifactFlowTool extends Tool
         try {
             $arguments = McpToolArguments::fromValue($request->all(), 'arguments');
         } catch (DomainRuleViolation $exception) {
-            return $this->response(McpToolResult::error([
-                'type' => 'invalid_request',
-                'message' => $exception->getMessage(),
-            ]));
+            return $this->response(McpToolResult::error(McpToolError::invalidRequest(
+                $exception->getMessage(),
+            )));
         }
 
         $sessionId = $request->sessionId();
@@ -85,10 +87,7 @@ abstract class ArtifactFlowTool extends Tool
                 },
             );
         } catch (DomainRuleViolation $exception) {
-            $result = McpToolResult::error([
-                'type' => 'invalid_request',
-                'message' => $exception->getMessage(),
-            ]);
+            $result = McpToolResult::error(McpToolError::invalidRequest($exception->getMessage()));
         }
 
         return $this->response($result);
@@ -100,7 +99,7 @@ abstract class ArtifactFlowTool extends Tool
     private function response(McpToolResult $result): Response|ResponseFactory
     {
         $json = json_encode(
-            $result->payload,
+            $this->payloadEncoder->encode($result->payload),
             JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
         );
 

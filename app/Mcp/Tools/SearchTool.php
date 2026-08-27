@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Application\Mcp\Input\McpSearchInput;
 use App\Application\Mcp\McpAccessTokenIssuer;
 use App\Application\Mcp\McpSearchTool as Handler;
 use App\Application\Mcp\McpToolArguments;
@@ -30,9 +31,10 @@ final class SearchTool extends ArtifactFlowTool
         \App\Application\Mcp\McpRequestContext $mcpContext,
         \App\Application\Mcp\McpToolGuard $guard,
         \Illuminate\Http\Request $httpRequest,
+        \App\Application\Mcp\McpPayloadEncoder $payloadEncoder,
         private readonly Handler $handler,
     ) {
-        parent::__construct($mcpContext, $guard, $httpRequest);
+        parent::__construct($mcpContext, $guard, $httpRequest, $payloadEncoder);
     }
 
     /**
@@ -74,7 +76,11 @@ final class SearchTool extends ArtifactFlowTool
             $request,
             McpAccessTokenIssuer::SCOPE_SEARCH,
             false,
-            fn (User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult => $this->handler->handle($actor, $token, $arguments),
+            fn (User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult => $this->handler->handle(
+                $actor,
+                $token,
+                McpSearchInput::fromArguments($arguments),
+            ),
         );
     }
 }

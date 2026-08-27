@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Application\Mcp;
 
+use App\Application\Mcp\Output\McpHierarchyView;
+use App\Application\Mcp\Output\McpPageReferenceView;
+use App\Application\Mcp\Output\McpUntrustedText;
 use App\Application\PageCatalog\PageAccess;
 use App\Application\PageCatalog\PageVisibilityQuery;
 use App\Models\Page;
@@ -24,7 +27,7 @@ final readonly class McpPageHierarchy
 
     /**
      * @param list<Page> $pages
-     * @return array<string, array<string, mixed>>
+     * @return array<string, McpHierarchyView>
      */
     public function forPages(User $actor, array $pages): array
     {
@@ -137,29 +140,26 @@ final readonly class McpPageHierarchy
         foreach ($pages as $page) {
             $ancestors = array_reverse($directFirstAncestors[$page->uid]);
             $ancestorPayloads = array_map(
-                fn (Page $ancestor): array => $this->pageReference($ancestor),
+                fn (Page $ancestor): McpPageReferenceView => $this->pageReference($ancestor),
                 $ancestors,
             );
 
-            $payloads[$page->uid] = [
-                'parent' => $ancestorPayloads === [] ? null : $ancestorPayloads[count($ancestorPayloads) - 1],
-                'ancestors' => $ancestorPayloads,
-                'visible_depth' => count($ancestorPayloads),
-                'visible_child_count' => $visibleChildCounts[$page->uid],
-            ];
+            $payloads[$page->uid] = new McpHierarchyView(
+                parent: $ancestorPayloads === [] ? null : $ancestorPayloads[count($ancestorPayloads) - 1],
+                ancestors: $ancestorPayloads,
+                visibleDepth: count($ancestorPayloads),
+                visibleChildCount: $visibleChildCounts[$page->uid],
+            );
         }
 
         return $payloads;
     }
 
-    /**
-     * @return array{uid: string, title: array<string, mixed>}
-     */
-    private function pageReference(Page $page): array
+    private function pageReference(Page $page): McpPageReferenceView
     {
-        return [
-            'uid' => $page->uid,
-            'title' => McpDataEnvelope::text($page->title),
-        ];
+        return new McpPageReferenceView(
+            uid: $page->uid,
+            title: new McpUntrustedText($page->title),
+        );
     }
 }

@@ -42,10 +42,9 @@ final readonly class McpToolGuard
                 || $liveToken->isExpired()
                 || !McpAccessTokenIssuer::principalCanUseMcp($liveToken->principal)
             ) {
-                return McpToolResult::error([
-                    'type' => 'authentication_required',
-                    'message' => 'The MCP access token is no longer active.',
-                ]);
+                return McpToolResult::error(McpToolError::authenticationRequired(
+                    'The MCP access token is no longer active.',
+                ));
             }
 
             foreach ((array) $scopes as $scope) {
@@ -74,10 +73,9 @@ final readonly class McpToolGuard
             return null;
         }
 
-        return McpToolResult::error([
-            'type' => 'insufficient_scope',
-            'message' => sprintf('The %s scope is required.', $scope),
-        ]);
+        return McpToolResult::error(McpToolError::insufficientScope(
+            sprintf('The %s scope is required.', $scope),
+        ));
     }
 
     private function requireWriteRateLimit(McpAccessToken $token): ?McpToolResult
@@ -87,11 +85,10 @@ final readonly class McpToolGuard
         $key = 'mcp-write-principal:' . $token->principal_user_uid;
 
         if (RateLimiter::tooManyAttempts($key, $limit)) {
-            return McpToolResult::error([
-                'type' => 'rate_limited',
-                'message' => 'MCP write rate limit exceeded.',
-                'retry_after' => RateLimiter::availableIn($key),
-            ]);
+            return McpToolResult::error(McpToolError::rateLimited(
+                'MCP write rate limit exceeded.',
+                RateLimiter::availableIn($key),
+            ));
         }
 
         RateLimiter::hit($key, 60);

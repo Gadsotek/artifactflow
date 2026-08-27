@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Application\Mcp\Input\McpReplaceImageInput;
 use App\Application\Mcp\McpAccessTokenIssuer;
+use App\Application\Mcp\McpProvenanceArguments;
 use App\Application\Mcp\McpReplaceImageTool as Handler;
 use App\Application\Mcp\McpToolArguments;
 use App\Application\Mcp\McpToolResult;
@@ -24,10 +26,12 @@ final class ReplaceImageTool extends ArtifactFlowTool
         \App\Application\Mcp\McpRequestContext $mcpContext,
         \App\Application\Mcp\McpToolGuard $guard,
         \Illuminate\Http\Request $httpRequest,
+        \App\Application\Mcp\McpPayloadEncoder $payloadEncoder,
         private readonly Handler $handler,
         private readonly McpProvenanceSchema $provenanceSchema,
+        private readonly McpProvenanceArguments $provenanceArguments,
     ) {
-        parent::__construct($mcpContext, $guard, $httpRequest);
+        parent::__construct($mcpContext, $guard, $httpRequest, $payloadEncoder);
     }
 
     /** @return array<string, \Illuminate\JsonSchema\Types\Type> */
@@ -55,7 +59,10 @@ final class ReplaceImageTool extends ArtifactFlowTool
             $request,
             [McpAccessTokenIssuer::SCOPE_UPDATE, McpAccessTokenIssuer::SCOPE_UPLOAD],
             true,
-            fn (User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult => $this->handler->handle($actor, $arguments),
+            fn (User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult => $this->handler->handle(
+                $actor,
+                McpReplaceImageInput::fromArguments($arguments, $this->provenanceArguments),
+            ),
         );
     }
 }

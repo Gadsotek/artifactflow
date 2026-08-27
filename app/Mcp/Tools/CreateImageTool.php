@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Application\Mcp\Input\McpCreateImageInput;
 use App\Application\Mcp\McpAccessTokenIssuer;
 use App\Application\Mcp\McpCreateImageTool as Handler;
+use App\Application\Mcp\McpProvenanceArguments;
 use App\Application\Mcp\McpToolArguments;
 use App\Application\Mcp\McpToolResult;
 use App\Domain\PageCatalog\PageStatus;
@@ -25,10 +27,12 @@ final class CreateImageTool extends ArtifactFlowTool
         \App\Application\Mcp\McpRequestContext $mcpContext,
         \App\Application\Mcp\McpToolGuard $guard,
         \Illuminate\Http\Request $httpRequest,
+        \App\Application\Mcp\McpPayloadEncoder $payloadEncoder,
         private readonly Handler $handler,
         private readonly McpProvenanceSchema $provenanceSchema,
+        private readonly McpProvenanceArguments $provenanceArguments,
     ) {
-        parent::__construct($mcpContext, $guard, $httpRequest);
+        parent::__construct($mcpContext, $guard, $httpRequest, $payloadEncoder);
     }
 
     /** @return array<string, \Illuminate\JsonSchema\Types\Type> */
@@ -62,7 +66,11 @@ final class CreateImageTool extends ArtifactFlowTool
             $request,
             [McpAccessTokenIssuer::SCOPE_CREATE, McpAccessTokenIssuer::SCOPE_UPLOAD],
             true,
-            fn (User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult => $this->handler->handle($actor, $token, $arguments),
+            fn (User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult => $this->handler->handle(
+                $actor,
+                $token,
+                McpCreateImageInput::fromArguments($arguments, $this->provenanceArguments),
+            ),
         );
     }
 }

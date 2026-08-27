@@ -588,9 +588,21 @@ MCP adds a different risk from browser execution: page content can contain text 
 instructions to an AI client. The server response frames read content as untrusted data, but that
 framing is advisory. The actual enforcement rules are:
 
+- Every present user-controlled or extracted MCP string remains a field-level
+  `artifactflow.untrusted_data` object produced by an explicit typed wire projection. Absent
+  optional strings are omitted rather than represented as empty envelopes; compact provenance UID
+  references do not weaken the framing on the producer definition they resolve to.
+- `read.include` lets a client omit content, provenance, or both. A metadata-only read still runs
+  normal token and page authorization but does not load artifact bytes, inspect image content,
+  construct an image block, or query provenance. Reducing returned instruction-bearing material is
+  exposure minimization, not an authorization control.
 - Read content never authorizes a write. A later `create`, `update`, `update_description`, `revert`, or `create_external_share` still needs an
   authenticated token with write scope, live workspace/page access, a fresh version token where
   required, rate-limit budget, and normal scanner/validation success.
+- `update_description` deliberately binds the write to both the observed current content-version
+  UID and the observed metadata revision. A pixel/content replacement invalidates the former; a
+  concurrent metadata change invalidates the latter. Neither check is redundant for descriptions
+  derived from untrusted observed content.
 - Token scopes are the hard ceiling. Tokens can be read-only or read-write, and can be bound to
   one or more workspaces for reads and writes. `list_workspaces` returns only workspaces reachable
   inside that token ceiling, so scoped tokens do not learn that other workspaces exist.

@@ -4,15 +4,16 @@ declare(strict_types=1);
 
 namespace App\Application\Mcp;
 
+use App\Application\Mcp\Input\McpSearchInput;
+use App\Application\Mcp\Output\McpSearchPayload;
+use App\Application\Mcp\Output\McpSearchResultView;
+use App\Application\Mcp\Output\McpUntrustedText;
 use App\Application\PageCatalog\PageSearch;
 use App\Application\PageCatalog\PageSearchFilters;
 use App\Application\PageCatalog\PageSearchResult;
-use App\Application\PageCatalog\PageSearchSort;
 use App\Application\PageCatalog\PdfProcessorConfiguration;
-use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
-use App\Domain\Provenance\ProvenanceSearchScope;
 use App\Models\McpAccessToken;
 use App\Models\Page;
 use App\Models\Tag;
@@ -32,58 +33,44 @@ final readonly class McpSearchTool
     ) {
     }
 
-    public function handle(User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult
+    public function handle(User $actor, McpAccessToken $token, McpSearchInput $input): McpToolResult
     {
-        $includeSnippet = $arguments->bool('include_snippet', false);
+        $includeSnippet = $input->includeSnippet;
 
         if ($includeSnippet && !$token->hasScope(McpAccessTokenIssuer::SCOPE_READ)) {
-            return McpToolResult::error([
-                'type' => 'insufficient_scope',
-                'message' => 'The mcp:read scope is required for snippets.',
-            ]);
+            return McpToolResult::error(McpToolError::insufficientScope(
+                'The mcp:read scope is required for snippets.',
+            ));
         }
 
-        $provenanceScopeValue = $arguments->string(
-            'provenance_scope',
-            ProvenanceSearchScope::AnyVersion->value,
-        );
-        $provenanceScope = ProvenanceSearchScope::tryFrom($provenanceScopeValue);
-
-        if (!$provenanceScope instanceof ProvenanceSearchScope) {
-            throw new DomainRuleViolation('Argument [provenance_scope] has an unsupported value.');
-        }
-
-        $status = $arguments->pageStatus('status');
+        $status = $input->status;
         $statuses = $status instanceof PageStatus
             ? [$status]
-            : ($arguments->bool('include_archived', false)
+            : ($input->includeArchived
                 ? PageStatus::cases()
                 : PageSearchFilters::activeStatuses());
-        $categoryUid = $arguments->nullableString('category_uid');
-        $provider = $arguments->nullableString('ai_provider');
-
-        $type = $arguments->pageType('type');
+        $categoryUid = $input->categoryUid;
+        $provider = $input->aiProvider;
+        $type = $input->type;
 
         if ($type === PageType::Pdf && !$this->pdfConfiguration->enabled()) {
-            return McpToolResult::error([
-                'type' => 'unsupported_content_type',
-                'message' => 'PDF content is not available through MCP yet.',
-            ]);
+            return McpToolResult::error(McpToolError::unsupportedContentType(
+                'PDF content is not available through MCP yet.',
+            ));
         }
 
         $filters = new PageSearchFilters(
-            query: $arguments->nullableString('query'),
-            workspaceUid: $arguments->nullableString('workspace_uid'),
+            query: $input->query,
+            workspaceUid: $input->workspaceUid,
             type: $type,
             statuses: $statuses,
             categoryUids: $categoryUid === null ? [] : [$categoryUid],
-            tagUids: $arguments->stringList('tag_uids'),
-            ownerUserUid: $arguments->nullableString('owner_user_uid'),
-            sort: PageSearchSort::tryFrom($arguments->string('sort', PageSearchSort::Relevance->value))
-                ?? PageSearchSort::Relevance,
+            tagUids: $input->tagUids,
+            ownerUserUid: $input->ownerUserUid,
+            sort: $input->sort,
             aiProviders: $provider === null ? [] : [$provider],
-            aiModelQuery: $arguments->nullableString('ai_model_query'),
-            provenanceScope: $provenanceScope,
+            aiModelQuery: $input->aiModelQuery,
+            provenanceScope: $input->provenanceScope,
             excludedTypes: $this->pdfConfiguration->enabled() ? [] : [PageType::Pdf],
         );
         $results = $this->pageSearch->search(
@@ -96,33 +83,28 @@ final readonly class McpSearchTool
             array_map(static fn (PageSearchResult $result): Page => $result->page, $results),
         );
 
-        return McpToolResult::success([
-            'results' => array_map(function (PageSearchResult $result) use (
+        return McpToolResult::success(new McpSearchPayload(
+            results: array_map(function (PageSearchResult $result) use (
                 $hierarchyByPageUid,
                 $includeSnippet,
-            ): array {
+            ): McpSearchResultView {
                 $page = $result->page;
-                $payload = [
-                    'uid' => $page->uid,
-                    'title' => McpDataEnvelope::text($page->title),
-                    'type' => $page->type->value,
-                    'status' => $page->status->value,
-                    'current_version_uid' => $page->current_version_uid,
-                    'metadata_revision' => $page->metadata_revision,
-                    'tags' => array_map(
-                        static fn (Tag $tag): array => McpDataEnvelope::text($tag->name),
+                return new McpSearchResultView(
+                    uid: $page->uid,
+                    title: new McpUntrustedText($page->title),
+                    type: $page->type->value,
+                    status: $page->status->value,
+                    currentVersionUid: $page->current_version_uid,
+                    metadataRevision: $page->metadata_revision,
+                    tags: array_map(
+                        static fn (Tag $tag): McpUntrustedText => new McpUntrustedText($tag->name),
                         array_values($page->tags->all()),
                     ),
-                    'hierarchy' => $hierarchyByPageUid[$page->uid],
-                    'updated_at' => $page->updated_at?->toISOString(),
-                ];
-
-                if ($includeSnippet) {
-                    $payload['snippet'] = McpDataEnvelope::text($result->snippet);
-                }
-
-                return $payload;
+                    hierarchy: $hierarchyByPageUid[$page->uid],
+                    updatedAt: $page->updated_at?->toISOString(),
+                    snippet: $includeSnippet ? McpUntrustedText::fromNullable($result->snippet) : null,
+                );
             }, $results),
-        ]);
+        ));
     }
 }

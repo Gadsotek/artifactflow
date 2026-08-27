@@ -75,6 +75,13 @@ prompt/reasoning, credential, authorization, URL, and content-payload classes re
 Assertions are labelled self-reported and remain distinct from unverified MCP-reported client
 name/version metadata. Missing provenance creates no invented “unknown model” row.
 
+An MCP full read defines every visible producer assertion once in a deterministic `producers`
+catalog. Page-origin, direct-version, and effective-content-origin lineage use ordered producer UID
+references into that catalog. This changes only the response representation: evidence, precision,
+authorization, search, and retention semantics are unchanged. Present untrusted strings retain their
+complete field-level envelope, while absent optional description, change-summary, producer/client,
+and external-reference values are omitted instead of represented by empty envelopes.
+
 A restore creates a new version and records the selected source as derivation lineage. When the
 retained bytes match, the write also resolves and stores the root content-origin version so reads
 remain constant-cost even after a long equivalence chain. The user who restored content is
@@ -102,7 +109,7 @@ The retained payload is a normalized PNG or JPEG containing decoded pixels, not 
 
 Current image artifacts have no OCR or extracted text. Their searchable content is catalog metadata: title, editable description, category, tags, owner, status, and type. Replacing an image appends an immutable version, and restoring a historical image copies the selected normalized bytes exactly without another lossy JPEG generation.
 
-Previews use a fixed scriptless viewer on the separate artifact origin. MCP `read` returns normalized rasters up to the configured `ARTIFACT_MAX_BYTES` read limit (10 MiB by default, hard-capped at 64 MiB; base64 framing expands the response by roughly a third) as image content (`content_too_large` is returned before reading a derivative above that limit), and an authorized `update_description` call can revise only the page description when both the observed content-version UID and metadata revision remain current. MCP `create_image` and `replace_image` accept only canonical Base64 PNG/JPEG bytes under the combined page-operation and `mcp:upload` scopes, then use this same isolated normalization path; they do not fetch URLs or retain the submitted container. MCP image revert copies a retained normalized derivative exactly and therefore needs `mcp:update`, not `mcp:upload`.
+Previews use a fixed scriptless viewer on the separate artifact origin. An MCP content read returns normalized rasters up to the configured `ARTIFACT_MAX_BYTES` read limit (10 MiB by default, hard-capped at 64 MiB; base64 framing expands the response by roughly a third) as image content (`content_too_large` is returned before reading a derivative above that limit). A metadata-only read performs the same authorization but skips the raster read and makes no content-availability claim. An authorized `update_description` call can revise only the page description when both the observed content-version UID and metadata revision remain current: the first binds the description to the inspected pixels, and the second protects concurrent catalog edits. MCP `create_image` and `replace_image` accept only canonical Base64 PNG/JPEG bytes under the combined page-operation and `mcp:upload` scopes, then use this same isolated normalization path; they do not fetch URLs or retain the submitted container. MCP image revert copies a retained normalized derivative exactly and therefore needs `mcp:update`, not `mcp:upload`.
 
 ## PDF artifacts and DOCX direction
 

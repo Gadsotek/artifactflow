@@ -6,6 +6,29 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+### Changed
+
+- Refactored all MCP application tool inputs, success payloads, errors, and shared response shapes
+  into immutable named DTOs with one explicit whitelist-based wire encoder. Laravel schema/request
+  arrays and final JSON projections remain at the adapter edge; tool handlers no longer exchange
+  anonymous response arrays or accept the generic argument bag.
+- Advanced the MCP server contract from `0.6.0` to `0.7.0`. `read` now accepts optional `content`
+  and `provenance` sections, including an empty metadata-only selection that skips unrequested
+  storage/image/provenance work after normal authorization. Full reads still remain the default.
+- **Breaking alpha MCP response change:** full-read provenance now defines each assertion once in a
+  `producers` catalog and uses producer UID lists for page-origin, direct-version, and effective
+  content-origin lineage. The legacy repeated producer fields are not emitted in parallel. Absent
+  optional descriptions, change summaries, producer identities, MCP client fields, and external
+  reference values are now omitted instead of returned as empty untrusted-data envelopes; every
+  present untrusted value keeps its full field-level envelope.
+
+### Security
+
+- Preserved the same live token/page authorization, hierarchy non-disclosure, parser/format gates,
+  optimistic concurrency, scanning, event, and audit boundaries across selective reads and typed
+  payload construction. `update_description` deliberately retains both concurrency values: one
+  binds text to the observed content version and one protects concurrent metadata changes.
+
 ## v0.0.12 — 2026-08-25
 
 Security and deployment release. It makes the completed native-text PDF slice

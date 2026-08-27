@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Application\Mcp\Input\McpRevertInput;
 use App\Application\Mcp\McpAccessTokenIssuer;
 use App\Application\Mcp\McpRevertTool as Handler;
 use App\Application\Mcp\McpToolArguments;
@@ -24,9 +25,10 @@ final class RevertTool extends ArtifactFlowTool
         \App\Application\Mcp\McpRequestContext $mcpContext,
         \App\Application\Mcp\McpToolGuard $guard,
         \Illuminate\Http\Request $httpRequest,
+        \App\Application\Mcp\McpPayloadEncoder $payloadEncoder,
         private readonly Handler $handler,
     ) {
-        parent::__construct($mcpContext, $guard, $httpRequest);
+        parent::__construct($mcpContext, $guard, $httpRequest, $payloadEncoder);
     }
 
     /** @return array<string, \Illuminate\JsonSchema\Types\Type> */
@@ -49,7 +51,10 @@ final class RevertTool extends ArtifactFlowTool
             $request,
             McpAccessTokenIssuer::SCOPE_UPDATE,
             true,
-            fn (User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult => $this->handler->handle($actor, $arguments),
+            fn (User $actor, McpAccessToken $token, McpToolArguments $arguments): McpToolResult => $this->handler->handle(
+                $actor,
+                McpRevertInput::fromArguments($arguments),
+            ),
         );
     }
 }
