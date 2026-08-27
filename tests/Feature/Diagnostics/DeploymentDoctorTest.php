@@ -261,6 +261,9 @@ final class DeploymentDoctorTest extends TestCase
                         : 'database_limiter',
                     'image_parser.url' => '',
                     'image_parser.shared_secret' => '',
+                    'pdf_processor.url' => '',
+                    'pdf_processor.socket_path' => null,
+                    'pdf_processor.shared_secret' => '',
                 ],
             ))))->run();
 
@@ -935,6 +938,33 @@ final class DeploymentDoctorTest extends TestCase
             DoctorCheckStatus::Fail,
             $this->check($productionWorkerEnabled->checks, 'pdf_release_gate')->status,
         );
+    }
+
+    public function test_pdf_release_gate_rejects_connection_configuration_on_every_non_app_runtime_role(): void
+    {
+        foreach (['artifact-host', 'worker', 'scheduler'] as $runtimeRole) {
+            foreach ([
+                ['pdf_processor.url' => 'https://pdf-processor.internal:8443'],
+                ['pdf_processor.socket_path' => '/run/artifactflow/pdf-processor/processor.sock'],
+                ['pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32))],
+            ] as $connectionConfiguration) {
+                $report = (new DeploymentDoctor($this->config('production', [
+                    'app.runtime_role' => $runtimeRole,
+                    'pdf_processor.enabled' => false,
+                    'pdf_processor.url' => '',
+                    'pdf_processor.socket_path' => null,
+                    'pdf_processor.shared_secret' => '',
+                    ...$connectionConfiguration,
+                ])))->run();
+                $check = $this->check($report->checks, 'pdf_release_gate');
+
+                $this->assertSame(DoctorCheckStatus::Fail, $check->status, $runtimeRole);
+                $this->assertStringContainsString(
+                    'PDF_PROCESSOR_URL, PDF_PROCESSOR_SOCKET_PATH, and PDF_PROCESSOR_SHARED_SECRET',
+                    $check->detail,
+                );
+            }
+        }
     }
 
     public function test_non_delivering_or_unknown_mail_transport_fails_in_production_and_is_skipped_locally(): void

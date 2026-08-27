@@ -50,6 +50,8 @@ Unix-socket processor topology is unchanged.
 
 ### Fixed
 
+- Made production boot and `artifactflow:doctor` reject PDF processor URL,
+  socket, or credential configuration on every non-app runtime role.
 - Updated the application, isolated image-parser, and PDF processor OpenSSL
   packages to the Alpine revisions that fix CVE-2026-14456 and restored the
   production-image Trivy gate.

@@ -134,18 +134,33 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
-    public function test_non_app_runtime_roles_reject_the_pdf_processor_credential(): void
+    public function test_non_app_runtime_roles_reject_pdf_processor_connection_configuration(): void
     {
-        $this->configureSafeProductionValues();
-        config([
-            'app.runtime_role' => 'worker',
-            'image_parser.shared_secret' => '',
-            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
-        ]);
+        foreach (['artifact-host', 'worker', 'scheduler'] as $runtimeRole) {
+            foreach ([
+                ['pdf_processor.url' => 'https://pdf-processor.internal:8443'],
+                ['pdf_processor.socket_path' => '/run/artifactflow/pdf-processor/processor.sock'],
+                ['pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32))],
+            ] as $connectionConfiguration) {
+                $this->configureSafeProductionValues();
+                config([
+                    'app.runtime_role' => $runtimeRole,
+                    'image_parser.shared_secret' => '',
+                    'cache.limiter' => $runtimeRole === 'artifact-host'
+                        ? 'database_artifact_limiter'
+                        : 'database_limiter',
+                    'pdf_processor.enabled' => false,
+                    'pdf_processor.url' => '',
+                    'pdf_processor.socket_path' => null,
+                    'pdf_processor.shared_secret' => '',
+                    ...$connectionConfiguration,
+                ]);
 
-        $this->assertUnsafeConfiguration(
-            'PDF processor shared secret must not be available to non-app runtime roles.',
-        );
+                $this->assertUnsafeConfiguration(
+                    'PDF processor URL, socket path, and shared secret must not be available to non-app runtime roles.',
+                );
+            }
+        }
     }
 
     public function test_worker_and_scheduler_runtime_roles_cannot_enable_pdf_artifacts(): void
@@ -156,6 +171,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
                 'app.runtime_role' => $runtimeRole,
                 'image_parser.shared_secret' => '',
                 'pdf_processor.enabled' => true,
+                'pdf_processor.url' => '',
             ]);
 
             $this->assertUnsafeConfiguration(
@@ -243,6 +259,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
                 [
                     'app.runtime_role' => 'worker',
                     'image_parser.shared_secret' => '',
+                    'pdf_processor.url' => '',
                     'turnstile.site_key' => 'production-site-key',
                     'turnstile.secret_key' => 'production-secret-key',
                     'turnstile.expected_hostname' => 'app.example.test',
@@ -731,6 +748,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
         config([
             'app.runtime_role' => 'artifact-host',
             'image_parser.shared_secret' => null,
+            'pdf_processor.url' => '',
             'cache.limiter' => 'database_limiter',
             'cache.app_limiter' => 'database_limiter',
             'cache.artifact_limiter' => 'database_artifact_limiter',
@@ -1123,6 +1141,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
                     : 'database_limiter',
                 'image_parser.url' => '',
                 'image_parser.shared_secret' => '',
+                'pdf_processor.url' => '',
             ]);
 
             app(ProductionSecurityConfiguration::class)->ensureSafe();

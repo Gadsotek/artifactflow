@@ -248,9 +248,13 @@ final readonly class ProductionSecurityConfiguration
 
         $runtimeRole = $this->string('app.runtime_role');
 
-        if ($runtimeRole !== 'app' && $this->string('pdf_processor.shared_secret') !== '') {
+        if ($runtimeRole !== 'app' && (
+            $this->string('pdf_processor.url') !== ''
+            || $this->string('pdf_processor.socket_path') !== ''
+            || $this->string('pdf_processor.shared_secret') !== ''
+        )) {
             throw new RuntimeException(
-                'PDF processor shared secret must not be available to non-app runtime roles.',
+                'PDF processor URL, socket path, and shared secret must not be available to non-app runtime roles.',
             );
         }
 

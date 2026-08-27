@@ -110,11 +110,15 @@ final readonly class DeploymentDoctor
 
         $runtimeRole = $this->string('app.runtime_role');
 
-        if ($runtimeRole !== 'app' && $this->string('pdf_processor.shared_secret') !== '') {
+        if ($runtimeRole !== 'app' && (
+            $this->string('pdf_processor.url') !== ''
+            || $this->string('pdf_processor.socket_path') !== ''
+            || $this->string('pdf_processor.shared_secret') !== ''
+        )) {
             return $this->fail(
                 $id,
                 $label,
-                'Remove PDF_PROCESSOR_SHARED_SECRET from every non-app runtime role.',
+                'Remove PDF_PROCESSOR_URL, PDF_PROCESSOR_SOCKET_PATH, and PDF_PROCESSOR_SHARED_SECRET from every non-app runtime role.',
             );
         }
 
