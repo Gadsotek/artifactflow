@@ -9,6 +9,6 @@
     "node": ">=20.18.1"
   },
   "dependencies": {
-    "mcp-remote": "0.2.1"
+    "mcp-remote": "0.8.1"
   }
 }
