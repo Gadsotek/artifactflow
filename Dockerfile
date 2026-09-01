@@ -180,6 +180,7 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 WORKDIR /go/src/app/caddy
 
 RUN go version | grep -E '^go version go1\.26\.6[[:space:]]' \
+    && go get golang.org/x/crypto@v0.55.0 \
     && go get google.golang.org/grpc@v1.82.1 \
     && go get github.com/getkin/kin-openapi@v0.144.0 \
     && go mod tidy
@@ -192,7 +193,9 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.82\.1' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.144\.0'
+        | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.144\.0' \
+    && go version -m /usr/local/bin/frankenphp \
+        | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.55\.0'
 
 FROM dunglas/frankenphp:1-php8.5-alpine@sha256:def035e964f46253cb5e46a1f9a4633370f658b8e410305e0730ce7247d0ab6a AS production
 

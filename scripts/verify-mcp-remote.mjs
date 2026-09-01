@@ -3,12 +3,12 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const EXPECTED_VERSION = '0.2.1';
+const EXPECTED_VERSION = '0.8.2';
 const EXPECTED_NODE_RANGE = '>=20.18.1';
-const EXPECTED_LOCK_SHA256 = 'b97684e30eabf216ede47d4cf20d4f2f75026277dc0bbf42e55808fc2262a768';
+const EXPECTED_LOCK_SHA256 = '57377bfe3b15e87873edbfd5ff07dffe750baad1a44748df2c977189b57e9b92';
 const MINIMUM_NODE_VERSION = [20, 18, 1];
 const EXPECTED_INTEGRITY =
-  'sha512-YgUAt8911M+kG7XGipuLeKHPKwX4rA8o2xybxF3RsLhdf+fvCueowR8CnznD/OqvYb00egQ90ymGQcqgi6DWwQ==';
+  'sha512-8wGCVQckLvW+ONz0tc11henp73lbbrt7QOTH7w6qusCpcY+zNSKwBfXF1Mx2xu6z8ncLqLxE1H1CMBCJCx9lcA==';
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const bridgeDirectory = resolve(repositoryRoot, 'scripts/mcp-remote-bridge');
 const lockPath = resolve(bridgeDirectory, 'package-lock.json');
