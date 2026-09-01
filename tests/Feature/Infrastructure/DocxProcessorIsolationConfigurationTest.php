@@ -22,6 +22,13 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('ARG LIBREOFFICE_VERSION=26.2.5', $dockerfile);
         $this->assertStringContainsString('LIBREOFFICE_AMD64_SHA256', $dockerfile);
         $this->assertStringContainsString('LIBREOFFICE_ARM64_SHA256', $dockerfile);
+        $this->assertStringContainsString('lo_directory=x86_64; lo_archive_arch=x86-64;', $dockerfile);
+        $this->assertStringContainsString('lo_directory=aarch64; lo_archive_arch=aarch64;', $dockerfile);
+        $this->assertStringContainsString(
+            'LibreOffice_${LIBREOFFICE_VERSION}_Linux_${lo_archive_arch}_deb.tar.gz',
+            $dockerfile,
+        );
+        $this->assertStringContainsString('/deb/${lo_directory}/${archive}', $dockerfile);
         $this->assertStringContainsString('USER docx-processor', $dockerfile);
         $this->assertStringNotContainsString('COPY app ', $dockerfile);
         $this->assertStringNotContainsString('COPY . ', $dockerfile);

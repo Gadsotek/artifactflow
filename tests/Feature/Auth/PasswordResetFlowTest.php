@@ -14,6 +14,7 @@ use App\Models\TrustedDevice;
 use App\Models\User;
 use App\Notifications\ResetPasswordNotification;
 use Illuminate\Auth\Notifications\ResetPassword as BaseResetPasswordNotification;
+use Illuminate\Auth\Passwords\PasswordBroker;
 use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Events\QueryExecuted;
@@ -109,7 +110,7 @@ final class PasswordResetFlowTest extends TestCase
             'payload' => 'payload',
             'last_activity' => time(),
         ]);
-        $token = Password::broker()->createToken($user);
+        $token = $this->passwordBroker()->createToken($user);
 
         $this->post('/reset-password', [
             'token' => $token,
@@ -175,7 +176,7 @@ final class PasswordResetFlowTest extends TestCase
     public function test_password_reset_locks_the_token_until_the_password_change_and_consumption_commit(): void
     {
         $user = $this->createUser('Locked Reset User', 'locked-reset@example.test', 'old secure password');
-        $token = Password::broker()->createToken($user);
+        $token = $this->passwordBroker()->createToken($user);
         $events = [];
 
         DB::listen(function (QueryExecuted $query) use (&$events, $user): void {
@@ -233,7 +234,7 @@ final class PasswordResetFlowTest extends TestCase
     {
         config(['auth.passwords.users.expire' => 1]);
         $user = $this->createUser('Reset User', 'expired-reset@example.test', 'old secure password');
-        $token = Password::broker()->createToken($user);
+        $token = $this->passwordBroker()->createToken($user);
 
         $this->travel(2)->minutes();
 
@@ -322,7 +323,7 @@ final class PasswordResetFlowTest extends TestCase
     public function test_short_password_is_rejected_without_consuming_the_token(): void
     {
         $user = $this->createUser('Reset User', 'short-reset-flow@example.test', 'old secure password');
-        $token = Password::broker()->createToken($user);
+        $token = $this->passwordBroker()->createToken($user);
 
         $this->post('/reset-password', [
             'token' => $token,
@@ -333,7 +334,7 @@ final class PasswordResetFlowTest extends TestCase
             ->assertRedirect()
             ->assertSessionHasErrors('password');
 
-        $this->assertTrue(Password::broker()->tokenExists($user, $token));
+        $this->assertTrue($this->passwordBroker()->tokenExists($user, $token));
         $this->assertTrue(Hash::check('old secure password', $user->refresh()->password));
     }
 
@@ -392,6 +393,14 @@ final class PasswordResetFlowTest extends TestCase
 
         $this->assertNotFalse($parent);
         $this->assertSame(BaseResetPasswordNotification::class, $parent->getName());
+    }
+
+    private function passwordBroker(): PasswordBroker
+    {
+        $broker = Password::broker();
+        $this->assertInstanceOf(PasswordBroker::class, $broker);
+
+        return $broker;
     }
 
     private function createUser(string $name, string $email, string $password): User

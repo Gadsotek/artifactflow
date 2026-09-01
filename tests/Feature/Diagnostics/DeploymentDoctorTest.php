@@ -865,14 +865,17 @@ final class DeploymentDoctorTest extends TestCase
             $this->check($local->checks, 'pdf_release_gate')->status,
         );
 
-        $productionEnabled = (new DeploymentDoctor($this->config('production', [
-            'pdf_processor.enabled' => true,
-            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
-            'pdf_processor.socket_path' => null,
-            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
-            'pdf_processor.connect_timeout_seconds' => 2,
-            'pdf_processor.timeout_seconds' => 15,
-        ])))->run();
+        $productionEnabled = (new DeploymentDoctor(
+            $this->config('production', [
+                'pdf_processor.enabled' => true,
+                'pdf_processor.url' => 'https://pdf-processor.internal:8443',
+                'pdf_processor.socket_path' => null,
+                'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+                'pdf_processor.connect_timeout_seconds' => 2,
+                'pdf_processor.timeout_seconds' => 15,
+            ]),
+            processorHealthProbe: $this->healthyProcessorHealthProbe(),
+        ))->run();
         $this->assertSame(
             DoctorCheckStatus::Pass,
             $this->check($productionEnabled->checks, 'pdf_release_gate')->status,
@@ -890,14 +893,17 @@ final class DeploymentDoctorTest extends TestCase
         $this->assertSame(DoctorCheckStatus::Fail, $plaintextCheck->status);
         $this->assertStringContainsString('HTTPS', $plaintextCheck->detail);
 
-        $productionUnixSocket = (new DeploymentDoctor($this->config('production', [
-            'pdf_processor.enabled' => true,
-            'pdf_processor.url' => 'http://localhost',
-            'pdf_processor.socket_path' => '/run/artifactflow/pdf-processor/processor.sock',
-            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
-            'pdf_processor.connect_timeout_seconds' => 2,
-            'pdf_processor.timeout_seconds' => 15,
-        ])))->run();
+        $productionUnixSocket = (new DeploymentDoctor(
+            $this->config('production', [
+                'pdf_processor.enabled' => true,
+                'pdf_processor.url' => 'http://localhost',
+                'pdf_processor.socket_path' => '/run/artifactflow/pdf-processor/processor.sock',
+                'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+                'pdf_processor.connect_timeout_seconds' => 2,
+                'pdf_processor.timeout_seconds' => 15,
+            ]),
+            processorHealthProbe: $this->healthyProcessorHealthProbe(),
+        ))->run();
         $this->assertSame(
             DoctorCheckStatus::Pass,
             $this->check($productionUnixSocket->checks, 'pdf_release_gate')->status,
@@ -970,6 +976,26 @@ final class DeploymentDoctorTest extends TestCase
                 );
             }
         }
+    }
+
+    public function test_pdf_release_gate_fails_when_the_authenticated_live_probe_fails(): void
+    {
+        $report = (new DeploymentDoctor(
+            $this->config('production', [
+                'pdf_processor.enabled' => true,
+                'pdf_processor.url' => 'https://pdf-processor.internal:8443',
+                'pdf_processor.socket_path' => null,
+                'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+                'pdf_processor.connect_timeout_seconds' => 2,
+                'pdf_processor.timeout_seconds' => 15,
+            ]),
+            processorHealthProbe: $this->processorHealthProbeFailing('pdf'),
+        ))->run();
+        $check = $this->check($report->checks, 'pdf_release_gate');
+
+        $this->assertSame(DoctorCheckStatus::Fail, $check->status);
+        $this->assertStringContainsString('Authenticated PDF health challenge failed', $check->detail);
+        $this->assertStringContainsString('test PDF failure', $check->detail);
     }
 
     public function test_xlsx_release_gate_reports_enabled_and_fail_closed_production_states(): void

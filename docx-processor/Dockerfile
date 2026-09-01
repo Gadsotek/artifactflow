@@ -19,13 +19,13 @@ RUN unlink /usr/bin/pebble \
         libxext6 libxinerama1 php8.5-cli php8.5-xml php8.5-zip socat util-linux \
     && platform_arch="${TARGETARCH:-$(dpkg --print-architecture)}" \
     && case "${platform_arch}" in \
-        amd64) lo_arch=x86_64; lo_sha="${LIBREOFFICE_AMD64_SHA256}" ;; \
-        arm64) lo_arch=aarch64; lo_sha="${LIBREOFFICE_ARM64_SHA256}" ;; \
+        amd64) lo_directory=x86_64; lo_archive_arch=x86-64; lo_sha="${LIBREOFFICE_AMD64_SHA256}" ;; \
+        arm64) lo_directory=aarch64; lo_archive_arch=aarch64; lo_sha="${LIBREOFFICE_ARM64_SHA256}" ;; \
         *) echo "Unsupported DOCX processor architecture: ${platform_arch}" >&2; exit 1 ;; \
        esac \
-    && archive="LibreOffice_${LIBREOFFICE_VERSION}_Linux_${lo_arch}_deb.tar.gz" \
+    && archive="LibreOffice_${LIBREOFFICE_VERSION}_Linux_${lo_archive_arch}_deb.tar.gz" \
     && curl --fail --location --proto '=https' --tlsv1.2 \
-        "https://download.documentfoundation.org/libreoffice/stable/${LIBREOFFICE_VERSION}/deb/${lo_arch}/${archive}" \
+        "https://download.documentfoundation.org/libreoffice/stable/${LIBREOFFICE_VERSION}/deb/${lo_directory}/${archive}" \
         --output "/tmp/${archive}" \
     && echo "${lo_sha}  /tmp/${archive}" | sha256sum -c - \
     && mkdir /tmp/libreoffice-debs \

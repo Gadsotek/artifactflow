@@ -233,8 +233,19 @@ final readonly class DeploymentDoctor
             );
         }
 
+        $health = $this->processorHealthProbe->pdf(new ProcessorHealthTarget(
+            origin: $origin->compact(),
+            socketPath: $this->optionalSocketPath('pdf_processor.socket_path'),
+            sharedSecret: $secret,
+            connectTimeoutSeconds: $connectTimeout,
+            timeoutSeconds: $requestTimeout,
+        ));
+        if (!$health->healthy) {
+            return $this->fail($id, $label, 'Authenticated PDF health challenge failed: ' . $health->detail);
+        }
+
         return $this->pass($id, $label, sprintf(
-            'Processor origin is %s with dedicated authentication and bounded timeouts.',
+            'Processor origin is %s with dedicated authentication, bounded timeouts, and a passing live profile/containment check.',
             $origin->compact(),
         ));
     }

@@ -507,6 +507,13 @@ the [XLSX](architecture/xlsx-artifacts.md) and
 [DOCX](architecture/docx-artifacts.md) decisions for the accepted content and
 preview profiles.
 
+The migration that introduces XLSX and DOCX support refuses to roll back while
+either page type still exists. This is deliberate: automatically deleting those
+pages or relabelling their retained originals would be silent data loss. Before
+downgrading to a release without Office artifacts, deliberately export or delete
+every XLSX and DOCX page, verify the retained artifacts are no longer required,
+and only then run the approved migration rollback.
+
 The same production image runs every role. `APP_RUNTIME_ROLE` selects the HTTP surface
 (app vs. artifact host) and is validated by the boot gate, but it does **not** by itself
 change the container's process: the default entrypoint (`docker/start-production.sh`)

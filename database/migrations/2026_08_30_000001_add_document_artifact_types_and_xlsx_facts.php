@@ -150,6 +150,12 @@ return new class() extends Migration {
 
     public function down(): void
     {
+        if (DB::table('pages')->whereIn('type', ['xlsx', 'docx'])->exists()) {
+            throw new \RuntimeException(
+                'Cannot roll back XLSX/DOCX support while Office artifact pages exist. Delete those pages deliberately before retrying the downgrade.',
+            );
+        }
+
         Schema::dropIfExists('docx_version_facts');
         Schema::dropIfExists('xlsx_version_facts');
         Schema::dropIfExists('page_version_derivatives');
