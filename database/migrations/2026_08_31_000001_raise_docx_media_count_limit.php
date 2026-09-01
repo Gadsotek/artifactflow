@@ -28,9 +28,9 @@ return new class() extends Migration {
                 . 'package_entry_count BETWEEN 1 AND 2000 '
                 . 'AND expanded_bytes BETWEEN 1 AND 67108864 '
                 . 'AND relationship_count <= 4000 '
-                . 'AND media_count <= 100 '
+                . 'AND media_count <= 1024 '
                 . 'AND external_hyperlink_count <= 1000 '
-                . 'AND page_count BETWEEN 1 AND 250) NOT VALID',
+                . 'AND page_count BETWEEN 1 AND 250)',
         );
     }
 };

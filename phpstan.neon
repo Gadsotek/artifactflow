@@ -13,4 +13,6 @@ parameters:
     - tests
     - image-parser
     - pdf-processor-spike/src/PdfProcessor.php
+  parallel:
+    maximumNumberOfProcesses: 4
   tmpDir: storage/phpstan

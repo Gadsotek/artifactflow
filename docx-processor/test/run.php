@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use ArtifactFlow\DocxProcessor\DocxPackageInspector;
 use ArtifactFlow\DocxProcessor\DocxConversionSanitizer;
+use ArtifactFlow\DocxProcessor\LibreOfficeConverter;
 use ArtifactFlow\DocxProcessor\ProcessorAuthenticationFailure;
 use ArtifactFlow\DocxProcessor\ProcessorConfiguration;
 use ArtifactFlow\DocxProcessor\ProcessorHealthRequest;
@@ -956,5 +957,32 @@ try {
 } catch (ProcessorAuthenticationFailure) {
     // Expected.
 }
+
+$lateMarker = tempnam('/tmp', 'artifactflow-docx-timeout-');
+assertTrue(is_string($lateMarker), 'Could not allocate the DOCX timeout marker.');
+assertTrue(unlink($lateMarker), 'Could not prepare the DOCX timeout marker.');
+$run = new ReflectionMethod(LibreOfficeConverter::class, 'run');
+$startedAt = microtime(true);
+try {
+    $run->invoke(
+        new LibreOfficeConverter(),
+        ['/bin/sh', '-c', '(sleep 3; printf late > ' . escapeshellarg($lateMarker) . ') & wait'],
+        1,
+    );
+    throw new RuntimeException('A hung DOCX converter process did not time out.');
+} catch (ProcessorUnavailable $exception) {
+    assertTrue(
+        $exception->getMessage() === 'DOCX conversion exceeded its wall-clock deadline.',
+        'The hung DOCX converter did not return the bounded timeout failure.',
+    );
+}
+$elapsed = microtime(true) - $startedAt;
+assertTrue($elapsed < 2.5, 'The DOCX converter timeout blocked while closing its child process.');
+usleep(2_250_000);
+$lateWriteOccurred = file_exists($lateMarker);
+if ($lateWriteOccurred) {
+    unlink($lateMarker);
+}
+assertTrue(!$lateWriteOccurred, 'A descendant survived the DOCX converter process-group timeout.');
 
 echo "DOCX processor contract tests passed\n";

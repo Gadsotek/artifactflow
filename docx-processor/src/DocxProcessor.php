@@ -2290,7 +2290,6 @@ final readonly class LibreOfficeConverter
             $filter = 'pdf:writer_pdf_Export:{"ExportBookmarks":{"type":"boolean","value":"true"},"ExportLinksRelativeFsys":{"type":"boolean","value":"false"},"UseTaggedPDF":{"type":"boolean","value":"true"}}';
             $profileUrl = 'file://' . $profileDirectory;
             $this->run([
-                '/usr/bin/setsid',
                 '/opt/libreoffice26.2/program/soffice',
                 '--headless',
                 '--nologo',
@@ -2336,11 +2335,15 @@ final readonly class LibreOfficeConverter
     }
 
     /** @param non-empty-list<string> $command */
-    private function run(array $command): string
+    private function run(array $command, int $timeoutSeconds = self::TIMEOUT_SECONDS): string
     {
+        if ($timeoutSeconds < 1 || $timeoutSeconds > self::TIMEOUT_SECONDS) {
+            throw new ProcessorUnavailable('DOCX converter timeout configuration is invalid.');
+        }
+
         $pipes = [];
         $process = proc_open(
-            $command,
+            ['/usr/bin/setsid', ...$command],
             [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             null,
@@ -2362,7 +2365,7 @@ final readonly class LibreOfficeConverter
         stream_set_blocking($pipes[2], false);
         $stdout = '';
         $stderr = '';
-        $deadline = microtime(true) + self::TIMEOUT_SECONDS;
+        $deadline = microtime(true) + $timeoutSeconds;
         $pid = null;
         $exitCode = -1;
 
@@ -2382,18 +2385,13 @@ final readonly class LibreOfficeConverter
                 }
 
                 if (microtime(true) >= $deadline) {
-                    if (is_int($pid)) {
-                        posix_kill(-$pid, SIGKILL);
-                    }
                     throw new ProcessorUnavailable('DOCX conversion exceeded its wall-clock deadline.');
                 }
 
                 usleep(10_000);
             }
         } catch (Throwable $exception) {
-            if (is_int($pid)) {
-                posix_kill(-$pid, SIGKILL);
-            } else {
+            if (!is_int($pid) || !posix_kill(-$pid, SIGKILL)) {
                 proc_terminate($process, SIGKILL);
             }
 

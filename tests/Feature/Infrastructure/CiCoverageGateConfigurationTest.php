@@ -8,6 +8,16 @@ use Tests\TestCase;
 
 final class CiCoverageGateConfigurationTest extends TestCase
 {
+    public function test_phpstan_parallelism_is_bounded_for_ci_memory(): void
+    {
+        $configuration = $this->readProjectFile('phpstan.neon');
+
+        $this->assertStringContainsString(
+            "  parallel:\n    maximumNumberOfProcesses: 4",
+            $configuration,
+        );
+    }
+
     public function test_makefile_exposes_type_and_line_coverage_through_the_isolated_test_wrapper(): void
     {
         $makefile = $this->readProjectFile('Makefile');

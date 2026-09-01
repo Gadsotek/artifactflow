@@ -7,6 +7,7 @@ namespace Tests\Feature\PageCatalog;
 use App\Domain\PageCatalog\PageType;
 use App\Models\Page;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use ReflectionMethod;
 use RuntimeException;
@@ -54,5 +55,26 @@ final class OfficeArtifactMigrationRollbackTest extends TestCase
         $this->assertTrue(Schema::hasTable('docx_version_facts'));
         $this->assertTrue($xlsx->fresh()?->type === PageType::Xlsx);
         $this->assertTrue($docx->fresh()?->type === PageType::Docx);
+    }
+
+    public function test_media_count_limit_rollback_restores_the_preceding_validated_constraint(): void
+    {
+        $migration = require database_path('migrations/2026_08_31_000001_raise_docx_media_count_limit.php');
+        $this->assertIsObject($migration);
+
+        (new ReflectionMethod($migration, 'down'))->invoke($migration);
+
+        $constraint = DB::table('pg_constraint')
+            ->selectRaw('pg_get_constraintdef(oid) AS definition, convalidated AS validated')
+            ->whereRaw("conrelid = 'docx_version_facts'::regclass")
+            ->where('conname', 'docx_version_facts_counts_check')
+            ->first();
+        $this->assertNotNull($constraint);
+
+        $definition = $constraint->definition ?? null;
+        $validated = $constraint->validated ?? null;
+        $this->assertIsString($definition);
+        $this->assertMatchesRegularExpression('/media_count <= 1024/u', $definition);
+        $this->assertTrue($validated === true);
     }
 }
