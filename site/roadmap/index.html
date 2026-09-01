@@ -3,19 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ArtifactFlow Roadmap | PDF Opt-in, Word Next</title>
-<meta name="description" content="ArtifactFlow's public direction: the shipped alpha with nested workspaces and opt-in native-text PDF artifacts, with Word documents and PDF OCR later.">
+<title>ArtifactFlow Roadmap | Governed Document Formats</title>
+<meta name="description" content="ArtifactFlow's public direction: the shipped alpha, nested workspaces, and default-off searchable PDF, Excel, and Word artifacts, with PDF OCR later.">
 <link rel="canonical" href="https://artifactflow.app/roadmap/">
-<meta property="og:title" content="ArtifactFlow Roadmap | PDF Opt-in, Word Next">
-<meta property="og:description" content="Shipped alpha boundaries, released nested workspaces, opt-in native-text PDF artifacts, and the proof required before ArtifactFlow expands.">
+<meta property="og:title" content="ArtifactFlow Roadmap | Governed Document Formats">
+<meta property="og:description" content="Shipped alpha boundaries, released nested workspaces, default-off searchable PDF, XLSX, and DOCX artifacts, and their production-enablement proof.">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://artifactflow.app/roadmap/">
 <meta property="og:site_name" content="ArtifactFlow">
 <meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="ArtifactFlow Roadmap | PDF Opt-in, Word Next">
-<meta name="twitter:description" content="Direction without invented dates: nested workspaces and opt-in native-text PDF shipped; DOCX and PDF OCR remain later.">
+<meta name="twitter:title" content="ArtifactFlow Roadmap | Governed Document Formats">
+<meta name="twitter:description" content="Direction without invented dates: nested workspaces and opt-in native-text PDF shipped; default-off XLSX and DOCX are implemented; PDF OCR remains later.">
 <meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
@@ -28,7 +28,7 @@
   "@context": "https://schema.org",
   "@type": "WebPage",
   "name": "ArtifactFlow Roadmap",
-  "description": "Shipped alpha boundaries, released nested workspaces, opt-in native-text PDF artifacts, and required security proof.",
+  "description": "Shipped alpha boundaries, released nested workspaces, default-off searchable PDF, XLSX, and DOCX artifacts, and required security proof.",
   "url": "https://artifactflow.app/roadmap/",
   "isPartOf": { "@id": "https://artifactflow.app/#website" }
 }
@@ -59,7 +59,7 @@
     <div class="shell">
       <p class="eyebrow">Product direction</p>
       <h1>Build the boundary before expanding the surface.</h1>
-      <p class="lede">Direction, not a release promise. Three-level nested shared workspaces shipped in v0.0.9. Searchable, versioned native-text PDF artifacts are now a default-off production opt-in; Word documents follow only after the PDF processing boundary is proven.</p>
+      <p class="lede">Direction, not a release promise. Three-level nested shared workspaces shipped in v0.0.9. Searchable, versioned PDF, Excel, and Word artifacts are implemented behind independent default-off processor and production-evidence gates.</p>
       <div class="detail-actions">
         <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/ROADMAP.md">Read the source roadmap ↗</a>
         <a class="button" href="https://github.com/Gadsotek/artifactflow/releases">View releases ↗</a>
@@ -79,9 +79,10 @@
             <li><strong>Visible page hierarchy</strong>The Library, Overview, page detail, and MCP expose authorization-filtered parent and child context within one workspace.</li>
             <li><strong>Normalized raster images</strong>PNG/JPEG uploads cross an isolated parser boundary and retain only re-encoded pixels.</li>
             <li><strong>Opt-in searchable PDFs</strong>Native-text PDFs retain private originals, extract bounded untrusted text in a dedicated processor, and use native artifact-origin viewing.</li>
+            <li><strong>Default-off Excel and Word</strong>XLSX uses a bounded typed visible-cell projection; DOCX uses only an independently validated searchable PDF derivative. Both retain exact private originals.</li>
             <li><strong>Nested shared workspaces</strong>Root, child, and grandchild workspaces preserve exact content boundaries while parent authority flows through explicit inheritance rules.</li>
             <li><strong>Isolated HTML execution</strong>Generated HTML runs on the separate artifact origin under the documented iframe, CSP, and signed-preview boundary.</li>
-            <li><strong>Scoped MCP access</strong>Nine operations cover workspace discovery, taxonomy, search, read, create, update, and revert without granting preview capabilities.</li>
+            <li><strong>Scoped MCP access</strong>Dedicated discovery, search, read, create, replace, organize, revert, description, and sharing tools reuse live application authorization without granting preview capabilities.</li>
           </ul>
           <div class="callout">
             <strong>Workspace libraries stay exact</strong>
@@ -116,8 +117,8 @@
         </section>
 
         <section id="documents">
-          <p class="kicker">Document formats</p>
-          <h2>Searchable PDF is opt-in; Word follows.</h2>
+          <p class="kicker">Default-off document formats</p>
+          <h2>PDF, Excel, and Word join the same governed vault.</h2>
           <div class="split-cards">
             <article class="split-card">
               <h3>Searchable PDF artifacts</h3>
@@ -125,15 +126,23 @@
               <a class="roadmap-issue-link" href="https://github.com/Gadsotek/artifactflow/issues/32">Track PDF issue #32 ↗</a>
             </article>
             <article class="split-card">
+              <h3>Searchable Excel workbooks</h3>
+              <p>XLSX retains the exact private original while a networkless SheetJS CE processor emits only a bounded typed projection. Search and the application-owned typed viewer receive visible cells and cached formula results, never executable workbook HTML or original workbook bytes.</p>
+            </article>
+            <article class="split-card">
               <h3>Searchable Word documents</h3>
-              <p>Modern DOCX files would keep their private original, extracted searchable text, safe non-executable preview, and immutable replacements under strict ZIP and parser limits.</p>
+              <p>Modern DOCX files keep their exact private original and immutable replacements. A networkless LibreOffice conversion becomes previewable and searchable only after the separate PDF processor accepts an independently validated passive PDF with native selectable text.</p>
               <a class="roadmap-issue-link" href="https://github.com/Gadsotek/artifactflow/issues/33">Track Word issue #33 ↗</a>
             </article>
+          </div>
+          <div class="callout">
+            <strong>Implemented behind explicit production gates</strong>
+            <p>Each format remains default-off. Operators must pin and scan its dedicated processor image, prove containment and browser behavior, and complete the evidence-first review before enabling it.</p>
           </div>
         </section>
 
         <section id="proof">
-          <p class="kicker">Before PDF production enablement</p>
+          <p class="kicker">Before document production enablement</p>
           <h2>Scheduling follows proof, not the other way around.</h2>
           <ol class="flow-steps">
             <li>Write the product rule and architecture decision before changing schema or authorization behavior.</li>
@@ -174,8 +183,8 @@
         <a href="#now">Available now</a>
         <a href="#sharing">External sharing</a>
         <a href="#beta">Nested workspaces</a>
-        <a href="#documents">PDF next</a>
-        <a href="#proof">Before PDF release</a>
+        <a href="#documents">Document formats</a>
+        <a href="#proof">Enablement proof</a>
         <a href="#not-promised">Explicitly not promised</a>
         <a href="#source">Source of truth</a>
       </aside>

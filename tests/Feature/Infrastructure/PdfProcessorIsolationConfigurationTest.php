@@ -151,7 +151,10 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('in_array($remoteAddress, $loopbackAddresses, true)', $index);
         $this->assertStringNotContainsString('HTTP_X_FORWARDED_FOR', $index);
         $this->assertStringContainsString('ProcessorHealthRequest::fromGlobals', $index);
-        $this->assertStringContainsString('$path !== \'/v1/inspect\'', $index);
+        $this->assertStringContainsString(
+            "in_array(\$path, ['/v1/inspect', '/v1/inspect-docx-preview'], true)",
+            $index,
+        );
         $this->assertStringContainsString('ProcessorRequest::fromGlobals', $index);
         $this->assertStringContainsString('PdfBoxEngine::production()', $index);
         $this->assertStringContainsString('->signature($request, $configuration->sharedSecret)', $index);
@@ -170,7 +173,11 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringNotContainsString('PdfBoxEngine::production()->verifyHealth()', $healthcheck);
         $this->assertStringContainsString('unix://', $healthcheck);
 
-        $serviceTest = $this->afterNeedle($makefile, 'pdf-processor-service-test:');
+        $serviceTest = explode(
+            'pdf-processor-private-service-build:',
+            $this->afterNeedle($makefile, 'pdf-processor-service-test:'),
+            2,
+        )[0];
         $this->assertStringContainsString('docker run -d --name "$$processor_container"', $serviceTest);
         $this->assertStringContainsString('.State.Health.Status', $serviceTest);
         $this->assertStringNotContainsString('--entrypoint php', $serviceTest);
@@ -223,7 +230,11 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('GET /health HTTP/1.1', $healthcheck);
         $this->assertStringContainsString('{"status":"ok"}', $healthcheck);
 
-        $privateTest = $this->afterNeedle($makefile, 'pdf-processor-private-service-test:');
+        $privateTest = explode(
+            'xlsx-processor-service-build:',
+            $this->afterNeedle($makefile, 'pdf-processor-private-service-test:'),
+            2,
+        )[0];
         $this->assertStringContainsString('--target pdf-processor-private-service', $makefile);
         $this->assertStringContainsString('--cap-drop ALL', $privateTest);
         $this->assertStringContainsString('--security-opt no-new-privileges', $privateTest);

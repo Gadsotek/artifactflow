@@ -20,13 +20,16 @@ use App\Application\PageCatalog\RevertToPreviousVersionCommand;
 use App\Application\PageCatalog\UpdatePageContent;
 use App\Application\PageCatalog\UpdatePageContentCommand;
 use App\Domain\DomainRuleViolation;
+use App\Domain\PageCatalog\ArtifactDerivativeKind;
 use App\Domain\PageCatalog\PageType;
 use App\Models\Page;
 use App\Models\PageVersion;
+use App\Models\PageVersionDerivative;
 use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Testing\PendingCommand;
 use Tests\TestCase;
 
@@ -249,6 +252,37 @@ final class WorkspaceStorageCounterTest extends TestCase
         $this->assertSame(9, $this->usedStorageBytes($workspace->uid));
     }
 
+    public function test_recount_storage_includes_artifact_derivatives(): void
+    {
+        Storage::fake('artifacts');
+
+        $editor = $this->createEditor('counter-recount-derivative@example.test');
+        $workspace = app(CreateSharedWorkspace::class)->handle($editor, 'Derivative Recount Team');
+        $page = $this->createMarkdownPage($editor, $workspace->uid, 'Derivative Recount Page', '123456789');
+        $version = PageVersion::query()->whereKey($page->current_version_uid)->sole();
+        $derivativeBytes = 'derived-bytes';
+
+        PageVersionDerivative::query()->forceCreate([
+            'uid' => (string) Str::ulid(),
+            'page_version_uid' => $version->uid,
+            'kind' => ArtifactDerivativeKind::XlsxManifest,
+            'storage_path' => sprintf('pages/%s/versions/1-%s/manifest.json', $page->uid, $version->uid),
+            'content_hash' => hash('sha256', $derivativeBytes),
+            'byte_size' => strlen($derivativeBytes),
+        ]);
+        Workspace::query()->whereKey($workspace->uid)->update(['used_storage_bytes' => 999999]);
+
+        $this->runConsoleCommand('artifactflow:recount-storage')
+            ->expectsOutputToContain('corrected=1')
+            ->assertExitCode(0);
+
+        $this->assertSame(9 + strlen($derivativeBytes), $this->usedStorageBytes($workspace->uid));
+
+        $this->runConsoleCommand('artifactflow:recount-storage')
+            ->expectsOutputToContain('corrected=0')
+            ->assertExitCode(0);
+    }
+
     private function createEditor(string $email): User
     {
         return app(CreateUser::class)->handle('Counter User', $email, 'correct horse battery staple');
@@ -274,12 +308,17 @@ final class WorkspaceStorageCounterTest extends TestCase
 
     private function assertCounterMatchesVersionSum(string $workspaceUid): void
     {
-        $actualBytes = (int) PageVersion::query()
+        $versionBytes = (int) PageVersion::query()
             ->join('pages', 'page_versions.page_uid', '=', 'pages.uid')
             ->where('pages.workspace_uid', $workspaceUid)
             ->sum('page_versions.byte_size');
+        $derivativeBytes = (int) PageVersionDerivative::query()
+            ->join('page_versions', 'page_version_derivatives.page_version_uid', '=', 'page_versions.uid')
+            ->join('pages', 'page_versions.page_uid', '=', 'pages.uid')
+            ->where('pages.workspace_uid', $workspaceUid)
+            ->sum('page_version_derivatives.byte_size');
 
-        $this->assertSame($actualBytes, $this->usedStorageBytes($workspaceUid));
+        $this->assertSame($versionBytes + $derivativeBytes, $this->usedStorageBytes($workspaceUid));
     }
 
     /**

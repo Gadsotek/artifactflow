@@ -46,9 +46,24 @@ make ecs          # coding standard (PHP CS Fixer / ECS)
 make stan         # Larastan at max level (empty baseline; new errors block)
 make test         # Pest/PHPUnit on an isolated Postgres DB (TEST_FILTER=Name to focus)
 make e2e          # Playwright end-to-end (once, before the first run: make e2e-install)
-make audit        # composer audit + npm audit + pinned-sanitizer guard
+make audit        # advisories + pinned-sanitizer and dependency-license guards
 make build-prod   # production image builds
 ```
+
+Office-format changes also require the processor-local contracts and the
+production-image runtime proofs wired into the Makefile:
+
+```bash
+npm --prefix xlsx-processor-spike test
+npm --prefix xlsx-viewer-spike test
+make xlsx-processor-service-test
+make docx-processor-test
+```
+
+DOCX changes must additionally prove a real LibreOffice conversion and submit
+that exact PDF to the PDF processor's DOCX-preview profile;
+`make docx-processor-test` includes that chain. Never run either parser in the
+Laravel container merely to simplify a test.
 
 The complete browser suite runs on Chromium. Artifact-boundary regressions whose correctness
 depends on browser enforcement or engine-specific behavior must include `@artifact-security` in
@@ -60,6 +75,8 @@ the manual Safari/iOS release pass remains required.
 
 Run the full suite via the Makefile only: in particular **use `make test`**, never
 `php artisan test` / `pest` directly (the suite is wired to an isolated test database). The
+PHP and browser wrappers pin Compose interpolation to the committed comments-only
+`docker/e2e.env`; they do not read or scaffold a developer's `.env`.
 project's engineering standards (layered architecture, strict types, command/handler structure, the
 security rules) live in [`AGENTS.md`](AGENTS.md); please skim it.
 
@@ -111,9 +128,17 @@ branch-protection settings that make this enforcement real are listed in
 
 ## Automated dependency pull requests
 
-Dependabot security alerts and security updates are enabled for the repository. Composer and both
-npm lockfiles are also checked every day before the 05:00 UTC nightly audit; GitHub Actions remain
+Dependabot security alerts and security updates are enabled for the repository. Composer and the
+Dependabot-managed npm lockfiles are also checked every day before the 05:00 UTC nightly audit; GitHub Actions remain
 on the lower-noise weekly schedule.
+
+The nightly dependency job and `make audit` inspect every package in the Composer, root npm, XLSX
+processor, and MCP bridge lockfiles against
+[`security/dependency-license-policy.json`](security/dependency-license-policy.json). New or
+changed licenses fail closed unless an approved SPDX alternative applies. Missing registry
+metadata needs an exact package-and-version override with a reviewed upstream source; do not widen
+the global allowlist to make a dependency update pass. This automation is a review gate, not legal
+advice, and notice/source obligations still need human verification for redistributed binaries.
 
 Pinned container images are managed separately by the free hosted
 [Renovate GitHub App](https://github.com/apps/renovate) using [`renovate.json`](renovate.json).

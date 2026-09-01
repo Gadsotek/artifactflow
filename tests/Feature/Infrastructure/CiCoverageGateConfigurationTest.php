@@ -13,7 +13,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $makefile = $this->readProjectFile('Makefile');
         $testMemoryConfiguration = $this->readProjectFile('docker/php/test-conf.d/99-memory.ini');
 
-        $this->assertStringContainsString('COVERAGE_MIN ?= 94', $makefile);
+        $this->assertStringContainsString('COVERAGE_MIN ?= 95', $makefile);
         $this->assertStringContainsString('type-coverage:', $makefile);
         $this->assertStringContainsString('$(MAKE) test TYPE_COVERAGE=1', $makefile);
         $this->assertStringContainsString('coverage:', $makefile);
@@ -22,7 +22,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('TYPE_COVERAGE_REPORT ?= storage/framework/testing/type-coverage.json', $makefile);
         $this->assertStringContainsString('--type-coverage --min=$(TYPE_COVERAGE_MIN)', $makefile);
         $this->assertStringContainsString('--type-coverage-json=$(TYPE_COVERAGE_JSON)', $makefile);
-        $this->assertStringContainsString("run-app-cmd APP_CMD='php scripts/type-coverage-guard.php", $makefile);
+        $this->assertStringContainsString("run-test-app-cmd APP_CMD='php scripts/type-coverage-guard.php", $makefile);
         $this->assertStringContainsString('PCOV is required for line coverage.', $makefile);
         $this->assertStringContainsString('pcov.enabled=$(if $(COVERAGE),1,0)', $makefile);
         $this->assertStringContainsString(
@@ -97,10 +97,21 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $packageJson = $this->readProjectFile('package.json');
         $packageLock = $this->readProjectFile('package-lock.json');
         $verifier = $this->readProjectFile('scripts/verify-dompurify.mjs');
+        $licenseVerifier = $this->readProjectFile('scripts/license-audit/verify-dependency-licenses.mjs');
+        $licensePolicy = $this->readProjectFile('security/dependency-license-policy.json');
+        $notices = $this->readProjectFile('THIRD_PARTY_NOTICES.md');
 
         $this->assertStringContainsString('"dompurify": "3.4.13"', $packageJson);
         $this->assertStringContainsString("\"node_modules/dompurify\": {\n      \"version\": \"3.4.13\"", $packageLock);
         $this->assertStringContainsString("const EXPECTED = '3.4.13';", $verifier);
+        $this->assertStringContainsString('auditRepositoryLicenses', $verifier);
+        $this->assertStringContainsString('composer.lock', $licenseVerifier);
+        $this->assertStringContainsString('xlsx-processor-spike/package-lock.json', $licenseVerifier);
+        $this->assertStringContainsString('scripts/mcp-remote-bridge/package-lock.json', $licenseVerifier);
+        $this->assertStringContainsString('npmMetadataOverrides', $licensePolicy);
+        $this->assertStringContainsString('"khroma@2.1.0"', $licensePolicy);
+        $this->assertStringContainsString('Khrôma 2.1.0', $notices);
+        $this->assertStringContainsString('Copyright (c) 2019-present Fabio Spampinato, Andrew Maney', $notices);
     }
 
     public function test_ci_avoids_a_redundant_plain_suite_and_required_docs_list_both_coverage_targets(): void
@@ -166,7 +177,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
             'NIGHTLY_FAILED_TASK=Locked MCP bridge install and direct-entrypoint smoke',
             $nightly,
         );
-        $this->assertStringContainsString('NIGHTLY_FAILED_TASK=Scan production image (Trivy)', $nightly);
+        $this->assertStringContainsString('NIGHTLY_FAILED_TASK=Scan production images (Trivy)', $nightly);
         $this->assertStringContainsString('nightly-audit-results-', $nightly);
         $this->assertStringContainsString('uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a', $nightly);
         $this->assertStringContainsString("    if: always()\n", $this->afterNeedle($nightly, "  notify:\n"));
@@ -216,11 +227,18 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('--scanners vuln,secret,misconfig', $makefile);
         $this->assertStringContainsString('IMAGE_PARSER_IMAGE ?= artifactflow-image-parser:production', $makefile);
         $this->assertStringContainsString('PDF_PROCESSOR_SERVICE_IMAGE ?= artifactflow-pdf-processor-service:local', $makefile);
+        $this->assertStringContainsString('XLSX_PROCESSOR_SERVICE_IMAGE ?= artifactflow-xlsx-processor-service:production', $makefile);
+        $this->assertStringContainsString('DOCX_PROCESSOR_IMAGE ?= artifactflow-docx-processor:production', $makefile);
         $this->assertStringContainsString('--target image-parser --tag $(IMAGE_PARSER_IMAGE)', $makefile);
         $this->assertStringContainsString('--target pdf-processor-service', $makefile);
+        $this->assertStringContainsString('--target xlsx-processor-spike-service', $makefile);
+        $this->assertStringContainsString('--tag $(DOCX_PROCESSOR_IMAGE)', $makefile);
         $this->assertStringContainsString('$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(IMAGE_PARSER_IMAGE)', $makefile);
         $this->assertStringContainsString('$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(PDF_PROCESSOR_SERVICE_IMAGE)', $makefile);
+        $this->assertStringContainsString('$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(XLSX_PROCESSOR_SERVICE_IMAGE)', $makefile);
+        $this->assertStringContainsString('$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(DOCX_PROCESSOR_IMAGE)', $makefile);
         $this->assertStringContainsString('fs $(TRIVY_REPO_SCAN_SKIP_DIRS) --scanners secret,misconfig --severity MEDIUM,HIGH,CRITICAL --exit-code 1 /src', $makefile);
+        $this->assertStringContainsString("--skip-dirs '/src/.codex-*'", $makefile);
         $this->assertStringNotContainsString('trivy" config $(TRIVY_REPO_SCAN_SKIP_DIRS)', $makefile);
         $this->assertStringContainsString('--skip-dirs /src/vendor', $makefile);
         $this->assertStringContainsString('--skip-dirs /src/node_modules', $makefile);
@@ -291,8 +309,13 @@ final class CiCoverageGateConfigurationTest extends TestCase
         );
         $this->assertStringContainsString('go get google.golang.org/grpc@v1.82.1', $dockerfile);
         $this->assertStringContainsString('go get github.com/getkin/kin-openapi@v0.144.0', $dockerfile);
+        $this->assertStringContainsString('go get golang.org/x/crypto@v0.55.0', $dockerfile);
         $this->assertStringContainsString(
             "grep -E 'github\\.com/getkin/kin-openapi[[:space:]]+v0\\.144\\.0'",
+            $dockerfile,
+        );
+        $this->assertStringContainsString(
+            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.55\\.0'",
             $dockerfile,
         );
     }
@@ -326,6 +349,66 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('id: push-pdf-processor', $releaseWorkflow);
         $this->assertStringContainsString('steps.push-pdf-processor.outputs.digest_only', $releaseWorkflow);
         $this->assertStringContainsString('subject-name: ${{ env.PDF_PROCESSOR_IMAGE }}', $releaseWorkflow);
+    }
+
+    public function test_office_processor_images_are_tested_and_published_with_independent_attestations(): void
+    {
+        $makefile = $this->readProjectFile('Makefile');
+        $releaseWorkflow = $this->readProjectFile('.github/workflows/release.yml');
+
+        foreach ([
+            'xlsx-processor-service-runtime-test:',
+            'docx-processor-runtime-test:',
+            'docx-pdf-chain-test:',
+            '$(MAKE) xlsx-processor-service-runtime-test',
+            '$(MAKE) docx-processor-runtime-test',
+            '$(MAKE) docx-pdf-chain-test',
+            'ArtifactFlow searchable Word preview',
+            'inspect-docx-preview /proof/preview.pdf',
+            '"truncated":false',
+        ] as $requiredMakeContract) {
+            $this->assertStringContainsString($requiredMakeContract, $makefile);
+        }
+
+        foreach ([
+            'XLSX_PROCESSOR_IMAGE: ghcr.io/gadsotek/artifactflow-xlsx-processor',
+            'DOCX_PROCESSOR_IMAGE: ghcr.io/gadsotek/artifactflow-docx-processor',
+            'artifactflow-xlsx-processor-service:production',
+            'artifactflow-docx-processor:production',
+            'id: push-xlsx-processor',
+            'id: push-docx-processor',
+            'sbom.xlsx-processor.cdx.json',
+            'sbom.docx-processor.cdx.json',
+            'steps.push-xlsx-processor.outputs.digest_only',
+            'steps.push-docx-processor.outputs.digest_only',
+            'subject-name: ${{ env.XLSX_PROCESSOR_IMAGE }}',
+            'subject-name: ${{ env.DOCX_PROCESSOR_IMAGE }}',
+        ] as $requiredReleaseContract) {
+            $this->assertStringContainsString($requiredReleaseContract, $releaseWorkflow);
+        }
+
+        $latestStep = '      - name: Publish final-release latest tags';
+        $releaseStep = '      - name: Create GitHub Release';
+
+        $this->assertStringContainsString($latestStep, $releaseWorkflow);
+        $this->assertGreaterThan(
+            strpos($releaseWorkflow, $releaseStep),
+            strpos($releaseWorkflow, $latestStep),
+            'Mutable latest tags must move only after the immutable release and attestations exist.',
+        );
+        $this->assertStringContainsString(
+            'docker buildx imagetools create --tag "$DOCX_PROCESSOR_IMAGE:latest" "${{ steps.push-docx-processor.outputs.digest }}"',
+            $releaseWorkflow,
+        );
+
+        $immutablePushSection = substr(
+            $releaseWorkflow,
+            (int) strpos($releaseWorkflow, '      - name: Push image'),
+            (int) strpos($releaseWorkflow, '      - name: Generate SBOM (CycloneDX)')
+                - (int) strpos($releaseWorkflow, '      - name: Push image'),
+        );
+
+        $this->assertStringNotContainsString(':latest', $immutablePushSection);
     }
 
     public function test_production_image_keeps_runtime_storage_out_of_the_build_context(): void

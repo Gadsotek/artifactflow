@@ -34,7 +34,9 @@ enum DomainEventType: string
     case PageMarkedApproved = 'page.marked_approved';
     case PageMetadataUpdated = 'page.metadata.updated';
     case PageOwnershipTransferred = 'page.ownership.transferred';
+    case PageDocxReprocessed = 'page.docx.reprocessed';
     case PagePdfReprocessed = 'page.pdf.reprocessed';
+    case PageXlsxReprocessed = 'page.xlsx.reprocessed';
     case PageReturnedToDraft = 'page.returned_to_draft';
     case PageSecretScanBlocked = 'page.secret_scan.blocked';
     case PageSecurityWarningsRecorded = 'page.security_warnings.recorded';

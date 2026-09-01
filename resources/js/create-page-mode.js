@@ -16,10 +16,14 @@ function initialiseCreatePageMode(form) {
   const htmlFileInput = form.querySelector('input[name="html_file"]');
   const imageFileInput = form.querySelector('input[name="image_file"]');
   const pdfFileInput = form.querySelector('input[name="pdf_file"]');
+  const xlsxFileInput = form.querySelector('input[name="xlsx_file"]');
+  const docxFileInput = form.querySelector('input[name="docx_file"]');
   const contentFields = form.querySelector('[data-create-page-content-fields]');
   const htmlUploadFields = form.querySelector('[data-create-page-upload-fields]');
   const imageUploadFields = form.querySelector('[data-create-page-image-upload-fields]');
   const pdfUploadFields = form.querySelector('[data-create-page-pdf-upload-fields]');
+  const xlsxUploadFields = form.querySelector('[data-create-page-xlsx-upload-fields]');
+  const docxUploadFields = form.querySelector('[data-create-page-docx-upload-fields]');
 
   if (
     !(type instanceof HTMLSelectElement) ||
@@ -56,17 +60,32 @@ function initialiseCreatePageMode(form) {
     const isHtmlUpload = type.value === 'html_artifact' && mode.value === 'html_upload';
     const isImageUpload = type.value === 'image' && mode.value === 'image_upload';
     const isPdfUpload = type.value === 'pdf' && mode.value === 'pdf_upload';
+    const isXlsxUpload = type.value === 'xlsx' && mode.value === 'xlsx_upload';
+    const isDocxUpload = type.value === 'docx' && mode.value === 'docx_upload';
 
-    contentFields.hidden = isHtmlUpload || isImageUpload || isPdfUpload;
+    contentFields.hidden =
+      isHtmlUpload || isImageUpload || isPdfUpload || isXlsxUpload || isDocxUpload;
     htmlUploadFields.hidden = !isHtmlUpload;
     imageUploadFields.hidden = !isImageUpload;
     if (pdfUploadFields instanceof HTMLElement) {
       pdfUploadFields.hidden = !isPdfUpload;
     }
+    if (xlsxUploadFields instanceof HTMLElement) {
+      xlsxUploadFields.hidden = !isXlsxUpload;
+    }
+    if (docxUploadFields instanceof HTMLElement) {
+      docxUploadFields.hidden = !isDocxUpload;
+    }
     htmlFileInput.required = isHtmlUpload;
     imageFileInput.required = isImageUpload;
     if (pdfFileInput instanceof HTMLInputElement) {
       pdfFileInput.required = isPdfUpload;
+    }
+    if (xlsxFileInput instanceof HTMLInputElement) {
+      xlsxFileInput.required = isXlsxUpload;
+    }
+    if (docxFileInput instanceof HTMLInputElement) {
+      docxFileInput.required = isDocxUpload;
     }
   };
 
@@ -92,6 +111,8 @@ function initialiseCreatePageMode(form) {
   htmlFileInput.addEventListener('change', () => suggestTitle(htmlFileInput));
   imageFileInput.addEventListener('change', () => suggestTitle(imageFileInput));
   pdfFileInput?.addEventListener('change', () => suggestTitle(pdfFileInput));
+  xlsxFileInput?.addEventListener('change', () => suggestTitle(xlsxFileInput));
+  docxFileInput?.addEventListener('change', () => suggestTitle(docxFileInput));
 
   update();
   form.setAttribute('data-create-page-mode-ready', 'true');

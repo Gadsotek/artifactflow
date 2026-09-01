@@ -9,8 +9,10 @@ use App\Application\Events\DomainEventRecorder;
 use App\Application\Identity\ActorId;
 use App\Application\Mcp\McpEffectiveAuthority;
 use App\Application\Mcp\McpRequestContext;
+use App\Application\PageCatalog\DocxProcessorConfiguration;
 use App\Application\PageCatalog\PageAccess;
 use App\Application\PageCatalog\PdfProcessorConfiguration;
+use App\Application\PageCatalog\XlsxProcessorConfiguration;
 use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\ExternalSharing\ExternalShareMode;
@@ -36,6 +38,8 @@ final readonly class CreateExternalShare
         private McpEffectiveAuthority $mcpAuthority,
         private McpRequestContext $mcpContext,
         private PdfProcessorConfiguration $pdfConfiguration,
+        private XlsxProcessorConfiguration $xlsxConfiguration,
+        private DocxProcessorConfiguration $docxConfiguration,
     ) {
     }
 
@@ -110,6 +114,19 @@ final readonly class CreateExternalShare
             if ($page->type === PageType::Pdf && !$this->pdfConfiguration->enabled()) {
                 throw new DomainRuleViolation(
                     'External sharing is not available while PDF artifacts are disabled.',
+                );
+            }
+
+            if ($page->type === PageType::Xlsx && !$this->xlsxConfiguration->enabled()) {
+                throw new DomainRuleViolation(
+                    'External sharing is not available while Excel workbook artifacts are disabled.',
+                );
+            }
+
+            if ($page->type === PageType::Docx
+                && (!$this->docxConfiguration->enabled() || !$this->pdfConfiguration->enabled())) {
+                throw new DomainRuleViolation(
+                    'External sharing is not available while Word document artifacts are disabled.',
                 );
             }
 

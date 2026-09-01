@@ -18,6 +18,9 @@ final readonly class McpReadPayload implements McpWirePayload
         public ?McpUntrustedText $extractedText = null,
         public ?McpImageSearchabilityView $imageSearchability = null,
         public ?McpPdfFactsView $pdf = null,
+        public ?McpXlsxFactsView $xlsx = null,
+        public ?McpXlsxSelectionView $xlsxSelection = null,
+        public ?McpDocxFactsView $docx = null,
     ) {
     }
 
@@ -53,6 +56,18 @@ final readonly class McpReadPayload implements McpWirePayload
 
         if ($this->pdf !== null) {
             $payload['pdf'] = $this->pdf->toWire();
+        }
+
+        if ($this->xlsx !== null) {
+            $payload['xlsx'] = $this->xlsx->toWire();
+        }
+
+        if ($this->xlsxSelection !== null) {
+            $payload['xlsx_selection'] = $this->xlsxSelection->toWire();
+        }
+
+        if ($this->docx !== null) {
+            $payload['docx'] = $this->docx->toWire();
         }
 
         return $payload;

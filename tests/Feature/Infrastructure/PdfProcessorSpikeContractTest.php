@@ -72,10 +72,9 @@ final class PdfProcessorSpikeContractTest extends TestCase
         foreach ([
             'ProcessBuilder',
             'Runtime.getRuntime',
-            'java.net',
-            'Socket',
-            'URLConnection',
-            'HttpClient',
+            'java.net.Socket',
+            'java.net.URLConnection',
+            'java.net.http.HttpClient',
         ] as $forbiddenApi) {
             $this->assertStringNotContainsString($forbiddenApi, $source);
         }

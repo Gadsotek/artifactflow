@@ -40,19 +40,32 @@
             <section
                 class="af-artifact-preview flex flex-col gap-3"
                 data-artifact-preview
-                @if ($viewer->presentation === ExternalPagePresentation::SandboxedHtml)
+                @if (in_array($viewer->presentation, [ExternalPagePresentation::SandboxedHtml, ExternalPagePresentation::TypedSpreadsheet], true))
                     data-artifact-preview-refresh-endpoint="{{ route('external-shares.artifact-preview-url', [
                         'externalShareUid' => $viewer->context->share->uid,
                         'externalShareSessionUid' => $viewer->context->session->uid,
                     ], false) }}"
-                @elseif ($viewer->presentation === ExternalPagePresentation::NativePdf)
+                @endif
+                @if ($viewer->presentation === ExternalPagePresentation::NativePdf)
                     data-pdf-preview
+                @elseif ($viewer->presentation === ExternalPagePresentation::TypedSpreadsheet)
+                    data-xlsx-preview
+                @elseif ($viewer->presentation === ExternalPagePresentation::DerivedDocumentPdf)
+                    data-docx-preview
                 @endif
             >
                 <div class="af-external-preview-toolbar">
                     @if ($viewer->presentation === ExternalPagePresentation::NativePdf)
                         <p>
                             Viewing this PDF is download-equivalent. Your browser may expose save, print, and copy controls.
+                        </p>
+                    @elseif ($viewer->presentation === ExternalPagePresentation::TypedSpreadsheet)
+                        <p>
+                            Read-only Excel preview. Formulas are not recalculated and original workbook bytes are never shared.
+                        </p>
+                    @elseif ($viewer->presentation === ExternalPagePresentation::DerivedDocumentPdf)
+                        <p>
+                            Searchable PDF preview derived from the retained Word document. The original DOCX is not shared.
                         </p>
                     @else
                         <p>
@@ -74,8 +87,8 @@
                     data-artifact-preview-frame
                     loading="eager"
                     referrerpolicy="no-referrer"
-                    @if ($viewer->presentation !== ExternalPagePresentation::NativePdf)
-                        sandbox="{{ $viewer->presentation === ExternalPagePresentation::SandboxedHtml ? 'allow-scripts' : '' }}"
+                    @if (!in_array($viewer->presentation, [ExternalPagePresentation::NativePdf, ExternalPagePresentation::DerivedDocumentPdf], true))
+                        sandbox="{{ $viewer->presentation === ExternalPagePresentation::TypedSpreadsheet ? 'allow-scripts allow-popups allow-popups-to-escape-sandbox' : ($viewer->presentation === ExternalPagePresentation::SandboxedHtml ? 'allow-scripts' : '') }}"
                     @endif
                     allow=""
                     src="{{ $viewer->artifactPreviewUrl }}"
@@ -83,6 +96,8 @@
                         ExternalPagePresentation::SandboxedHtml => 'Artifact preview',
                         ExternalPagePresentation::ScriptlessImage => 'Image preview',
                         ExternalPagePresentation::NativePdf => 'PDF preview',
+                        ExternalPagePresentation::TypedSpreadsheet => 'Read-only Excel preview',
+                        ExternalPagePresentation::DerivedDocumentPdf => 'Word document PDF preview',
                         ExternalPagePresentation::Markdown => 'Document preview',
                     } }}"
                 ></iframe>

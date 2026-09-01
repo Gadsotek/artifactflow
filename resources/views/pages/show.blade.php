@@ -112,7 +112,13 @@
                     <span>Access</span>
                 </button>
                 @if ($canManageAccess)
-                    @if ($externalSharingEnabled && $page->status !== PageStatus::Archived && ($page->type !== PageType::Pdf || $pdfArtifactsEnabled))
+                    @if (
+                        $externalSharingEnabled
+                        && $page->status !== PageStatus::Archived
+                        && ($page->type !== PageType::Pdf || $pdfArtifactsEnabled)
+                        && ($page->type !== PageType::Xlsx || $xlsxArtifactsEnabled)
+                        && ($page->type !== PageType::Docx || $docxArtifactsEnabled)
+                    )
                         <button
                             data-open-editor-dialog="page-external-share-dialog"
                             type="button"
@@ -132,7 +138,9 @@
                             title="{{ match (true) {
                                 $page->status === PageStatus::Archived => 'Archived pages cannot be shared externally.',
                                 !$externalSharingEnabled => 'External sharing is disabled for this installation.',
-                                default => 'PDF artifacts are disabled for this installation.',
+                                $page->type === PageType::Pdf => 'PDF artifacts are disabled for this installation.',
+                                $page->type === PageType::Docx => 'Word document artifacts are disabled for this installation.',
+                                default => 'Excel workbook artifacts are disabled for this installation.',
                             } }}"
                         >
                             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M14 5h5v5m0-5-8 8M10 7H5v12h12v-5"/></svg>
@@ -270,6 +278,86 @@
                             <div class="af-callout">The retained PDF is currently unavailable.</div>
                         @endif
                     </div>
+                @elseif ($page->type === PageType::Xlsx)
+                    <div class="space-y-4">
+                        <div class="af-artifact-profile">
+                            <div>
+                                <p class="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Excel workbook</p>
+                                <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Exact original retained as immutable version {{ $version?->version_number }}. Preview contains only bounded visible-sheet data.</p>
+                                @if ($xlsxFacts !== null)
+                                    <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400" data-xlsx-facts>
+                                        {{ $xlsxFacts->visible_sheet_count }} visible {{ $xlsxFacts->visible_sheet_count === 1 ? 'sheet' : 'sheets' }} ·
+                                        {{ $xlsxFacts->cell_count }} projected {{ $xlsxFacts->cell_count === 1 ? 'cell' : 'cells' }} ·
+                                        {{ $xlsxFacts->formula_count }} {{ $xlsxFacts->formula_count === 1 ? 'formula' : 'formulas' }}
+                                    </p>
+                                @endif
+                                <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400"><span class="font-semibold">Viewer profile:</span> Application-owned read-only grid on the opaque, cookieless artifact origin. Formulas are never recalculated; cached values may be stale.</p>
+                            </div>
+                            @if ($xlsxArtifactsEnabled)
+                                <div class="flex flex-wrap items-center gap-2">
+                                    @if ($canReprocessXlsx)
+                                        <form method="POST" action="{{ route('pages.xlsx.reprocess', $page) }}">
+                                            @csrf
+                                            <input type="hidden" name="current_version_uid" value="{{ $baseVersionUid }}">
+                                            <button class="af-secondary-button" type="submit">Reprocess workbook preview</button>
+                                        </form>
+                                    @endif
+                                    <a class="af-secondary-button" href="{{ route('pages.document-original.download', $page) }}">Download original XLSX</a>
+                                </div>
+                            @endif
+                        </div>
+                        @if ($artifactPreviewUrl !== null)
+                            <div
+                                class="af-artifact-preview flex flex-col gap-2"
+                                data-artifact-preview
+                                data-xlsx-preview
+                                data-artifact-preview-refresh-endpoint="{{ route('pages.artifact-preview-url', $page, false) }}"
+                            >
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <span class="text-xs text-zinc-500 dark:text-zinc-400">Hidden sheets, rows, columns, objects, charts, comments, and advanced formatting are not shown. Downloading the original opens untrusted workbook bytes locally.</span>
+                                    <button type="button" class="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800" data-artifact-fullscreen-toggle aria-expanded="false" hidden>
+                                        <span data-artifact-fullscreen-label>Fullscreen</span>
+                                    </button>
+                                </div>
+                                <iframe class="af-artifact-iframe h-[calc(100vh-13rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" allow="" src="{{ $artifactPreviewUrl }}" title="Read-only Excel preview"></iframe>
+                            </div>
+                        @else
+                            <div class="af-callout">The retained workbook preview is currently unavailable.</div>
+                        @endif
+                    </div>
+                @elseif ($page->type === PageType::Docx)
+                    <div class="space-y-4">
+                        <div class="af-artifact-profile">
+                            <div>
+                                <p class="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Word document</p>
+                                <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Exact original retained as immutable version {{ $version?->version_number }}. The preview is a validated, searchable PDF derivative.</p>
+                                @if ($docxFacts !== null)
+                                    <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400" data-docx-facts>{{ $docxFacts->page_count }} preview {{ $docxFacts->page_count === 1 ? 'page' : 'pages' }} · {{ $docxFacts->external_hyperlink_count }} external {{ $docxFacts->external_hyperlink_count === 1 ? 'link' : 'links' }}</p>
+                                @endif
+                                <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400"><span class="font-semibold">Viewer profile:</span> Browser-native PDF on the isolated, cookieless artifact origin. Normal HTTP, HTTPS, and email hyperlinks may be interactive.</p>
+                            </div>
+                            @if ($docxArtifactsEnabled)
+                                <div class="flex flex-wrap items-center gap-2">
+                                    @if ($canReprocessDocx)
+                                        <form method="POST" action="{{ route('pages.docx.reprocess', $page) }}">
+                                            @csrf
+                                            <input type="hidden" name="current_version_uid" value="{{ $baseVersionUid }}">
+                                            <button class="af-secondary-button" type="submit">Regenerate Word preview</button>
+                                        </form>
+                                    @endif
+                                    <a class="af-secondary-button" href="{{ route('pages.document-original.download', $page) }}">Download original DOCX</a>
+                                </div>
+                            @endif
+                        </div>
+                        @if ($artifactPreviewUrl !== null)
+                            <div class="af-artifact-preview flex flex-col gap-2" data-artifact-preview data-docx-preview>
+                                <span class="text-xs text-zinc-500 dark:text-zinc-400">Viewing the derived PDF is download-equivalent. The original DOCX is never sent to the browser unless you explicitly download it.</span>
+                                <iframe class="af-artifact-iframe h-[calc(100vh-13rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" allow="" src="{{ $artifactPreviewUrl }}" title="Word document PDF preview"></iframe>
+                            </div>
+                        @else
+                            <div class="af-callout">The Word document preview is currently unavailable.</div>
+                        @endif
+                    </div>
                 @endif
             </article>
 
@@ -277,6 +365,10 @@
                 @include('pages.partials.image-content-dialog')
             @elseif ($canMutateContent && $page->type === PageType::Pdf && $pdfArtifactsEnabled)
                 @include('pages.partials.pdf-content-dialog')
+            @elseif ($canMutateContent && $page->type === PageType::Xlsx && $xlsxArtifactsEnabled)
+                @include('pages.partials.xlsx-content-dialog')
+            @elseif ($canMutateContent && $page->type === PageType::Docx && $docxArtifactsEnabled)
+                @include('pages.partials.docx-content-dialog')
             @elseif ($canMutateContent && $sourcePreview !== null)
                 @include('pages.partials.content-dialog')
             @endif

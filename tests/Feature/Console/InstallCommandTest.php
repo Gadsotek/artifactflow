@@ -32,6 +32,16 @@ final class InstallCommandTest extends TestCase
         $this->envPath = storage_path('framework/testing/install-env-' . Str::random(12));
         file_put_contents($this->envPath, "APP_ENV=local\nAPP_URL=https://app.test\n");
         $this->app->instance(EnvFileWriter::class, new EnvFileWriter($this->envPath));
+        config([
+            'image_parser.enabled' => false,
+            'image_parser.shared_secret' => $this->strongSecret('i'),
+            'pdf_processor.enabled' => false,
+            'pdf_processor.shared_secret' => $this->strongSecret('p'),
+            'xlsx_processor.enabled' => false,
+            'xlsx_processor.shared_secret' => $this->strongSecret('x'),
+            'docx_processor.enabled' => false,
+            'docx_processor.shared_secret' => $this->strongSecret('d'),
+        ]);
     }
 
     protected function tearDown(): void
@@ -54,7 +64,9 @@ final class InstallCommandTest extends TestCase
 
         $this->runConsoleCommand('artifactflow:install')
             ->expectsChoice('Target environment', 'local', ['local', 'test', 'production'])
+            ->expectsConfirmation('Enable Word document artifacts?', 'no')
             ->expectsConfirmation('Enable experimental PDF artifacts?', 'no')
+            ->expectsConfirmation('Enable Excel workbook artifacts?', 'no')
             ->expectsQuestion('System admin name', 'Prompted Admin')
             ->expectsQuestion('System admin email', 'prompted-admin@example.test')
             ->expectsQuestion('System admin password', 'correct horse battery staple')
@@ -107,6 +119,7 @@ final class InstallCommandTest extends TestCase
             ->expectsOutputToContain('- System admin ready: install-admin@example.test')
             ->expectsOutputToContain('- Seeded starter demo content')
             ->expectsOutputToContain('make up-local   # app + Vite + edge + Adminer + Mailpit')
+            ->expectsOutputToContain('Running configuration doctor:')
             ->expectsOutputToContain('- Refreshing cached configuration')
             ->expectsOutputToContain('Install complete. Sign in at')
             ->expectsOutputToContain('Exit this container and rerun make up so local services reload the new configuration.')
@@ -165,7 +178,9 @@ final class InstallCommandTest extends TestCase
             '--password' => 'correct horse battery staple',
         ])
             ->expectsOutputToContain('- Generating image parser shared secret')
+            ->expectsConfirmation('Enable Word document artifacts?', 'no')
             ->expectsConfirmation('Enable experimental PDF artifacts?', 'no')
+            ->expectsConfirmation('Enable Excel workbook artifacts?', 'no')
             ->expectsConfirmation('Seed starter demo content?', 'no')
             ->assertExitCode(0);
 
@@ -245,6 +260,8 @@ final class InstallCommandTest extends TestCase
             '--password' => 'correct horse battery staple',
         ])
             ->expectsOutputToContain('- Generating PDF processor shared secret')
+            ->expectsConfirmation('Enable Word document artifacts?', 'no')
+            ->expectsConfirmation('Enable Excel workbook artifacts?', 'no')
             ->expectsConfirmation('Seed starter demo content?', 'no')
             ->expectsOutputToContain('Exit this container and rerun make up so local services reload the new configuration.')
             ->assertExitCode(0);
@@ -279,7 +296,9 @@ final class InstallCommandTest extends TestCase
             '--email' => 'pdf-admin@example.test',
             '--password' => 'correct horse battery staple',
         ])
+            ->expectsConfirmation('Enable Word document artifacts?', 'no')
             ->expectsConfirmation('Enable experimental PDF artifacts?', 'no')
+            ->expectsConfirmation('Enable Excel workbook artifacts?', 'no')
             ->expectsConfirmation('Seed starter demo content?', 'no')
             ->expectsOutputToContain('Exit this container and rerun make up so local services reload the new configuration.')
             ->assertExitCode(0);
@@ -311,6 +330,8 @@ final class InstallCommandTest extends TestCase
             '--email' => 'pdf-admin@example.test',
             '--password' => 'correct horse battery staple',
         ])
+            ->expectsConfirmation('Enable Word document artifacts?', 'no')
+            ->expectsConfirmation('Enable Excel workbook artifacts?', 'no')
             ->expectsOutputToContain('Could not generate the PDF processor shared secret.')
             ->doesntExpectOutputToContain('- Running database migrations')
             ->assertExitCode(1);
@@ -340,6 +361,186 @@ final class InstallCommandTest extends TestCase
 
         $this->assertSame(0, User::query()->where('email', 'production-pdf-admin@example.test')->count());
         $this->assertSame("APP_ENV=local\nAPP_URL=https://app.test\n", (string) file_get_contents($this->envPath));
+    }
+
+    public function test_local_install_enables_xlsx_and_generates_its_missing_secret_when_requested(): void
+    {
+        Process::fake();
+        config([
+            'app.key' => $this->strongSecret('a'),
+            'app.artifact_url_signing_key' => $this->strongSecret('b'),
+            'xlsx_processor.enabled' => false,
+            'xlsx_processor.shared_secret' => '',
+        ]);
+
+        $this->runConsoleCommand('artifactflow:install', [
+            '--env' => 'local',
+            '--xlsx' => true,
+            '--name' => 'XLSX Admin',
+            '--email' => 'xlsx-admin@example.test',
+            '--password' => 'correct horse battery staple',
+        ])
+            ->expectsConfirmation('Enable Word document artifacts?', 'no')
+            ->expectsConfirmation('Enable experimental PDF artifacts?', 'no')
+            ->expectsOutputToContain('- Generating XLSX processor shared secret')
+            ->expectsConfirmation('Seed starter demo content?', 'no')
+            ->expectsOutputToContain('Exit this container and rerun make up so local services reload the new configuration.')
+            ->expectsOutputToContain('Then run make doctor; XLSX/DOCX artifacts are not ready until their enabled processor checks pass.')
+            ->assertExitCode(0);
+
+        Process::assertRan(static function (PendingProcess $process): bool {
+            return is_array($process->command)
+                && str_contains(implode(' ', $process->command), 'ensure-xlsx-processor-shared-secret.php');
+        });
+
+        $env = (string) file_get_contents($this->envPath);
+        $this->assertStringContainsString('APP_ENV=local', $env);
+        $this->assertStringContainsString('XLSX_PROCESSOR_ENABLED=true', $env);
+    }
+
+    public function test_local_office_install_repairs_strong_secrets_reused_across_boundaries(): void
+    {
+        Process::fake();
+        $reused = $this->strongSecret('r');
+        config([
+            'app.key' => $this->strongSecret('a'),
+            'app.artifact_url_signing_key' => $this->strongSecret('b'),
+            'image_parser.enabled' => false,
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => '',
+            'pdf_processor.shared_secret' => $reused,
+            'xlsx_processor.enabled' => false,
+            'xlsx_processor.url' => '',
+            'xlsx_processor.shared_secret' => $reused,
+            'docx_processor.enabled' => false,
+            'docx_processor.url' => '',
+            'docx_processor.shared_secret' => $reused,
+        ]);
+
+        $this->runConsoleCommand('artifactflow:install', [
+            '--env' => 'local',
+            '--xlsx' => true,
+            '--docx' => true,
+            '--name' => 'Office Admin',
+            '--email' => 'office-admin@example.test',
+            '--password' => 'correct horse battery staple',
+        ])
+            ->expectsOutputToContain('- Generating PDF processor shared secret')
+            ->expectsOutputToContain('- Generating XLSX processor shared secret')
+            ->expectsOutputToContain('- Generating DOCX processor shared secret')
+            ->expectsConfirmation('Seed starter demo content?', 'no')
+            ->assertExitCode(0);
+    }
+
+    public function test_production_install_rejects_the_local_only_xlsx_option_before_database_changes(): void
+    {
+        $this->configureSafeProductionValues();
+
+        $this->runConsoleCommand('artifactflow:install', [
+            '--env' => 'production',
+            '--xlsx' => true,
+            '--name' => 'Production XLSX Admin',
+            '--email' => 'production-xlsx-admin@example.test',
+            '--password' => 'correct horse battery staple',
+        ])
+            ->expectsOutputToContain('Excel workbook artifacts can be enabled by the installer only in local or test mode.')
+            ->doesntExpectOutputToContain('- Running database migrations')
+            ->doesntExpectOutputToContain('Install complete. Sign in at')
+            ->assertExitCode(1);
+
+        $this->assertSame(0, User::query()->where('email', 'production-xlsx-admin@example.test')->count());
+        $this->assertSame("APP_ENV=local\nAPP_URL=https://app.test\n", (string) file_get_contents($this->envPath));
+    }
+
+    public function test_local_install_enables_docx_with_pdf_and_generates_both_missing_secrets(): void
+    {
+        Process::fake();
+        config([
+            'app.key' => $this->strongSecret('a'),
+            'app.artifact_url_signing_key' => $this->strongSecret('b'),
+            'pdf_processor.enabled' => false,
+            'pdf_processor.shared_secret' => '',
+            'docx_processor.enabled' => false,
+            'docx_processor.shared_secret' => '',
+        ]);
+
+        $this->runConsoleCommand('artifactflow:install', [
+            '--env' => 'local',
+            '--docx' => true,
+            '--name' => 'DOCX Admin',
+            '--email' => 'docx-admin@example.test',
+            '--password' => 'correct horse battery staple',
+        ])
+            ->expectsConfirmation('Enable Excel workbook artifacts?', 'no')
+            ->expectsOutputToContain('- Generating PDF processor shared secret')
+            ->expectsOutputToContain('- Generating DOCX processor shared secret')
+            ->expectsConfirmation('Seed starter demo content?', 'no')
+            ->expectsOutputToContain('Then run make doctor; XLSX/DOCX artifacts are not ready until their enabled processor checks pass.')
+            ->assertExitCode(0);
+
+        Process::assertRan(static function (PendingProcess $process): bool {
+            return is_array($process->command)
+                && str_contains(implode(' ', $process->command), 'ensure-pdf-processor-shared-secret.php');
+        });
+        Process::assertRan(static function (PendingProcess $process): bool {
+            return is_array($process->command)
+                && str_contains(implode(' ', $process->command), 'ensure-docx-processor-shared-secret.php');
+        });
+
+        $env = (string) file_get_contents($this->envPath);
+        $this->assertStringContainsString('PDF_PROCESSOR_ENABLED=true', $env);
+        $this->assertStringContainsString('DOCX_PROCESSOR_ENABLED=true', $env);
+    }
+
+    public function test_interactive_local_install_asks_for_docx_first_and_implicitly_enables_pdf(): void
+    {
+        Process::fake();
+        config([
+            'app.key' => $this->strongSecret('a'),
+            'app.artifact_url_signing_key' => $this->strongSecret('b'),
+            'image_parser.enabled' => false,
+            'pdf_processor.enabled' => false,
+            'pdf_processor.shared_secret' => '',
+            'xlsx_processor.enabled' => false,
+            'docx_processor.enabled' => false,
+            'docx_processor.shared_secret' => '',
+        ]);
+
+        $this->runConsoleCommand('artifactflow:install', [
+            '--env' => 'local',
+            '--name' => 'Interactive DOCX Admin',
+            '--email' => 'interactive-docx-admin@example.test',
+            '--password' => 'correct horse battery staple',
+        ])
+            ->expectsConfirmation('Enable Word document artifacts?', 'yes')
+            ->expectsOutputToContain('Word previews require the PDF processor; enabling PDF support too.')
+            ->expectsConfirmation('Enable Excel workbook artifacts?', 'no')
+            ->expectsOutputToContain('- Generating PDF processor shared secret')
+            ->expectsOutputToContain('- Generating DOCX processor shared secret')
+            ->expectsConfirmation('Seed starter demo content?', 'no')
+            ->assertExitCode(0);
+
+        $env = (string) file_get_contents($this->envPath);
+        $this->assertStringContainsString('PDF_PROCESSOR_ENABLED=true', $env);
+        $this->assertStringContainsString('DOCX_PROCESSOR_ENABLED=true', $env);
+    }
+
+    public function test_production_install_rejects_the_local_only_docx_option_before_database_changes(): void
+    {
+        $this->configureSafeProductionValues();
+
+        $this->runConsoleCommand('artifactflow:install', [
+            '--env' => 'production',
+            '--docx' => true,
+            '--name' => 'Production DOCX Admin',
+            '--email' => 'production-docx-admin@example.test',
+            '--password' => 'correct horse battery staple',
+        ])
+            ->expectsOutputToContain('Word document artifacts can be enabled by the installer only in local or test mode.')
+            ->doesntExpectOutputToContain('- Running database migrations')
+            ->assertExitCode(1);
+
+        $this->assertSame(0, User::query()->where('email', 'production-docx-admin@example.test')->count());
     }
 
     public function test_test_environment_runs_the_doctor_and_skips_demo_and_dev_tooling(): void
@@ -761,8 +962,9 @@ final class InstallCommandTest extends TestCase
             'filesystems.disks.artifacts.visibility' => 'private',
             'hashing.bcrypt.rounds' => 12,
             'hashing.driver' => 'bcrypt',
+            'image_parser.enabled' => true,
             'image_parser.url' => 'http://image-parser.internal:8080',
-            'image_parser.shared_secret' => $this->strongSecret('p'),
+            'image_parser.shared_secret' => $this->strongSecret('i'),
             'mail.default' => 'smtp',
             'queue.default' => 'database',
             'queue.connections.database.driver' => 'database',

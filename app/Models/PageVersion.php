@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
@@ -28,6 +29,9 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property string|null $source_text
  * @property User $creator
  * @property PdfVersionFact|null $pdfFacts
+ * @property XlsxVersionFact|null $xlsxFacts
+ * @property DocxVersionFact|null $docxFacts
+ * @property \Illuminate\Database\Eloquent\Collection<int, PageVersionDerivative> $derivatives
  */
 final class PageVersion extends Model
 {
@@ -81,5 +85,27 @@ final class PageVersion extends Model
     public function pdfFacts(): HasOne
     {
         return $this->hasOne(PdfVersionFact::class, 'page_version_uid', 'uid');
+    }
+
+    /**
+     * @return HasOne<XlsxVersionFact, $this>
+     */
+    public function xlsxFacts(): HasOne
+    {
+        return $this->hasOne(XlsxVersionFact::class, 'page_version_uid', 'uid');
+    }
+
+    /** @return HasOne<DocxVersionFact, $this> */
+    public function docxFacts(): HasOne
+    {
+        return $this->hasOne(DocxVersionFact::class, 'page_version_uid', 'uid');
+    }
+
+    /**
+     * @return HasMany<PageVersionDerivative, $this>
+     */
+    public function derivatives(): HasMany
+    {
+        return $this->hasMany(PageVersionDerivative::class, 'page_version_uid', 'uid');
     }
 }

@@ -1,6 +1,6 @@
 # ArtifactFlow Operations
 
-Last updated: 2026-08-25
+Last updated: 2026-08-30
 
 ## Local Runtime
 
@@ -12,6 +12,8 @@ The local stack follows the architecture document:
 | `artifact-host` | Same code image, separate stateless artifact-serving origin. |
 | `image-parser` | Minimal networkless PNG/JPEG decoder and normalizer reached through a Unix socket; no app source, database, artifact storage, or public port. |
 | `pdf-processor` | Default-running, networkless PDF validator/text extractor reached through a Unix socket; PDF application behavior remains default-off. |
+| `xlsx-processor` | Default-running, networkless XLSX validator and typed-manifest projector reached through a Unix socket; XLSX application behavior remains default-off. |
+| `docx-processor` | Default-running, networkless DOCX validator and LibreOffice-to-PDF converter reached through a Unix socket; DOCX application behavior remains default-off and also requires the PDF processor. |
 | `worker` | Queue worker (`queue:work`). Scans, projections, and audit side effects run synchronously inside the write transaction; the only queued work today is outbound mail. |
 | `scheduler` | Laravel scheduler loop (`schedule:work`): outbox dispatch and the nightly retention jobs. |
 | `reverb` | Local WebSocket runtime; realtime application behavior remains disabled until configured and enabled. |
@@ -24,15 +26,22 @@ Start the core stack:
 make up
 ```
 
-This idempotently provisions distinct local `ARTIFACT_URL_SIGNING_KEY`,
-`IMAGE_PARSER_SHARED_SECRET`, and `PDF_PROCESSOR_SHARED_SECRET` values in `.env`
-before their consumers start. The PDF processor runs without a public port, while
-the guided local/test installer keeps PDF application behavior disabled by default.
-Accept its experimental PDF prompt, or pass `--pdf` for an unattended install, to
-persist `PDF_PROCESSOR_ENABLED=true`. After enabling or disabling PDF through the
-installer, exit the app container and rerun `make up` so Compose reloads the setting.
+This idempotently provisions the local `ARTIFACT_URL_SIGNING_KEY`. Compose uses
+explicit development-only processor-secret fallbacks until the guided installer
+generates distinct local values. All processors run without public ports, while
+the local/test installer keeps PDF, XLSX, and DOCX application behavior disabled
+by default. Accept the corresponding prompts, or pass `--pdf`, `--xlsx`, or
+`--docx` for an unattended install. The interactive wizard asks about Word
+first. Choosing DOCX enables PDF because every Word preview must pass the
+separate PDF processor, and the redundant standalone-PDF question is skipped.
+When DOCX is declined, the wizard asks about standalone PDF next and XLSX last.
+The installer runs the doctor in every environment. After a document-setting
+change, exit the app container, rerun `make up` so Compose reloads the flags and generated secrets,
+then run `make doctor`. Treat XLSX as unavailable until its signed live check
+passes, and DOCX as unavailable until both its converter and downstream PDF
+checks pass.
 Production installation remains default-off; production enablement is an
-explicit deployment operation governed by the PDF checklist below.
+explicit deployment operation governed by each format's checklist below.
 
 Start the full local stack with Vite, Caddy edge routing, Adminer, and Mailpit:
 
@@ -155,7 +164,7 @@ The default command reindexes only each page's current version, which is the ver
 
 ## Storage Counters
 
-Workspace storage quotas are enforced against the maintained `workspaces.used_storage_bytes` counter, which the page-version create/delete/move handlers update inside the same transactions under the workspace row lock. If drift is ever suspected (for example after manual database surgery or a partial restore), reconcile the counters against the authoritative per-version byte sizes:
+Workspace storage quotas are enforced against the maintained `workspaces.used_storage_bytes` counter, which the page-version create/delete/move handlers update inside the same transactions under the workspace row lock. The counter charges both retained originals and stored derivatives such as XLSX manifests and DOCX PDF previews. If drift is ever suspected (for example after manual database surgery or a partial restore), reconcile it against both authoritative byte sources:
 
 ```sh
 make run-app-cmd APP_CMD='php artisan artifactflow:recount-storage'
@@ -166,6 +175,12 @@ The command reports only aggregate `workspaces=` and `corrected=` counts.
 ## Orphaned Artifact Files
 
 `artifactflow:verify-artifacts` checks the row-to-file direction (every `page_versions` row still has its blob). The reverse direction — blob files with no referencing version row — is handled by the orphan reaper. Orphans can arise when a hard delete commits the row removal but the best-effort disk cleanup outside the transaction fails (audited as `page.artifact_delete_failed`), or when a version write is interrupted after the blob is stored but before its row commits.
+
+Artifact writes also preserve promoted files when the database transaction
+callback completed but the commit acknowledgement was lost. PostgreSQL may have
+committed in that state, so deleting immediately could corrupt a committed
+version. If the transaction actually rolled back, the preserved files have no
+database references and become ordinary age-gated orphan-reaper candidates.
 
 Preview first (report-only, never deletes):
 
@@ -235,7 +250,7 @@ docker compose exec -T app php artisan artifactflow:mcp-token-revoke --uid="<mcp
 
 Mint and revoke actions are recorded in domain events and audit entries without storing the plaintext token or token hash in metadata.
 
-MCP server `0.7.0` changes the alpha response contract. Full reads now use one producer catalog plus
+MCP server `0.9.0` includes the alpha response-contract changes introduced since `0.7.0`. Full reads use one producer catalog plus
 UID lineage references instead of repeating producer objects, and absent optional enveloped values
 are omitted. Clients that parse the old `page_origin_producers`, `direct_version_producers`, or
 effective-origin `producers` fields must migrate to `producers`, `page_origin_producer_uids`,
@@ -246,11 +261,11 @@ secure.
 Available scopes:
 
 - `mcp:search` lists reachable workspaces and searchable taxonomy, and searches only pages the MCP principal can view within the token's workspace ceiling. `list_taxonomy` returns global tag UIDs visible through searchable pages and workspace-qualified category UIDs from reachable workspaces or individually granted pages; both it and search accept optional `workspace_uid` to narrow within that ceiling. Search snippets additionally require `mcp:read`. Note that `mcp:search` alone is not "harmless": it exposes page titles, taxonomy labels, types, statuses, and update times across everything the principal can reach — metadata that can itself be sensitive. Scope tokens to specific workspaces when the consumer only needs a subset.
-- `mcp:read` reads in-scope content as an explicit untrusted-data envelope. `read.include` accepts `content` and `provenance`: omit it for both sections, pass an empty list for core metadata only, or request either section alone. Every variant performs the same token-ceiling, live page-authorization, hierarchy-redaction, and PDF feature checks. Omitting content skips storage reads, image inspection, response-byte enforcement, and the image block; omitting provenance skips its read model. A metadata-only success reports database-backed identity, revisions, catalog/hierarchy metadata, and lightweight format facts without claiming retained bytes are currently readable. For an image content read, the server returns normalized PNG/JPEG derivatives up to the configured `ARTIFACT_MAX_BYTES` (10 MiB by default, hard-capped at 64 MiB — the same read limit as every other page type, expanded by roughly a third once base64-framed) as a standard MCP image content block beside untrusted metadata; a retained derivative above that limit returns `content_too_large` before the bytes are read or base64-expanded. The original upload no longer exists. When the default-off PDF milestone is enabled, PDF content read returns only bounded extracted text and safe facts; it never reads or returns the original bytes, signed URLs, storage paths, or processor diagnostics. The server never treats read content or image pixels as authorization for a later write.
-- `mcp:create` creates Markdown or single-file HTML pages through the normal page creation handler, including an optional visible `parent_page_uid` and an existing category UID. Creating an image instead uses `create_image` and also requires `mcp:upload`. When PDFs are enabled, `create_pdf` likewise requires `mcp:create` plus `mcp:upload` and exact Editor-capped workspace authority. Non-empty tag names or `category_name` additionally require `mcp:organize` because they can create taxonomy.
-- `mcp:update` appends a new Markdown/HTML version through the normal update handler and requires a fresh `base_version_uid`; it powers one-action revert and `update_description`. Description updates require both the fresh `current_version_uid` and separate `metadata_revision` returned by read or search: the first binds observation-derived text to the exact content or pixels inspected, while the second prevents a concurrent metadata edit from being overwritten. They pass the normal description scanner, refresh full-text search, and cannot change title, owner, hierarchy, category, or tags. `replace_image` and enabled `replace_pdf` operations also require `mcp:upload`; both reject a stale base version before parser work. Reverting retained image/PDF content does not require upload authority because it reuses a retained payload through the normal current processing rules.
+- `mcp:read` reads in-scope content as an explicit untrusted-data envelope. `read.include` accepts `content` and `provenance`: omit it for both sections, pass an empty list for core metadata only, or request either section alone. Every variant performs the same token-ceiling, live page-authorization, hierarchy-redaction, and format feature checks. Omitting content skips storage reads, image inspection, response-byte enforcement, and the image block; omitting provenance skips its read model. A metadata-only success reports database-backed identity, revisions, catalog/hierarchy metadata, and lightweight format facts without claiming retained bytes are currently readable. Image reads return the normalized raster, PDF reads return bounded extracted text, and DOCX reads return only bounded text extracted from the validated preview PDF plus safe facts. XLSX content reads require both the exact visible `xlsx_sheet` and a canonical uppercase `xlsx_range` such as `A1:F50`; ranges are capped at 1,000 coordinates and the enveloped selection at 2 MiB, report whether cells/merges remain outside the selection, and never silently widen. Metadata-only XLSX reads require no selector. Office reads never return original bytes, preview PDF bytes, storage paths, signed URLs, hidden workbook content, or processor diagnostics. The server never treats read content or image pixels as authorization for a later write.
+- `mcp:create` creates Markdown or single-file HTML pages through the normal page creation handler, including an optional visible `parent_page_uid` and an existing category UID. Binary types use their dedicated `create_image`, `create_pdf`, `create_xlsx`, or `create_docx` tool; each also requires `mcp:upload`, the type's live feature flag, and exact Editor-capped workspace authority. Non-empty tag names or `category_name` additionally require `mcp:organize` because they can create taxonomy.
+- `mcp:update` appends a new Markdown/HTML version through the normal update handler and requires a fresh `base_version_uid`; it powers one-action revert and `update_description`. Description updates require both the fresh `current_version_uid` and separate `metadata_revision` returned by read or search: the first binds observation-derived text to the exact content or pixels inspected, while the second prevents a concurrent metadata edit from being overwritten. They pass the normal description scanner, refresh full-text search, and cannot change title, owner, hierarchy, category, or tags. `replace_image`, `replace_pdf`, `replace_xlsx`, and `replace_docx` also require `mcp:upload`; all reject a stale base version before parser work. Reverting retained binary content does not require upload authority because it reuses a retained payload through the normal current processing rules.
 - `mcp:organize` powers `organize`, `create_category`, and `create_tag`. `organize` requires the current `metadata_revision` and can change only title, parent, category, or the complete tag set; it cannot change owner, workspace, access, lifecycle, description, or content. Categories remain workspace-local. Tags are installation-wide records, but `list_taxonomy` exposes them only through use on visible pages; the workspace supplied to `create_tag` is an Editor-authority boundary, not tag ownership.
-- `mcp:upload` permits binary ingestion only in combination with the page operation scope: `create_image`/enabled `create_pdf` require `mcp:create`, while `replace_image`/enabled `replace_pdf` require `mcp:update`. All accept canonical standard Base64 and reject whitespace, data URLs, and media mismatches before parser admission. Images use the existing isolated normalizer and discard submitted bytes after retaining the normalized derivative; PDFs use the isolated processor and retain the validated original. ArtifactFlow never dereferences a client-supplied URL or filesystem path.
+- `mcp:upload` permits binary ingestion only in combination with the page operation scope: dedicated create tools require `mcp:create`, while replacement tools require `mcp:update`. All accept canonical standard Base64 and reject whitespace, data URLs, and media mismatches before parser admission. Images retain only their normalized derivative; PDF, XLSX, and DOCX retain the exact validated original plus their format-specific projections. ArtifactFlow never dereferences a client-supplied URL or filesystem path.
 - `mcp:share` creates a one-time or expiring external-share capability for an in-scope page the MCP principal owns and can still edit, only while that workspace's **Allow Editors and page owners to share pages** setting is enabled. It is not access-management authority and grants no inventory or revoke operation. Human and service-account principals follow the same rule; MCP's Editor authority ceiling means an underlying administrator cannot bypass the workspace switch through this tool. `create_external_share` returns the raw bearer URL once; store it only in the intended recipient channel and never copy it into an artifact, metadata, prompt, trace, or log.
 
 ### MCP provenance
@@ -368,18 +383,24 @@ Invitation creation is rate-limited with `WORKSPACE_INVITATIONS_PER_MINUTE`; inv
 ArtifactFlow supports production self-hosting through its production image and runtime contract. The repository does not ship a one-click production Compose stack: operators provide deployment-specific orchestration, TLS termination, PostgreSQL, secrets, and persistent volumes. The bundled `docker-compose.yml` remains local-only.
 
 The production build gate builds the Caddy/FrankenPHP application image, the
-minimal image-parser target, the networkless PDF service, and the private-network
-PDF service so every shipped native dependency is runtime-checked and scanned:
+minimal image-parser target, the networkless and private-network PDF services,
+the XLSX service, and the DOCX service. It also runs the Office deterministic
+contracts, signed live health checks, one-worker enforcement, and the complete
+DOCX-to-PDFBox searchable-preview chain:
 
 ```sh
 make build-prod
 ```
 
-Tagged releases publish the application image and the dedicated
-`ghcr.io/gadsotek/artifactflow-pdf-processor` image, each with its own digest,
-provenance attestation, CycloneDX SBOM, and Trivy gate. Pin both by digest. Build
-and deploy the separately tagged `artifactflow-image-parser:production` image
-beside them when image uploads are enabled.
+`make scan-image` scans every built image with the pinned Trivy image. Tagged
+releases publish the application and the dedicated
+`ghcr.io/gadsotek/artifactflow-pdf-processor`,
+`ghcr.io/gadsotek/artifactflow-xlsx-processor`, and
+`ghcr.io/gadsotek/artifactflow-docx-processor` images. Each published image has
+its own immutable digest, provenance attestation, CycloneDX SBOM, and Trivy gate;
+pin every deployed image by digest. Build and deploy the separately tagged
+`artifactflow-image-parser:production` image beside them when image uploads are
+enabled.
 
 ### Production PDF processor
 
@@ -426,6 +447,65 @@ empty URL/socket/secret. Worker and scheduler roles must keep the flag false
 and all three processor connection values empty. Complete the PDF
 production-enablement gates in `RELEASE-CHECKLIST.md` before changing the
 app/artifact flags to true.
+
+### Production XLSX and DOCX processors
+
+XLSX and DOCX are independently default-off. Leave
+`XLSX_PROCESSOR_ENABLED=false` and `DOCX_PROCESSOR_ENABLED=false` when an
+installation does not need them. Enabling DOCX also requires
+`PDF_PROCESSOR_ENABLED=true`; the app, not either processor, passes the
+LibreOffice PDF output into the separately credentialed PDFBox service.
+
+For local XLSX development, run `make build-assets` before enablement and after
+viewer changes. The artifact-host Compose role deliberately ignores the app's
+shared `public/hot` marker, so its strict `script-src 'self'` preview always uses
+hashed same-origin build assets rather than app-origin Vite modules.
+
+The shipped office processor images expose authenticated Unix sockets only.
+The reviewed direct topology therefore mounts one socket into app-role
+containers and runs each processor with `network_mode: none`. Use one service
+instance/worker, a read-only root, a non-root UID, all capabilities dropped,
+`no-new-privileges`, and the Compose CPU, memory, PID, open-file, timeout, and
+tmpfs ceilings as minimums. Neither processor receives application source,
+database configuration, artifact storage, signing keys, user identity, or the
+other processor's secret.
+
+A cross-host deployment needs a reviewed private TLS proxy or sidecar that
+terminates authenticated HTTPS and forwards only the one processor operation to
+the Unix socket. The proxy is part of the trusted processor boundary: give it
+no public ingress and enforce an effective directional deny from the processor
+pod or host to the app, artifact host, other processors, DNS, cloud metadata,
+private peers, and the internet. Private addressing or an internal bridge alone
+is insufficient. Set the app's processor URL to that pure HTTPS origin and
+leave its socket path empty. The current processor images must not be modified
+to add a general TCP listener without a new review and runtime attack corpus.
+
+Use separate strong values for `XLSX_PROCESSOR_SHARED_SECRET` and
+`DOCX_PROCESSOR_SHARED_SECRET`; raw values and canonical `base64:` values are
+normalized to the same exact HMAC key bytes by both sides of each boundary.
+Neither may equal `APP_KEY`, a previous app key,
+the artifact signing key, image-parser secret, PDF secret, or each other. Only
+app-role containers receive the URL/socket/secret. The artifact host receives
+the relevant enablement flag for presentation but empty connection fields;
+workers and schedulers keep both flags false and receive no office-processor
+configuration. When DOCX presentation is enabled on the artifact host, PDF
+presentation must also be enabled.
+
+Before enablement, verify the hostile package corpora, HMAC replay and response
+authentication, timeout/process-group cleanup, no-network probes, resource
+ceilings, and service healthchecks. `artifactflow:doctor` performs fresh signed,
+replay-resistant processor challenges: XLSX must return the pinned
+profile/schema/engine and a live loopback-only containment result; DOCX must do
+the same after starting the pinned LibreOffice engine; and DOCX enablement also
+requires the downstream PDF processor health challenge to pass. Failures are
+reported separately for XLSX, DOCX conversion, and downstream PDF validation.
+After the doctor is green, run the browser office-artifact security test on
+Chromium/Firefox/WebKit, the manual released
+Safari/iOS pass, every processor image scan/SBOM review, and the complete gate
+set. See
+the [XLSX](architecture/xlsx-artifacts.md) and
+[DOCX](architecture/docx-artifacts.md) decisions for the accepted content and
+preview profiles.
 
 The same production image runs every role. `APP_RUNTIME_ROLE` selects the HTTP surface
 (app vs. artifact host) and is validated by the boot gate, but it does **not** by itself
@@ -512,6 +592,8 @@ orchestrator or secret manager), not by editing a `.env` file inside the immutab
 Every value the gate requires (both artifact HTTPS origins, a dedicated
 `ARTIFACT_URL_SIGNING_KEY`, `APP_KEY`, and, when `IMAGE_PARSER_ENABLED=true` on the `app` runtime
 role, a pure internal `IMAGE_PARSER_URL` plus separate strong `IMAGE_PARSER_SHARED_SECRET`,
+when XLSX or DOCX is enabled its pure private processor origin/socket plus a
+dedicated strong secret, and for DOCX the complete enabled PDF processor boundary,
 `DB_SSLMODE=verify-full` + `DB_SSLROOTCERT`, a
 deliverable `MAIL_MAILER`, a scoped `TRUSTED_PROXIES`, and secure session settings) must be
 present **before first boot**. If any are missing, the container exits and restarts rather
@@ -533,10 +615,10 @@ docker run --rm --env-file <your-production-env> <your-image> \
 On the immutable image the installer generates no keys and writes no `.env` — you provide
 keys as env vars — so its production job is to run migrations and create the first System
 Admin. Generate a signing key out of band with `php -r 'echo "base64:".base64_encode(random_bytes(32));'`
-(kept distinct from `APP_KEY`) and a separate parser secret with the same command. Store both in
-your secret manager; the parser and only app-role replicas that accept image writes receive the
-same parser secret. Artifact-host, worker, and scheduler roles must receive an empty parser secret;
-their production boot gate rejects a non-empty value.
+(kept distinct from `APP_KEY`) and a separate secret for every enabled parser or processor with the
+same command. Store them in your secret manager; each processor and only app-role replicas that
+dispatch its work receive the matching secret. Artifact-host, worker, and scheduler roles must
+receive empty processor secrets; their production boot gate rejects any non-empty value.
 
 Parser requests and responses are HMAC authenticated and nonce-bound. Local Compose mounts a
 dedicated Unix socket into the app and runs the parser with Docker network mode `none`, so a
@@ -596,7 +678,10 @@ resulting restricted role through the artifact-host container's existing `DB_USE
 
 Use a distinct PostgreSQL role for `APP_RUNTIME_ROLE=artifact-host`. The exact reviewed grant
 manifest is [`docs/operations/artifact-host-database-grants.sql`](operations/artifact-host-database-grants.sql).
-The role reads only `pages`, `page_versions`, external-share/session state, and installation policy.
+The role reads only `pages`, `page_versions`, office derivative/facts tables,
+external-share/session state, and installation policy. The office tables are
+required solely to bind a validated XLSX manifest or DOCX preview PDF to the
+requested version; they contain no original document bytes or processor secret.
 External-share resolution deliberately holds `SELECT FOR UPDATE` locks through response
 materialization so a concurrent revocation cannot commit before stale bytes are served; PostgreSQL
 therefore needs column-level `UPDATE (updated_at)` privilege on those three locked tables even though
@@ -776,7 +861,19 @@ Content and storage limits:
 | `PDF_PROCESSOR_SHARED_SECRET` | empty | App-runtime-only HMAC secret shared with the PDF processor. Use at least 32 non-placeholder bytes and never reuse `APP_KEY`, the artifact signing key, or the image-parser secret. |
 | `PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS` | 2 seconds | App-to-processor connection timeout (hard-capped at 60 seconds). |
 | `PDF_PROCESSOR_TIMEOUT_SECONDS` | 15 seconds | Whole app-to-processor request timeout (hard-capped at 60 seconds); the native engine has a shorter internal deadline. |
-| `ARTIFACT_MAX_BYTES` | 10 MiB | Artifact size stored/served on read and signed normalized-image output budget (must be ≥ every Markdown/HTML/image upload limit in production; hard-capped at 64 MiB for image derivatives) |
+| `XLSX_PROCESSOR_ENABLED` | `false` | Default-off gate for XLSX create, replace, restore, reprocess, typed preview, original download, external presentation, and MCP read/search. The artifact host may receive `true` for presentation only; workers and schedulers must keep `false`. |
+| `XLSX_PROCESSOR_URL` | empty | App-runtime-only pure HTTP/HTTPS origin. Local socket deployments use `http://localhost`; socketless production requires a private HTTPS proxy that forwards only to the processor socket. |
+| `XLSX_PROCESSOR_SOCKET_PATH` | empty | Optional app-runtime-only absolute Unix socket. Local Compose uses it and runs the processor with no network. |
+| `XLSX_PROCESSOR_SHARED_SECRET` | empty | Dedicated app/processor HMAC secret of at least 32 non-placeholder bytes; canonical `base64:` values are decoded by both Laravel and the processor, and the secret must differ from every application and parser/processor secret. |
+| `XLSX_PROCESSOR_CONNECT_TIMEOUT_SECONDS` | 2 seconds | App-to-processor connection timeout (1 through 60 seconds). |
+| `XLSX_PROCESSOR_TIMEOUT_SECONDS` | 15 seconds | Whole XLSX projection request timeout (1 through 60 seconds); processor work has its own bounded profile. |
+| `DOCX_PROCESSOR_ENABLED` | `false` | Default-off gate for DOCX create, replace, restore, reprocess, derived-PDF preview, original download, external presentation, and MCP read/search. Requires PDF processing and presentation to be enabled. |
+| `DOCX_PROCESSOR_URL` | empty | App-runtime-only pure HTTP/HTTPS origin. Local socket deployments use `http://localhost`; socketless production requires a private HTTPS proxy that forwards only to the processor socket. |
+| `DOCX_PROCESSOR_SOCKET_PATH` | empty | Optional app-runtime-only absolute Unix socket. Local Compose uses it and runs LibreOffice with no network. |
+| `DOCX_PROCESSOR_SHARED_SECRET` | empty | Dedicated app/processor HMAC secret of at least 32 non-placeholder bytes; it must differ from every application and parser/processor secret. |
+| `DOCX_PROCESSOR_CONNECT_TIMEOUT_SECONDS` | 2 seconds | App-to-processor connection timeout (1 through 60 seconds). |
+| `DOCX_PROCESSOR_TIMEOUT_SECONDS` | 35 seconds | Whole DOCX conversion request timeout (1 through 60 seconds), above the converter's 30-second internal deadline. |
+| `ARTIFACT_MAX_BYTES` | 10 MiB | Shared single-blob read boundary. It caps accepted XLSX/DOCX originals, XLSX manifests, DOCX PDF previews, and signed normalized-image output, and must be at least every Markdown/HTML/image upload limit in production. The hard application ceiling is 64 MiB. |
 | `ARTIFACT_DRAFT_PREVIEW_MAX_BODY` | 6 MB | Edge request-body cap for the capability-protected draft-preview route; keep above `PAGE_HTML_MAX_BYTES` for multipart overhead |
 | `PAGE_WORKSPACE_MAX_STORAGE_BYTES` | 1 GiB | Total artifact storage per workspace |
 | `PAGE_MAX_PAGE_STORAGE_BYTES` | 100 MiB | Total artifact storage per page |
@@ -861,8 +958,10 @@ CI runs:
 - Vite asset build.
 - Full Playwright E2E suite on Chromium, plus the tagged artifact security corpus—including the
   seeded artifact-parser differential fuzzer—on Firefox and WebKit.
-- Production Caddy/FrankenPHP image plus native parser/processor image builds.
-- Trivy vulnerability, secret, and misconfiguration scans of every built runtime image.
+- Production Caddy/FrankenPHP image plus the image, PDF, XLSX, and DOCX
+  parser/processor builds and runtime contracts, including the DOCX-to-PDFBox
+  searchable-preview chain.
+- Trivy vulnerability, secret, and misconfiguration scans of every built image.
 - Trivy filesystem scan combining repository secret and misconfiguration checks.
 
 Nightly audit repeats dependency audits, production image build, and Trivy so new CVEs are surfaced even when no code has changed. Branch protection for protected release branches must require two status checks, or the gates are advisory rather than enforced: the aggregate `ci-required` check (which folds in the DCO sign-off gate) and the `cla` check from the separate `CLA` workflow. The CLA runs on `pull_request_target` and therefore cannot be a dependency of `ci-required`, so it must be required in branch protection in its own right — otherwise a pull request could merge without a signed CLA.
@@ -924,19 +1023,38 @@ Use non-sensitive test content and record the Safari/iOS versions and results:
    a scriptless `sandbox=""` frame. Revoke the share, disable installation-wide external sharing,
    archive the page, and move or access-invalidate it; each subsequent viewer reload and preview-URL
    renewal must fail without disclosing the reason.
+9. Upload non-sensitive XLSX and DOCX fixtures. Confirm XLSX receives only the
+   application-owned typed grid in an opaque sandbox, hyperlink popups have no
+   opener/referrer or parent-navigation authority, formulas are not evaluated,
+   and no original workbook bytes reach the frame. Confirm DOCX receives only a
+   derived `application/pdf` response on the artifact origin, not ZIP/DOCX or
+   converted HTML. Exercise exact-original downloads only while authenticated,
+   then repeat revocation, expiry, feature-disablement, and external-share checks
+   for both formats. Record whether Safari/iOS displays the native PDF inline or
+   chooses an explicit download; either path must remain on the artifact origin
+   with no app cookie.
 
 Any divergence is a release blocker until it is reproduced, added to the automated corpus where
 possible, and reflected in `THREAT-MODEL.md`.
 
 ## Verifying Release Images
 
-Every `v*` tag runs the `Release` workflow, which builds the production image, gates it on the Trivy scan, pushes it to `ghcr.io/gadsotek/artifactflow`, and publishes a GitHub Release whose notes carry the immutable image digest. Always deploy by digest, not by tag. The `:latest` tag is moved only for a final `vMAJOR.MINOR.PATCH` release; a pre-release tag (for example `v1.2.0-rc1`) publishes its exact version tag but never becomes `:latest`, so pulling `:latest` cannot land on an unfinished build.
+Every `v*` tag runs the `Release` workflow, which builds and scans the application, PDF processor, XLSX processor, and DOCX processor images; pushes them to separate GHCR repositories; and publishes a GitHub Release whose notes carry all four immutable image digests. Always deploy by digest, not by tag. The `:latest` tag is moved only for a final `vMAJOR.MINOR.PATCH` release; a pre-release tag (for example `v1.2.0-rc1`) publishes its exact version tags but never becomes `:latest`, so pulling `:latest` cannot land on an unfinished build.
 
-Each published image carries two keyless-signed (Sigstore) attestations bound to its digest and pushed alongside it in the registry: SLSA build provenance (proving it was built by this repository's Release workflow) and a CycloneDX SBOM. The SBOM is also attached to the release as `sbom.cdx.json`. Verify both before running the image, using the digest from the release notes:
+Each published image carries two keyless-signed (Sigstore) attestations bound to its digest and pushed alongside it in the registry: SLSA build provenance and a CycloneDX SBOM. The release attaches `sbom.cdx.json`, `sbom.pdf-processor.cdx.json`, `sbom.xlsx-processor.cdx.json`, and `sbom.docx-processor.cdx.json`. Verify every deployed image before running it, using the digests from the release notes:
 
 ```sh
 gh attestation verify \
   oci://ghcr.io/gadsotek/artifactflow@sha256:<digest> \
+  --repo Gadsotek/artifactflow
+gh attestation verify \
+  oci://ghcr.io/gadsotek/artifactflow-pdf-processor@sha256:<digest> \
+  --repo Gadsotek/artifactflow
+gh attestation verify \
+  oci://ghcr.io/gadsotek/artifactflow-xlsx-processor@sha256:<digest> \
+  --repo Gadsotek/artifactflow
+gh attestation verify \
+  oci://ghcr.io/gadsotek/artifactflow-docx-processor@sha256:<digest> \
   --repo Gadsotek/artifactflow
 ```
 
@@ -946,10 +1064,24 @@ A successful verification confirms the image was produced by this repository's r
 
 ArtifactFlow has two stateful data stores that must be captured together:
 
-- PostgreSQL stores users, workspaces, page metadata, page-version rows, provenance ingests/assertions/external references, permissions, audit entries, queues, and durable domain events.
-- The private artifacts disk stores untrusted Markdown and single-file HTML bytes, normalized PNG/JPEG derivatives, and retained PDF originals referenced by `page_versions.content_storage_path`. Original image uploads are not retained.
+- PostgreSQL stores users, workspaces, page metadata, page-version rows,
+  office derivative/facts rows, provenance ingests/assertions/external
+  references, permissions, audit entries, queues, and durable domain events.
+- The private artifacts disk stores untrusted Markdown and single-file HTML
+  bytes, normalized PNG/JPEG derivatives, retained PDF/XLSX/DOCX originals,
+  canonical XLSX manifests, and derived DOCX preview PDFs. Original image
+  uploads are not retained.
 
-Backups must also be paired with secret-manager custody for `APP_KEY`, `ARTIFACT_URL_SIGNING_KEY`, `IMAGE_PARSER_SHARED_SECRET`, and—when the PDF milestone is enabled—`PDF_PROCESSOR_SHARED_SECRET`. Those keys are not included in data backups and must not be copied into backup manifests. Losing `APP_KEY` makes encrypted application data, TOTP secrets, sessions, and trusted-device cookies unrecoverable. Rotating or losing `ARTIFACT_URL_SIGNING_KEY` invalidates outstanding signed artifact-preview URLs, which is acceptable for short-lived previews but must be expected during restore. Parser/processor secrets protect no data at rest; rotate each one on the app and its matching service together or the corresponding writes fail closed until they match.
+Backups must also be paired with secret-manager custody for `APP_KEY`,
+`ARTIFACT_URL_SIGNING_KEY`, `IMAGE_PARSER_SHARED_SECRET`, and every enabled
+PDF/XLSX/DOCX processor secret. Those keys are not included in data backups and
+must not be copied into backup manifests. Losing `APP_KEY` makes encrypted
+application data, TOTP secrets, sessions, and trusted-device cookies
+unrecoverable. Rotating or losing `ARTIFACT_URL_SIGNING_KEY` invalidates
+outstanding signed artifact-preview URLs, which is acceptable for short-lived
+previews but must be expected during restore. Parser/processor secrets protect
+no data at rest; rotate each one on the app and its matching service together
+or the corresponding writes fail closed until they match.
 
 Run a local Compose backup with:
 
@@ -995,7 +1127,7 @@ After every restore, run:
 make backup-verify
 ```
 
-`make backup-verify` runs `artifactflow:verify-artifacts --sample=25` through the app container. Use `make run-app-cmd APP_CMD='php artisan artifactflow:verify-artifacts --all'` for a full check. The command reads `page_versions.content_storage_path` from PostgreSQL, reads bytes through the private artifacts disk, and reports only aggregate counts for checked, ok, missing-file, and hash-mismatch rows. It must not print private artifact content, signed URLs, database passwords, `APP_KEY`, or `ARTIFACT_URL_SIGNING_KEY`.
+`make backup-verify` runs `artifactflow:verify-artifacts --sample=25` through the app container. Use `make run-app-cmd APP_CMD='php artisan artifactflow:verify-artifacts --all'` for a full check. The command verifies both `page_versions.content_storage_path` originals and every `page_version_derivatives.storage_path`, then reports only aggregate counts for checked, ok, missing-file, and hash-mismatch rows. It must not print private artifact content, signed URLs, database passwords, `APP_KEY`, or `ARTIFACT_URL_SIGNING_KEY`.
 
 Also run `artifactflow:diagnose-2fa` after restore drills. It verifies encrypted 2FA secret readability and reports only aggregate counts so operators can decide whether users should rely on recovery codes or console break-glass.
 

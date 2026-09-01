@@ -8,7 +8,7 @@
                 <div>
                     <p class="af-eyebrow">Compose</p>
                     <h1 class="text-xl font-semibold text-zinc-950 dark:text-zinc-50">Create page</h1>
-                    <p class="af-page-intro">Write portable knowledge, paste an artifact, or upload HTML, images, and PDFs.</p>
+                    <p class="af-page-intro">Write portable knowledge, paste an artifact, or upload HTML, images, PDFs, Excel workbooks, and Word documents.</p>
                 </div>
                 <a class="af-secondary-button" href="{{ route('pages.index') }}">Cancel</a>
             </div>
@@ -70,6 +70,12 @@
                                 @if ($pdfArtifactsEnabled)
                                     <option value="{{ PageType::Pdf->value }}" @selected(old('type') === PageType::Pdf->value)>PDF document</option>
                                 @endif
+                                @if ($xlsxArtifactsEnabled)
+                                    <option value="{{ PageType::Xlsx->value }}" @selected(old('type') === PageType::Xlsx->value)>Excel workbook</option>
+                                @endif
+                                @if ($docxArtifactsEnabled)
+                                    <option value="{{ PageType::Docx->value }}" @selected(old('type') === PageType::Docx->value)>Word document</option>
+                                @endif
                             </select>
                         </label>
 
@@ -82,6 +88,12 @@
                                 <option data-create-page-mode-type="{{ PageType::Image->value }}" value="{{ PageCreationMode::ImageUpload->value }}" @selected(old('mode') === PageCreationMode::ImageUpload->value) @disabled(old('type', PageType::Markdown->value) !== PageType::Image->value)>Upload image</option>
                                 @if ($pdfArtifactsEnabled)
                                     <option data-create-page-mode-type="{{ PageType::Pdf->value }}" value="{{ PageCreationMode::PdfUpload->value }}" @selected(old('mode') === PageCreationMode::PdfUpload->value) @disabled(old('type', PageType::Markdown->value) !== PageType::Pdf->value)>Upload PDF</option>
+                                @endif
+                                @if ($xlsxArtifactsEnabled)
+                                    <option data-create-page-mode-type="{{ PageType::Xlsx->value }}" value="{{ PageCreationMode::XlsxUpload->value }}" @selected(old('mode') === PageCreationMode::XlsxUpload->value) @disabled(old('type', PageType::Markdown->value) !== PageType::Xlsx->value)>Upload XLSX</option>
+                                @endif
+                                @if ($docxArtifactsEnabled)
+                                    <option data-create-page-mode-type="{{ PageType::Docx->value }}" value="{{ PageCreationMode::DocxUpload->value }}" @selected(old('mode') === PageCreationMode::DocxUpload->value) @disabled(old('type', PageType::Markdown->value) !== PageType::Docx->value)>Upload DOCX</option>
                                 @endif
                             </select>
                         </label>
@@ -225,6 +237,48 @@
                             <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="pdf_file" type="file" accept=".pdf,application/pdf" @error('pdf_file') aria-invalid="true" aria-describedby="create-pdf-file-error" autofocus @enderror>
                             @error('pdf_file')
                                 <span class="mt-3 block text-sm font-medium text-red-700 dark:text-red-300" data-pdf-upload-error id="create-pdf-file-error" role="alert">{{ $message }} Select the PDF again after correcting the issue.</span>
+                            @enderror
+                        </label>
+                    </section>
+                @endif
+
+                @if ($xlsxArtifactsEnabled)
+                    <section class="space-y-5" data-create-page-xlsx-upload-fields hidden>
+                        <div class="af-create-section-heading">
+                            <span>03</span>
+                            <div>
+                                <h2>Upload Excel workbook</h2>
+                                <p>The workbook is validated in isolation and projected into a read-only typed preview.</p>
+                            </div>
+                        </div>
+
+                        <label class="af-file-drop block">
+                            <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">XLSX workbook</span>
+                            <span class="mt-1 block text-xs text-zinc-500">Formulas are not recalculated. Hidden content and unsupported active features do not enter the preview or search index.</span>
+                            <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="xlsx_file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @error('xlsx_file') aria-invalid="true" aria-describedby="create-xlsx-file-error" autofocus @enderror>
+                            @error('xlsx_file')
+                                <span class="mt-3 block text-sm font-medium text-red-700 dark:text-red-300" id="create-xlsx-file-error" role="alert">{{ $message }} Select the workbook again after correcting the issue.</span>
+                            @enderror
+                        </label>
+                    </section>
+                @endif
+
+                @if ($docxArtifactsEnabled)
+                    <section class="space-y-5" data-create-page-docx-upload-fields hidden>
+                        <div class="af-create-section-heading">
+                            <span>03</span>
+                            <div>
+                                <h2>Upload Word document</h2>
+                                <p>The DOCX package is validated and converted in isolation to a searchable PDF preview.</p>
+                            </div>
+                        </div>
+
+                        <label class="af-file-drop block">
+                            <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">DOCX document</span>
+                            <span class="mt-1 block text-xs text-zinc-500">Macros, embedded packages, external content, and unsupported active features are rejected. Normal web hyperlinks may remain clickable in the PDF preview.</span>
+                            <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="docx_file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @error('docx_file') aria-invalid="true" aria-describedby="create-docx-file-error" autofocus @enderror>
+                            @error('docx_file')
+                                <span class="mt-3 block text-sm font-medium text-red-700 dark:text-red-300" id="create-docx-file-error" role="alert">{{ $message }} Select the document again after correcting the issue.</span>
                             @enderror
                         </label>
                     </section>

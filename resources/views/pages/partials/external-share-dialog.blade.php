@@ -32,6 +32,14 @@
                 <div class="af-callout" data-external-sharing-disabled>
                     PDF artifacts are disabled for this installation. Existing links remain unavailable until PDF support is enabled again.
                 </div>
+            @elseif ($page->type === PageType::Xlsx && !$xlsxArtifactsEnabled)
+                <div class="af-callout" data-external-sharing-disabled>
+                    Excel workbook artifacts are disabled for this installation.
+                </div>
+            @elseif ($page->type === PageType::Docx && !$docxArtifactsEnabled)
+                <div class="af-callout" data-external-sharing-disabled>
+                    Word document artifacts are disabled for this installation.
+                </div>
             @else
                 <section aria-labelledby="external-share-create-title">
                     <h3 class="text-sm font-semibold text-zinc-950 dark:text-zinc-50" id="external-share-create-title">Create an external link</h3>
@@ -41,6 +49,10 @@
                     @if ($page->type === PageType::Pdf)
                         <p class="mt-2 text-xs text-amber-700 dark:text-amber-300">
                             PDF viewing is download-equivalent. The recipient's browser may allow saving, printing, copying, or forwarding the bytes.
+                        </p>
+                    @elseif ($page->type === PageType::Docx)
+                        <p class="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                            The recipient receives only the searchable PDF derivative, never the original DOCX.
                         </p>
                     @endif
 

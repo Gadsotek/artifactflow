@@ -7,6 +7,9 @@ namespace Tests\Feature\Diagnostics;
 use App\Application\Diagnostics\DeploymentDoctor;
 use App\Application\Diagnostics\DoctorCheck;
 use App\Application\Diagnostics\DoctorCheckStatus;
+use App\Application\Diagnostics\ProcessorHealthProbe;
+use App\Application\Diagnostics\ProcessorHealthProbeResult;
+use App\Application\Diagnostics\ProcessorHealthTarget;
 use App\Application\Identity\TurnstileConfiguration;
 use App\Application\PageCatalog\ImageNormalizationConfiguration;
 use App\Infrastructure\Security\ProductionSecurityConfiguration;
@@ -830,6 +833,7 @@ final class DeploymentDoctorTest extends TestCase
                 'ensureDatabaseTls',
                 'ensureDebugDisabled',
                 'ensureDedicatedSigningKey',
+                'ensureDocxProcessorConfiguration',
                 'ensureDummyPasswordHashCost',
                 'ensureImageNormalizationBudgets',
                 'ensureImageParserConfiguration',
@@ -844,6 +848,7 @@ final class DeploymentDoctorTest extends TestCase
                 'ensureTransactionalInvitationQueue',
                 'ensureTrustedProxies',
                 'ensureTurnstileConfiguration',
+                'ensureXlsxProcessorConfiguration',
             ],
             $ensureMethods,
             'ProductionSecurityConfiguration gained or lost an ensure* invariant. Add or remove the matching DeploymentDoctor check and update both lists so doctor/boot-gate parity stays enforced.',
@@ -964,6 +969,344 @@ final class DeploymentDoctorTest extends TestCase
                     $check->detail,
                 );
             }
+        }
+    }
+
+    public function test_xlsx_release_gate_reports_enabled_and_fail_closed_production_states(): void
+    {
+        $enabled = (new DeploymentDoctor($this->config('production', [
+            'xlsx_processor.enabled' => true,
+            'xlsx_processor.url' => 'https://xlsx-processor.internal:8443',
+            'xlsx_processor.socket_path' => null,
+            'xlsx_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('x', 32)),
+            'xlsx_processor.connect_timeout_seconds' => 2,
+            'xlsx_processor.timeout_seconds' => 15,
+        ]), processorHealthProbe: $this->healthyProcessorHealthProbe()))->run();
+        $this->assertSame(DoctorCheckStatus::Pass, $this->check($enabled->checks, 'xlsx_release_gate')->status);
+
+        $plaintext = (new DeploymentDoctor($this->config('production', [
+            'xlsx_processor.enabled' => true,
+            'xlsx_processor.url' => 'http://xlsx-processor.internal:8080',
+            'xlsx_processor.socket_path' => null,
+            'xlsx_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('x', 32)),
+            'xlsx_processor.connect_timeout_seconds' => 2,
+            'xlsx_processor.timeout_seconds' => 15,
+        ])))->run();
+        $this->assertSame(DoctorCheckStatus::Fail, $this->check($plaintext->checks, 'xlsx_release_gate')->status);
+
+        $credentialLeak = (new DeploymentDoctor($this->config('production', [
+            'app.runtime_role' => 'artifact-host',
+            'xlsx_processor.enabled' => true,
+            'xlsx_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('x', 32)),
+        ])))->run();
+        $this->assertSame(
+            DoctorCheckStatus::Fail,
+            $this->check($credentialLeak->checks, 'xlsx_release_gate')->status,
+        );
+    }
+
+    public function test_local_xlsx_doctor_runs_the_authenticated_live_profile_check_when_enabled(): void
+    {
+        $configuration = [
+            'xlsx_processor.enabled' => true,
+            'xlsx_processor.url' => 'http://localhost',
+            'xlsx_processor.socket_path' => '/run/artifactflow/xlsx-processor/processor.sock',
+            'xlsx_processor.shared_secret' => 'artifactflow-local-xlsx-processor-secret-not-for-production',
+            'xlsx_processor.connect_timeout_seconds' => 2,
+            'xlsx_processor.timeout_seconds' => 15,
+        ];
+
+        $healthy = (new DeploymentDoctor(
+            $this->config('local', $configuration),
+            processorHealthProbe: $this->healthyProcessorHealthProbe(),
+        ))->run();
+        $healthyCheck = $this->check($healthy->checks, 'xlsx_release_gate');
+        $this->assertSame(DoctorCheckStatus::Pass, $healthyCheck->status);
+        $this->assertStringContainsString('passing live profile/containment check', $healthyCheck->detail);
+
+        $unhealthy = (new DeploymentDoctor(
+            $this->config('local', $configuration),
+            processorHealthProbe: $this->processorHealthProbeFailing('xlsx'),
+        ))->run();
+        $unhealthyCheck = $this->check($unhealthy->checks, 'xlsx_release_gate');
+        $this->assertSame(DoctorCheckStatus::Fail, $unhealthyCheck->status);
+        $this->assertStringContainsString('Authenticated XLSX health challenge failed', $unhealthyCheck->detail);
+    }
+
+    public function test_local_docx_doctor_verifies_the_converter_and_downstream_pdf_chain(): void
+    {
+        $configuration = [
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'http://localhost',
+            'pdf_processor.socket_path' => '/run/artifactflow/pdf-processor/processor.sock',
+            'pdf_processor.shared_secret' => 'artifactflow-local-pdf-processor-secret-not-for-production',
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+            'docx_processor.enabled' => true,
+            'docx_processor.url' => 'http://localhost',
+            'docx_processor.socket_path' => '/run/artifactflow/docx-processor/processor.sock',
+            'docx_processor.shared_secret' => 'artifactflow-local-docx-processor-secret-not-for-production',
+            'docx_processor.connect_timeout_seconds' => 2,
+            'docx_processor.timeout_seconds' => 35,
+        ];
+
+        $healthy = (new DeploymentDoctor(
+            $this->config('local', $configuration),
+            processorHealthProbe: $this->healthyProcessorHealthProbe(),
+        ))->run();
+        $healthyCheck = $this->check($healthy->checks, 'docx_release_gate');
+        $this->assertSame(DoctorCheckStatus::Pass, $healthyCheck->status);
+        $this->assertStringContainsString('passing live DOCX/PDF health checks', $healthyCheck->detail);
+
+        $unhealthy = (new DeploymentDoctor(
+            $this->config('local', $configuration),
+            processorHealthProbe: $this->processorHealthProbeFailing('pdf'),
+        ))->run();
+        $unhealthyCheck = $this->check($unhealthy->checks, 'docx_release_gate');
+        $this->assertSame(DoctorCheckStatus::Fail, $unhealthyCheck->status);
+        $this->assertStringContainsString('Authenticated downstream PDF health challenge failed', $unhealthyCheck->detail);
+    }
+
+    public function test_docx_release_gate_requires_both_dedicated_processor_boundaries_on_every_runtime(): void
+    {
+        $enabled = (new DeploymentDoctor($this->config('production', [
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'docx_processor.enabled' => true,
+            'docx_processor.url' => 'https://docx-processor.internal:8443',
+            'docx_processor.socket_path' => null,
+            'docx_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('d', 32)),
+            'docx_processor.connect_timeout_seconds' => 2,
+            'docx_processor.timeout_seconds' => 35,
+        ]), processorHealthProbe: $this->healthyProcessorHealthProbe()))->run();
+        $this->assertSame(DoctorCheckStatus::Pass, $this->check($enabled->checks, 'docx_release_gate')->status);
+
+        foreach (['app', 'artifact-host'] as $runtimeRole) {
+            $withoutPdf = (new DeploymentDoctor($this->config('production', [
+                'app.runtime_role' => $runtimeRole,
+                'pdf_processor.enabled' => false,
+                'docx_processor.enabled' => true,
+                'docx_processor.url' => $runtimeRole === 'app' ? 'https://docx-processor.internal:8443' : '',
+                'docx_processor.socket_path' => null,
+                'docx_processor.shared_secret' => $runtimeRole === 'app'
+                    ? 'base64:' . base64_encode(str_repeat('d', 32))
+                    : '',
+                'docx_processor.connect_timeout_seconds' => 2,
+                'docx_processor.timeout_seconds' => 35,
+            ])))->run();
+            $check = $this->check($withoutPdf->checks, 'docx_release_gate');
+
+            $this->assertSame(DoctorCheckStatus::Fail, $check->status, $runtimeRole);
+            $this->assertStringContainsString('PDF_PROCESSOR_ENABLED=true', $check->detail);
+        }
+    }
+
+    public function test_xlsx_release_gate_fails_when_the_authenticated_live_probe_fails(): void
+    {
+        $report = (new DeploymentDoctor($this->config('production', [
+            'xlsx_processor.enabled' => true,
+            'xlsx_processor.url' => 'https://xlsx-processor.internal:8443',
+            'xlsx_processor.socket_path' => null,
+            'xlsx_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('x', 32)),
+            'xlsx_processor.connect_timeout_seconds' => 2,
+            'xlsx_processor.timeout_seconds' => 15,
+        ]), processorHealthProbe: $this->processorHealthProbeFailing('xlsx')))->run();
+        $check = $this->check($report->checks, 'xlsx_release_gate');
+
+        $this->assertSame(DoctorCheckStatus::Fail, $check->status);
+        $this->assertStringContainsString('Authenticated XLSX health challenge failed', $check->detail);
+        $this->assertStringContainsString('test XLSX failure', $check->detail);
+    }
+
+    public function test_docx_release_gate_distinguishes_converter_and_downstream_pdf_probe_failures(): void
+    {
+        $configuration = [
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'docx_processor.enabled' => true,
+            'docx_processor.url' => 'https://docx-processor.internal:8443',
+            'docx_processor.socket_path' => null,
+            'docx_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('d', 32)),
+            'docx_processor.connect_timeout_seconds' => 2,
+            'docx_processor.timeout_seconds' => 35,
+        ];
+
+        $converterReport = (new DeploymentDoctor(
+            $this->config('production', $configuration),
+            processorHealthProbe: $this->processorHealthProbeFailing('docx'),
+        ))->run();
+        $converterCheck = $this->check($converterReport->checks, 'docx_release_gate');
+        $this->assertSame(DoctorCheckStatus::Fail, $converterCheck->status);
+        $this->assertStringContainsString('Authenticated DOCX health challenge failed', $converterCheck->detail);
+        $this->assertStringContainsString('test DOCX failure', $converterCheck->detail);
+
+        $pdfReport = (new DeploymentDoctor(
+            $this->config('production', $configuration),
+            processorHealthProbe: $this->processorHealthProbeFailing('pdf'),
+        ))->run();
+        $pdfCheck = $this->check($pdfReport->checks, 'docx_release_gate');
+        $this->assertSame(DoctorCheckStatus::Fail, $pdfCheck->status);
+        $this->assertStringContainsString('Authenticated downstream PDF health challenge failed', $pdfCheck->detail);
+        $this->assertStringContainsString('test PDF failure', $pdfCheck->detail);
+    }
+
+    public function test_office_release_gates_grade_invalid_local_and_production_boundaries(): void
+    {
+        $localXlsx = [
+            'xlsx_processor.enabled' => true,
+            'xlsx_processor.url' => 'http://localhost',
+            'xlsx_processor.socket_path' => '/run/artifactflow/xlsx-processor/processor.sock',
+            'xlsx_processor.shared_secret' => 'artifactflow-local-xlsx-processor-secret-not-for-production',
+            'xlsx_processor.connect_timeout_seconds' => 2,
+            'xlsx_processor.timeout_seconds' => 15,
+        ];
+        foreach ([
+            [['xlsx_processor.enabled' => 'yes'], DoctorCheckStatus::Fail, 'must be true or false'],
+            [['xlsx_processor.socket_path' => 'relative.sock'], DoctorCheckStatus::Fail, 'absolute filesystem path'],
+            [['app.runtime_role' => 'worker'], DoctorCheckStatus::Skipped, 'app runtime'],
+            [['xlsx_processor.url' => 'not-an-origin'], DoctorCheckStatus::Fail, 'pure HTTP or HTTPS origin'],
+            [['xlsx_processor.shared_secret' => ''], DoctorCheckStatus::Fail, 'shared secret is missing'],
+            [['xlsx_processor.connect_timeout_seconds' => 0], DoctorCheckStatus::Fail, 'between 1 and 60'],
+        ] as [$override, $status, $detail]) {
+            $report = (new DeploymentDoctor(
+                $this->config('local', array_merge($localXlsx, $override)),
+                processorHealthProbe: $this->healthyProcessorHealthProbe(),
+            ))->run();
+            $check = $this->check($report->checks, 'xlsx_release_gate');
+            $this->assertSame($status, $check->status);
+            $this->assertStringContainsString($detail, $check->detail);
+        }
+
+        $localDocx = [
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'http://localhost',
+            'pdf_processor.socket_path' => '/run/artifactflow/pdf-processor/processor.sock',
+            'pdf_processor.shared_secret' => 'artifactflow-local-pdf-processor-secret-not-for-production',
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+            'docx_processor.enabled' => true,
+            'docx_processor.url' => 'http://localhost',
+            'docx_processor.socket_path' => '/run/artifactflow/docx-processor/processor.sock',
+            'docx_processor.shared_secret' => 'artifactflow-local-docx-processor-secret-not-for-production',
+            'docx_processor.connect_timeout_seconds' => 2,
+            'docx_processor.timeout_seconds' => 35,
+        ];
+        foreach ([
+            [['docx_processor.enabled' => 'yes'], DoctorCheckStatus::Fail, 'must be true or false'],
+            [['docx_processor.socket_path' => 'relative.sock'], DoctorCheckStatus::Fail, 'absolute filesystem path'],
+            [['app.runtime_role' => 'scheduler'], DoctorCheckStatus::Skipped, 'app runtime'],
+            [['pdf_processor.enabled' => false], DoctorCheckStatus::Fail, 'PDF_PROCESSOR_ENABLED=true'],
+            [['pdf_processor.socket_path' => 'relative.sock'], DoctorCheckStatus::Fail, 'PDF_PROCESSOR_SOCKET_PATH'],
+            [['docx_processor.url' => 'not-an-origin'], DoctorCheckStatus::Fail, 'pure HTTP or HTTPS origin'],
+            [['docx_processor.shared_secret' => ''], DoctorCheckStatus::Fail, 'shared secret is missing'],
+            [['docx_processor.timeout_seconds' => 0], DoctorCheckStatus::Fail, 'between 1 and 60'],
+            [['pdf_processor.url' => 'not-an-origin'], DoctorCheckStatus::Fail, 'pure HTTP or HTTPS origin'],
+            [['pdf_processor.shared_secret' => ''], DoctorCheckStatus::Fail, 'shared secret is missing'],
+            [['pdf_processor.timeout_seconds' => 0], DoctorCheckStatus::Fail, 'between 1 and 60'],
+        ] as [$override, $status, $detail]) {
+            $report = (new DeploymentDoctor(
+                $this->config('local', array_merge($localDocx, $override)),
+                processorHealthProbe: $this->healthyProcessorHealthProbe(),
+            ))->run();
+            $check = $this->check($report->checks, 'docx_release_gate');
+            $this->assertSame($status, $check->status);
+            $this->assertStringContainsString($detail, $check->detail);
+        }
+
+        $productionXlsx = array_merge($this->hardenedProductionConfig(), [
+            'xlsx_processor.enabled' => true,
+            'xlsx_processor.url' => 'https://xlsx-processor.internal:8443',
+            'xlsx_processor.socket_path' => null,
+            'xlsx_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('x', 32)),
+            'xlsx_processor.connect_timeout_seconds' => 2,
+            'xlsx_processor.timeout_seconds' => 15,
+        ]);
+        foreach ([
+            [[
+                'app.runtime_role' => 'worker',
+                'xlsx_processor.url' => '',
+                'xlsx_processor.shared_secret' => '',
+            ], DoctorCheckStatus::Fail, 'worker and scheduler'],
+            [[
+                'app.runtime_role' => 'artifact-host',
+                'xlsx_processor.url' => '',
+                'xlsx_processor.shared_secret' => '',
+            ], DoctorCheckStatus::Pass, 'presentation is enabled'],
+            [['xlsx_processor.url' => 'not-an-origin'], DoctorCheckStatus::Fail, 'pure HTTP or HTTPS origin'],
+            [['app.previous_keys' => ['base64:not-valid%%%']], DoctorCheckStatus::Fail, 'APP_PREVIOUS_KEYS'],
+            [['xlsx_processor.shared_secret' => 'short'], DoctorCheckStatus::Fail, 'strong dedicated secret'],
+            [['xlsx_processor.timeout_seconds' => 0], DoctorCheckStatus::Fail, 'between 1 and 60'],
+        ] as [$override, $status, $detail]) {
+            $report = (new DeploymentDoctor(
+                $this->config('production', array_merge($productionXlsx, $override)),
+                processorHealthProbe: $this->healthyProcessorHealthProbe(),
+            ))->run();
+            $check = $this->check($report->checks, 'xlsx_release_gate');
+            $this->assertSame($status, $check->status);
+            $this->assertStringContainsString($detail, $check->detail);
+        }
+
+        $productionDocx = array_merge($this->hardenedProductionConfig(), [
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+            'docx_processor.enabled' => true,
+            'docx_processor.url' => 'https://docx-processor.internal:8443',
+            'docx_processor.socket_path' => null,
+            'docx_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('d', 32)),
+            'docx_processor.connect_timeout_seconds' => 2,
+            'docx_processor.timeout_seconds' => 35,
+        ]);
+        foreach ([
+            [[
+                'app.runtime_role' => 'worker',
+                'docx_processor.url' => '',
+                'docx_processor.shared_secret' => '',
+                'pdf_processor.url' => '',
+                'pdf_processor.shared_secret' => '',
+            ], DoctorCheckStatus::Fail, 'worker and scheduler'],
+            [[
+                'app.runtime_role' => 'worker',
+                'docx_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('d', 32)),
+            ], DoctorCheckStatus::Fail, 'Remove DOCX_PROCESSOR_URL'],
+            [[
+                'app.runtime_role' => 'artifact-host',
+                'docx_processor.url' => '',
+                'docx_processor.shared_secret' => '',
+                'pdf_processor.url' => '',
+                'pdf_processor.shared_secret' => '',
+            ], DoctorCheckStatus::Pass, 'presentation is enabled'],
+            [[
+                'app.runtime_role' => 'artifact-host',
+                'docx_processor.url' => '',
+                'docx_processor.shared_secret' => '',
+                'pdf_processor.enabled' => false,
+                'pdf_processor.url' => '',
+                'pdf_processor.shared_secret' => '',
+            ], DoctorCheckStatus::Fail, 'PDF_PROCESSOR_ENABLED=true'],
+            [['docx_processor.url' => 'not-an-origin'], DoctorCheckStatus::Fail, 'pure HTTP or HTTPS origin'],
+            [['docx_processor.url' => 'http://docx-processor.internal'], DoctorCheckStatus::Fail, 'must use HTTPS'],
+            [['app.previous_keys' => ['base64:not-valid%%%']], DoctorCheckStatus::Fail, 'APP_PREVIOUS_KEYS'],
+            [['docx_processor.shared_secret' => 'short'], DoctorCheckStatus::Fail, 'strong dedicated secret'],
+            [['docx_processor.timeout_seconds' => 0], DoctorCheckStatus::Fail, 'between 1 and 60'],
+            [['pdf_processor.url' => 'not-an-origin'], DoctorCheckStatus::Fail, 'downstream PDF processor configuration'],
+            [['pdf_processor.shared_secret' => ''], DoctorCheckStatus::Fail, 'downstream PDF processor configuration'],
+            [['pdf_processor.timeout_seconds' => 0], DoctorCheckStatus::Fail, 'downstream PDF processor configuration'],
+        ] as [$override, $status, $detail]) {
+            $report = (new DeploymentDoctor(
+                $this->config('production', array_merge($productionDocx, $override)),
+                processorHealthProbe: $this->healthyProcessorHealthProbe(),
+            ))->run();
+            $check = $this->check($report->checks, 'docx_release_gate');
+            $this->assertSame($status, $check->status);
+            $this->assertStringContainsString($detail, $check->detail);
         }
     }
 
@@ -1187,6 +1530,56 @@ final class DeploymentDoctorTest extends TestCase
         }
 
         $this->fail(sprintf('Doctor check [%s] was not produced.', $id));
+    }
+
+    private function healthyProcessorHealthProbe(): ProcessorHealthProbe
+    {
+        return new class() implements ProcessorHealthProbe {
+            public function xlsx(ProcessorHealthTarget $target): ProcessorHealthProbeResult
+            {
+                return ProcessorHealthProbeResult::healthy('XLSX authenticated health challenge passed.');
+            }
+
+            public function docx(ProcessorHealthTarget $target): ProcessorHealthProbeResult
+            {
+                return ProcessorHealthProbeResult::healthy('DOCX authenticated health challenge passed.');
+            }
+
+            public function pdf(ProcessorHealthTarget $target): ProcessorHealthProbeResult
+            {
+                return ProcessorHealthProbeResult::healthy('PDF authenticated health challenge passed.');
+            }
+        };
+    }
+
+    private function processorHealthProbeFailing(string $processor): ProcessorHealthProbe
+    {
+        return new class($processor) implements ProcessorHealthProbe {
+            public function __construct(private readonly string $processor)
+            {
+            }
+
+            public function xlsx(ProcessorHealthTarget $target): ProcessorHealthProbeResult
+            {
+                return $this->processor === 'xlsx'
+                    ? ProcessorHealthProbeResult::unhealthy('test XLSX failure')
+                    : ProcessorHealthProbeResult::healthy('XLSX authenticated health challenge passed.');
+            }
+
+            public function docx(ProcessorHealthTarget $target): ProcessorHealthProbeResult
+            {
+                return $this->processor === 'docx'
+                    ? ProcessorHealthProbeResult::unhealthy('test DOCX failure')
+                    : ProcessorHealthProbeResult::healthy('DOCX authenticated health challenge passed.');
+            }
+
+            public function pdf(ProcessorHealthTarget $target): ProcessorHealthProbeResult
+            {
+                return $this->processor === 'pdf'
+                    ? ProcessorHealthProbeResult::unhealthy('test PDF failure')
+                    : ProcessorHealthProbeResult::healthy('PDF authenticated health challenge passed.');
+            }
+        };
     }
 
     /**

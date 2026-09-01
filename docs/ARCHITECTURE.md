@@ -1,12 +1,12 @@
 # ArtifactFlow Architecture
 
 Status: MVP alpha architecture
-Last updated: 2026-08-11
+Last updated: 2026-08-30
 Primary audience: operators, engineering teams, security reviewers, maintainers, and OSS contributors
 
 > Looking for the diagrams? See the [architecture one-pager](architecture/README.md) (`overview.svg` + `workflows.svg`). **This** document is the full written architecture; that one is just the diagram index.
 
-ArtifactFlow is a security-first Laravel modular monolith and self-hosted, versioned artifact vault for tools and documents created with AI. The current alpha preserves Markdown/wiki pages and isolated single-file HTML artifact pages, their authoritative source, retained versions, searchable content, permissions, and audit history. PostgreSQL is the source of truth. The app is not event-sourced and is not fully event-driven: command handlers synchronously persist important state changes, audit entries, and durable domain events in the same transaction, while normal relational tables hold current state. The durable `domain_events` table is a transactional outbox: a scheduled relay (`artifactflow:dispatch-domain-events`, run every minute by the `scheduler` role) dispatches recorded events after commit, and the single listener registered today is observational (it logs dispatch). Side effects move onto listeners only when asynchronous retry is worth more than same-transaction atomicity.
+ArtifactFlow is a security-first Laravel modular monolith and self-hosted, versioned artifact vault for tools and documents created with AI. The current alpha preserves Markdown/wiki pages, isolated single-file HTML artifacts, normalized images, and default-off PDF, XLSX, and DOCX documents with their authoritative source or original, retained versions, searchable content, permissions, and audit history. PostgreSQL is the source of truth. The app is not event-sourced and is not fully event-driven: command handlers synchronously persist important state changes, audit entries, and durable domain events in the same transaction, while normal relational tables hold current state. The durable `domain_events` table is a transactional outbox: a scheduled relay (`artifactflow:dispatch-domain-events`, run every minute by the `scheduler` role) dispatches recorded events after commit, and the single listener registered today is observational (it logs dispatch). Side effects move onto listeners only when asynchronous retry is worth more than same-transaction atomicity.
 
 The central architecture decision is the two-origin artifact boundary. Untrusted HTML never executes on the authenticated application origin. It is stored privately, authorized through the app, signed with a short-lived HMAC URL, and served only by a separate artifact-host runtime with no app cookies.
 
@@ -36,6 +36,10 @@ write transaction, not on the worker; see [Events And Audit](#events-and-audit) 
 | --- | --- |
 | `app` | Authenticated web UI, sessions, CSRF, page/workspace management, MCP endpoint, search, saved-preview URL issuance, and Editor-authorized content-bound draft-capability issuance. |
 | `artifact-host` | Cookieless artifact origin: serves immutable saved HTML versions via signed URLs and verifies short-lived capabilities before reflecting a non-persisted pre-save draft (`POST /artifact-previews/draft`). |
+| `image-parser` | Networkless PNG/JPEG decoder and normalizer over an authenticated Unix socket. |
+| `pdf-processor` | Networkless PDF validator and bounded text extractor; also independently validates DOCX-derived previews. |
+| `xlsx-processor` | Networkless strict XLSX package validator and SheetJS typed-manifest projector. |
+| `docx-processor` | Networkless strict DOCX validator and pinned LibreOffice passive-PDF converter. |
 | `worker` | Queue worker (`queue:work`). The only queued work today is outbound mail (invitations, membership notices, password resets). |
 | `scheduler` | Laravel scheduler (`schedule:work`): runs the outbox relay `artifactflow:dispatch-domain-events` every minute and the nightly `prune-domain-events`, `prune-credentials`, `prune-external-shares`, and `prune-rate-limit-cache` retention jobs. |
 | `db` | PostgreSQL for app data, search vectors, queues, audit entries, and durable domain events. |
@@ -85,7 +89,9 @@ Current business tables include:
 | `workspace_memberships` | Accepted workspace roles by `workspace_uid` and `user_uid`. |
 | `workspace_invitations` | Pending invitations with lifecycle state. |
 | `pages` | Current page metadata, ownership, workspace, status, access mode, and current version pointer. |
-| `page_versions` | Immutable Markdown, HTML, or normalized PNG/JPEG content versions (retention-capped: oldest pruned past `PAGE_MAX_PAGE_VERSIONS`). |
+| `page_versions` | Immutable authoritative payload versions, including exact private PDF/XLSX/DOCX originals (retention-capped: oldest pruned past `PAGE_MAX_PAGE_VERSIONS`). |
+| `page_version_derivatives` | Hash/size-bound XLSX typed manifests and DOCX preview PDFs owned by one immutable version. |
+| `xlsx_version_facts`, `docx_version_facts` | Non-content processor/profile/count facts that bind each office derivative to its version. |
 | `page_version_ingests` | Durable ArtifactFlow-observed ingest facts, immediate lineage, and resolved root content origin for each version; retained after ordinary version-content pruning. |
 | `producer_assertions` | Append-only AI, human, or software producer claims with explicit evidence type and supersession lineage. |
 | `external_origin_references` | Sensitive, separately redactable artifact/conversation/session/source references attached to assertions. |
@@ -107,6 +113,15 @@ The product-facing rules for stable identity, immutable content versions, draft 
 - Markdown pages store portable Markdown source, render sanitized HTML in the app origin, and support strict Mermaid rendering.
 - HTML artifact pages store a single-file HTML version, never render that HTML in the app origin, and preview through the artifact-host origin.
 - Image pages accept only bounded PNG/JPEG uploads. A dedicated internal parser container performs native decoding and re-encoding; the app verifies its signed normalized response before storage, keeps no OCR text, and previews the derivative through a fixed scriptless artifact-host document.
+- PDF pages retain a validated exact original and bounded embedded-text facts;
+  the browser-native viewer is a documented download-equivalent exception on
+  the cookieless artifact origin.
+- XLSX pages retain the exact original plus a canonical typed visible-sheet
+  manifest from the isolated SheetJS processor. Preview and MCP use only the
+  manifest; formula code is never evaluated.
+- DOCX pages retain the exact original plus a passive PDF converted in the
+  isolated LibreOffice processor and independently accepted by the PDFBox
+  DOCX-preview profile. Preview never uses converted HTML or DOCX bytes.
 - Every content write creates an immutable version. Version *content* is never mutated; the only history that is removed is retention pruning — appending past `PAGE_MAX_PAGE_VERSIONS` deletes the oldest whole version(s) (each recorded as a `page.version.pruned` event) so a page never hits an uneditable version ceiling.
 - Every content write also creates an immutable ingest record in the same transaction. Observed actor/client/method/hash facts are separate from zero or more declared producer assertions; detailed product and architecture decision records remain internal.
 - Version restore creates a new current version rather than mutating history.
@@ -160,7 +175,10 @@ next live revision check.
 
 An MCP server (`app/Mcp`, backed by the official `laravel/mcp` package, with application
 behavior in `app/Application/Mcp`) is exposed at `POST /mcp` on the **app** runtime only. It lets approved
-AI clients call `list_workspaces` / `list_taxonomy` / `search` / `read` / `create` / `create_category` / `create_tag` / `update` / `update_description` / `revert` / `create_external_share`
+AI clients call `list_workspaces` / `list_taxonomy` / `search` / `read` /
+`create` / `create_image` / `create_pdf` / `create_xlsx` / `create_docx` /
+the matching binary replacement tools / `create_category` / `create_tag` /
+`update` / `update_description` / `revert` / `create_external_share`
 through the *same* command handlers, policies, scanners, and optimistic-concurrency checks
 as humans. Authority flows through scoped, expiring bearer tokens (hashed at rest,
 read-only or read-write, bound to selected workspaces) whose reach is the intersection of
@@ -169,7 +187,7 @@ selected workspace UIDs remain exact: parent scope does not imply descendant sco
 authority in an explicitly selected child may be inherited. System Admin status never adds
 content authority in browser or MCP contexts. `McpEffectiveAuthority` additionally collapses
 workspace/page Admin to Editor while an MCP context is active, so a token can never exceed the Editor cap. Read
-text content is framed as an untrusted-data envelope, while normalized image reads add a standard MCP image content block beside an untrusted metadata envelope. Neither authorizes a write; every write
+text content is framed as an untrusted-data envelope, while normalized image reads add a standard MCP image content block beside an untrusted metadata envelope. XLSX content reads require an exact visible sheet and an uppercase A1 range capped at 1,000 cells, then return only that response-size-checked typed selection and safe facts; DOCX reads return only text extracted from the validated preview and safe facts. Neither office original nor the DOCX PDF derivative is returned. None authorizes a write; every write
 still needs write scope, live access, and the matching content-version or metadata-revision token required by that operation.
 
 Laravel request objects and schema arrays stop at the MCP adapter. Every argument-bearing application
@@ -269,6 +287,16 @@ Untrusted artifact HTML is contained by isolation, not sanitization.
 Normalized image previews reuse the signed artifact-origin route but not the executable HTML
 policy. The artifact host generates a fixed scriptless viewer, embeds only the re-encoded raster,
 and sends an empty CSP `sandbox` plus `script-src 'none'`; the app iframe uses `sandbox=""`.
+
+XLSX preview is another application-owned document, not workbook HTML. The
+artifact host revalidates the hash-bound canonical manifest and emits fixed
+local Tabulator assets under an opaque sandbox that permits scripts and
+explicit hyperlink popups but no same-origin authority, forms, frames, or
+connections. DOCX preview uses only the independently validated PDF derivative
+and inherits the PDF-only browser-native viewer exception; the exact DOCX is
+available only as an authenticated attachment. Details are fixed in the public
+[XLSX](architecture/xlsx-artifacts.md) and
+[DOCX](architecture/docx-artifacts.md) decisions.
 
 Native image parsing is a separate trust boundary. The app performs only bounded PNG/JPEG envelope
 inspection, then sends the original bytes in a timestamped, nonce-bound HMAC request to the private
@@ -432,6 +460,10 @@ Production boot rejects unsafe deployments, including:
 
 - overlapping app and artifact origins;
 - missing, placeholder, short, or reused app/artifact signing keys;
+- enabled PDF, XLSX, or DOCX processing without a pure private origin/socket,
+  bounded timeouts, and a strong secret dedicated to that processor;
+- office/PDF processor credentials on non-app roles, enabled office formats on
+  worker/scheduler roles, or DOCX enabled without PDF processing/presentation;
 - non-HTTPS production origins;
 - debug mode;
 - unsafe session settings;
@@ -469,7 +501,7 @@ make scan-image
 git diff --check
 ```
 
-`make quality-full` is the authoritative aggregate for the `make` targets above: it runs all of them except `make compose-config` and also runs `make verify-reverb-origin`. The Rector dry run, Semgrep rule-fixture test, and `git diff --check` are separate required checks. Run `make compose-config` when Docker or environment files change, run the separate checks before committing, and keep `make ai-hooks-test` green whenever the AI guardrail files change.
+`make quality-full` is the authoritative aggregate for the `make` targets above: it runs all of them except `make compose-config` and also runs `make verify-reverb-origin`. Its production build and scan stages include the XLSX processor contract/health proof, the DOCX package/LibreOffice proof, the DOCX-to-PDFBox native-text chain, and Trivy scanning for both Office images. The Rector dry run, Semgrep rule-fixture test, and `git diff --check` are separate required checks. Run `make compose-config` when Docker or environment files change, run the separate checks before committing, and keep `make ai-hooks-test` green whenever the AI guardrail files change.
 
 ## Later Surfaces
 

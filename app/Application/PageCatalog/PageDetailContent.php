@@ -17,6 +17,11 @@ final readonly class PageDetailContent
         private ArtifactPreviewUrl $artifactPreviewUrls,
         private PdfArtifactUrl $pdfArtifactUrls,
         private PdfProcessorConfiguration $pdfProcessorConfiguration,
+        private XlsxProcessorConfiguration $xlsxProcessorConfiguration,
+        private XlsxManifestContentReader $xlsxManifestReader,
+        private DocxPreviewUrl $docxPreviewUrls,
+        private DocxProcessorConfiguration $docxProcessorConfiguration,
+        private DocxPreviewContentReader $docxPreviewReader,
         private MarkdownPageRenderer $markdownRenderer,
     ) {
     }
@@ -62,6 +67,13 @@ final readonly class PageDetailContent
                 }
             } else {
                 $contentUnavailable = !$this->contentReader->isAvailable($version->content_storage_path);
+
+                if ($page->type === PageType::Xlsx && !$contentUnavailable) {
+                    $contentUnavailable = $this->xlsxManifestReader->read($version) === null;
+                }
+                if ($page->type === PageType::Docx && !$contentUnavailable) {
+                    $contentUnavailable = $this->docxPreviewReader->read($version) === null;
+                }
             }
         }
 
@@ -69,11 +81,16 @@ final readonly class PageDetailContent
             $version instanceof PageVersion
             && $page->type->usesArtifactHostPreview()
             && ($page->type !== PageType::Pdf || $this->pdfProcessorConfiguration->enabled())
+            && ($page->type !== PageType::Xlsx || $this->xlsxProcessorConfiguration->enabled())
+            && ($page->type !== PageType::Docx
+                || ($this->docxProcessorConfiguration->enabled() && $this->pdfProcessorConfiguration->enabled()))
             && !$contentUnavailable
         ) {
-            $artifactPreviewUrl = $page->type === PageType::Pdf
-                ? $this->pdfArtifactUrls->temporaryCurrentUrl($page, $version)
-                : $this->artifactPreviewUrls->temporaryUrl($page, $version);
+            $artifactPreviewUrl = match ($page->type) {
+                PageType::Pdf => $this->pdfArtifactUrls->temporaryCurrentUrl($page, $version),
+                PageType::Docx => $this->docxPreviewUrls->temporaryCurrentUrl($page, $version),
+                default => $this->artifactPreviewUrls->temporaryUrl($page, $version),
+            };
             Log::info('artifact_preview_url.issued', [
                 'actor_user_uid' => $actor->uid,
                 'page_uid' => $page->uid,

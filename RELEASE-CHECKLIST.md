@@ -40,6 +40,24 @@ Set tester expectations explicitly:
   preserve one replica/concurrency one and hard resource limits, complete the
   released-Safari/iOS check, and close the final evidence-first security review.
   Existing installs remain default-off and require no processor service.
+- Keep `XLSX_PROCESSOR_ENABLED=false` unless this exact deployment has pinned
+  and scanned the reviewed XLSX image, mounted its authenticated Unix socket or
+  provided an equivalent private HTTPS-to-socket boundary, proven effective
+  outbound denial plus one-worker resource ceilings, completed the hostile
+  package corpus and Chromium/Firefox/WebKit viewer/link checks, and closed the
+  final evidence-first security review. The artifact host receives only the
+  presentation flag and restricted office facts/derivative grants.
+- Keep `DOCX_PROCESSOR_ENABLED=false` unless the PDF gate above is also
+  complete and enabled, the independently credentialed DOCX image is pinned and
+  scanned, LibreOffice network/process/tmpfs containment and failure cleanup are
+  proven, the DOCX output passes the PDFBox DOCX-preview profile, browser and
+  exact-original download boundaries are verified, and the final evidence-first
+  review is closed. Never give either processor the other's secret.
+- Confirm CI builds and runtime-tests the XLSX and DOCX processors, validates the
+  DOCX output through the independent PDFBox DOCX-preview profile, and scans both
+  images. Confirm the tagged release publishes both Office images with their own
+  immutable digests, CycloneDX SBOMs, and provenance attestations; a maintainer's
+  local image build does not replace release provenance.
 - Confirm protected branches require **both** required status checks before merge or release: the aggregate `ci-required` check (from `ci.yml`, which folds in the DCO sign-off gate) **and** the `cla` check from the `CLA` workflow (`cla.yml`). The CLA runs in a separate `pull_request_target` workflow, so it can never be part of `ci-required`; requiring only `ci-required` would leave the CLA signature unenforced at merge — the "no CLA, no merge" guarantee depends on this second required check. If the repository is still private on a GitHub plan without branch protection, make it public or move it to a plan that supports branch protection before treating CI as enforced.
 - Run the full gate set from `AGENTS.md`, including type coverage, line coverage, browser E2E, production image build, and Trivy image/config scans.
 - Do not deploy the repository `docker-compose.yml` as a production stack; it is local-only and intentionally uses development settings.

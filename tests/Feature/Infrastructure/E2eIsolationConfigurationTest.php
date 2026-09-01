@@ -29,6 +29,7 @@ final class E2eIsolationConfigurationTest extends TestCase
     public function test_compose_defines_dedicated_e2e_app_services_backed_by_db_test(): void
     {
         $compose = $this->readProjectFile('docker-compose.yml');
+        $e2eApp = $this->serviceBlock($compose, 'e2e-app', 'e2e-artifact-host');
 
         $this->assertStringContainsString('e2e-app:', $compose);
         $this->assertStringContainsString('e2e-artifact-host:', $compose);
@@ -40,6 +41,7 @@ final class E2eIsolationConfigurationTest extends TestCase
             $compose,
         );
         $this->assertStringContainsString('VITE_HOT_FILE: /tmp/artifactflow-e2e-no-hot', $compose);
+        $this->assertStringContainsString('CACHE_STORE: database', $e2eApp);
         $this->assertStringContainsString(
             'EXTERNAL_SHARE_PUBLIC_IP_RATE_LIMIT_PER_MINUTE: ${E2E_EXTERNAL_SHARE_PUBLIC_IP_RATE_LIMIT_PER_MINUTE:-1000}',
             $compose,
@@ -97,12 +99,31 @@ final class E2eIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('$(E2E_IMAGE_PARSER_SERVICE)', $makefile);
     }
 
+    public function test_e2e_processor_health_checks_poll_quickly_only_during_startup(): void
+    {
+        $compose = $this->readProjectFile('docker-compose.yml');
+        $processorServices = [
+            $this->serviceBlock($compose, 'e2e-image-parser', 'e2e-pdf-processor'),
+            $this->serviceBlock($compose, 'e2e-pdf-processor', 'e2e-xlsx-processor'),
+            $this->serviceBlock($compose, 'e2e-xlsx-processor', 'e2e-docx-processor'),
+            $this->serviceBlock($compose, 'e2e-docx-processor', 'e2e-app'),
+        ];
+
+        foreach ($processorServices as $service) {
+            $this->assertStringContainsString("interval: 1m", $service);
+            $this->assertStringContainsString("start_interval: 5s", $service);
+            $this->assertStringNotContainsString("\n      interval: 5s\n", $service);
+        }
+    }
+
     public function test_php_test_harness_does_not_inherit_real_processor_socket_endpoints(): void
     {
         $testCase = $this->readProjectFile('tests/TestCase.php');
 
         $this->assertStringContainsString("'image_parser.socket_path' => null", $testCase);
         $this->assertStringContainsString("'pdf_processor.socket_path' => null", $testCase);
+        $this->assertStringContainsString("'xlsx_processor.socket_path' => null", $testCase);
+        $this->assertStringContainsString("'docx_processor.socket_path' => null", $testCase);
     }
 
     public function test_e2e_runs_the_real_turnstile_widget_with_public_test_credentials(): void
@@ -217,6 +238,17 @@ final class E2eIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('Vite::useHotFile($hotFile)', $provider);
     }
 
+    public function test_local_artifact_host_ignores_the_app_vite_hot_file(): void
+    {
+        $compose = $this->readProjectFile('docker-compose.yml');
+        $artifactHost = $this->serviceBlock($compose, 'artifact-host', 'e2e-image-parser');
+
+        $this->assertStringContainsString(
+            'VITE_HOT_FILE: /tmp/artifactflow-artifact-host-no-hot',
+            $artifactHost,
+        );
+    }
+
     public function test_e2e_container_creation_pins_compose_interpolation_to_the_committed_env_file(): void
     {
         // Compose interpolates ${VAR:-default} from the developer's .env by
@@ -228,11 +260,74 @@ final class E2eIsolationConfigurationTest extends TestCase
         $makefile = $this->readProjectFile('Makefile');
 
         $this->assertStringContainsString(
-            '$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env run --rm --no-deps $(E2E_APP_SERVICE)',
+            'E2E_COMPOSE ?= $(TEST_COMPOSE) --profile test --profile e2e',
             $makefile,
         );
         $this->assertStringContainsString(
-            '$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env up -d $(UP_BUILD) --force-recreate $(E2E_IMAGE_PARSER_SERVICE) $(E2E_PDF_PROCESSOR_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) $(E2E_ARTIFACT_GATEWAY_SERVICE) $(E2E_EDGE_SERVICE)',
+            '$(E2E_COMPOSE) run --rm --no-deps $(E2E_APP_SERVICE)',
+            $makefile,
+        );
+        $this->assertStringContainsString(
+            '$(E2E_COMPOSE) up -d $(UP_BUILD) --force-recreate $(E2E_IMAGE_PARSER_SERVICE) $(E2E_PDF_PROCESSOR_SERVICE) $(E2E_XLSX_PROCESSOR_SERVICE) $(E2E_DOCX_PROCESSOR_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) $(E2E_ARTIFACT_GATEWAY_SERVICE) $(E2E_EDGE_SERVICE)',
+            $makefile,
+        );
+    }
+
+    public function test_php_and_browser_test_wrappers_never_read_or_scaffold_the_developer_env_file(): void
+    {
+        $makefile = $this->readProjectFile('Makefile');
+        $override = $this->readProjectFile('docker-compose.test.yml');
+        $testRecipe = $this->makeTargetRecipe($makefile, 'test');
+        $e2eRecipe = $this->makeTargetRecipe($makefile, 'e2e');
+
+        $this->assertStringContainsString('ISOLATED_TEST_ENV_FILE ?= docker/e2e.env', $makefile);
+        $this->assertStringContainsString('ISOLATED_TEST_COMPOSE_FILE ?= docker-compose.test.yml', $makefile);
+        $this->assertStringContainsString(
+            'TEST_COMPOSE ?= $(COMPOSE) --env-file $(ISOLATED_TEST_ENV_FILE) -f docker-compose.yml -f $(ISOLATED_TEST_COMPOSE_FILE)',
+            $makefile,
+        );
+        $this->assertStringContainsString('E2E_COMPOSE ?= $(TEST_COMPOSE) --profile test --profile e2e', $makefile);
+        $this->assertStringContainsString('$(MAKE) test-deps', $testRecipe);
+        $this->assertStringNotContainsString('$(MAKE) deps', $testRecipe);
+        $this->assertStringNotContainsString('ensure-env', $testRecipe);
+        $this->assertStringNotContainsString('ensure-env', $e2eRecipe);
+        $this->assertStringContainsString('$(TEST_COMPOSE)', $testRecipe);
+        $this->assertStringContainsString('$(E2E_COMPOSE)', $e2eRecipe);
+
+        foreach (['app', 'e2e-app', 'e2e-artifact-host'] as $service) {
+            $this->assertMatchesRegularExpression(
+                sprintf(
+                    '/^  %s:.*?^      - \.\/docker\/e2e\.env:\/var\/www\/html\/\.env:ro$/ms',
+                    preg_quote($service, '/'),
+                ),
+                $override,
+            );
+        }
+    }
+
+    public function test_e2e_explicitly_owns_both_office_processor_lifecycles(): void
+    {
+        $makefile = $this->readProjectFile('Makefile');
+
+        $this->assertStringContainsString(
+            'E2E_XLSX_PROCESSOR_SERVICE ?= e2e-xlsx-processor',
+            $makefile,
+        );
+        $this->assertStringContainsString(
+            'E2E_DOCX_PROCESSOR_SERVICE ?= e2e-docx-processor',
+            $makefile,
+        );
+        $this->assertStringContainsString(
+            '$(MAKE) wait APP_SERVICE=$(E2E_XLSX_PROCESSOR_SERVICE)',
+            $makefile,
+        );
+        $this->assertStringContainsString(
+            '$(MAKE) wait APP_SERVICE=$(E2E_DOCX_PROCESSOR_SERVICE)',
+            $makefile,
+        );
+
+        $this->assertStringContainsString(
+            'stop $(E2E_EDGE_SERVICE) $(E2E_ARTIFACT_GATEWAY_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) $(E2E_IMAGE_PARSER_SERVICE) $(E2E_PDF_PROCESSOR_SERVICE) $(E2E_XLSX_PROCESSOR_SERVICE) $(E2E_DOCX_PROCESSOR_SERVICE)',
             $makefile,
         );
     }
@@ -305,5 +400,17 @@ final class E2eIsolationConfigurationTest extends TestCase
         $this->assertSame(1, $matched, sprintf('Expected Compose service [%s].', $service));
 
         return $matches['block'];
+    }
+
+    private function makeTargetRecipe(string $makefile, string $target): string
+    {
+        $matched = preg_match(
+            sprintf('/^%s:\\s*\\n(?<recipe>(?:\\t.*\\n)+)/m', preg_quote($target, '/')),
+            $makefile,
+            $matches,
+        );
+        $this->assertSame(1, $matched, sprintf('Make target [%s] was not found.', $target));
+
+        return $matches['recipe'];
     }
 }

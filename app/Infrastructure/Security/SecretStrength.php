@@ -51,6 +51,18 @@ final readonly class SecretStrength
         'artifactflow-local-parser-secret-not-for-production',
         // docker-compose.yml local PDF-processor authentication default.
         'artifactflow-local-pdf-processor-secret-not-for-production',
+        // docker-compose.yml local Office-processor authentication defaults.
+        'artifactflow-local-xlsx-processor-secret-not-for-production',
+        'artifactflow-local-docx-processor-secret-not-for-production',
+        // docker-compose.yml browser-test processor authentication defaults.
+        'artifactflow-e2e-image-parser-secret',
+        'artifactflow-e2e-pdf-processor-secret',
+        'artifactflow-e2e-xlsx-processor-secret',
+        'artifactflow-e2e-docx-processor-secret',
+        // Makefile production-image runtime probes.
+        'artifactflow-private-processor-runtime-test-secret',
+        'artifactflow-xlsx-runtime-test-secret',
+        'artifactflow-docx-runtime-test-secret',
     ];
 
     /**

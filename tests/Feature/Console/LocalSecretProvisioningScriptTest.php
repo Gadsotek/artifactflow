@@ -8,6 +8,7 @@ use App\Application\Diagnostics\InstallationSecret;
 use App\Infrastructure\Security\SecretStrength;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -153,6 +154,39 @@ final class LocalSecretProvisioningScriptTest extends TestCase
                 rmdir($toolPath);
             }
         }
+    }
+
+    #[DataProvider('officeProcessorSecretProvider')]
+    public function test_office_secret_setup_replaces_the_published_local_fallback(
+        string $key,
+        string $script,
+        string $publishedFallback,
+    ): void {
+        file_put_contents($this->envPath, "{$key}={$publishedFallback}\n");
+
+        $result = Process::path(base_path())->run([PHP_BINARY, base_path($script), $this->envPath]);
+
+        $this->assertTrue($result->successful(), $result->errorOutput());
+        $generated = $this->value((string) file_get_contents($this->envPath), $key);
+        $this->assertNotSame($publishedFallback, $generated);
+        $this->assertTrue(SecretStrength::isProductionSafe($generated));
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string}>
+     */
+    public static function officeProcessorSecretProvider(): iterable
+    {
+        yield 'XLSX' => [
+            'XLSX_PROCESSOR_SHARED_SECRET',
+            'scripts/ensure-xlsx-processor-shared-secret.php',
+            'artifactflow-local-xlsx-processor-secret-not-for-production',
+        ];
+        yield 'DOCX' => [
+            'DOCX_PROCESSOR_SHARED_SECRET',
+            'scripts/ensure-docx-processor-shared-secret.php',
+            'artifactflow-local-docx-processor-secret-not-for-production',
+        ];
     }
 
     /**

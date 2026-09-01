@@ -15,7 +15,7 @@
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <a class="af-secondary-button" href="#version-preview">Preview</a>
-                    @if (!in_array($page->type, [PageType::Image, PageType::Pdf], true))
+                    @if (!in_array($page->type, [PageType::Image, PageType::Pdf, PageType::Xlsx, PageType::Docx], true))
                         <a class="af-secondary-button" href="#version-changes">Changes</a>
                     @endif
                     <a class="af-primary-button" href="{{ route('pages.show', $page) }}">Back to current page</a>
@@ -102,6 +102,27 @@
                         </div>
                         <iframe class="af-artifact-iframe h-[calc(100vh-16rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" allow="" src="{{ $inspection->artifactPreviewUrl }}" title="Historical PDF preview"></iframe>
                     </div>
+                @elseif ($inspection->artifactPreviewUrl !== null && $page->type === PageType::Xlsx)
+                    <div
+                        class="af-artifact-preview flex flex-col gap-2"
+                        data-artifact-preview
+                        data-xlsx-preview
+                        data-artifact-preview-refresh-endpoint="{{ route('pages.versions.artifact-preview-url', [$page, $inspection->version], false) }}"
+                    >
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <span class="text-xs text-zinc-500 dark:text-zinc-400">Historical read-only Excel preview. Formula values are stored caches and are not recalculated.</span>
+                            <a class="af-secondary-button" href="{{ route('pages.versions.document-original.download', [$page, $inspection->version]) }}">Download this XLSX</a>
+                        </div>
+                        <iframe class="af-artifact-iframe h-[calc(100vh-16rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" allow="" src="{{ $inspection->artifactPreviewUrl }}" title="Historical read-only Excel preview"></iframe>
+                    </div>
+                @elseif ($inspection->artifactPreviewUrl !== null && $page->type === PageType::Docx)
+                    <div class="af-artifact-preview flex flex-col gap-2" data-artifact-preview data-docx-preview>
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <span class="text-xs text-zinc-500 dark:text-zinc-400">Historical searchable PDF preview derived from the retained Word document.</span>
+                            <a class="af-secondary-button" href="{{ route('pages.versions.document-original.download', [$page, $inspection->version]) }}">Download this DOCX</a>
+                        </div>
+                        <iframe class="af-artifact-iframe h-[calc(100vh-16rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" allow="" src="{{ $inspection->artifactPreviewUrl }}" title="Historical Word document PDF preview"></iframe>
+                    </div>
                 @elseif ($inspection->artifactPreviewUrl !== null)
                     <div
                         class="af-artifact-preview flex flex-col gap-2"
@@ -114,8 +135,13 @@
                 @endif
             </section>
 
-            @if (in_array($page->type, [PageType::Image, PageType::Pdf], true))
-                <div class="af-callout">Binary {{ $page->type === PageType::Pdf ? 'PDF' : 'image' }} versions do not have a source diff.</div>
+            @if (in_array($page->type, [PageType::Image, PageType::Pdf, PageType::Xlsx, PageType::Docx], true))
+                <div class="af-callout">Binary {{ match ($page->type) {
+                    PageType::Pdf => 'PDF',
+                    PageType::Xlsx => 'workbook',
+                    PageType::Docx => 'Word document',
+                    default => 'image',
+                } }} versions do not have a source diff.</div>
             @else
             <section class="af-document-canvas scroll-mt-6" id="version-changes" data-version-diff>
                 <div class="mb-5 flex flex-wrap items-end justify-between gap-3">

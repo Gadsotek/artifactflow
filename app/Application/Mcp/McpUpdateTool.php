@@ -37,7 +37,7 @@ final readonly class McpUpdateTool
         }
 
         return $this->errors->guard(function () use ($actor, $input, $page): McpToolResult {
-            if ($page->type === PageType::Image || $page->type === PageType::Pdf) {
+            if (in_array($page->type, [PageType::Image, PageType::Pdf, PageType::Xlsx, PageType::Docx], true)) {
                 throw new DomainRuleViolation('Binary content must be replaced through a dedicated authenticated upload.');
             }
 

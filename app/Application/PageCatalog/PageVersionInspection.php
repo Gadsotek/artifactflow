@@ -20,6 +20,11 @@ final readonly class PageVersionInspection
         private ArtifactPreviewUrl $artifactPreviewUrls,
         private PdfArtifactUrl $pdfArtifactUrls,
         private PdfProcessorConfiguration $pdfProcessorConfiguration,
+        private XlsxProcessorConfiguration $xlsxProcessorConfiguration,
+        private XlsxManifestContentReader $xlsxManifestReader,
+        private DocxPreviewUrl $docxPreviewUrls,
+        private DocxProcessorConfiguration $docxProcessorConfiguration,
+        private DocxPreviewContentReader $docxPreviewReader,
         private MarkdownPageRenderer $markdownRenderer,
         private PageAccess $access,
         private PageVersionDiff $diff,
@@ -48,10 +53,17 @@ final readonly class PageVersionInspection
 
         $selectedSource = null;
         $currentSource = null;
-        $binaryArtifact = in_array($page->type, [PageType::Image, PageType::Pdf], true);
+        $binaryArtifact = in_array($page->type, [PageType::Image, PageType::Pdf, PageType::Xlsx, PageType::Docx], true);
         $selectedContentAvailable = $binaryArtifact
             ? $this->contentReader->isAvailable($version->content_storage_path)
             : false;
+
+        if ($page->type === PageType::Xlsx && $selectedContentAvailable) {
+            $selectedContentAvailable = $this->xlsxManifestReader->read($version) !== null;
+        }
+        if ($page->type === PageType::Docx && $selectedContentAvailable) {
+            $selectedContentAvailable = $this->docxPreviewReader->read($version) !== null;
+        }
 
         if (!$binaryArtifact) {
             $selectedSource = $this->contentReader->read($version->content_storage_path);
@@ -72,10 +84,15 @@ final readonly class PageVersionInspection
             $selectedContentAvailable
             && $page->type->usesArtifactHostPreview()
             && ($page->type !== PageType::Pdf || $this->pdfProcessorConfiguration->enabled())
+            && ($page->type !== PageType::Xlsx || $this->xlsxProcessorConfiguration->enabled())
+            && ($page->type !== PageType::Docx
+                || ($this->docxProcessorConfiguration->enabled() && $this->pdfProcessorConfiguration->enabled()))
         ) {
-            $artifactPreviewUrl = $page->type === PageType::Pdf
-                ? $this->pdfArtifactUrls->temporaryHistoryUrl($page, $version)
-                : $this->artifactPreviewUrls->temporaryHistoryUrl($page, $version);
+            $artifactPreviewUrl = match ($page->type) {
+                PageType::Pdf => $this->pdfArtifactUrls->temporaryHistoryUrl($page, $version),
+                PageType::Docx => $this->docxPreviewUrls->temporaryHistoryUrl($page, $version),
+                default => $this->artifactPreviewUrls->temporaryHistoryUrl($page, $version),
+            };
             Log::info('artifact_history_preview_url.issued', [
                 'actor_user_uid' => $actor->uid,
                 'page_uid' => $page->uid,
@@ -101,6 +118,9 @@ final readonly class PageVersionInspection
             canRestore: $version->uid !== $currentVersion->uid
                 && $page->status !== PageStatus::Archived
                 && ($page->type !== PageType::Pdf || $this->pdfProcessorConfiguration->enabled())
+                && ($page->type !== PageType::Xlsx || $this->xlsxProcessorConfiguration->enabled())
+                && ($page->type !== PageType::Docx || ($this->docxProcessorConfiguration->enabled()
+                    && $this->pdfProcessorConfiguration->enabled()))
                 && $this->access->canEdit($actor, $page),
             provenance: $this->provenance->forVersion($version),
         );

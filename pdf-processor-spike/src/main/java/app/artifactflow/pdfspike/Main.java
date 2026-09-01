@@ -8,6 +8,8 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
@@ -19,6 +21,7 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSObject;
+import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -56,12 +59,19 @@ public final class Main {
 
             if (arguments.length == 2 && "inspect".equals(arguments[0])) {
                 byte[] bytes = readBounded(Path.of(arguments[1]));
-                Inspection inspection = inspect(bytes, Limits.defaults());
+                Inspection inspection = inspect(bytes, Limits.defaults(), false);
                 System.out.println(inspection.toJson());
                 return;
             }
 
-            System.err.println("usage: self-test | inspect /path/to/file.pdf");
+            if (arguments.length == 2 && "inspect-docx-preview".equals(arguments[0])) {
+                byte[] bytes = readBounded(Path.of(arguments[1]));
+                Inspection inspection = inspect(bytes, Limits.defaults(), true);
+                System.out.println(inspection.toJson());
+                return;
+            }
+
+            System.err.println("usage: self-test | inspect /path/to/file.pdf | inspect-docx-preview /path/to/file.pdf");
             System.exit(64);
         } catch (RejectedPdf exception) {
             System.err.println("rejected: " + exception.reason);
@@ -87,7 +97,7 @@ public final class Main {
         }
     }
 
-    private static Inspection inspect(byte[] bytes, Limits limits) throws RejectedPdf {
+    private static Inspection inspect(byte[] bytes, Limits limits, boolean allowPassiveLinks) throws RejectedPdf {
         requirePdfEnvelope(bytes, limits.maxInputBytes);
 
         try (PDDocument document = Loader.loadPDF(bytes)) {
@@ -100,7 +110,7 @@ public final class Main {
                 throw new RejectedPdf("page_limit");
             }
 
-            rejectObviousActiveContent(document);
+            rejectObviousActiveContent(document, allowPassiveLinks);
 
             StringBuilder extracted = new StringBuilder();
             boolean truncated = false;
@@ -166,17 +176,18 @@ public final class Main {
         return value == 0 || value == 9 || value == 10 || value == 12 || value == 13 || value == 32;
     }
 
-    private static void rejectObviousActiveContent(PDDocument document) throws RejectedPdf {
+    private static void rejectObviousActiveContent(PDDocument document, boolean allowPassiveLinks) throws RejectedPdf {
         Set<COSBase> visited = Collections.newSetFromMap(new IdentityHashMap<>());
         int[] objectCount = {0};
-        inspectObject(document.getDocument().getTrailer(), visited, objectCount, 0);
+        inspectObject(document.getDocument().getTrailer(), visited, objectCount, 0, allowPassiveLinks);
     }
 
     private static void inspectObject(
         COSBase value,
         Set<COSBase> visited,
         int[] objectCount,
-        int depth
+        int depth,
+        boolean allowPassiveLinks
     ) throws RejectedPdf {
         if (value == null) {
             return;
@@ -192,12 +203,24 @@ public final class Main {
 
         if (resolved instanceof COSDictionary dictionary) {
             COSBase type = dictionary.getDictionaryObject(COSName.TYPE);
-            if (type instanceof COSName typeName && isRejectedType(typeName.getName())) {
+            if (type instanceof COSName typeName && "Action".equals(typeName.getName())) {
+                if (!allowPassiveLinks) {
+                    throw new RejectedPdf("active_content");
+                }
+
+                validatePassiveLinkAction(dictionary);
+            } else if (type instanceof COSName typeName && isRejectedType(typeName.getName())) {
                 throw new RejectedPdf("active_content");
             }
 
             COSBase subtype = dictionary.getDictionaryObject(COSName.SUBTYPE);
-            if (subtype instanceof COSName subtypeName && isRejectedAnnotationSubtype(subtypeName.getName())) {
+            if (subtype instanceof COSName subtypeName && "Link".equals(subtypeName.getName())) {
+                if (!allowPassiveLinks) {
+                    throw new RejectedPdf("active_content");
+                }
+
+                validatePassiveLinkAnnotation(dictionary);
+            } else if (subtype instanceof COSName subtypeName && isRejectedAnnotationSubtype(subtypeName.getName())) {
                 throw new RejectedPdf(
                     "Widget".equals(subtypeName.getName()) ? "interactive_form" : "active_content"
                 );
@@ -227,22 +250,113 @@ public final class Main {
                     );
                 }
 
-                if (COSName.S.equals(key)) {
+                if (COSName.S.equals(key) && !(allowPassiveLinks && isActionDictionary(type))) {
                     COSBase action = dictionary.getDictionaryObject(key);
                     if (action instanceof COSName actionName && isRejectedAction(actionName.getName())) {
                         throw new RejectedPdf("active_content");
                     }
                 }
 
-                inspectObject(dictionary.getDictionaryObject(key), visited, objectCount, depth + 1);
+                inspectObject(dictionary.getDictionaryObject(key), visited, objectCount, depth + 1, allowPassiveLinks);
             }
             return;
         }
 
         if (resolved instanceof COSArray array) {
             for (int index = 0; index < array.size(); index++) {
-                inspectObject(array.getObject(index), visited, objectCount, depth + 1);
+                inspectObject(array.getObject(index), visited, objectCount, depth + 1, allowPassiveLinks);
             }
+        }
+    }
+
+    private static boolean isActionDictionary(COSBase type) {
+        return type instanceof COSName typeName && "Action".equals(typeName.getName());
+    }
+
+    private static void validatePassiveLinkAnnotation(COSDictionary annotation) throws RejectedPdf {
+        COSBase action = annotation.getDictionaryObject(COSName.A);
+        COSBase destination = annotation.getDictionaryObject(COSName.DEST);
+
+        if ((action == null) == (destination == null)) {
+            throw new RejectedPdf("active_content");
+        }
+
+        if (action != null) {
+            COSBase resolved = action instanceof COSObject object ? object.getObject() : action;
+
+            if (!(resolved instanceof COSDictionary actionDictionary)) {
+                throw new RejectedPdf("active_content");
+            }
+
+            validatePassiveLinkAction(actionDictionary);
+        } else if (!isBoundedInternalDestination(destination)) {
+            throw new RejectedPdf("active_content");
+        }
+    }
+
+    private static void validatePassiveLinkAction(COSDictionary action) throws RejectedPdf {
+        COSBase actionName = action.getDictionaryObject(COSName.S);
+
+        if (!(actionName instanceof COSName name)) {
+            throw new RejectedPdf("active_content");
+        }
+
+        if ("URI".equals(name.getName())) {
+            COSBase rawUri = action.getDictionaryObject(COSName.URI);
+
+            if (!(rawUri instanceof COSString uriString) || !isAllowedExternalUri(uriString.getString())) {
+                throw new RejectedPdf("active_content");
+            }
+
+            return;
+        }
+
+        if ("GoTo".equals(name.getName()) && isBoundedInternalDestination(action.getDictionaryObject(COSName.D))) {
+            return;
+        }
+
+        throw new RejectedPdf("active_content");
+    }
+
+    private static boolean isBoundedInternalDestination(COSBase destination) {
+        COSBase resolved = destination instanceof COSObject object ? object.getObject() : destination;
+
+        if (resolved instanceof COSName name) {
+            return name.getName().length() <= 512;
+        }
+
+        if (resolved instanceof COSString string) {
+            return string.getString().length() <= 512;
+        }
+
+        return resolved instanceof COSArray array && array.size() >= 1 && array.size() <= 8;
+    }
+
+    private static boolean isAllowedExternalUri(String value) {
+        if (value.isEmpty() || value.length() > 2_048 || value.chars().anyMatch(character -> character < 0x20 || character == 0x7f)) {
+            return false;
+        }
+
+        try {
+            URI uri = new URI(value);
+            String scheme = uri.getScheme();
+
+            if (scheme == null || uri.getUserInfo() != null) {
+                return false;
+            }
+
+            if ("mailto".equalsIgnoreCase(scheme)) {
+                String address = uri.getRawSchemeSpecificPart();
+
+                return address != null && !address.isEmpty() && !address.startsWith("//");
+            }
+
+            return ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
+                && uri.getHost() != null
+                && !uri.getHost().isEmpty()
+                && uri.getRawAuthority() != null;
+        } catch (URISyntaxException exception) {
+            return false;
         }
     }
 
@@ -268,7 +382,7 @@ public final class Main {
 
     private static void selfTest() throws IOException, RejectedPdf {
         byte[] benign = createTextPdf("hello <script>alert(1)</script>", 1);
-        Inspection inspected = inspect(benign, Limits.defaults());
+        Inspection inspected = inspect(benign, Limits.defaults(), false);
         require(inspected.pages == 1, "benign page count");
         require(inspected.text.contains("<script>alert(1)</script>"), "script-shaped text remains text");
 
@@ -297,20 +411,29 @@ public final class Main {
         expectRejected("rich media annotation", createAnnotationPdf("RichMedia"));
         expectRejected("deep object graph", createDeepObjectGraphPdf());
 
+        Inspection passiveLink = inspect(createPassiveUriLinkPdf("https://example.com/documentation"), Limits.defaults(), true);
+        require(passiveLink.pages == 1, "DOCX-preview URI link is accepted only in the derived profile");
+        expectRejectedDerived("credential-bearing URI link", createPassiveUriLinkPdf("https://user@example.com/path"));
+        expectRejectedDerived("ambiguous HTTP URI link", createPassiveUriLinkPdf("http:relative"));
+        expectRejectedDerived("authority-form mailto link", createPassiveUriLinkPdf("mailto://example.com/person"));
+        expectRejectedDerived("unsafe URI link", createPassiveUriLinkPdf("javascript:alert(1)"));
+        expectRejectedDerived("launch link", createPassiveActionLinkPdf("Launch"));
+
         byte[] truncated = new byte[benign.length / 2];
         System.arraycopy(benign, 0, truncated, 0, truncated.length);
         expectRejected("truncated PDF", truncated);
 
-        Inspection imageOnly = inspect(createBlankPdf(), Limits.defaults());
+        Inspection imageOnly = inspect(createBlankPdf(), Limits.defaults(), false);
         require(imageOnly.text.isBlank(), "image-only PDF has no extracted text");
 
-        Inspection unicode = inspect(createTextPdf("café", 2), Limits.defaults());
+        Inspection unicode = inspect(createTextPdf("café", 2), Limits.defaults(), false);
         require(unicode.pages == 2, "multi-page count");
         require(unicode.text.contains("café"), "Unicode text extraction");
 
         Inspection outputCap = inspect(
             createTextPdf("0123456789abcdefghijklmnopqrstuvwxyz", 1),
-            new Limits(MAX_INPUT_BYTES, MAX_PAGES, 12)
+            new Limits(MAX_INPUT_BYTES, MAX_PAGES, 12),
+            false
         );
         require(outputCap.truncated, "output cap marks extraction as truncated");
         require(outputCap.text.length() == 12, "output cap bounds extracted text");
@@ -431,6 +554,45 @@ public final class Main {
         }
     }
 
+    private static byte[] createPassiveUriLinkPdf(String target) throws IOException {
+        try (PDDocument document = new PDDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+            COSDictionary action = new COSDictionary();
+            action.setItem(COSName.TYPE, COSName.getPDFName("Action"));
+            action.setItem(COSName.S, COSName.getPDFName("URI"));
+            action.setString(COSName.URI, target);
+            COSDictionary annotation = new COSDictionary();
+            annotation.setItem(COSName.TYPE, COSName.ANNOT);
+            annotation.setItem(COSName.SUBTYPE, COSName.getPDFName("Link"));
+            annotation.setItem(COSName.A, action);
+            COSArray annotations = new COSArray();
+            annotations.add(annotation);
+            page.getCOSObject().setItem(COSName.ANNOTS, annotations);
+            document.save(output);
+            return output.toByteArray();
+        }
+    }
+
+    private static byte[] createPassiveActionLinkPdf(String actionName) throws IOException {
+        try (PDDocument document = new PDDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+            COSDictionary action = new COSDictionary();
+            action.setItem(COSName.TYPE, COSName.getPDFName("Action"));
+            action.setItem(COSName.S, COSName.getPDFName(actionName));
+            COSDictionary annotation = new COSDictionary();
+            annotation.setItem(COSName.TYPE, COSName.ANNOT);
+            annotation.setItem(COSName.SUBTYPE, COSName.getPDFName("Link"));
+            annotation.setItem(COSName.A, action);
+            COSArray annotations = new COSArray();
+            annotations.add(annotation);
+            page.getCOSObject().setItem(COSName.ANNOTS, annotations);
+            document.save(output);
+            return output.toByteArray();
+        }
+    }
+
     private static byte[] createBlankPdf() throws IOException {
         try (PDDocument document = new PDDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             document.addPage(new PDPage());
@@ -445,7 +607,7 @@ public final class Main {
 
     private static void expectRejected(String label, byte[] bytes, Limits limits) {
         try {
-            inspect(bytes, limits);
+            inspect(bytes, limits, false);
             throw new IllegalStateException("expected rejection: " + label);
         } catch (RejectedPdf expected) {
             // Expected by the synthetic hostile corpus.
@@ -454,10 +616,19 @@ public final class Main {
 
     private static void expectRejectedReason(String label, byte[] bytes, String reason) {
         try {
-            inspect(bytes, Limits.defaults());
+            inspect(bytes, Limits.defaults(), false);
             throw new IllegalStateException("expected rejection: " + label);
         } catch (RejectedPdf expected) {
             require(reason.equals(expected.reason), label + " rejection reason");
+        }
+    }
+
+    private static void expectRejectedDerived(String label, byte[] bytes) {
+        try {
+            inspect(bytes, Limits.defaults(), true);
+            throw new IllegalStateException("expected derived-profile rejection: " + label);
+        } catch (RejectedPdf expected) {
+            // Expected by the derived-preview hostile corpus.
         }
     }
 

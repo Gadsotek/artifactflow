@@ -57,10 +57,16 @@ final class AddSecurityHeaders
                 'artifact-previews/*',
                 'external-artifact-previews/*',
                 'pdf-artifacts/*',
+                'docx-previews/*',
+                'document-originals/*',
             );
             $isPdfArtifact = $request->is('pdf-artifacts/*')
                 || (
                     $request->is('external-artifact-previews/*')
+                    && $response->headers->get('Content-Type') === 'application/pdf'
+                )
+                || (
+                    $request->is('docx-previews/*')
                     && $response->headers->get('Content-Type') === 'application/pdf'
                 );
 

@@ -12,6 +12,8 @@ use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 final readonly class UpdatePageContent
 {
@@ -22,6 +24,7 @@ final readonly class UpdatePageContent
         private PageVersionPruner $versionPruner,
         private ArtifactContentDeleter $artifactContentDeleter,
         private PageVersionChangeSummaryRules $changeSummaryRules,
+        private PageVersionStorage $versionStorage,
     ) {
     }
 
@@ -39,6 +42,9 @@ final readonly class UpdatePageContent
         $actorUid = ActorId::fromUser($actor);
         $prunedStoragePaths = [];
         $preparedAppend = null;
+        $candidateVersion = null;
+        $candidateStoragePaths = [];
+        $transactionCallbackCompleted = false;
 
         try {
             $changeSummary = $this->changeSummaryRules->normalize($command->changeSummary);
@@ -52,6 +58,7 @@ final readonly class UpdatePageContent
                 page: $page,
                 content: $command->content,
                 source: $command->source,
+                baseVersionUid: $command->baseVersionUid,
                 provenance: $command->provenance,
                 changeSummary: $changeSummary,
             );
@@ -60,7 +67,10 @@ final readonly class UpdatePageContent
                 $actor,
                 $actorUid,
                 $command,
+                &$candidateStoragePaths,
+                &$candidateVersion,
                 &$prunedStoragePaths,
+                &$transactionCallbackCompleted,
                 $preparedAppend,
             ): PageVersion {
                 // Re-authorize under the page row lock with fresh authority. canEdit()
@@ -70,17 +80,25 @@ final readonly class UpdatePageContent
                 // first and re-reading closes that window.
                 $lockedPage = $this->lockAndReauthorizeForEdit($actor, $command->pageUid);
 
-                $version = $preparedAppend->append(
+                $candidateVersion = $preparedAppend->append(
                     page: $lockedPage,
                     baseVersionUid: $command->baseVersionUid,
                 );
+                $candidateStoragePaths = $this->versionStorage->paths($candidateVersion);
 
                 $prunedStoragePaths = $this->versionPruner->pruneToCap($lockedPage, $actorUid);
+                $transactionCallbackCompleted = true;
 
-                return $version;
+                return $candidateVersion;
             });
-        } catch (BlockedPageContentException $exception) {
-            $this->recordBlockedScan->forPageVersion($actor, $page, $exception->findingCodes());
+        } catch (Throwable $exception) {
+            if (!$transactionCallbackCompleted && $candidateStoragePaths !== []) {
+                Storage::disk('artifacts')->delete($candidateStoragePaths);
+            }
+
+            if ($exception instanceof BlockedPageContentException) {
+                $this->recordBlockedScan->forPageVersion($actor, $page, $exception->findingCodes());
+            }
 
             throw $exception;
         } finally {

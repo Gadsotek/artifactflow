@@ -9,15 +9,19 @@ use App\Application\PageCatalog\RestorePageVersionCommand;
 use App\Application\PageCatalog\UpdatePageContent;
 use App\Application\PageCatalog\UpdatePageContentCommand;
 use App\Domain\DomainRuleViolation;
+use App\Domain\PageCatalog\DocxProcessingRejected;
 use App\Domain\PageCatalog\ImageNormalizationRejected;
 use App\Domain\PageCatalog\InvalidPageStatusTransition;
 use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PdfProcessingRejected;
 use App\Domain\PageCatalog\Security\BlockedPageContentException;
 use App\Domain\PageCatalog\StalePageVersionException;
+use App\Domain\PageCatalog\XlsxProcessingRejected;
 use App\Http\Requests\PageCatalog\StorePageVersionRequest;
+use App\Http\Support\DocxProcessingRejectionResponse;
 use App\Http\Support\ImageNormalizationRejectionResponse;
 use App\Http\Support\PdfProcessingRejectionResponse;
+use App\Http\Support\XlsxProcessingRejectionResponse;
 use App\Models\Page;
 use App\Models\PageVersion;
 use Illuminate\Http\RedirectResponse;
@@ -50,10 +54,26 @@ final class PageVersionController
         } catch (ImageNormalizationRejected $exception) {
             return ImageNormalizationRejectionResponse::make($exception);
         } catch (PdfProcessingRejected $exception) {
-            return PdfProcessingRejectionResponse::make($exception, $request, 'pdf_file');
+            return PdfProcessingRejectionResponse::make(
+                $exception,
+                $request,
+                $page->type === PageType::Docx ? 'docx_file' : 'pdf_file',
+            );
+        } catch (XlsxProcessingRejected $exception) {
+            return XlsxProcessingRejectionResponse::make($exception, $request, 'xlsx_file');
+        } catch (DocxProcessingRejected $exception) {
+            return DocxProcessingRejectionResponse::make($exception, $request, 'docx_file');
         } catch (BlockedPageContentException $exception) {
+            $field = match ($page->type) {
+                PageType::Image => 'image_file',
+                PageType::Pdf => 'pdf_file',
+                PageType::Xlsx => 'xlsx_file',
+                PageType::Docx => 'docx_file',
+                default => 'content',
+            };
+
             throw ValidationException::withMessages([
-                'content' => $exception->getMessage(),
+                $field => $exception->getMessage(),
             ]);
         } catch (InvalidPageStatusTransition $exception) {
             throw ValidationException::withMessages([
@@ -65,6 +85,8 @@ final class PageVersionController
             $field = match ($page->type) {
                 PageType::Image => 'image_file',
                 PageType::Pdf => 'pdf_file',
+                PageType::Xlsx => 'xlsx_file',
+                PageType::Docx => 'docx_file',
                 default => 'content',
             };
 
@@ -106,9 +128,13 @@ final class PageVersionController
             ));
         } catch (PdfProcessingRejected $exception) {
             return PdfProcessingRejectionResponse::make($exception, $request, 'version_uid');
+        } catch (XlsxProcessingRejected $exception) {
+            return XlsxProcessingRejectionResponse::make($exception, $request, 'version_uid');
+        } catch (DocxProcessingRejected $exception) {
+            return DocxProcessingRejectionResponse::make($exception, $request, 'version_uid');
         } catch (BlockedPageContentException $exception) {
             throw ValidationException::withMessages([
-                'content' => $exception->getMessage(),
+                'version_uid' => $exception->getMessage(),
             ]);
         } catch (InvalidPageStatusTransition $exception) {
             throw ValidationException::withMessages([

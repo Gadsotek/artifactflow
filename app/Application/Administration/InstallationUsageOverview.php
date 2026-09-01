@@ -7,6 +7,7 @@ namespace App\Application\Administration;
 use App\Application\Identity\EffectiveWorkspaceMembershipResolver;
 use App\Models\Page;
 use App\Models\PageVersion;
+use App\Models\PageVersionDerivative;
 use App\Models\User;
 use App\Models\Workspace;
 use BackedEnum;
@@ -25,7 +26,8 @@ final readonly class InstallationUsageOverview
     public function overview(User $actor): InstallationStorageUsage
     {
         $limitValues = $this->limits->current();
-        $usedBytes = (int) PageVersion::query()->sum('byte_size');
+        $usedBytes = (int) PageVersion::query()->sum('byte_size')
+            + (int) PageVersionDerivative::query()->sum('byte_size');
         $visibleWorkspaceUids = $this->memberships->workspaceUidsFor($actor->uid);
 
         return new InstallationStorageUsage(
@@ -54,18 +56,36 @@ final readonly class InstallationUsageOverview
 
         /** @var Collection<int, Model> $rows */
         $rows = Workspace::query()
-            ->leftJoin('pages', 'pages.workspace_uid', '=', 'workspaces.uid')
-            ->leftJoin('page_versions', 'page_versions.page_uid', '=', 'pages.uid')
             ->select([
                 'workspaces.uid',
                 'workspaces.name',
                 'workspaces.type',
             ])
-            ->selectRaw('COALESCE(SUM(page_versions.byte_size), 0) as used_bytes')
-            ->selectRaw('COUNT(DISTINCT pages.uid) as page_count')
-            ->selectRaw('COUNT(page_versions.uid) as version_count')
+            ->selectRaw(<<<'SQL'
+                COALESCE((
+                    SELECT SUM(usage_versions.byte_size)
+                    FROM page_versions AS usage_versions
+                    INNER JOIN pages AS usage_pages ON usage_pages.uid = usage_versions.page_uid
+                    WHERE usage_pages.workspace_uid = workspaces.uid
+                ), 0) + COALESCE((
+                    SELECT SUM(usage_derivatives.byte_size)
+                    FROM page_version_derivatives AS usage_derivatives
+                    INNER JOIN page_versions AS derivative_versions
+                        ON derivative_versions.uid = usage_derivatives.page_version_uid
+                    INNER JOIN pages AS derivative_pages ON derivative_pages.uid = derivative_versions.page_uid
+                    WHERE derivative_pages.workspace_uid = workspaces.uid
+                ), 0) AS used_bytes
+                SQL)
+            ->selectRaw(<<<'SQL'
+                (SELECT COUNT(*) FROM pages AS counted_pages
+                    WHERE counted_pages.workspace_uid = workspaces.uid) AS page_count
+                SQL)
+            ->selectRaw(<<<'SQL'
+                (SELECT COUNT(*) FROM page_versions AS counted_versions
+                    INNER JOIN pages AS counted_version_pages ON counted_version_pages.uid = counted_versions.page_uid
+                    WHERE counted_version_pages.workspace_uid = workspaces.uid) AS version_count
+                SQL)
             ->whereIn('workspaces.uid', $visibleWorkspaceUids)
-            ->groupBy('workspaces.uid', 'workspaces.name', 'workspaces.type')
             ->orderByDesc('used_bytes')
             ->orderBy('workspaces.name')
             ->get();
@@ -107,16 +127,26 @@ final readonly class InstallationUsageOverview
         /** @var Collection<int, Model> $rows */
         $rows = Page::query()
             ->join('workspaces', 'workspaces.uid', '=', 'pages.workspace_uid')
-            ->leftJoin('page_versions', 'page_versions.page_uid', '=', 'pages.uid')
             ->select([
                 'pages.uid',
                 'pages.title',
                 'workspaces.name as workspace_name',
             ])
-            ->selectRaw('COALESCE(SUM(page_versions.byte_size), 0) as used_bytes')
-            ->selectRaw('COUNT(page_versions.uid) as version_count')
+            ->selectRaw(<<<'SQL'
+                COALESCE((SELECT SUM(usage_versions.byte_size)
+                    FROM page_versions AS usage_versions
+                    WHERE usage_versions.page_uid = pages.uid), 0)
+                + COALESCE((SELECT SUM(usage_derivatives.byte_size)
+                    FROM page_version_derivatives AS usage_derivatives
+                    INNER JOIN page_versions AS derivative_versions
+                        ON derivative_versions.uid = usage_derivatives.page_version_uid
+                    WHERE derivative_versions.page_uid = pages.uid), 0) AS used_bytes
+                SQL)
+            ->selectRaw(<<<'SQL'
+                (SELECT COUNT(*) FROM page_versions AS counted_versions
+                    WHERE counted_versions.page_uid = pages.uid) AS version_count
+                SQL)
             ->whereIn('pages.workspace_uid', $visibleWorkspaceUids)
-            ->groupBy('pages.uid', 'pages.title', 'workspaces.name')
             ->orderByDesc('used_bytes')
             ->orderBy('pages.title')
             ->limit(10)

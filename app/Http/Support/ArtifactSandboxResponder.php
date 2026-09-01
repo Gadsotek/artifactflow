@@ -91,6 +91,47 @@ final readonly class ArtifactSandboxResponder
     }
 
     /**
+     * Fixed application-owned XLSX viewer. Workbook data is base64url text in a
+     * non-executable element; the only executable and style resources are pinned
+     * same-origin production assets selected by the application.
+     *
+     * @param array{script: string, stylesheet: string} $assets
+     */
+    public function xlsxDocument(string $manifestJson, array $assets): Response
+    {
+        $encodedManifest = rtrim(strtr(base64_encode($manifestJson), '+/', '-_'), '=');
+        $script = htmlspecialchars($assets['script'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $stylesheet = htmlspecialchars($assets['stylesheet'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $html = '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            . '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            . '<title>Read-only Excel preview</title>'
+            . '<link rel="stylesheet" href="' . $stylesheet . '"></head><body>'
+            . '<main class="viewer-shell" aria-labelledby="viewer-title"><header class="viewer-header"><div>'
+            . '<p class="eyebrow">ArtifactFlow preview</p><h1 id="viewer-title">Read-only Excel preview</h1>'
+            . '</div><p class="warning">Formulas are not recalculated. Values are producer-stored caches.</p>'
+            . '</header><nav id="sheet-tabs" class="sheet-tabs" aria-label="Visible workbook sheets" role="tablist"></nav>'
+            . '<section class="formula-bar" aria-label="Selected cell details">'
+            . '<span id="selected-coordinate" class="coordinate">No cell selected</span>'
+            . '<span id="selected-value" class="cached-value"></span>'
+            . '<code id="selected-formula" class="formula"></code></section>'
+            . '<div id="workbook-grid" class="workbook-grid" aria-label="Workbook cells"></div>'
+            . '<p id="viewer-status" class="status" role="status" aria-live="polite">Loading workbook preview...</p>'
+            . '</main><script id="xlsx-manifest" type="application/octet-stream">'
+            . $encodedManifest
+            . '</script><script defer src="' . $script . '"></script></body></html>';
+        $csp = implode('; ', $this->contentSecurityPolicyDirectives([
+            'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox',
+            "script-src 'self'",
+            "style-src 'self'",
+            "img-src 'none'",
+            "font-src 'none'",
+            "media-src 'none'",
+        ]));
+
+        return response($html, 200, $this->securityHeaders($csp));
+    }
+
+    /**
      * Artifacts are only safe while embedded in the sandboxed iframe. Rendered as a
      * top-level document the iframe sandbox no longer applies, which would restore
      * downloads, self-initiated fullscreen/pointer-lock, and same-origin storage on

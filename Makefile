@@ -11,6 +11,7 @@ export APP_GID ?= $(shell id -g)
 UP_BUILD ?= --build
 WAIT_TIMEOUT ?= 180
 WAIT_INTERVAL ?= 2
+WAIT_COMPOSE_ARGS ?=
 WAIT_COMPOSE_PROFILES ?=
 TEST_FILTER ?=
 TEST_DB_SERVICE ?= db-test
@@ -27,6 +28,8 @@ E2E_APP_SERVICE ?= e2e-app
 E2E_ARTIFACT_SERVICE ?= e2e-artifact-host
 E2E_IMAGE_PARSER_SERVICE ?= e2e-image-parser
 E2E_PDF_PROCESSOR_SERVICE ?= e2e-pdf-processor
+E2E_XLSX_PROCESSOR_SERVICE ?= e2e-xlsx-processor
+E2E_DOCX_PROCESSOR_SERVICE ?= e2e-docx-processor
 E2E_ARTIFACT_GATEWAY_SERVICE ?= e2e-artifact-gateway
 E2E_EDGE_SERVICE ?= e2e-edge
 E2E_APP_PORT ?= 18180
@@ -35,21 +38,27 @@ E2E_APP_URL ?= http://localhost:$(E2E_APP_PORT)
 E2E_ARTIFACT_URL ?= http://127.0.0.1:$(E2E_ARTIFACT_HOST_PORT)
 E2E_DB_NAME ?= $(TEST_DB_DATABASE)_e2e_$(TEST_DB_RUN_ID)
 E2E_LOCK_DIR ?= storage/framework/testing/e2e.lock
+ISOLATED_TEST_ENV_FILE ?= docker/e2e.env
+ISOLATED_TEST_COMPOSE_FILE ?= docker-compose.test.yml
+TEST_COMPOSE ?= $(COMPOSE) --env-file $(ISOLATED_TEST_ENV_FILE) -f docker-compose.yml -f $(ISOLATED_TEST_COMPOSE_FILE)
+E2E_COMPOSE ?= $(TEST_COMPOSE) --profile test --profile e2e
 PRODUCTION_IMAGE ?= artifactflow-app:production
 IMAGE_PARSER_IMAGE ?= artifactflow-image-parser:production
 PDF_PROCESSOR_SPIKE_IMAGE ?= artifactflow-pdf-processor-spike:local
 PDF_PROCESSOR_SERVICE_IMAGE ?= artifactflow-pdf-processor-service:local
 PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE ?= artifactflow-pdf-processor-service:production
+XLSX_PROCESSOR_SERVICE_IMAGE ?= artifactflow-xlsx-processor-service:production
+DOCX_PROCESSOR_IMAGE ?= artifactflow-docx-processor:production
 TRIVY_IMAGE ?= aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
 TRIVY_CACHE_DIR ?= $(HOME)/.cache/trivy
-TRIVY_REPO_SCAN_SKIP_DIRS ?= --skip-dirs /src/vendor --skip-dirs /src/node_modules --skip-dirs /src/public/build --skip-dirs /src/storage --skip-dirs /src/bootstrap/cache --skip-dirs /src/.git
+TRIVY_REPO_SCAN_SKIP_DIRS ?= --skip-dirs /src/vendor --skip-dirs /src/node_modules --skip-dirs /src/public/build --skip-dirs /src/storage --skip-dirs /src/bootstrap/cache --skip-dirs /src/.git --skip-dirs '/src/.codex-*'
 SEMGREP ?= semgrep
 TYPE_COVERAGE_MIN ?= 100
 TYPE_COVERAGE_REPORT ?= storage/framework/testing/type-coverage.json
-COVERAGE_MIN ?= 94
+COVERAGE_MIN ?= 95
 TEST_PHP_INI_SCAN_DIR ?= /usr/local/etc/php/conf.d:/var/www/html/docker/php/test-conf.d
 
-.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps run-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test fuzz-capabilities type-coverage coverage audit audit-php audit-js ai-hooks-test codex-permissions-test verify-reverb-origin verify-runtime-network-isolation reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty pdf-processor-spike-build pdf-processor-spike-test pdf-processor-service-build pdf-processor-service-test pdf-processor-private-service-build pdf-processor-private-service-test pdf-processor-private-service-runtime-test scan-image quality quality-full config-refresh lint-js doctor install
+.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps test-deps run-app-cmd run-test-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test fuzz-capabilities type-coverage coverage audit audit-php audit-js ai-hooks-test codex-permissions-test verify-reverb-origin verify-runtime-network-isolation reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty pdf-processor-spike-build pdf-processor-spike-test pdf-processor-service-build pdf-processor-service-test pdf-processor-private-service-build pdf-processor-private-service-test pdf-processor-private-service-runtime-test xlsx-processor-service-build xlsx-processor-service-test xlsx-processor-service-runtime-test docx-processor-build docx-processor-test docx-processor-runtime-test docx-pdf-chain-test scan-image quality quality-full config-refresh lint-js doctor install
 
 ensure-env:
 	@test -f .env || cp .env.example .env
@@ -104,7 +113,7 @@ wait:
 		elapsed=0; \
 		last_status=""; \
 		while true; do \
-			cid="$$( $(COMPOSE) $(WAIT_COMPOSE_PROFILES) ps -a -q $(APP_SERVICE) )"; \
+			cid="$$( $(COMPOSE) $(WAIT_COMPOSE_ARGS) $(WAIT_COMPOSE_PROFILES) ps -a -q $(APP_SERVICE) )"; \
 			if [ -n "$$cid" ]; then \
 				status="$$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$$cid" 2>/dev/null || true)"; \
 				if [ "$$status" != "$$last_status" ] && [ -n "$$status" ]; then \
@@ -116,15 +125,15 @@ wait:
 				fi; \
 				if [ "$$status" = "unhealthy" ] || [ "$$status" = "exited" ] || [ "$$status" = "dead" ]; then \
 					echo "$(APP_SERVICE) container stopped with status $$status"; \
-					$(COMPOSE) $(WAIT_COMPOSE_PROFILES) ps; \
-					$(COMPOSE) $(WAIT_COMPOSE_PROFILES) logs --tail=100 $(APP_SERVICE) || true; \
+					$(COMPOSE) $(WAIT_COMPOSE_ARGS) $(WAIT_COMPOSE_PROFILES) ps; \
+					$(COMPOSE) $(WAIT_COMPOSE_ARGS) $(WAIT_COMPOSE_PROFILES) logs --tail=100 $(APP_SERVICE) || true; \
 					exit 1; \
 				fi; \
 			fi; \
 			if [ "$$elapsed" -ge "$$timeout" ]; then \
 				echo "Timed out waiting for $(APP_SERVICE) after $$timeout seconds"; \
-				$(COMPOSE) $(WAIT_COMPOSE_PROFILES) ps; \
-				$(COMPOSE) $(WAIT_COMPOSE_PROFILES) logs --tail=100 $(APP_SERVICE) || true; \
+				$(COMPOSE) $(WAIT_COMPOSE_ARGS) $(WAIT_COMPOSE_PROFILES) ps; \
+				$(COMPOSE) $(WAIT_COMPOSE_ARGS) $(WAIT_COMPOSE_PROFILES) logs --tail=100 $(APP_SERVICE) || true; \
 				exit 1; \
 			fi; \
 			sleep "$$interval"; \
@@ -148,6 +157,10 @@ deps:
 			$(COMPOSE) run --rm --no-deps $(APP_SERVICE) sh -lc '/var/www/html/docker/ensure-vendor.sh'; \
 		fi
 
+test-deps:
+	@mkdir -p vendor node_modules
+	$(TEST_COMPOSE) run --rm --no-deps $(APP_SERVICE) sh -lc '/var/www/html/docker/ensure-vendor.sh'
+
 run-app-cmd:
 	@set -euo pipefail; \
 		cmd='$(APP_CMD)'; \
@@ -159,10 +172,15 @@ run-app-cmd:
 			$(COMPOSE) run --rm --no-deps $(APP_SERVICE) sh -lc "$$cmd"; \
 		fi
 
+run-test-app-cmd:
+	@set -euo pipefail; \
+		cmd='$(APP_CMD)'; \
+		$(TEST_COMPOSE) run --rm --no-deps $(APP_SERVICE) sh -lc "$$cmd"
+
 run-e2e-app-cmd:
 	@set -euo pipefail; \
 		cmd='$(APP_CMD)'; \
-		$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env exec -T $(E2E_APP_SERVICE) sh -lc "$$cmd"
+		$(E2E_COMPOSE) exec -T $(E2E_APP_SERVICE) sh -lc "$$cmd"
 
 fe-deps:
 	$(COMPOSE) --profile frontend run --rm --no-deps vite sh -lc '/var/www/html/docker/ensure-node-modules.sh'
@@ -311,7 +329,7 @@ verify-reverb-origin:
 		fi
 
 test-env-up:
-	$(COMPOSE) --profile test up -d $(TEST_DB_SERVICE)
+	$(TEST_COMPOSE) --profile test up -d $(TEST_DB_SERVICE)
 	@echo "Waiting for $(TEST_DB_SERVICE) healthcheck..."
 	@set -euo pipefail; \
 		timeout=$(WAIT_TIMEOUT); \
@@ -319,7 +337,7 @@ test-env-up:
 		elapsed=0; \
 		last_status=""; \
 		while true; do \
-			cid="$$( $(COMPOSE) --profile test ps -a -q $(TEST_DB_SERVICE) )"; \
+			cid="$$( $(TEST_COMPOSE) --profile test ps -a -q $(TEST_DB_SERVICE) )"; \
 			if [ -n "$$cid" ]; then \
 				status="$$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$$cid" 2>/dev/null || true)"; \
 				if [ "$$status" != "$$last_status" ] && [ -n "$$status" ]; then \
@@ -331,15 +349,15 @@ test-env-up:
 				fi; \
 				if [ "$$status" = "unhealthy" ] || [ "$$status" = "exited" ] || [ "$$status" = "dead" ]; then \
 					echo "$(TEST_DB_SERVICE) container stopped with status $$status"; \
-					$(COMPOSE) --profile test ps; \
-					$(COMPOSE) --profile test logs --tail=100 $(TEST_DB_SERVICE) || true; \
+					$(TEST_COMPOSE) --profile test ps; \
+					$(TEST_COMPOSE) --profile test logs --tail=100 $(TEST_DB_SERVICE) || true; \
 					exit 1; \
 				fi; \
 			fi; \
 			if [ "$$elapsed" -ge "$$timeout" ]; then \
 				echo "Timed out waiting for $(TEST_DB_SERVICE) after $$timeout seconds"; \
-				$(COMPOSE) --profile test ps; \
-				$(COMPOSE) --profile test logs --tail=100 $(TEST_DB_SERVICE) || true; \
+				$(TEST_COMPOSE) --profile test ps; \
+				$(TEST_COMPOSE) --profile test logs --tail=100 $(TEST_DB_SERVICE) || true; \
 				exit 1; \
 			fi; \
 			sleep "$$interval"; \
@@ -347,26 +365,26 @@ test-env-up:
 		done
 
 test-env-down:
-	-$(COMPOSE) --profile test stop $(TEST_DB_SERVICE)
+	-$(TEST_COMPOSE) --profile test stop $(TEST_DB_SERVICE)
 
 test-db-prepare:
-	$(COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" psql -X -v ON_ERROR_STOP=1 -U "$(TEST_DB_SUPERUSER)" -d postgres -c "ALTER ROLE \"$(TEST_DB_USERNAME)\" CREATEDB;"'
-	$(COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" psql -X -U "$(TEST_DB_SUPERUSER)" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '\''$(TEST_DB_DATABASE)'\''" | grep -q 1 || PGPASSWORD="$(TEST_DB_SUPERPASS)" psql -X -v ON_ERROR_STOP=1 -U "$(TEST_DB_SUPERUSER)" -d postgres -c "CREATE DATABASE \"$(TEST_DB_DATABASE)\" OWNER \"$(TEST_DB_USERNAME)\";"'
+	$(TEST_COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" psql -X -v ON_ERROR_STOP=1 -U "$(TEST_DB_SUPERUSER)" -d postgres -c "ALTER ROLE \"$(TEST_DB_USERNAME)\" CREATEDB;"'
+	$(TEST_COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" psql -X -U "$(TEST_DB_SUPERUSER)" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '\''$(TEST_DB_DATABASE)'\''" | grep -q 1 || PGPASSWORD="$(TEST_DB_SUPERPASS)" psql -X -v ON_ERROR_STOP=1 -U "$(TEST_DB_SUPERUSER)" -d postgres -c "CREATE DATABASE \"$(TEST_DB_DATABASE)\" OWNER \"$(TEST_DB_USERNAME)\";"'
 
 test-db-create: test-db-prepare
-	$(COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" psql -X -v ON_ERROR_STOP=1 -U "$(TEST_DB_SUPERUSER)" -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '\''$(TEST_DB_NAME)'\'' AND pid <> pg_backend_pid();"'
-	$(COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" dropdb -U "$(TEST_DB_SUPERUSER)" --if-exists "$(TEST_DB_NAME)"'
-	$(COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" createdb -U "$(TEST_DB_SUPERUSER)" -O "$(TEST_DB_USERNAME)" "$(TEST_DB_NAME)"'
+	$(TEST_COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" psql -X -v ON_ERROR_STOP=1 -U "$(TEST_DB_SUPERUSER)" -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '\''$(TEST_DB_NAME)'\'' AND pid <> pg_backend_pid();"'
+	$(TEST_COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" dropdb -U "$(TEST_DB_SUPERUSER)" --if-exists "$(TEST_DB_NAME)"'
+	$(TEST_COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" createdb -U "$(TEST_DB_SUPERUSER)" -O "$(TEST_DB_USERNAME)" "$(TEST_DB_NAME)"'
 
 test-db-drop:
-	-$(COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" psql -X -v ON_ERROR_STOP=1 -U "$(TEST_DB_SUPERUSER)" -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '\''$(TEST_DB_NAME)'\'' AND pid <> pg_backend_pid();"'
-	-$(COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" dropdb -U "$(TEST_DB_SUPERUSER)" --if-exists "$(TEST_DB_NAME)"'
+	-$(TEST_COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" psql -X -v ON_ERROR_STOP=1 -U "$(TEST_DB_SUPERUSER)" -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '\''$(TEST_DB_NAME)'\'' AND pid <> pg_backend_pid();"'
+	-$(TEST_COMPOSE) --profile test exec -T $(TEST_DB_SERVICE) sh -lc 'PGPASSWORD="$(TEST_DB_SUPERPASS)" dropdb -U "$(TEST_DB_SUPERUSER)" --if-exists "$(TEST_DB_NAME)"'
 
 test-db-reset: TEST_DB_NAME=$(TEST_DB_DATABASE)
 test-db-reset: test-db-create
 
 test:
-	$(MAKE) deps
+	$(MAKE) test-deps
 	$(MAKE) test-env-up
 	@set -euo pipefail; \
 		db_name="$(TEST_DB_NAME)"; \
@@ -375,13 +393,8 @@ test:
 		cleanup() { $(MAKE) test-db-drop TEST_DB_NAME="$$db_name"; }; \
 		trap cleanup EXIT; \
 		test_cmd='php artisan route:clear >/dev/null 2>&1; php artisan config:clear >/dev/null 2>&1; $(if $(COVERAGE),php -m | grep -qi "^pcov$$" || { echo "PCOV is required for line coverage." >&2; exit 2; }; ,)APP_ENV=testing CACHE_STORE=array SESSION_DRIVER=array QUEUE_CONNECTION=sync MAIL_MAILER=array DB_CONNECTION=pgsql DB_HOST=$(TEST_DB_HOST) DB_PORT=$(TEST_DB_PORT) DB_DATABASE='"$$db_name"' DB_USERNAME=$(TEST_DB_USERNAME) DB_PASSWORD=$(TEST_DB_PASSWORD) DB_SSLMODE=disable BROADCAST_CONNECTION=log XDEBUG_MODE=off PHP_INI_SCAN_DIR=$(TEST_PHP_INI_SCAN_DIR) php -d pcov.enabled=$(if $(COVERAGE),1,0) artisan test$(if $(COVERAGE), --coverage,)$(if $(TYPE_COVERAGE), --type-coverage --min=$(TYPE_COVERAGE_MIN),)$(if $(TYPE_COVERAGE_JSON), --type-coverage-json=$(TYPE_COVERAGE_JSON),)$(if $(COVERAGE),$(if $(COVERAGE_MIN), --min=$(COVERAGE_MIN),),)$(if $(TEST_FILTER), --filter=$(TEST_FILTER),)'; \
-		cid="$$( $(COMPOSE) ps -q $(APP_SERVICE) )"; \
-		if [ -n "$$cid" ] && [ "$$(docker inspect --format='{{.State.Running}}' "$$cid" 2>/dev/null || true)" = "true" ]; then \
-			$(COMPOSE) exec -T $(APP_SERVICE) sh -lc "$$test_cmd"; \
-		else \
-			echo "$(APP_SERVICE) is not running, using one-off container for tests"; \
-			$(COMPOSE) run --rm --no-deps $(APP_SERVICE) sh -lc "$$test_cmd"; \
-		fi
+		echo "Using one-off app container with committed test interpolation defaults"; \
+		$(TEST_COMPOSE) run --rm --no-deps $(APP_SERVICE) sh -lc "$$test_cmd"
 
 fuzz-capabilities:
 	$(MAKE) test TEST_FILTER=ArtifactDraftPreviewCapabilitiesFuzzTest
@@ -389,7 +402,7 @@ fuzz-capabilities:
 type-coverage:
 	@mkdir -p "$(dir $(TYPE_COVERAGE_REPORT))"
 	$(MAKE) test TYPE_COVERAGE=1 TYPE_COVERAGE_MIN=$(TYPE_COVERAGE_MIN) TYPE_COVERAGE_JSON=$(TYPE_COVERAGE_REPORT)
-	$(MAKE) run-app-cmd APP_CMD='php scripts/type-coverage-guard.php "$(TYPE_COVERAGE_REPORT)" "$(TYPE_COVERAGE_MIN)"'
+	$(MAKE) run-test-app-cmd APP_CMD='php scripts/type-coverage-guard.php "$(TYPE_COVERAGE_REPORT)" "$(TYPE_COVERAGE_MIN)"'
 
 coverage:
 	$(MAKE) test COVERAGE=1 COVERAGE_MIN=$(COVERAGE_MIN)
@@ -407,7 +420,6 @@ e2e:
 		  echo "Frontend sources are newer than public/build. Run 'make build-assets' before 'make e2e' so the browser tests exercise current assets."; \
 		  exit 1; \
 	fi
-	$(MAKE) ensure-env
 	$(MAKE) test-env-up
 	@set -euo pipefail; \
 		db_name="$(E2E_DB_NAME)"; \
@@ -419,7 +431,7 @@ e2e:
 			exit 1; \
 		fi; \
 		cleanup() { \
-			$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env stop $(E2E_EDGE_SERVICE) $(E2E_ARTIFACT_GATEWAY_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) $(E2E_IMAGE_PARSER_SERVICE) $(E2E_PDF_PROCESSOR_SERVICE) >/dev/null 2>&1 || true; \
+			$(E2E_COMPOSE) stop $(E2E_EDGE_SERVICE) $(E2E_ARTIFACT_GATEWAY_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) $(E2E_IMAGE_PARSER_SERVICE) $(E2E_PDF_PROCESSOR_SERVICE) $(E2E_XLSX_PROCESSOR_SERVICE) $(E2E_DOCX_PROCESSOR_SERVICE) >/dev/null 2>&1 || true; \
 			$(MAKE) test-db-drop TEST_DB_NAME="$$db_name"; \
 			rmdir "$$lock_dir" >/dev/null 2>&1 || true; \
 		}; \
@@ -432,20 +444,22 @@ e2e:
 		E2E_APP_URL="$(E2E_APP_URL)" \
 		E2E_ARTIFACT_URL="$(E2E_ARTIFACT_URL)" \
 		E2E_ARTIFACT_FRAME_ANCESTORS="$(E2E_APP_URL)" \
-			$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env run --rm --no-deps $(E2E_APP_SERVICE) sh -lc '/var/www/html/docker/ensure-vendor.sh && php artisan migrate --force'; \
+			$(E2E_COMPOSE) run --rm --no-deps $(E2E_APP_SERVICE) sh -lc '/var/www/html/docker/ensure-vendor.sh && php artisan migrate --force'; \
 		E2E_DB_DATABASE="$$db_name" \
 		E2E_APP_PORT="$(E2E_APP_PORT)" \
 		E2E_ARTIFACT_HOST_PORT="$(E2E_ARTIFACT_HOST_PORT)" \
 		E2E_APP_URL="$(E2E_APP_URL)" \
 		E2E_ARTIFACT_URL="$(E2E_ARTIFACT_URL)" \
 		E2E_ARTIFACT_FRAME_ANCESTORS="$(E2E_APP_URL)" \
-			$(COMPOSE) --profile test --profile e2e --env-file docker/e2e.env up -d $(UP_BUILD) --force-recreate $(E2E_IMAGE_PARSER_SERVICE) $(E2E_PDF_PROCESSOR_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) $(E2E_ARTIFACT_GATEWAY_SERVICE) $(E2E_EDGE_SERVICE); \
-		$(MAKE) wait APP_SERVICE=$(E2E_IMAGE_PARSER_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
-		$(MAKE) wait APP_SERVICE=$(E2E_PDF_PROCESSOR_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
-		$(MAKE) wait APP_SERVICE=$(E2E_APP_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
-		$(MAKE) wait APP_SERVICE=$(E2E_ARTIFACT_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
-		$(MAKE) wait APP_SERVICE=$(E2E_ARTIFACT_GATEWAY_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
-		$(MAKE) wait APP_SERVICE=$(E2E_EDGE_SERVICE) WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
+			$(E2E_COMPOSE) up -d $(UP_BUILD) --force-recreate $(E2E_IMAGE_PARSER_SERVICE) $(E2E_PDF_PROCESSOR_SERVICE) $(E2E_XLSX_PROCESSOR_SERVICE) $(E2E_DOCX_PROCESSOR_SERVICE) $(E2E_APP_SERVICE) $(E2E_ARTIFACT_SERVICE) $(E2E_ARTIFACT_GATEWAY_SERVICE) $(E2E_EDGE_SERVICE); \
+		$(MAKE) wait APP_SERVICE=$(E2E_IMAGE_PARSER_SERVICE) WAIT_COMPOSE_ARGS='--env-file $(ISOLATED_TEST_ENV_FILE)' WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
+		$(MAKE) wait APP_SERVICE=$(E2E_PDF_PROCESSOR_SERVICE) WAIT_COMPOSE_ARGS='--env-file $(ISOLATED_TEST_ENV_FILE)' WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
+		$(MAKE) wait APP_SERVICE=$(E2E_XLSX_PROCESSOR_SERVICE) WAIT_COMPOSE_ARGS='--env-file $(ISOLATED_TEST_ENV_FILE)' WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
+		$(MAKE) wait APP_SERVICE=$(E2E_DOCX_PROCESSOR_SERVICE) WAIT_COMPOSE_ARGS='--env-file $(ISOLATED_TEST_ENV_FILE)' WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
+		$(MAKE) wait APP_SERVICE=$(E2E_APP_SERVICE) WAIT_COMPOSE_ARGS='--env-file $(ISOLATED_TEST_ENV_FILE)' WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
+		$(MAKE) wait APP_SERVICE=$(E2E_ARTIFACT_SERVICE) WAIT_COMPOSE_ARGS='--env-file $(ISOLATED_TEST_ENV_FILE)' WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
+		$(MAKE) wait APP_SERVICE=$(E2E_ARTIFACT_GATEWAY_SERVICE) WAIT_COMPOSE_ARGS='--env-file $(ISOLATED_TEST_ENV_FILE)' WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
+		$(MAKE) wait APP_SERVICE=$(E2E_EDGE_SERVICE) WAIT_COMPOSE_ARGS='--env-file $(ISOLATED_TEST_ENV_FILE)' WAIT_COMPOSE_PROFILES='--profile test --profile e2e'; \
 		$(MAKE) verify-runtime-network-isolation; \
 		E2E_DB_DATABASE="$$db_name" \
 		E2E_APP_PORT="$(E2E_APP_PORT)" \
@@ -470,7 +484,14 @@ build-prod:
 		--tag $(PDF_PROCESSOR_SERVICE_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) pdf-processor-spike
 	$(DOCKER_BUILD) --pull -f pdf-processor-spike/Dockerfile --target pdf-processor-private-service \
 		--tag $(PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) pdf-processor-spike
+	$(DOCKER_BUILD) --pull -f xlsx-processor-spike/Dockerfile --target xlsx-processor-spike-service \
+		--tag $(XLSX_PROCESSOR_SERVICE_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) xlsx-processor-spike
+	$(DOCKER_BUILD) --pull -f docx-processor/Dockerfile \
+		--tag $(DOCX_PROCESSOR_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) docx-processor
 	$(MAKE) pdf-processor-private-service-runtime-test
+	$(MAKE) xlsx-processor-service-runtime-test
+	$(MAKE) docx-processor-runtime-test
+	$(MAKE) docx-pdf-chain-test
 	$(MAKE) assert-prod-storage-empty
 
 assert-prod-storage-empty:
@@ -598,6 +619,130 @@ pdf-processor-private-service-runtime-test:
 		echo "Private-network PDF processor loopback-only health, engine-failure health, and inherited outbound syscall deny probes passed."
 	bash pdf-processor-spike/process-containment-harness.sh "$(PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE)"
 
+xlsx-processor-service-build:
+	$(DOCKER_BUILD) -f xlsx-processor-spike/Dockerfile --target xlsx-processor-spike-service \
+		--tag $(XLSX_PROCESSOR_SERVICE_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) xlsx-processor-spike
+
+xlsx-processor-service-test: xlsx-processor-service-build
+	$(MAKE) xlsx-processor-service-runtime-test
+
+xlsx-processor-service-runtime-test:
+	docker run --rm --network none --read-only --cap-drop ALL \
+		--security-opt no-new-privileges --pids-limit 64 --memory 384m --cpus 1 \
+		--tmpfs /tmp:rw,noexec,nosuid,size=64m --entrypoint node \
+		$(XLSX_PROCESSOR_SERVICE_IMAGE) --test
+	@set -euo pipefail; \
+		processor_container="artifactflow-xlsx-processor-probe-$$(openssl rand -hex 6)"; \
+		cleanup() { docker rm -f "$$processor_container" >/dev/null 2>&1 || true; }; \
+		trap cleanup EXIT; \
+		docker run -d --name "$$processor_container" --network none --read-only --cap-drop ALL \
+			--security-opt no-new-privileges --pids-limit 16 --memory 384m --cpus 1 \
+			--tmpfs /tmp:rw,noexec,nosuid,size=64m \
+			--tmpfs /run/artifactflow/xlsx-processor:rw,noexec,nosuid,size=1m,uid=10003,gid=10003,mode=0755 \
+			--health-interval 1s --health-timeout 5s --health-start-period 1s --health-retries 30 \
+			--env XLSX_PROCESSOR_SHARED_SECRET=base64:YXJ0aWZhY3RmbG93LXhsc3gtcnVudGltZS10ZXN0LXNlY3JldA== \
+			--env XLSX_PROCESSOR_SOCKET_PATH=/run/artifactflow/xlsx-processor/processor.sock \
+			$(XLSX_PROCESSOR_SERVICE_IMAGE) >/dev/null; \
+		for attempt in $$(seq 1 40); do \
+			status="$$(docker inspect --format='{{.State.Health.Status}}' "$$processor_container" 2>/dev/null || true)"; \
+			if [ "$$status" = healthy ]; then \
+				echo "XLSX processor deterministic and signed health contracts passed."; \
+				break; \
+			fi; \
+			if [ "$$status" = unhealthy ] || [ "$$attempt" -eq 40 ]; then \
+				docker logs "$$processor_container" 2>&1 || true; \
+				echo "XLSX processor did not become healthy (status: $$status)." >&2; \
+				exit 1; \
+			fi; \
+			sleep 1; \
+		done; \
+		docker exec \
+			--env XLSX_PROCESSOR_SHARED_SECRET=artifactflow-xlsx-runtime-test-secret \
+			"$$processor_container" node /srv/xlsx-processor-spike/healthcheck.cjs; \
+		echo "XLSX processor Base64 environment and decoded application HMAC keys match."
+
+docx-processor-build:
+	$(DOCKER_BUILD) -f docx-processor/Dockerfile \
+		--tag $(DOCX_PROCESSOR_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) docx-processor
+
+docx-processor-test: docx-processor-build pdf-processor-service-build
+	$(MAKE) docx-processor-runtime-test
+	$(MAKE) docx-pdf-chain-test
+
+docx-processor-runtime-test:
+	docker run --rm --network none --read-only --cap-drop ALL \
+		--security-opt no-new-privileges --pids-limit 128 --memory 768m --cpus 1 \
+		--tmpfs /tmp:rw,noexec,nosuid,nodev,size=192m,mode=1777 \
+		--mount type=bind,src="$(CURDIR)/docx-processor/test",dst=/srv/docx-processor/test,readonly \
+		--entrypoint php $(DOCX_PROCESSOR_IMAGE) /srv/docx-processor/test/run.php
+	docker run --rm --network none --read-only --cap-drop ALL \
+		--security-opt no-new-privileges --pids-limit 128 --memory 768m --cpus 1 \
+		--tmpfs /tmp:rw,noexec,nosuid,nodev,size=192m,mode=1777 \
+		--mount type=bind,src="$(CURDIR)/docx-processor/test",dst=/srv/docx-processor/test,readonly \
+		--entrypoint php $(DOCX_PROCESSOR_IMAGE) /srv/docx-processor/test/libreoffice-docx-export.php
+	@set -euo pipefail; \
+		processor_container="artifactflow-docx-processor-probe-$$(openssl rand -hex 6)"; \
+		cleanup() { docker rm -f "$$processor_container" >/dev/null 2>&1 || true; }; \
+		trap cleanup EXIT; \
+		docker run -d --name "$$processor_container" --network none --read-only --cap-drop ALL \
+			--security-opt no-new-privileges --pids-limit 128 --memory 768m --cpus 1 \
+			--tmpfs /tmp:rw,noexec,nosuid,nodev,size=192m,mode=1777 \
+			--tmpfs /run/artifactflow/docx-processor:rw,noexec,nosuid,size=1m,uid=10004,gid=10004,mode=0755 \
+			--health-interval 1s --health-timeout 8s --health-start-period 1s --health-retries 45 \
+			--env DOCX_PROCESSOR_SHARED_SECRET=artifactflow-docx-runtime-test-secret \
+			--env DOCX_PROCESSOR_SOCKET_PATH=/run/artifactflow/docx-processor/processor.sock \
+			$(DOCX_PROCESSOR_IMAGE) >/dev/null; \
+		for attempt in $$(seq 1 55); do \
+			status="$$(docker inspect --format='{{.State.Health.Status}}' "$$processor_container" 2>/dev/null || true)"; \
+			if [ "$$status" = healthy ]; then \
+				echo "DOCX processor deterministic and signed health contracts passed."; \
+				break; \
+			fi; \
+			if [ "$$status" = unhealthy ] || [ "$$attempt" -eq 55 ]; then \
+				docker logs "$$processor_container" 2>&1 || true; \
+				echo "DOCX processor did not become healthy (status: $$status)." >&2; \
+				exit 1; \
+			fi; \
+			sleep 1; \
+		done
+	@if docker run --rm --network none --read-only --cap-drop ALL \
+		--security-opt no-new-privileges --pids-limit 128 --memory 768m --cpus 1 \
+		--tmpfs /tmp:rw,noexec,nosuid,nodev,size=192m,mode=1777 \
+		--env DOCX_PROCESSOR_SHARED_SECRET=artifactflow-docx-runtime-test-secret \
+		--env PHP_CLI_SERVER_WORKERS=2 $(DOCX_PROCESSOR_IMAGE); then \
+		echo "DOCX processor accepted more than one HTTP worker." >&2; exit 1; \
+	fi
+
+docx-pdf-chain-test:
+	@set -euo pipefail; \
+		proof_dir="$$(mktemp -d "$${TMPDIR:-/tmp}/artifactflow-docx-pdf-proof.XXXXXX")"; \
+		cleanup() { \
+			rm -f "$$proof_dir/preview.pdf"; \
+			rmdir "$$proof_dir" >/dev/null 2>&1 || true; \
+		}; \
+		trap cleanup EXIT; \
+		chmod 0777 "$$proof_dir"; \
+		docker run --rm --network none --read-only --cap-drop ALL \
+			--security-opt no-new-privileges --pids-limit 128 --memory 768m --cpus 1 \
+			--tmpfs /tmp:rw,noexec,nosuid,nodev,size=192m,mode=1777 \
+			--mount type=bind,src="$(CURDIR)/docx-processor/test",dst=/srv/docx-processor/test,readonly \
+			--mount type=bind,src="$$proof_dir",dst=/proof \
+			--entrypoint php $(DOCX_PROCESSOR_IMAGE) \
+			/srv/docx-processor/test/round-trip.php /proof/preview.pdf; \
+		inspection="$$(docker run --rm --network none --read-only --cap-drop ALL \
+			--security-opt no-new-privileges --pids-limit 32 --memory 512m --cpus 1 \
+			--tmpfs /tmp:rw,noexec,nosuid,size=32m \
+			--mount type=bind,src="$$proof_dir",dst=/proof,readonly \
+			--entrypoint java $(PDF_PROCESSOR_SERVICE_IMAGE) \
+			-Xms32m -Xmx384m -XX:MaxMetaspaceSize=96m \
+			-cp /opt/pdfbox-app.jar:/srv/pdf-processor-spike/classes \
+			app.artifactflow.pdfspike.Main inspect-docx-preview /proof/preview.pdf)"; \
+		printf '%s\n' "$$inspection" | grep -F '"pages":1' >/dev/null; \
+		printf '%s\n' "$$inspection" | grep -F '"truncated":false' >/dev/null; \
+		printf '%s\n' "$$inspection" | grep -F 'ArtifactFlow searchable Word preview' >/dev/null; \
+		printf '%s\n' "$$inspection" | grep -F 'Cached custom XML preview text' >/dev/null; \
+		echo "DOCX to independently validated searchable PDF chain passed."
+
 scan-image:
 	@mkdir -p "$(TRIVY_CACHE_DIR)"
 	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
@@ -612,6 +757,12 @@ scan-image:
 	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
 		-v "$(TRIVY_CACHE_DIR):/root/.cache/trivy" \
 		$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE)
+	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+		-v "$(TRIVY_CACHE_DIR):/root/.cache/trivy" \
+		$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(XLSX_PROCESSOR_SERVICE_IMAGE)
+	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+		-v "$(TRIVY_CACHE_DIR):/root/.cache/trivy" \
+		$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(DOCX_PROCESSOR_IMAGE)
 	docker run --rm \
 		-v "$(TRIVY_CACHE_DIR):/root/.cache/trivy" \
 		-v "$(PWD):/src:ro" \
