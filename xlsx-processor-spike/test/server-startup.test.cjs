@@ -22,7 +22,7 @@ async function waitForSocket(socketPath, child) {
 
     try {
       const socket = fs.lstatSync(socketPath);
-      if (socket.isSocket() && (socket.mode & 0o777) === 0o666) {
+      if (socket.isSocket() && (socket.mode & 0o777) === 0o660) {
         return;
       }
     } catch (error) {
@@ -88,7 +88,7 @@ test('removes a stale Unix socket path before binding', async (context) => {
 
   await waitForSocket(socketPath, child);
   assert.equal(fs.lstatSync(socketPath).isSocket(), true);
-  assert.equal(fs.lstatSync(socketPath).mode & 0o777, 0o666);
+  assert.equal(fs.lstatSync(socketPath).mode & 0o777, 0o660);
 });
 
 test('decodes installer-style Base64 secrets before authenticating Laravel health probes', async (context) => {

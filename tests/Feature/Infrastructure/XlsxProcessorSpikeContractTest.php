@@ -24,20 +24,24 @@ final class XlsxProcessorSpikeContractTest extends TestCase
         $processor = $this->serviceBlock($compose, 'xlsx-processor', 'docx-processor');
         $app = $this->serviceBlock($compose, 'app', 'artifact-host');
 
-        $this->assertStringContainsString(' AS xlsx-processor-spike', $dockerfile);
-        $stage = $this->afterNeedle($dockerfile, ' AS xlsx-processor-spike');
+        $this->assertStringContainsString(' AS xlsx-processor-base', $dockerfile);
+        $stage = $this->afterNeedle($dockerfile, ' AS xlsx-processor-base');
 
         $this->assertStringContainsString('node:26-alpine@sha256:', $dockerfile);
         $this->assertStringContainsString('apk upgrade --no-cache', $stage);
         $this->assertStringContainsString('npm ci --ignore-scripts', $stage);
         $this->assertStringContainsString('COPY package.json package-lock.json', $stage);
         $this->assertStringContainsString('COPY --chown=xlsx-spike:xlsx-spike src ./src', $stage);
-        $this->assertStringContainsString('COPY --chown=xlsx-spike:xlsx-spike test ./test', $stage);
         $this->assertStringContainsString('COPY --chown=xlsx-spike:xlsx-spike licenses ./licenses', $stage);
         $this->assertStringContainsString('USER xlsx-spike', $stage);
+        $this->assertStringContainsString('FROM xlsx-processor-base AS xlsx-processor-spike', $stage);
+        $testStage = $this->afterNeedle($stage, 'FROM xlsx-processor-base AS xlsx-processor-spike');
+        $this->assertStringContainsString('COPY --chown=xlsx-spike:xlsx-spike test ./test', $testStage);
+        $this->assertStringContainsString('CMD ["npm", "test"]', $testStage);
         $this->assertStringContainsString(' AS xlsx-processor-spike-service', $stage);
         $serviceStage = $this->afterNeedle($stage, ' AS xlsx-processor-spike-service');
         $this->assertStringContainsString('npm uninstall --global npm', $serviceStage);
+        $this->assertStringNotContainsString('COPY --chown=xlsx-spike:xlsx-spike test ./test', $serviceStage);
         $this->assertStringContainsString('CMD ["node", "src/start-server.cjs"]', $stage);
         $this->assertStringNotContainsString('COPY app ', $stage);
         $this->assertStringNotContainsString('COPY . ', $stage);
@@ -54,6 +58,9 @@ final class XlsxProcessorSpikeContractTest extends TestCase
         $this->assertStringContainsString('COPY LICENSE THIRD_PARTY_NOTICES.md ./', $productionDockerfile);
         $this->assertStringContainsString('Tabulator 6.5.0', $vite);
         $this->assertStringContainsString('Permission is hereby granted', $vite);
+        $this->assertStringContainsString('enforceStandaloneXlsxViewer()', $vite);
+        $this->assertStringContainsString("output.facadeModuleId?.endsWith('/resources/js/xlsx-viewer.js')", $vite);
+        $this->assertStringContainsString('viewer.imports.length > 0 || viewer.dynamicImports.length > 0', $vite);
         $this->assertStringContainsString('Tabulator 6.5.0', $viewerCss);
         $this->assertStringContainsString('Permission is hereby granted', $viewerCss);
 
@@ -63,7 +70,7 @@ final class XlsxProcessorSpikeContractTest extends TestCase
         $this->assertStringContainsString('/tmp:rw,noexec,nosuid,size=64m', $processor);
         $this->assertStringContainsString('no-new-privileges:true', $processor);
         $this->assertStringContainsString('- ALL', $processor);
-        $this->assertStringContainsString('pids_limit: 16', $processor);
+        $this->assertStringContainsString('pids_limit: 32', $processor);
         $this->assertStringContainsString('mem_limit: 384m', $processor);
         $this->assertStringContainsString('cpus: 1.0', $processor);
         $this->assertStringContainsString('network_mode: none', $processor);
@@ -77,21 +84,49 @@ final class XlsxProcessorSpikeContractTest extends TestCase
         $this->assertStringContainsString('default-off', $readme);
         $this->assertStringContainsString('Unix socket', $readme);
         $this->assertStringContainsString('process-group timeout', $readme);
-        $this->assertStringContainsString('--entrypoint node', $makefile);
-        $this->assertStringContainsString('$(XLSX_PROCESSOR_SERVICE_IMAGE) --test', $makefile);
+        $this->assertStringContainsString('--target xlsx-processor-spike', $makefile);
+        $this->assertStringContainsString('$(XLSX_PROCESSOR_TEST_IMAGE)', $makefile);
+        $this->assertStringContainsString('test ! -e /srv/xlsx-processor-spike/test', $makefile);
 
         foreach ([
             '--network none',
             '--read-only',
             '--cap-drop ALL',
             '--security-opt no-new-privileges',
-            '--pids-limit 16',
+            '--pids-limit 32',
             '--memory 384m',
             '--cpus 1',
             '--tmpfs /tmp:rw,noexec,nosuid,size=64m',
         ] as $requiredRuntimeBoundary) {
             $this->assertStringContainsString($requiredRuntimeBoundary, $readme);
         }
+    }
+
+    public function test_pid_budget_allows_the_listener_worker_and_node_health_probe_to_overlap(): void
+    {
+        $compose = $this->readProjectFile('docker-compose.yml');
+        $makefile = $this->readProjectFile('Makefile');
+        $localProcessor = $this->serviceBlock($compose, 'xlsx-processor', 'docx-processor');
+        $e2eProcessor = $this->serviceBlock($compose, 'e2e-xlsx-processor', 'e2e-docx-processor');
+        $runtimeTest = $this->betweenNeedles(
+            $makefile,
+            "xlsx-processor-service-runtime-test:\n",
+            "\ndocx-processor-build:",
+        );
+
+        // A Node listener, projection child, and Docker's Node health probe each
+        // use seven cgroup tasks. A 16-task limit made a probe overlapping an
+        // upload fail pthread creation and stall the upload until its timeout.
+        foreach ([$localProcessor, $e2eProcessor] as $processor) {
+            $this->assertStringContainsString('pids_limit: 32', $processor);
+            $this->assertStringNotContainsString('pids_limit: 16', $processor);
+        }
+        $this->assertGreaterThanOrEqual(2, substr_count($runtimeTest, '--pids-limit 32'));
+        $this->assertStringNotContainsString('--pids-limit 16', $runtimeTest);
+        $this->assertStringContainsString(
+            'XLSX processor health probe overlapped a Node worker within the bounded PID budget.',
+            $runtimeTest,
+        );
     }
 
     public function test_projection_source_has_explicit_format_and_resource_boundaries(): void
@@ -197,8 +232,9 @@ final class XlsxProcessorSpikeContractTest extends TestCase
         $this->assertStringContainsString('secretFromEnvironment', $starter);
         $this->assertStringContainsString('secretFromEnvironment', $healthcheck);
         $this->assertStringContainsString('path.isAbsolute(socketPath)', $starter);
-        $this->assertStringContainsString('fs.chmodSync(socketPath, 0o666)', $starter);
+        $this->assertStringContainsString('fs.chmodSync(socketPath, 0o660)', $starter);
         $this->assertSame(1, substr_count($starter, 'server.listen('));
+        $this->assertGreaterThanOrEqual(2, substr_count($protocol, 'containmentCheck()'));
     }
 
     private function readProjectFile(string $path): string
@@ -215,6 +251,15 @@ final class XlsxProcessorSpikeContractTest extends TestCase
         $this->assertNotFalse($position, sprintf('Expected to find [%s].', $needle));
 
         return substr($haystack, $position + strlen($needle));
+    }
+
+    private function betweenNeedles(string $haystack, string $start, string $end): string
+    {
+        $afterStart = $this->afterNeedle($haystack, $start);
+        $endPosition = strpos($afterStart, $end);
+        $this->assertNotFalse($endPosition, sprintf('Expected to find [%s].', $end));
+
+        return substr($afterStart, 0, $endPosition);
     }
 
     private function serviceBlock(string $compose, string $service, string $nextService): string

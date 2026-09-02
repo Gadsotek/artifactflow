@@ -1,7 +1,7 @@
 # ArtifactFlow DOCX processor
 
 This dedicated service validates a bounded modern DOCX package and converts it
-with pinned LibreOffice 26.2.5 to one passive PDF. It accepts only the
+with Alpine's pinned LibreOffice Writer 25.8.7.3 package to one passive PDF. It accepts only the
 `docx-passive-pdf-v1` profile over its private Unix socket. The application
 then submits the exact output bytes to the separate PDF processor's
 `pdfbox-3.0.8-docx-preview-v1` profile before storage, indexing, or delivery.

@@ -120,7 +120,7 @@ non-executable element, and only same-origin hashed JavaScript and CSS assets.
 Its iframe and response CSP use:
 
 ```text
-sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox
+sandbox allow-scripts
 default-src 'none'
 script-src 'self'
 style-src 'self'
@@ -130,10 +130,13 @@ object-src 'none'
 form-action 'none'
 ```
 
-Workbook strings enter the DOM only through text APIs. External links are
-normalized to HTTP, HTTPS, or `mailto`, open in a new context with
-`noopener noreferrer` and no referrer, and cannot navigate the authenticated
-parent. Same-workbook links are buttons that select and focus a validated visible
+Workbook strings enter the DOM only through text APIs. An external link is a
+button, not an anchor: the opaque child sends only its normalized HTTP, HTTPS,
+or `mailto` target to the parent. The app-origin parent accepts only the exact
+message shape from that iframe's opaque origin, validates the target again, and
+shows the complete destination before offering a second-click anchor with
+`noopener noreferrer` and `referrerpolicy="no-referrer"`. The artifact frame has
+no popup or navigation capability. Same-workbook links are buttons that select and focus a validated visible
 cell; a range focuses its first cell. Defined names, hidden or out-of-profile
 destinations, and other internal targets that cannot be represented safely are
 omitted rather than rejecting the workbook. Formula text is display-only and is
@@ -161,10 +164,12 @@ or signed URLs.
 
 ## Operations
 
-XLSX support is independently default-off. Local Compose uses an authenticated
+XLSX support is independently default-off. Local Compose uses a group-only authenticated
 Unix socket, `network_mode: none`, one worker, a read-only root, dropped
 capabilities, `no-new-privileges`, and explicit CPU, memory, PID, file, tmpfs, and
-time limits. The artifact-host role ignores the app's shared Vite hot marker and
+time limits. The app role joins only the processor socket group. The service
+image excludes the test corpus, and every authenticated projection rechecks
+network containment before starting its isolated worker. The artifact-host role ignores the app's shared Vite hot marker and
 loads only built, hashed, same-origin viewer assets; local developers run
 `make build-assets` before enablement and after viewer changes. Cross-host operation additionally requires encrypted authenticated
 transport and an effective directional deny from the processor to the app,

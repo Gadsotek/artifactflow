@@ -47,6 +47,7 @@ final class E2eIsolationConfigurationTest extends TestCase
             $compose,
         );
         $this->assertStringContainsString('e2e-artifacts:', $compose);
+        $this->assertStringContainsString("group_add:\n      - \"10002\"\n      - \"10003\"\n      - \"10004\"", $e2eApp);
     }
 
     public function test_artifact_hosts_have_only_database_and_restricted_ingress_network_reachability(): void

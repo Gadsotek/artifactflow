@@ -48,6 +48,7 @@ PDF_PROCESSOR_SPIKE_IMAGE ?= artifactflow-pdf-processor-spike:local
 PDF_PROCESSOR_SERVICE_IMAGE ?= artifactflow-pdf-processor-service:local
 PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE ?= artifactflow-pdf-processor-service:production
 XLSX_PROCESSOR_SERVICE_IMAGE ?= artifactflow-xlsx-processor-service:production
+XLSX_PROCESSOR_TEST_IMAGE ?= artifactflow-xlsx-processor-tests:local
 DOCX_PROCESSOR_IMAGE ?= artifactflow-docx-processor:production
 TRIVY_IMAGE ?= aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
 TRIVY_CACHE_DIR ?= $(HOME)/.cache/trivy
@@ -58,7 +59,7 @@ TYPE_COVERAGE_REPORT ?= storage/framework/testing/type-coverage.json
 COVERAGE_MIN ?= 95
 TEST_PHP_INI_SCAN_DIR ?= /usr/local/etc/php/conf.d:/var/www/html/docker/php/test-conf.d
 
-.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps test-deps run-app-cmd run-test-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test fuzz-capabilities type-coverage coverage audit audit-php audit-js ai-hooks-test codex-permissions-test verify-reverb-origin verify-runtime-network-isolation reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty pdf-processor-spike-build pdf-processor-spike-test pdf-processor-service-build pdf-processor-service-test pdf-processor-private-service-build pdf-processor-private-service-test pdf-processor-private-service-runtime-test xlsx-processor-service-build xlsx-processor-service-test xlsx-processor-service-runtime-test docx-processor-build docx-processor-test docx-processor-runtime-test docx-pdf-chain-test scan-image quality quality-full config-refresh lint-js doctor install
+.PHONY: ensure-env ensure-artifact-signing-key compose-config up up-local down down-reset wait shell logs deps test-deps run-app-cmd run-test-app-cmd run-e2e-app-cmd fe-deps fe-up fe-down fe-logs edge-up edge-down edge-logs adminer-up adminer-down mail-up mail-down key-generate artifact-signing-key-generate migrate reindex-search backup restore backup-verify ecs ecs-fix stan semgrep publish-guard test-env-up test-env-down test-db-prepare test-db-create test-db-drop test-db-reset test fuzz-capabilities type-coverage coverage audit audit-php audit-js ai-hooks-test codex-permissions-test verify-reverb-origin verify-runtime-network-isolation reverb-up reverb-down reverb-logs e2e e2e-install build-assets build-prod assert-prod-storage-empty pdf-processor-spike-build pdf-processor-spike-test pdf-processor-service-build pdf-processor-service-test pdf-processor-private-service-build pdf-processor-private-service-test pdf-processor-private-service-runtime-test xlsx-processor-test-build xlsx-processor-service-build xlsx-processor-service-test xlsx-processor-service-runtime-test docx-processor-build docx-processor-test docx-processor-runtime-test docx-pdf-chain-test scan-image quality quality-full config-refresh lint-js doctor install
 
 ensure-env:
 	@test -f .env || cp .env.example .env
@@ -619,24 +620,32 @@ pdf-processor-private-service-runtime-test:
 		echo "Private-network PDF processor loopback-only health, engine-failure health, and inherited outbound syscall deny probes passed."
 	bash pdf-processor-spike/process-containment-harness.sh "$(PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE)"
 
+xlsx-processor-test-build:
+	$(DOCKER_BUILD) -f xlsx-processor-spike/Dockerfile --target xlsx-processor-spike \
+		--tag $(XLSX_PROCESSOR_TEST_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) xlsx-processor-spike
+
 xlsx-processor-service-build:
 	$(DOCKER_BUILD) -f xlsx-processor-spike/Dockerfile --target xlsx-processor-spike-service \
 		--tag $(XLSX_PROCESSOR_SERVICE_IMAGE) $(DOCKER_BUILD_CACHE_ARGS) xlsx-processor-spike
 
-xlsx-processor-service-test: xlsx-processor-service-build
+xlsx-processor-service-test: xlsx-processor-test-build xlsx-processor-service-build
+	docker run --rm --network none --read-only --cap-drop ALL \
+		--security-opt no-new-privileges --pids-limit 64 --memory 384m --cpus 1 \
+		--tmpfs /tmp:rw,noexec,nosuid,size=64m \
+		$(XLSX_PROCESSOR_TEST_IMAGE)
 	$(MAKE) xlsx-processor-service-runtime-test
 
 xlsx-processor-service-runtime-test:
 	docker run --rm --network none --read-only --cap-drop ALL \
-		--security-opt no-new-privileges --pids-limit 64 --memory 384m --cpus 1 \
-		--tmpfs /tmp:rw,noexec,nosuid,size=64m --entrypoint node \
-		$(XLSX_PROCESSOR_SERVICE_IMAGE) --test
+		--security-opt no-new-privileges --pids-limit 32 --memory 384m --cpus 1 \
+		--entrypoint /bin/sh $(XLSX_PROCESSOR_SERVICE_IMAGE) \
+		-ec 'test ! -e /srv/xlsx-processor-spike/test'
 	@set -euo pipefail; \
 		processor_container="artifactflow-xlsx-processor-probe-$$(openssl rand -hex 6)"; \
 		cleanup() { docker rm -f "$$processor_container" >/dev/null 2>&1 || true; }; \
 		trap cleanup EXIT; \
 		docker run -d --name "$$processor_container" --network none --read-only --cap-drop ALL \
-			--security-opt no-new-privileges --pids-limit 16 --memory 384m --cpus 1 \
+			--security-opt no-new-privileges --pids-limit 32 --memory 384m --cpus 1 \
 			--tmpfs /tmp:rw,noexec,nosuid,size=64m \
 			--tmpfs /run/artifactflow/xlsx-processor:rw,noexec,nosuid,size=1m,uid=10003,gid=10003,mode=0755 \
 			--health-interval 1s --health-timeout 5s --health-start-period 1s --health-retries 30 \
@@ -659,7 +668,27 @@ xlsx-processor-service-runtime-test:
 		docker exec \
 			--env XLSX_PROCESSOR_SHARED_SECRET=artifactflow-xlsx-runtime-test-secret \
 			"$$processor_container" node /srv/xlsx-processor-spike/healthcheck.cjs; \
-		echo "XLSX processor Base64 environment and decoded application HMAC keys match."
+		echo "XLSX processor Base64 environment and decoded application HMAC keys match."; \
+		docker exec "$$processor_container" node -e 'setTimeout(() => {}, 5000)' >/dev/null & \
+		xlsx_worker_probe_pid="$$!"; \
+		sleep 1; \
+		docker exec \
+			--env XLSX_PROCESSOR_SHARED_SECRET=artifactflow-xlsx-runtime-test-secret \
+			"$$processor_container" node /srv/xlsx-processor-spike/healthcheck.cjs >/dev/null 2>&1 & \
+		xlsx_health_probe_pid="$$!"; \
+		for attempt in $$(seq 1 20); do \
+			if ! kill -0 "$$xlsx_health_probe_pid" 2>/dev/null; then break; fi; \
+			sleep 0.25; \
+		done; \
+		if kill -0 "$$xlsx_health_probe_pid" 2>/dev/null; then \
+			kill "$$xlsx_health_probe_pid" 2>/dev/null || true; \
+			wait "$$xlsx_health_probe_pid" 2>/dev/null || true; \
+			echo "XLSX processor health probe exhausted the bounded PID budget." >&2; \
+			exit 1; \
+		fi; \
+		wait "$$xlsx_health_probe_pid"; \
+		wait "$$xlsx_worker_probe_pid"; \
+		echo "XLSX processor health probe overlapped a Node worker within the bounded PID budget."
 
 docx-processor-build:
 	$(DOCKER_BUILD) -f docx-processor/Dockerfile \
@@ -741,6 +770,8 @@ docx-pdf-chain-test:
 		printf '%s\n' "$$inspection" | grep -F '"truncated":false' >/dev/null; \
 		printf '%s\n' "$$inspection" | grep -F 'ArtifactFlow searchable Word preview' >/dev/null; \
 		printf '%s\n' "$$inspection" | grep -F 'Cached custom XML preview text' >/dev/null; \
+		printf '%s\n' "$$inspection" | grep -F 'https://example.com/docs' >/dev/null; \
+		printf '%s\n' "$$inspection" | grep -F 'Internal section link' >/dev/null; \
 		echo "DOCX to independently validated searchable PDF chain passed."
 
 scan-image:

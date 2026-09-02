@@ -134,7 +134,7 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    pids_limit: 16
+    pids_limit: 32
     mem_limit: 384m
     cpus: 1.0
     network_mode: none
@@ -197,6 +197,10 @@ services:
         INSTALL_XDEBUG: ${INSTALL_XDEBUG:-0}
         INSTALL_PCOV: ${INSTALL_PCOV:-1}
     image: artifactflow-app:dev
+    group_add:
+      - "10002"
+      - "10003"
+      - "10004"
     environment: &app-environment
       APP_NAME: ${APP_NAME:-artifactflow}
       APP_ENV: ${APP_ENV:-local}
@@ -477,7 +481,7 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    pids_limit: 16
+    pids_limit: 32
     mem_limit: 384m
     cpus: 1.0
     network_mode: none
@@ -535,6 +539,10 @@ services:
   e2e-app:
     profiles: ["e2e"]
     image: artifactflow-app:dev
+    group_add:
+      - "10002"
+      - "10003"
+      - "10004"
     build:
       context: .
       dockerfile: Dockerfile

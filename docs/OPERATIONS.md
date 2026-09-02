@@ -463,12 +463,24 @@ hashed same-origin build assets rather than app-origin Vite modules.
 
 The shipped office processor images expose authenticated Unix sockets only.
 The reviewed direct topology therefore mounts one socket into app-role
-containers and runs each processor with `network_mode: none`. Use one service
+containers and runs each processor with `network_mode: none`. Processor sockets
+must be mode `0660`, owned by their dedicated service UID/GID (`10003` for XLSX,
+`10004` for DOCX, and `10002` for the required PDF boundary); app-role containers
+must join only the groups for sockets they consume. Do not restore world-writable
+socket modes. Use one service
 instance/worker, a read-only root, a non-root UID, all capabilities dropped,
 `no-new-privileges`, and the Compose CPU, memory, PID, open-file, timeout, and
 tmpfs ceilings as minimums. Neither processor receives application source,
 database configuration, artifact storage, signing keys, user identity, or the
 other processor's secret.
+
+The XLSX service image excludes its test corpus; tests run from a separate build
+stage. Its signed health check and every authenticated workbook projection both
+verify loopback-only network containment before work begins. DOCX uses the same
+scanner-patched FrankenPHP generation as the app, but on a rootless Unix-socket
+listener pinned to one PHP thread rather than a development HTTP server. It
+repeats the containment check on every authenticated conversion before
+LibreOffice is invoked.
 
 A cross-host deployment needs a reviewed private TLS proxy or sidecar that
 terminates authenticated HTTPS and forwards only the one processor operation to
@@ -1031,11 +1043,14 @@ Use non-sensitive test content and record the Safari/iOS versions and results:
    archive the page, and move or access-invalidate it; each subsequent viewer reload and preview-URL
    renewal must fail without disclosing the reason.
 9. Upload non-sensitive XLSX and DOCX fixtures. Confirm XLSX receives only the
-   application-owned typed grid in an opaque sandbox, hyperlink popups have no
-   opener/referrer or parent-navigation authority, formulas are not evaluated,
+   application-owned typed grid in an opaque `allow-scripts` sandbox with no
+   popup capability. Clicking an external cell link must open a destination-visible
+   app-origin confirmation first; only the second click may open a tab, with no
+   opener/referrer or parent-navigation authority. Confirm formulas are not evaluated,
    and no original workbook bytes reach the frame. Confirm DOCX receives only a
    derived `application/pdf` response on the artifact origin, not ZIP/DOCX or
-   converted HTML. Exercise exact-original downloads only while authenticated,
+   converted HTML, and that external hyperlinks in the original are inert visible
+   text in the preview while bounded internal links may remain. Exercise exact-original downloads only while authenticated,
    then repeat revocation, expiry, feature-disablement, and external-share checks
    for both formats. Record whether Safari/iOS displays the native PDF inline or
    chooses an explicit download; either path must remain on the artifact origin

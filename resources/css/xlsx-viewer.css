@@ -78,6 +78,7 @@ a {
 }
 
 .sheet-tabs button,
+.external-link,
 .internal-link {
   border: 1px solid #8a94a2;
   border-radius: 0.4rem;
@@ -160,12 +161,13 @@ a {
   white-space: pre;
 }
 
-.workbook-grid a,
+.external-link,
 .internal-link {
   color: #1d4ed8;
   text-decoration: underline;
 }
 
+.external-link,
 .internal-link {
   padding: 0;
   border: 0;
@@ -248,7 +250,7 @@ a {
     color: #94a3b8;
   }
 
-  .workbook-grid a,
+  .external-link,
   .internal-link {
     color: #93c5fd;
   }

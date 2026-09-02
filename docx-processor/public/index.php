@@ -35,14 +35,10 @@ try {
     $path = is_string($target) ? parse_url($target, PHP_URL_PATH) : null;
 
     if ($method === 'GET' && $path === '/health') {
-        $remoteAddress = $_SERVER['REMOTE_ADDR'] ?? null;
-        if (!is_string($remoteAddress) || !in_array($remoteAddress, ['127.0.0.1', '::1'], true)) {
-            respond(404, '{"error":"not_found"}', ['Content-Type' => 'application/json']);
-        }
         $healthRequest = ProcessorHealthRequest::fromGlobals($configuration);
         ProcessorContainment::verifyNetworkIsolation();
         (new LibreOfficeConverter())->verifyHealth();
-        $body = '{"containment":"network-isolated","engine":"libreoffice","profile":"docx-passive-pdf-v1","schema":"docx-processor-response-v1","status":"ok","version":"26.2.5"}';
+        $body = '{"containment":"network-isolated","engine":"libreoffice","profile":"docx-passive-pdf-v1","schema":"docx-processor-response-v1","status":"ok","version":"25.8.7.3"}';
         respond(200, $body, [
             'Content-Type' => 'application/json',
             'X-ArtifactFlow-Processor-Nonce' => $healthRequest->nonce,
@@ -59,6 +55,7 @@ try {
     }
 
     $request = ProcessorRequest::fromGlobals($configuration);
+    ProcessorContainment::verifyNetworkIsolation();
     $inspector = new DocxPackageInspector();
     $facts = $inspector->inspect($request->bytes);
     $conversionCopy = (new DocxConversionSanitizer())->stripForConversion($request->bytes);

@@ -31,7 +31,7 @@ async function start() {
   const server = createProcessorServer({ secret });
 
   server.listen(socketPath, () => {
-    fs.chmodSync(socketPath, 0o666);
+    fs.chmodSync(socketPath, 0o660);
   });
 
   for (const signal of ['SIGINT', 'SIGTERM']) {

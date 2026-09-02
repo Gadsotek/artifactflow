@@ -2,12 +2,18 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+import { safeConfirmedExternalTarget } from '../../resources/js/xlsx-external-link-confirmation.js';
+
 const source = await readFile(
   new URL('../../resources/js/xlsx-viewer.js', import.meta.url),
   'utf8',
 );
 const contractSource = await readFile(
   new URL('../../resources/js/xlsx-viewer-contract.js', import.meta.url),
+  'utf8',
+);
+const confirmationSource = await readFile(
+  new URL('../../resources/js/xlsx-external-link-confirmation.js', import.meta.url),
   'utf8',
 );
 const combinedSource = `${source}\n${contractSource}`;
@@ -58,9 +64,46 @@ test('renders workbook strings through explicit DOM text paths', () => {
   assert.doesNotMatch(source, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/u);
   assert.doesNotMatch(source, /\beval\s*\(|new\s+Function\b/u);
   assert.match(source, /\.textContent\s*=/u);
-  assert.match(source, /document\.createElement\('a'\)/u);
-  assert.match(source, /anchor\.rel\s*=\s*'noopener noreferrer'/u);
-  assert.match(source, /anchor\.referrerPolicy\s*=\s*'no-referrer'/u);
+  assert.doesNotMatch(source, /document\.createElement\('a'\)|window\.open/u);
+  assert.match(source, /document\.createElement\('button'\)/u);
+  assert.match(source, /artifactflow:xlsx-external-link-request/u);
+  assert.match(source, /window\.parent\.postMessage/u);
+});
+
+test('delegates external navigation to a destination-visible app-origin confirmation', () => {
+  assert.match(confirmationSource, /event\.origin !== 'null'/u);
+  assert.match(confirmationSource, /event\.source !== frame\.contentWindow/u);
+  assert.match(confirmationSource, /Object\.keys\(payload\)\.length === 2/u);
+  assert.match(confirmationSource, /safeConfirmedExternalTarget\(event\.data\.target\)/u);
+  assert.doesNotMatch(confirmationSource, /from ['"]\.\/xlsx-viewer-contract['"]/u);
+  assert.match(confirmationSource, /open\.target = '_blank'/u);
+  assert.match(confirmationSource, /open\.rel = 'noopener noreferrer'/u);
+  assert.match(confirmationSource, /open\.referrerPolicy = 'no-referrer'/u);
+  assert.doesNotMatch(confirmationSource, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/u);
+});
+
+test('independently revalidates external destinations at the app-origin boundary', () => {
+  assert.equal(
+    safeConfirmedExternalTarget('https://example.com/a?q=1'),
+    'https://example.com/a?q=1',
+  );
+  assert.equal(safeConfirmedExternalTarget('https://example.com'), 'https://example.com/');
+  assert.equal(safeConfirmedExternalTarget('http://example.com/'), 'http://example.com/');
+  assert.equal(
+    safeConfirmedExternalTarget('mailto:person@example.com'),
+    'mailto:person@example.com',
+  );
+
+  for (const target of [
+    'javascript:alert(1)',
+    'file:///etc/passwd',
+    'ftp://example.com/',
+    'https://user:password@example.com/',
+    'relative/path',
+    'https://example.com/\u0000bad',
+  ]) {
+    assert.equal(safeConfirmedExternalTarget(target), null);
+  }
 });
 
 test('has no automatic network or original-workbook parsing API', () => {

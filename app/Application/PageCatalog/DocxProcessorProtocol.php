@@ -11,7 +11,7 @@ final readonly class DocxProcessorProtocol
     public const string PROCESSOR_PROFILE = 'docx-passive-pdf-v1';
     public const string RESPONSE_SCHEMA = 'docx-processor-response-v1';
     public const string ENGINE_NAME = 'libreoffice';
-    public const string ENGINE_VERSION = '26.2.5';
+    public const string ENGINE_VERSION = '25.8.7.3';
     public const string REQUEST_CONTEXT = 'artifactflow-docx-processor-request-v1';
     public const string RESPONSE_CONTEXT = 'artifactflow-docx-processor-response-v1';
     public const string HEALTH_CONTEXT = 'artifactflow-docx-processor-health-v1';

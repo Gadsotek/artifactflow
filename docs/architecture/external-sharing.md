@@ -330,13 +330,15 @@ explicit safe presenter.
   This exception is registered only for `PageType::Pdf` and does not weaken
   HTML or image presentation.
 - XLSX uses the application-owned Tabulator viewer over the canonical typed
-  manifest on the opaque artifact origin. The iframe allows scripts and
-  hyperlink popups but never same-origin authority, forms, navigation, or
-  network access. Formula code is display-only and is never evaluated. The
+  manifest on the opaque artifact origin. The iframe allows scripts but no
+  popup, same-origin, form, navigation, or network authority. An external target
+  requires a second, destination-visible confirmation on the app origin, whose
+  anchor sends no opener or referrer. Formula code is display-only and is never evaluated. The
   exact original workbook is not transmitted.
 - DOCX uses only its independently PDFBox-validated passive-PDF derivative in
   the browser-native PDF viewer. The iframe follows the same unsandboxed native
-  viewer exception as PDF, but the exact original DOCX has no anonymous
+  viewer exception as PDF, but external hyperlink actions are stripped before
+  conversion and independently rejected after it. The exact original DOCX has no anonymous
   download or delivery path.
 - A future type cannot become shareable until its normal safe preview strategy
   is explicitly registered. There is no raw-byte fallback.

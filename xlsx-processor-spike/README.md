@@ -19,7 +19,7 @@ Build and run the containerized checks with:
 docker build -f xlsx-processor-spike/Dockerfile --target xlsx-processor-spike \
   --tag artifactflow-xlsx-processor-spike:local xlsx-processor-spike
 docker run --rm --network none --read-only --cap-drop ALL \
-  --security-opt no-new-privileges --pids-limit 16 --memory 384m --cpus 1 \
+  --security-opt no-new-privileges --pids-limit 32 --memory 384m --cpus 1 \
   --tmpfs /tmp:rw,noexec,nosuid,size=64m \
   artifactflow-xlsx-processor-spike:local
 ```
@@ -80,7 +80,10 @@ doctor checks, image scan, and operator verification described in
   Laravel client and deployment doctor.
 - Admission is locked before reading a request body, so only one parse can be
   active. Projection runs in a child process with a 15-second process-group timeout;
-  the child inherits no caller environment and has no process or network API.
+  the child inherits no caller environment and has no process or network API. The
+  32-task cgroup limit remains bounded while allowing the listener, that one child,
+  and Docker's authenticated Node health probe to overlap without exhausting Node's
+  runtime threads.
 
 The package gate admits bounded passive tables, charts, drawings, common images,
 comments/VML, custom XML, pivots, connections, formatting, and similar internal

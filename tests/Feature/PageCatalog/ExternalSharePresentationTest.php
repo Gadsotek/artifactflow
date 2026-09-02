@@ -144,7 +144,7 @@ final class ExternalSharePresentationTest extends TestCase
         $viewer
             ->assertOk()
             ->assertSee('data-xlsx-preview', false)
-            ->assertSee('sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"', false)
+            ->assertSee('sandbox="allow-scripts"', false)
             ->assertSee('data-artifact-preview-refresh-endpoint', false)
             ->assertSee('Read-only Excel preview. Formulas are not recalculated')
             ->assertSee('original workbook bytes are never shared')
@@ -171,7 +171,8 @@ final class ExternalSharePresentationTest extends TestCase
             $this->embeddedXlsxManifest((string) $preview->getContent()),
         );
         $csp = (string) $preview->headers->get('Content-Security-Policy');
-        $this->assertStringContainsString('sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox', $csp);
+        $this->assertStringContainsString('sandbox allow-scripts', $csp);
+        $this->assertStringNotContainsString('allow-popups', $csp);
         $this->assertStringContainsString("connect-src 'none'", $csp);
         $this->assertStringContainsString("frame-src 'none'", $csp);
 

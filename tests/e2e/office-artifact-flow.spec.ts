@@ -443,10 +443,7 @@ test('XLSX and Word uploads are searchable, isolated, previewable, and exactly d
   await expect(page.locator('[data-xlsx-facts]')).toContainText('1 formula');
 
   const xlsxFrame = page.locator('iframe[title="Read-only Excel preview"]');
-  await expect(xlsxFrame).toHaveAttribute(
-    'sandbox',
-    'allow-scripts allow-popups allow-popups-to-escape-sandbox',
-  );
+  await expect(xlsxFrame).toHaveAttribute('sandbox', 'allow-scripts');
   await expect(xlsxFrame).toHaveAttribute('allow', '');
   await expect(xlsxFrame).toHaveAttribute('referrerpolicy', 'no-referrer');
   const xlsxPreview = await xlsxPreviewPromise;
@@ -457,18 +454,30 @@ test('XLSX and Word uploads are searchable, isolated, previewable, and exactly d
   expect(await xlsxPreview.request().headerValue('cookie')).toBeNull();
   expect(await xlsxPreview.headerValue('access-control-allow-origin')).toBeNull();
   const xlsxCsp = await xlsxPreview.headerValue('content-security-policy');
-  expect(xlsxCsp).toContain('sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox');
+  expect(xlsxCsp).toContain('sandbox allow-scripts');
+  expect(xlsxCsp).not.toContain('allow-popups');
   expect(xlsxCsp).toContain("connect-src 'none'");
   expect(xlsxCsp).toContain("frame-src 'none'");
   const xlsxViewer = page.frameLocator('iframe[title="Read-only Excel preview"]');
   await expect(xlsxViewer.locator('html')).toHaveAttribute('data-viewer-ready', 'true');
   await expect(xlsxViewer.getByText(xlsxMarker)).toBeVisible();
   await expect(xlsxViewer.getByText('Summary', { exact: true })).toBeVisible();
-  const xlsxLink = xlsxViewer.getByRole('link', { name: xlsxMarker });
-  await expect(xlsxLink).toHaveAttribute('href', `https://example.com/artifactflow-${xlsxMarker}`);
-  await expect(xlsxLink).toHaveAttribute('target', '_blank');
-  await expect(xlsxLink).toHaveAttribute('rel', 'noopener noreferrer');
-  await expect(xlsxLink).toHaveAttribute('referrerpolicy', 'no-referrer');
+  const xlsxLink = xlsxViewer.getByRole('button', { name: xlsxMarker });
+  const pageCount = page.context().pages().length;
+  await xlsxLink.click();
+  expect(page.context().pages()).toHaveLength(pageCount);
+  const linkDialog = page.getByRole('dialog', { name: 'Open external workbook link?' });
+  await expect(linkDialog).toBeVisible();
+  await expect(linkDialog.getByText(`https://example.com/artifactflow-${xlsxMarker}`)).toBeVisible();
+  const confirmedLink = linkDialog.getByRole('link', { name: 'Open external link' });
+  await expect(confirmedLink).toHaveAttribute(
+    'href',
+    `https://example.com/artifactflow-${xlsxMarker}`,
+  );
+  await expect(confirmedLink).toHaveAttribute('target', '_blank');
+  await expect(confirmedLink).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(confirmedLink).toHaveAttribute('referrerpolicy', 'no-referrer');
+  await linkDialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(xlsxViewer.getByRole('button', { name: '1200' })).toBeVisible();
 
   await page.emulateMedia({ colorScheme: 'dark' });

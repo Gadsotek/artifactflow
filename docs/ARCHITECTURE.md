@@ -291,8 +291,10 @@ and sends an empty CSP `sandbox` plus `script-src 'none'`; the app iframe uses `
 XLSX preview is another application-owned document, not workbook HTML. The
 artifact host revalidates the hash-bound canonical manifest and emits fixed
 local Tabulator assets under an opaque sandbox that permits scripts and
-explicit hyperlink popups but no same-origin authority, forms, frames, or
-connections. DOCX preview uses only the independently validated PDF derivative
+no popups, same-origin authority, forms, frames, or connections. External
+destinations require a second, destination-visible confirmation on the trusted
+app origin. DOCX preview uses only the independently validated PDF derivative
+after external link actions are removed from its conversion copy,
 and inherits the PDF-only browser-native viewer exception; the exact DOCX is
 available only as an authenticated attachment. Details are fixed in the public
 [XLSX](architecture/xlsx-artifacts.md) and

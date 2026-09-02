@@ -113,12 +113,12 @@
                             <span class="text-xs text-zinc-500 dark:text-zinc-400">Historical read-only Excel preview. Formula values are stored caches and are not recalculated.</span>
                             <a class="af-secondary-button" href="{{ route('pages.versions.document-original.download', [$page, $inspection->version]) }}">Download this XLSX</a>
                         </div>
-                        <iframe class="af-artifact-iframe h-[calc(100vh-16rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" allow="" src="{{ $inspection->artifactPreviewUrl }}" title="Historical read-only Excel preview"></iframe>
+                        <iframe class="af-artifact-iframe h-[calc(100vh-16rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" sandbox="allow-scripts" allow="" src="{{ $inspection->artifactPreviewUrl }}" title="Historical read-only Excel preview"></iframe>
                     </div>
                 @elseif ($inspection->artifactPreviewUrl !== null && $page->type === PageType::Docx)
                     <div class="af-artifact-preview flex flex-col gap-2" data-artifact-preview data-docx-preview>
                         <div class="flex flex-wrap items-center justify-between gap-2">
-                            <span class="text-xs text-zinc-500 dark:text-zinc-400">Historical searchable PDF preview derived from the retained Word document.</span>
+                            <span class="text-xs text-zinc-500 dark:text-zinc-400">Historical searchable PDF preview derived from the retained Word document. External link actions are removed.</span>
                             <a class="af-secondary-button" href="{{ route('pages.versions.document-original.download', [$page, $inspection->version]) }}">Download this DOCX</a>
                         </div>
                         <iframe class="af-artifact-iframe h-[calc(100vh-16rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" allow="" src="{{ $inspection->artifactPreviewUrl }}" title="Historical Word document PDF preview"></iframe>

@@ -623,6 +623,9 @@ function createProcessorServer({
         replayCache,
         secret,
       });
+      if (!containmentCheck()) {
+        fail('processor_unavailable');
+      }
       const projected = await workerRunner({ input: body });
       const success = successfulResponse({
         manifest: projected.manifest,

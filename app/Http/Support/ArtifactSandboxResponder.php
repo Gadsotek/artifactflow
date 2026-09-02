@@ -120,7 +120,7 @@ final readonly class ArtifactSandboxResponder
             . $encodedManifest
             . '</script><script defer src="' . $script . '"></script></body></html>';
         $csp = implode('; ', $this->contentSecurityPolicyDirectives([
-            'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox',
+            'sandbox allow-scripts',
             "script-src 'self'",
             "style-src 'self'",
             "img-src 'none'",

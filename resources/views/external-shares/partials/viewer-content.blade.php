@@ -65,7 +65,7 @@
                         </p>
                     @elseif ($viewer->presentation === ExternalPagePresentation::DerivedDocumentPdf)
                         <p>
-                            Searchable PDF preview derived from the retained Word document. The original DOCX is not shared.
+                            Searchable PDF preview derived from the retained Word document. External link actions are removed. The original DOCX is not shared.
                         </p>
                     @else
                         <p>
@@ -88,7 +88,7 @@
                     loading="eager"
                     referrerpolicy="no-referrer"
                     @if (!in_array($viewer->presentation, [ExternalPagePresentation::NativePdf, ExternalPagePresentation::DerivedDocumentPdf], true))
-                        sandbox="{{ $viewer->presentation === ExternalPagePresentation::TypedSpreadsheet ? 'allow-scripts allow-popups allow-popups-to-escape-sandbox' : ($viewer->presentation === ExternalPagePresentation::SandboxedHtml ? 'allow-scripts' : '') }}"
+                        sandbox="{{ in_array($viewer->presentation, [ExternalPagePresentation::TypedSpreadsheet, ExternalPagePresentation::SandboxedHtml], true) ? 'allow-scripts' : '' }}"
                     @endif
                     allow=""
                     src="{{ $viewer->artifactPreviewUrl }}"

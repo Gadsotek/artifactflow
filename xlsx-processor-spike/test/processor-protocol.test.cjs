@@ -376,6 +376,40 @@ test('health fails closed when runtime network isolation is absent', async (cont
   assert.equal(unhealthy.statusCode, 503);
 });
 
+test('processing fails closed when runtime network isolation is absent', async (context) => {
+  const body = workbookBytes();
+  const nowSeconds = 1_800_000_000;
+  const socketPath = path.join(
+    os.tmpdir(),
+    `artifactflow-xlsx-containment-${process.pid}-${crypto.randomBytes(6).toString('hex')}.sock`,
+  );
+  let workerCalls = 0;
+  const server = createProcessorServer({
+    containmentCheck: () => false,
+    nowSeconds: () => nowSeconds,
+    secret: SHARED_SECRET,
+    workerRunner: async () => {
+      workerCalls += 1;
+      throw new Error('worker must not start without containment');
+    },
+  });
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(socketPath, resolve);
+  });
+
+  const response = await requestOverSocket(
+    socketPath,
+    body,
+    signedHeaders(body, String(nowSeconds), '5'.repeat(32)),
+  );
+
+  assert.equal(response.statusCode, 503);
+  assert.deepEqual(JSON.parse(response.body.toString('utf8')), { error: 'service_unavailable' });
+  assert.equal(workerCalls, 0);
+});
+
 test('hard-stops a non-responsive projection worker', async () => {
   const fixture = path.join(__dirname, 'fixtures', 'hanging-worker.fixture');
 

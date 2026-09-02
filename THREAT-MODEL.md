@@ -624,9 +624,11 @@ The release-blocking attack model is:
   hashes, sizes, quota, integrity, pruning, restore, and deletion remain one transactionally bound
   version graph.
 - The artifact host serves a fixed same-origin viewer plus the manifest inside an opaque sandbox.
-  Its CSP permits only pinned local scripts/styles and click-driven safe-link popups; it denies
-  connections, child frames, objects, forms, parent navigation, and app cookies. Workbook strings
-  enter the DOM only through text APIs. HTTP/HTTPS/mail links receive `noopener noreferrer`; internal
+  Its CSP permits only pinned local scripts/styles and denies popups, connections, child frames,
+  objects, forms, parent navigation, and app cookies. Workbook strings enter the DOM only through
+  text APIs. HTTP/HTTPS/mail targets cross a source/origin/shape-checked message boundary and require
+  a second, destination-visible app-origin confirmation whose anchor uses `noopener noreferrer` and
+  sends no referrer; internal
   links target only validated visible cells, with unrepresentable, hidden, or out-of-profile internal
   destinations omitted. The exact workbook is available only through a
   separately purposed authenticated attachment capability.
@@ -637,7 +639,7 @@ The release-blocking attack model is:
 
 Residual risk remains: a SheetJS, Node, container-runtime, or shared-kernel escape; denial of service
 inside admitted budgets; misleading cached formula results or omitted hidden content; prompt
-injection in visible strings; safe external links leading to hostile sites; authorized original-file
+injection in visible strings; user-confirmed external links leading to hostile sites; authorized original-file
 download; and already-delivered manifest data that revocation cannot erase. Scanning is advisory;
 processor isolation, strict projection, and the artifact-origin sandbox are the security boundaries.
 
@@ -672,18 +674,21 @@ The release-blocking attack model is:
   passive chart, diagram, drawing, and modern comment XML use only internal official relationship
   and content-type vocabularies. Custom XML data stores/bindings, printer payloads, and package
   thumbnails and attached-template references are removed from the conversion copy while cached
-  visible WordprocessingML is retained; the sanitized ZIP is revalidated before native conversion. Reviewed
-  HTTP/HTTPS/mail hyperlinks may remain, but the converter cannot fetch them.
+  visible WordprocessingML is retained. Reviewed HTTP/HTTPS/mail relationships remain only in the
+  exact original; the conversion copy removes those relationships and unwraps their hyperlink
+  elements while preserving visible runs. The sanitized ZIP is revalidated before native conversion.
 - Processor rejection details remain private by default. The one allowlisted exception is the fixed
   `embedded_file` category, which lets the UI explain that embedded files/OLE objects are unsupported
   without returning package paths, filenames, parser messages, or document-derived data.
 - The non-root, read-only, capability-free DOCX container has no network, app source, database,
   artifact storage, app/PDF credentials, Docker socket, host home, or public listener. It admits one
-  authenticated request at a time, creates a fresh temporary LibreOffice profile, allowlists the
+  authenticated request at a time through a rootless FrankenPHP runtime pinned to one PHP thread, rechecks
+  network containment after request authentication, creates a fresh temporary LibreOffice profile, allowlists the
   child environment, and terminates the complete process group on its bounded deadline or any failed
   conversion. Success requires exactly one complete bounded PDF.
 - DOCX processor output is untrusted. The independent PDFBox container receives the PDF—not the DOCX
-  processor key or original—and rejects JavaScript, launch/submit/import, remote-go-to, embedded
+  processor key or original—and permits only bounded internal destinations while rejecting URI,
+  JavaScript, launch/submit/import, remote-go-to, embedded
   files, interactive forms, and other active structures. An accepted non-empty document must produce
   bounded non-whitespace native text; image-only or scan-only documents are outside the profile.
 - The app authenticates both processor responses, scans extracted text, and transactionally binds the
@@ -704,7 +709,7 @@ Residual risk remains: a LibreOffice, PDFBox, container-runtime, or shared-kerne
 fidelity differences, including fallback fonts, changed pagination, and omitted dynamic custom-XML or
 printer-specific behavior;
 denial of service inside admitted bounds; prompt injection or missed secrets in
-extracted text; browser-native PDF save/print/link behavior; authorized opening of the original in
+extracted text; browser-native PDF save/print and internal-link behavior; authorized opening of the original in
 local Office software; and already-delivered derivative bytes that revocation cannot erase. A derived
 preview is not an antivirus verdict. The two processor cages and artifact-origin separation—not
 scanning—are the security boundaries.

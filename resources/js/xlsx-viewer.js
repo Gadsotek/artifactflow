@@ -22,6 +22,7 @@ const selectedValue = document.getElementById('selected-value');
 const selectedFormula = document.getElementById('selected-formula');
 const previewReadyRequest = 'artifactflow:preview-ready-request';
 const previewReadyResponse = 'artifactflow:preview-ready';
+const externalLinkRequest = 'artifactflow:xlsx-external-link-request';
 
 let activeTable = null;
 let activeManifest = null;
@@ -87,14 +88,19 @@ function cellElement(entry) {
     const target = safeExternalTarget(entry.link.target);
 
     if (target !== null) {
-      const anchor = document.createElement('a');
-      anchor.href = target;
-      anchor.target = '_blank';
-      anchor.rel = 'noopener noreferrer';
-      anchor.referrerPolicy = 'no-referrer';
-      anchor.textContent = label;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'external-link';
+      button.textContent = label;
+      button.addEventListener('click', () => {
+        try {
+          window.parent.postMessage({ type: externalLinkRequest, target }, '*');
+        } catch {
+          // The embedding page may already be gone.
+        }
+      });
 
-      return anchor;
+      return button;
     }
   }
 

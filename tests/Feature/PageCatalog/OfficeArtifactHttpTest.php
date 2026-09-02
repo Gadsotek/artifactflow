@@ -144,7 +144,7 @@ final class OfficeArtifactHttpTest extends TestCase
             ->get("/pages/{$xlsxPage->uid}")
             ->assertOk()
             ->assertSee('data-xlsx-preview', false)
-            ->assertSee('sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"', false)
+            ->assertSee('sandbox="allow-scripts"', false)
             ->assertSee('title="Read-only Excel preview"', false)
             ->assertSee("/pages/{$xlsxPage->uid}/document-original", false)
             ->assertSee('data-open-editor-dialog="xlsx-version-dialog"', false)
@@ -154,7 +154,7 @@ final class OfficeArtifactHttpTest extends TestCase
             ->get("/pages/{$xlsxPage->uid}/versions/{$xlsxVersion->uid}")
             ->assertOk()
             ->assertSee('data-xlsx-preview', false)
-            ->assertSee('sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"', false)
+            ->assertSee('sandbox="allow-scripts"', false)
             ->assertSee('title="Historical read-only Excel preview"', false);
 
         $this->actingAs($editor)->post("/pages/{$xlsxPage->uid}/versions", [
@@ -737,13 +737,14 @@ final class OfficeArtifactHttpTest extends TestCase
             ->assertHeader('Content-Type', 'text/html; charset=UTF-8')
             ->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('Read-only Excel preview')
-            ->assertSee('/build/assets/xlsx-viewer-test.js', false)
+            ->assertSee('<script defer src="/build/assets/xlsx-viewer-test.js"></script>', false)
             ->assertSee('/build/assets/xlsx-viewer-test.css', false)
             ->assertDontSee($xlsx, false)
             ->assertHeaderMissing('Set-Cookie')
             ->assertHeaderMissing('Access-Control-Allow-Origin');
         $xlsxCsp = (string) $xlsxResponse->headers->get('Content-Security-Policy');
-        $this->assertStringContainsString('sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox', $xlsxCsp);
+        $this->assertStringContainsString('sandbox allow-scripts', $xlsxCsp);
+        $this->assertStringNotContainsString('allow-popups', $xlsxCsp);
         $this->assertStringContainsString("script-src 'self'", $xlsxCsp);
         $this->assertStringContainsString("connect-src 'none'", $xlsxCsp);
         $this->assertStringContainsString("frame-src 'none'", $xlsxCsp);

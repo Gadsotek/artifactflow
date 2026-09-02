@@ -15,20 +15,23 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         $processor = $this->serviceBlock($compose, 'docx-processor', 'app');
         $app = $this->serviceBlock($compose, 'app', 'artifact-host');
 
-        $this->assertStringContainsString('ubuntu:26.04@sha256:', $dockerfile);
-        $this->assertStringContainsString('php8.5-cli php8.5-xml php8.5-zip', $dockerfile);
-        $this->assertStringContainsString('unlink /usr/bin/pebble', $dockerfile);
+        $this->assertStringContainsString('FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:', $dockerfile);
+        $this->assertStringContainsString('FROM dunglas/frankenphp:1-php8.5-alpine@sha256:', $dockerfile);
+        $this->assertStringContainsString("go1\\.26\\.7[[:space:]]", $dockerfile);
+        $this->assertStringContainsString('go get google.golang.org/grpc@v1.83.1', $dockerfile);
+        $this->assertStringContainsString("grep -E 'google\\.golang\\.org/grpc", $dockerfile);
+        $this->assertStringContainsString("RUN install-php-extensions \\\n    pcntl \\\n    zip", $dockerfile);
         $this->assertStringNotContainsString('docker-php-ext-install', $dockerfile);
-        $this->assertStringContainsString('ARG LIBREOFFICE_VERSION=26.2.5', $dockerfile);
-        $this->assertStringContainsString('LIBREOFFICE_AMD64_SHA256', $dockerfile);
-        $this->assertStringContainsString('LIBREOFFICE_ARM64_SHA256', $dockerfile);
-        $this->assertStringContainsString('lo_directory=x86_64; lo_archive_arch=x86-64;', $dockerfile);
-        $this->assertStringContainsString('lo_directory=aarch64; lo_archive_arch=aarch64;', $dockerfile);
-        $this->assertStringContainsString(
-            'LibreOffice_${LIBREOFFICE_VERSION}_Linux_${lo_archive_arch}_deb.tar.gz',
-            $dockerfile,
-        );
-        $this->assertStringContainsString('/deb/${lo_directory}/${archive}', $dockerfile);
+        $this->assertStringContainsString('libreoffice-writer=25.8.7.3-r0', $dockerfile);
+        $this->assertStringContainsString('font-dejavu=2.37-r6', $dockerfile);
+        $this->assertStringContainsString('font-liberation=2.1.5-r2', $dockerfile);
+        $this->assertStringContainsString('tzdata=2026c-r0', $dockerfile);
+        $this->assertStringContainsString('util-linux=2.42.1-r0', $dockerfile);
+        $this->assertStringContainsString('"libcrypto3>=3.5.8-r0"', $dockerfile);
+        $this->assertStringContainsString('"libssl3>=3.5.8-r0"', $dockerfile);
+        $this->assertStringContainsString('"openssl>=3.5.8-r0"', $dockerfile);
+        $this->assertStringNotContainsString('apt-get', $dockerfile);
+        $this->assertStringNotContainsString('dpkg', $dockerfile);
         $this->assertStringContainsString('USER docx-processor', $dockerfile);
         $this->assertStringNotContainsString('COPY app ', $dockerfile);
         $this->assertStringNotContainsString('COPY . ', $dockerfile);
@@ -88,7 +91,7 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString("\$path !== '/v1/docx/previews'", $index);
         $this->assertStringContainsString("\$path === '/health'", $index);
         $this->assertStringContainsString('ProcessorHealthRequest::fromGlobals', $index);
-        $this->assertStringContainsString('ProcessorContainment::verifyNetworkIsolation', $index);
+        $this->assertSame(2, substr_count($index, 'ProcessorContainment::verifyNetworkIsolation'));
         $this->assertStringContainsString('catch (ProcessorAuthenticationFailure)', $index);
         $this->assertStringContainsString('catch (ProcessorRejection $exception)', $index);
         $this->assertStringContainsString('catch (ProcessorUnavailable $exception)', $index);
@@ -96,10 +99,22 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('catch (Throwable $exception)', $index);
         $this->assertStringContainsString("hash('sha256', \$exception::class)", $index);
         $this->assertStringNotContainsString('getMessage()', $index);
-        $this->assertStringContainsString('must stay at one HTTP worker', $start);
-        $this->assertStringContainsString('unset PHP_CLI_SERVER_WORKERS', $start);
-        $this->assertStringContainsString('UNIX-LISTEN:', $start);
-        $this->assertStringNotContainsString('0.0.0.0:', $start);
+        $this->assertStringContainsString('frankenphp run', $start);
+        $this->assertStringContainsString('${PHP_CLI_SERVER_WORKERS:-1}', $start);
+        $this->assertStringContainsString('chmod 0660 "$socket_path"', $start);
+        $this->assertStringNotContainsString('php -S', $start);
+        $this->assertStringNotContainsString('socat', $start);
+        $this->assertStringNotContainsString('php-fpm', $start);
+        $this->assertStringNotContainsString('nginx', $start);
+        $caddy = $this->readProjectFile('docx-processor/Caddyfile');
+        $this->assertStringContainsString('frankenphp {', $caddy);
+        $this->assertStringContainsString('num_threads 1', $caddy);
+        $this->assertStringContainsString('max_threads 1', $caddy);
+        $this->assertStringContainsString('bind {$DOCX_PROCESSOR_BIND}', $caddy);
+        $this->assertStringContainsString('unix/${socket_path}|0660', $start);
+        $this->assertStringContainsString('max_size 17MB', $caddy);
+        $this->assertStringContainsString('php_server', $caddy);
+        $this->assertStringContainsString('memory_limit=384M', $this->readProjectFile('docx-processor/docx-processor.ini'));
         $this->assertStringContainsString('ProcessorConfiguration::fromEnvironment()', $healthcheck);
         $this->assertStringContainsString('ProcessorHealthRequest(bin2hex(random_bytes(16)))', $healthcheck);
         $this->assertStringContainsString('->signedHeaders($configuration)', $healthcheck);
@@ -109,6 +124,28 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString("'containment'] ?? null) !== 'network-isolated'", $healthcheck);
         $this->assertStringContainsString("'profile'] ?? null) !== 'docx-passive-pdf-v1'", $healthcheck);
         $this->assertStringNotContainsString('is_socket(', $healthcheck);
+    }
+
+    public function test_engine_version_is_identical_across_the_image_service_and_application_protocol(): void
+    {
+        $version = '25.8.7.3';
+
+        $this->assertStringContainsString(
+            "public const string ENGINE_VERSION = '{$version}';",
+            $this->readProjectFile('docx-processor/src/DocxProcessor.php'),
+        );
+        $this->assertStringContainsString(
+            "public const string ENGINE_VERSION = '{$version}';",
+            $this->readProjectFile('app/Application/PageCatalog/DocxProcessorProtocol.php'),
+        );
+        $this->assertStringContainsString(
+            'libreoffice-writer=' . $version . '-r0',
+            $this->readProjectFile('docx-processor/Dockerfile'),
+        );
+        $this->assertStringContainsString(
+            '"version":"' . $version . '"',
+            $this->readProjectFile('docx-processor/public/index.php'),
+        );
     }
 
     private function readProjectFile(string $path): string

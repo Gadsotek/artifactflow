@@ -67,11 +67,15 @@ function packageEntries(string $bytes): array
             $entries = [];
             for ($index = 0; $index < $archive->numFiles; $index++) {
                 $stat = $archive->statIndex($index, ZipArchive::FL_UNCHANGED);
-                if (!is_array($stat) || !is_string($stat['name'] ?? null)) {
+                if (
+                    !is_array($stat)
+                    || !is_string($stat['name'] ?? null)
+                    || !is_int($stat['size'] ?? null)
+                ) {
                     throw new RuntimeException('Could not inspect a package entry.');
                 }
-                $entry = $archive->getFromIndex($index, 64 * 1024 * 1024 + 1, ZipArchive::FL_UNCHANGED);
-                if (!is_string($entry)) {
+                $entry = $archive->getFromIndex($index, $stat['size'] + 1, ZipArchive::FL_UNCHANGED);
+                if (!is_string($entry) || strlen($entry) !== $stat['size']) {
                     throw new RuntimeException('Could not read a package entry.');
                 }
                 $entries[$stat['name']] = $entry;
@@ -547,10 +551,32 @@ $unknownDirectory = package(baseEntries(), static function (ZipArchive $archive)
 });
 expectRejected($unknownDirectory, 'DOCX with an unknown explicit directory was accepted.');
 
-$linked = baseEntries();
+$linked = baseEntries(
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:hyperlink r:id="rId1"><w:r><w:t>Visible documentation link</w:t></w:r></w:hyperlink></w:p><w:p><w:hyperlink w:anchor="section"><w:r><w:t>Internal section link</w:t></w:r></w:hyperlink></w:p><w:bookmarkStart w:id="0" w:name="section"/><w:bookmarkEnd w:id="0"/></w:body></w:document>',
+);
 $linked['word/_rels/document.xml.rels'] = '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/docs" TargetMode="External"/></Relationships>';
-$linkFacts = (new DocxPackageInspector())->inspect(package($linked));
+$linkedDocx = package($linked);
+$linkFacts = (new DocxPackageInspector())->inspect($linkedDocx);
 assertTrue($linkFacts->externalHyperlinkCount === 1, 'HTTPS link was not retained as a bounded fact.');
+$linkedConversionCopy = (new DocxConversionSanitizer())->stripForConversion($linkedDocx);
+(new DocxPackageInspector())->inspect($linkedConversionCopy);
+$linkedConversionEntries = packageEntries($linkedConversionCopy);
+assertTrue(
+    !str_contains($linkedConversionEntries['word/_rels/document.xml.rels'] ?? '', '/hyperlink"'),
+    'An external hyperlink relationship reached the DOCX conversion copy.',
+);
+assertTrue(
+    !str_contains($linkedConversionEntries['word/document.xml'] ?? '', 'r:id="rId1"'),
+    'An external hyperlink wrapper reached the DOCX conversion copy.',
+);
+assertTrue(
+    str_contains($linkedConversionEntries['word/document.xml'] ?? '', 'Visible documentation link'),
+    'Stripping an external hyperlink removed its visible text.',
+);
+assertTrue(
+    str_contains($linkedConversionEntries['word/document.xml'] ?? '', 'w:anchor="section"'),
+    'Stripping an external hyperlink removed a safe internal hyperlink.',
+);
 
 $representative = baseEntries();
 $representative['word/styles.xml'] = '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>';

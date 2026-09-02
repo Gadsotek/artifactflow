@@ -181,9 +181,8 @@ WORKDIR /go/src/app/caddy
 
 RUN go version | grep -E '^go version go1\.26\.6[[:space:]]' \
     && go get golang.org/x/crypto@v0.55.0 \
-    && go get google.golang.org/grpc@v1.82.1 \
+    && go get google.golang.org/grpc@v1.83.1 \
     && go get github.com/getkin/kin-openapi@v0.144.0 \
-    && go get golang.org/x/crypto@v0.55.0 \
     && go mod tidy
 
 WORKDIR /go/src/app/caddy/frankenphp
@@ -192,7 +191,7 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
         -ldflags "-w -s -X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP v1.12.6 PHP $PHP_VERSION Caddy' -X 'github.com/caddyserver/caddy/v2.CustomBinaryName=frankenphp' -X 'github.com/caddyserver/caddy/v2/modules/caddyhttp.ServerHeader=FrankenPHP Caddy'" \
         -buildvcs=true \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.82\.1' \
+        | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.83\.1' \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.144\.0' \
     && go version -m /usr/local/bin/frankenphp \

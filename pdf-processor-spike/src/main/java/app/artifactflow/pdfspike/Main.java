@@ -8,8 +8,6 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
@@ -97,7 +95,7 @@ public final class Main {
         }
     }
 
-    private static Inspection inspect(byte[] bytes, Limits limits, boolean allowPassiveLinks) throws RejectedPdf {
+    private static Inspection inspect(byte[] bytes, Limits limits, boolean allowInternalLinks) throws RejectedPdf {
         requirePdfEnvelope(bytes, limits.maxInputBytes);
 
         try (PDDocument document = Loader.loadPDF(bytes)) {
@@ -110,7 +108,7 @@ public final class Main {
                 throw new RejectedPdf("page_limit");
             }
 
-            rejectObviousActiveContent(document, allowPassiveLinks);
+            rejectObviousActiveContent(document, allowInternalLinks);
 
             StringBuilder extracted = new StringBuilder();
             boolean truncated = false;
@@ -176,10 +174,10 @@ public final class Main {
         return value == 0 || value == 9 || value == 10 || value == 12 || value == 13 || value == 32;
     }
 
-    private static void rejectObviousActiveContent(PDDocument document, boolean allowPassiveLinks) throws RejectedPdf {
+    private static void rejectObviousActiveContent(PDDocument document, boolean allowInternalLinks) throws RejectedPdf {
         Set<COSBase> visited = Collections.newSetFromMap(new IdentityHashMap<>());
         int[] objectCount = {0};
-        inspectObject(document.getDocument().getTrailer(), visited, objectCount, 0, allowPassiveLinks);
+        inspectObject(document.getDocument().getTrailer(), visited, objectCount, 0, allowInternalLinks);
     }
 
     private static void inspectObject(
@@ -187,7 +185,7 @@ public final class Main {
         Set<COSBase> visited,
         int[] objectCount,
         int depth,
-        boolean allowPassiveLinks
+        boolean allowInternalLinks
     ) throws RejectedPdf {
         if (value == null) {
             return;
@@ -204,22 +202,22 @@ public final class Main {
         if (resolved instanceof COSDictionary dictionary) {
             COSBase type = dictionary.getDictionaryObject(COSName.TYPE);
             if (type instanceof COSName typeName && "Action".equals(typeName.getName())) {
-                if (!allowPassiveLinks) {
+                if (!allowInternalLinks) {
                     throw new RejectedPdf("active_content");
                 }
 
-                validatePassiveLinkAction(dictionary);
+                validateInternalLinkAction(dictionary);
             } else if (type instanceof COSName typeName && isRejectedType(typeName.getName())) {
                 throw new RejectedPdf("active_content");
             }
 
             COSBase subtype = dictionary.getDictionaryObject(COSName.SUBTYPE);
             if (subtype instanceof COSName subtypeName && "Link".equals(subtypeName.getName())) {
-                if (!allowPassiveLinks) {
+                if (!allowInternalLinks) {
                     throw new RejectedPdf("active_content");
                 }
 
-                validatePassiveLinkAnnotation(dictionary);
+                validateInternalLinkAnnotation(dictionary);
             } else if (subtype instanceof COSName subtypeName && isRejectedAnnotationSubtype(subtypeName.getName())) {
                 throw new RejectedPdf(
                     "Widget".equals(subtypeName.getName()) ? "interactive_form" : "active_content"
@@ -250,21 +248,21 @@ public final class Main {
                     );
                 }
 
-                if (COSName.S.equals(key) && !(allowPassiveLinks && isActionDictionary(type))) {
+                if (COSName.S.equals(key) && !(allowInternalLinks && isActionDictionary(type))) {
                     COSBase action = dictionary.getDictionaryObject(key);
                     if (action instanceof COSName actionName && isRejectedAction(actionName.getName())) {
                         throw new RejectedPdf("active_content");
                     }
                 }
 
-                inspectObject(dictionary.getDictionaryObject(key), visited, objectCount, depth + 1, allowPassiveLinks);
+                inspectObject(dictionary.getDictionaryObject(key), visited, objectCount, depth + 1, allowInternalLinks);
             }
             return;
         }
 
         if (resolved instanceof COSArray array) {
             for (int index = 0; index < array.size(); index++) {
-                inspectObject(array.getObject(index), visited, objectCount, depth + 1, allowPassiveLinks);
+                inspectObject(array.getObject(index), visited, objectCount, depth + 1, allowInternalLinks);
             }
         }
     }
@@ -273,7 +271,7 @@ public final class Main {
         return type instanceof COSName typeName && "Action".equals(typeName.getName());
     }
 
-    private static void validatePassiveLinkAnnotation(COSDictionary annotation) throws RejectedPdf {
+    private static void validateInternalLinkAnnotation(COSDictionary annotation) throws RejectedPdf {
         COSBase action = annotation.getDictionaryObject(COSName.A);
         COSBase destination = annotation.getDictionaryObject(COSName.DEST);
 
@@ -288,27 +286,17 @@ public final class Main {
                 throw new RejectedPdf("active_content");
             }
 
-            validatePassiveLinkAction(actionDictionary);
+            validateInternalLinkAction(actionDictionary);
         } else if (!isBoundedInternalDestination(destination)) {
             throw new RejectedPdf("active_content");
         }
     }
 
-    private static void validatePassiveLinkAction(COSDictionary action) throws RejectedPdf {
+    private static void validateInternalLinkAction(COSDictionary action) throws RejectedPdf {
         COSBase actionName = action.getDictionaryObject(COSName.S);
 
         if (!(actionName instanceof COSName name)) {
             throw new RejectedPdf("active_content");
-        }
-
-        if ("URI".equals(name.getName())) {
-            COSBase rawUri = action.getDictionaryObject(COSName.URI);
-
-            if (!(rawUri instanceof COSString uriString) || !isAllowedExternalUri(uriString.getString())) {
-                throw new RejectedPdf("active_content");
-            }
-
-            return;
         }
 
         if ("GoTo".equals(name.getName()) && isBoundedInternalDestination(action.getDictionaryObject(COSName.D))) {
@@ -330,34 +318,6 @@ public final class Main {
         }
 
         return resolved instanceof COSArray array && array.size() >= 1 && array.size() <= 8;
-    }
-
-    private static boolean isAllowedExternalUri(String value) {
-        if (value.isEmpty() || value.length() > 2_048 || value.chars().anyMatch(character -> character < 0x20 || character == 0x7f)) {
-            return false;
-        }
-
-        try {
-            URI uri = new URI(value);
-            String scheme = uri.getScheme();
-
-            if (scheme == null || uri.getUserInfo() != null) {
-                return false;
-            }
-
-            if ("mailto".equalsIgnoreCase(scheme)) {
-                String address = uri.getRawSchemeSpecificPart();
-
-                return address != null && !address.isEmpty() && !address.startsWith("//");
-            }
-
-            return ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
-                && uri.getHost() != null
-                && !uri.getHost().isEmpty()
-                && uri.getRawAuthority() != null;
-        } catch (URISyntaxException exception) {
-            return false;
-        }
     }
 
     private static boolean isRejectedAction(String action) {
@@ -411,10 +371,10 @@ public final class Main {
         expectRejected("rich media annotation", createAnnotationPdf("RichMedia"));
         expectRejected("deep object graph", createDeepObjectGraphPdf());
 
-        Inspection passiveLink = inspect(createPassiveUriLinkPdf("https://example.com/documentation"), Limits.defaults(), true);
-        require(passiveLink.pages == 1, "DOCX-preview URI link is accepted only in the derived profile");
+        Inspection internalLink = inspect(createPassiveInternalLinkPdf(), Limits.defaults(), true);
+        require(internalLink.pages == 1, "DOCX-preview internal link is accepted only in the derived profile");
+        expectRejectedDerived("external URI link", createPassiveUriLinkPdf("https://example.com/documentation"));
         expectRejectedDerived("credential-bearing URI link", createPassiveUriLinkPdf("https://user@example.com/path"));
-        expectRejectedDerived("ambiguous HTTP URI link", createPassiveUriLinkPdf("http:relative"));
         expectRejectedDerived("authority-form mailto link", createPassiveUriLinkPdf("mailto://example.com/person"));
         expectRejectedDerived("unsafe URI link", createPassiveUriLinkPdf("javascript:alert(1)"));
         expectRejectedDerived("launch link", createPassiveActionLinkPdf("Launch"));
@@ -566,6 +526,25 @@ public final class Main {
             annotation.setItem(COSName.TYPE, COSName.ANNOT);
             annotation.setItem(COSName.SUBTYPE, COSName.getPDFName("Link"));
             annotation.setItem(COSName.A, action);
+            COSArray annotations = new COSArray();
+            annotations.add(annotation);
+            page.getCOSObject().setItem(COSName.ANNOTS, annotations);
+            document.save(output);
+            return output.toByteArray();
+        }
+    }
+
+    private static byte[] createPassiveInternalLinkPdf() throws IOException {
+        try (PDDocument document = new PDDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+            COSArray destination = new COSArray();
+            destination.add(page.getCOSObject());
+            destination.add(COSName.getPDFName("Fit"));
+            COSDictionary annotation = new COSDictionary();
+            annotation.setItem(COSName.TYPE, COSName.ANNOT);
+            annotation.setItem(COSName.SUBTYPE, COSName.getPDFName("Link"));
+            annotation.setItem(COSName.DEST, destination);
             COSArray annotations = new COSArray();
             annotations.add(annotation);
             page.getCOSObject().setItem(COSName.ANNOTS, annotations);

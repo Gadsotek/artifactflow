@@ -43,14 +43,18 @@ Set tester expectations explicitly:
 - Keep `XLSX_PROCESSOR_ENABLED=false` unless this exact deployment has pinned
   and scanned the reviewed XLSX image, mounted its authenticated Unix socket or
   provided an equivalent private HTTPS-to-socket boundary, proven effective
-  outbound denial plus one-worker resource ceilings, completed the hostile
-  package corpus and Chromium/Firefox/WebKit viewer/link checks, and closed the
+  outbound denial on health and authenticated projection paths plus one-worker
+  resource ceilings, kept the processor socket group-only, completed the hostile
+  package corpus and Chromium/Firefox/WebKit destination-confirmation checks, and closed the
   final evidence-first security review. The artifact host receives only the
   presentation flag and restricted office facts/derivative grants.
 - Keep `DOCX_PROCESSOR_ENABLED=false` unless the PDF gate above is also
   complete and enabled, the independently credentialed DOCX image is pinned and
   scanned, LibreOffice network/process/tmpfs containment and failure cleanup are
-  proven, the DOCX output passes the PDFBox DOCX-preview profile, browser and
+  proven on the authenticated conversion path, the group-only socket is fronted
+  by the reviewed single-thread FrankenPHP stack, external links are absent
+  from the conversion copy, the DOCX output passes the internal-link-only PDFBox
+  DOCX-preview profile, browser and
   exact-original download boundaries are verified, and the final evidence-first
   review is closed. Never give either processor the other's secret.
 - Confirm CI builds and runtime-tests the XLSX and DOCX processors, validates the

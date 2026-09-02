@@ -60,6 +60,7 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
             $app,
         );
         $this->assertStringContainsString('pdf-processor-socket:/run/artifactflow/pdf-processor:ro', $app);
+        $this->assertStringContainsString("group_add:\n      - \"10002\"\n      - \"10003\"\n      - \"10004\"", $app);
 
         foreach (
             [
@@ -138,6 +139,7 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('post_max_size=17M', $start);
         $this->assertStringContainsString('127.0.0.1:${port}', $start);
         $this->assertStringContainsString('UNIX-LISTEN:', $start);
+        $this->assertStringContainsString('mode=0660', $start);
     }
 
     public function test_http_boundary_is_narrow_authenticated_and_fail_closed(): void

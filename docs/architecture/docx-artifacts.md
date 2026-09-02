@@ -41,12 +41,14 @@ content are outside this release.
    Custom XML data stores and bindings, printer-only payloads, and attached-template
    references are likewise removed from the revalidated conversion copy; cached
    visible document content remains.
-4. External HTTP, HTTPS, and email hyperlink relationships may be retained for
-   rendering, but the converter cannot fetch them. The settings-owned
+4. External HTTP, HTTPS, and email hyperlink relationships may be retained in
+   the exact private original, but their relationships and WordprocessingML
+   wrappers are removed from the conversion copy while visible child content is
+   preserved. The converter therefore cannot fetch or emit them. The settings-owned
    attached-template exception is discarded before conversion and is never
    fetched. File links, UNC paths, credentials, fragments or queries in package
    targets, and all other external relationship types fail closed.
-5. LibreOffice 26.2.5 runs one conversion at a time under a 30-second process-
+5. Alpine's pinned LibreOffice Writer 25.8.7.3 package runs one conversion at a time under a 30-second process-
    group deadline and bounded bytes, memory, PIDs, CPU, files, and tmpfs. The
    whole process group is terminated on timeout or any failed run.
 6. The generated PDF is untrusted processor output. The independently isolated
@@ -78,7 +80,8 @@ web upload or canonical MCP Base64
     -> DOCX processor
          -> strict ZIP/OPC/XML profile
          -> sanitize embedded fonts, custom XML bindings, printer metadata,
-            and attached-template references from a validated conversion copy
+            attached-template references, and external hyperlink actions from
+            a validated conversion copy
          -> headless LibreOffice -> bounded PDF
     -> authenticated response verification
     -> separate PDF processor, docx-preview profile
@@ -140,19 +143,24 @@ those parts and relationships, removes `w:dataBinding`, unwraps `w:customXml`,
 and preserves already-cached visible WordprocessingML children. Printer-settings
 binary parts and package thumbnails, including common PNG/JPEG/EMF/WMF variants,
 are also omitted from the conversion copy without being rendered.
-The sanitized ZIP is fully preflighted again before LibreOffice. Dynamic custom
+External hyperlink relationships are removed from the same conversion copy and
+their `w:hyperlink` wrappers are unwrapped without deleting visible runs. The
+exact original and its safe non-content link count remain unchanged. The
+sanitized ZIP is fully preflighted again before LibreOffice. Dynamic custom
 XML refresh, printer-specific fidelity, and external template attachment are
 therefore intentionally not part of preview behavior.
 
 LibreOffice receives a fresh private temporary home and output directory. Its
 environment is allowlisted, inherited caller state is removed, macro and update
 behavior is disabled, and success requires exactly one complete PDF within the
-output bound. The service accepts only its authenticated Unix-socket operation
-and refuses multi-worker PHP server mode.
+output bound. A non-root FrankenPHP listener on the group-only Unix socket is
+pinned to one PHP thread; its PHP entrypoint accepts only the health and
+conversion paths. Every authenticated conversion rechecks network containment
+before package inspection or native conversion.
 
 The PDF processor receives only the generated PDF, not the DOCX or the DOCX
-processor's secret. Its profile accepts the safe URI links the user chose to
-retain but rejects JavaScript, launch, submit, remote-go-to, embedded-file,
+processor's secret. Its profile accepts only bounded in-document `GoTo`
+destinations and rejects URI, JavaScript, launch, submit, remote-go-to, embedded-file,
 interactive-form, and other active PDF structures. Extracted text is untrusted,
 escaped, bounded index material; it is not exposed as the authoritative document
 or evidence of redaction.
@@ -164,7 +172,7 @@ has no sandbox attribute because supported browser PDF viewers otherwise render
 blank. It keeps `allow=""`, `referrerpolicy="no-referrer"`, the distinct
 cookieless artifact origin, a revision-bound URL, no CORS or cookies, and a
 restrictive PDF CSP without a `sandbox` directive. Viewing remains download-
-equivalent; browser UI may expose save, print, copy, and supported links.
+equivalent; browser UI may expose save, print, copy, and bounded internal links.
 
 An authenticated original download uses a separate short-lived purpose and
 always returns attachment disposition with an application-generated filename.

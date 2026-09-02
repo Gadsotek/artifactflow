@@ -21,8 +21,9 @@ function runCommand(array $command): void
             'HOME' => '/tmp',
             'LANG' => 'C.UTF-8',
             'LC_ALL' => 'C.UTF-8',
-            'PATH' => '/usr/bin:/bin:/opt/libreoffice26.2/program',
+            'PATH' => '/usr/bin:/bin',
             'SAL_DISABLE_OPENCL' => '1',
+            'SAL_USE_VCLPLUGIN' => 'svp',
         ],
         ['bypass_shell' => true, 'suppress_errors' => true],
     );
@@ -44,7 +45,12 @@ function runCommand(array $command): void
         || strlen($stdout) > 16_384
         || strlen($stderr) > 16_384
     ) {
-        throw new RuntimeException('LibreOffice could not produce the DOCX export proof.');
+        throw new RuntimeException(sprintf(
+            'LibreOffice could not produce the DOCX export proof (exit %d, stdout %s, stderr %s).',
+            $exitCode,
+            json_encode($stdout, JSON_THROW_ON_ERROR),
+            json_encode($stderr, JSON_THROW_ON_ERROR),
+        ));
     }
 }
 
@@ -98,9 +104,10 @@ try {
     runCommand([
         '/usr/bin/setsid',
         '/usr/bin/timeout',
-        '--signal=KILL',
+        '-s',
+        'KILL',
         '30',
-        '/opt/libreoffice26.2/program/soffice',
+        '/usr/bin/soffice',
         '--headless',
         '--nologo',
         '--nodefault',

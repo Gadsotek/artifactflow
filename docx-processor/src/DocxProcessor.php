@@ -1813,10 +1813,15 @@ final readonly class DocxConversionSanitizer
         'http://purl.oclc.org/ooxml/officeDocument/relationships/',
     ];
 
+    private const array OFFICE_RELATIONSHIP_NAMESPACES = [
+        'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+        'http://purl.oclc.org/ooxml/officeDocument/relationships',
+    ];
+
     public function stripForConversion(string $docx): string
     {
-        $sourcePath = tempnam('/tmp', 'artifactflow-docx-font-source-');
-        $outputPath = tempnam('/tmp', 'artifactflow-docx-font-output-');
+        $sourcePath = tempnam('/tmp', 'artifactflow-docx-conversion-source-');
+        $outputPath = tempnam('/tmp', 'artifactflow-docx-conversion-output-');
         if (!is_string($sourcePath) || !is_string($outputPath)) {
             if (is_string($sourcePath) && is_file($sourcePath)) {
                 unlink($sourcePath);
@@ -1843,7 +1848,14 @@ final readonly class DocxConversionSanitizer
                 $stripCustomXml = $this->containsCustomXml($source);
                 $stripConversionMetadata = $this->containsConversionMetadata($source);
                 $stripAttachedTemplate = $this->containsAttachedTemplate($source);
-                if (!$stripEmbeddedFonts && !$stripCustomXml && !$stripConversionMetadata && !$stripAttachedTemplate) {
+                $externalHyperlinkRelationshipIds = $this->externalHyperlinkRelationshipIds($source);
+                if (
+                    !$stripEmbeddedFonts
+                    && !$stripCustomXml
+                    && !$stripConversionMetadata
+                    && !$stripAttachedTemplate
+                    && $externalHyperlinkRelationshipIds === []
+                ) {
                     return $docx;
                 }
 
@@ -1860,6 +1872,7 @@ final readonly class DocxConversionSanitizer
                         $stripCustomXml,
                         $stripConversionMetadata,
                         $stripAttachedTemplate,
+                        $externalHyperlinkRelationshipIds,
                     );
                 } finally {
                     if (!$output->close()) {
@@ -1972,6 +1985,60 @@ final readonly class DocxConversionSanitizer
         return false;
     }
 
+    /** @return array<string, array<string, true>> */
+    private function externalHyperlinkRelationshipIds(ZipArchive $archive): array
+    {
+        $relationshipIds = [];
+
+        for ($index = 0; $index < $archive->numFiles; $index++) {
+            $stat = $archive->statIndex($index, ZipArchive::FL_UNCHANGED);
+            if (
+                !is_array($stat)
+                || !is_string($stat['name'] ?? null)
+                || !is_int($stat['size'] ?? null)
+            ) {
+                throw new ProcessorRejection('The DOCX conversion source contains invalid entry metadata.');
+            }
+            if (!str_ends_with($stat['name'], '.rels')) {
+                continue;
+            }
+
+            $sourcePart = $this->relationshipSourcePart($stat['name']);
+            if ($sourcePart === null) {
+                throw new ProcessorRejection('The DOCX conversion source contains an invalid relationship part.');
+            }
+
+            $xml = $archive->getFromIndex($index, $stat['size'] + 1, ZipArchive::FL_UNCHANGED);
+            if (!is_string($xml) || strlen($xml) !== $stat['size']) {
+                throw new ProcessorRejection('The DOCX conversion source entry could not be read exactly.');
+            }
+
+            $document = $this->loadXml($xml, 'relationships');
+            $xpath = new DOMXPath($document);
+            $xpath->registerNamespace('r', self::RELATIONSHIPS_NAMESPACE);
+            foreach (self::OFFICE_RELATIONSHIP_PREFIXES as $prefix) {
+                $nodes = $xpath->query(
+                    '/r:Relationships/r:Relationship[@Type="' . $prefix . 'hyperlink" and @TargetMode="External"]',
+                );
+                if ($nodes === false) {
+                    throw new ProcessorUnavailable('DOCX conversion-copy relationships could not be queried.');
+                }
+                foreach ($nodes as $node) {
+                    if (!$node instanceof DOMElement) {
+                        throw new ProcessorUnavailable('DOCX conversion-copy relationship metadata is invalid.');
+                    }
+                    $id = $node->getAttribute('Id');
+                    if ($id === '') {
+                        throw new ProcessorUnavailable('DOCX conversion-copy relationship metadata is invalid.');
+                    }
+                    $relationshipIds[$sourcePart][$id] = true;
+                }
+            }
+        }
+
+        return $relationshipIds;
+    }
+
     private function copySanitized(
         ZipArchive $source,
         ZipArchive $output,
@@ -1979,6 +2046,7 @@ final readonly class DocxConversionSanitizer
         bool $stripCustomXml,
         bool $stripConversionMetadata,
         bool $stripAttachedTemplate,
+        array $externalHyperlinkRelationshipIds,
     ): void {
         for ($index = 0; $index < $source->numFiles; $index++) {
             $stat = $source->statIndex($index, ZipArchive::FL_UNCHANGED);
@@ -2028,12 +2096,14 @@ final readonly class DocxConversionSanitizer
                     $stripConversionMetadata,
                 );
             } elseif (str_ends_with($name, '.rels')) {
+                $sourcePart = $this->relationshipSourcePart($name);
                 $bytes = $this->stripRelationships(
                     $bytes,
                     $stripEmbeddedFonts,
                     $stripCustomXml,
                     $stripConversionMetadata,
                     $stripAttachedTemplate,
+                    $sourcePart === null ? [] : ($externalHyperlinkRelationshipIds[$sourcePart] ?? []),
                 );
             } elseif ($stripEmbeddedFonts && $name === 'word/fontTable.xml') {
                 $bytes = $this->stripFontReferences($bytes);
@@ -2042,6 +2112,10 @@ final readonly class DocxConversionSanitizer
             }
             if ($stripCustomXml && str_starts_with($name, 'word/') && str_ends_with($name, '.xml')) {
                 $bytes = $this->stripCustomXmlBindings($bytes);
+            }
+            $externalHyperlinkIds = $externalHyperlinkRelationshipIds[$name] ?? [];
+            if ($externalHyperlinkIds !== [] && str_starts_with($name, 'word/') && str_ends_with($name, '.xml')) {
+                $bytes = $this->stripExternalHyperlinkReferences($bytes, $externalHyperlinkIds);
             }
 
             if (!$output->addFromString($name, $bytes)) {
@@ -2089,6 +2163,7 @@ final readonly class DocxConversionSanitizer
         bool $stripCustomXml,
         bool $stripConversionMetadata,
         bool $stripAttachedTemplate,
+        array $externalHyperlinkIds,
     ): string {
         $document = $this->loadXml($xml, 'relationships');
         $xpath = new DOMXPath($document);
@@ -2120,6 +2195,18 @@ final readonly class DocxConversionSanitizer
             }
         }
 
+        if ($externalHyperlinkIds !== []) {
+            $nodes = $xpath->query('/r:Relationships/r:Relationship');
+            if ($nodes === false) {
+                throw new ProcessorUnavailable('DOCX conversion-copy relationships could not be queried.');
+            }
+            foreach (iterator_to_array($nodes) as $node) {
+                if ($node instanceof DOMElement && isset($externalHyperlinkIds[$node->getAttribute('Id')])) {
+                    $node->parentNode?->removeChild($node);
+                }
+            }
+        }
+
         if ($stripConversionMetadata) {
             $nodes = $xpath->query(
                 '/r:Relationships/r:Relationship[@Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"]',
@@ -2133,6 +2220,59 @@ final readonly class DocxConversionSanitizer
         }
 
         return $this->saveXml($document);
+    }
+
+    /** @param array<string, true> $externalHyperlinkIds */
+    private function stripExternalHyperlinkReferences(string $xml, array $externalHyperlinkIds): string
+    {
+        $document = $this->loadXml($xml, 'WordprocessingML part');
+        $xpath = new DOMXPath($document);
+
+        foreach (self::WORDPROCESSING_NAMESPACES as $wordIndex => $wordNamespace) {
+            $wordPrefix = 'w' . $wordIndex;
+            $xpath->registerNamespace($wordPrefix, $wordNamespace);
+            foreach (self::OFFICE_RELATIONSHIP_NAMESPACES as $relationshipIndex => $relationshipNamespace) {
+                $relationshipPrefix = 'r' . $relationshipIndex;
+                $xpath->registerNamespace($relationshipPrefix, $relationshipNamespace);
+                $nodes = $xpath->query(
+                    '//' . $wordPrefix . ':hyperlink[@' . $relationshipPrefix . ':id]',
+                );
+                if ($nodes === false) {
+                    throw new ProcessorUnavailable('DOCX conversion-copy hyperlink references could not be queried.');
+                }
+                foreach (iterator_to_array($nodes) as $node) {
+                    if (
+                        !$node instanceof DOMElement
+                        || !isset($externalHyperlinkIds[$node->getAttributeNS($relationshipNamespace, 'id')])
+                    ) {
+                        continue;
+                    }
+                    $parent = $node->parentNode;
+                    if ($parent === null) {
+                        continue;
+                    }
+                    while ($node->firstChild !== null) {
+                        $parent->insertBefore($node->firstChild, $node);
+                    }
+                    $parent->removeChild($node);
+                }
+            }
+        }
+
+        return $this->saveXml($document);
+    }
+
+    private function relationshipSourcePart(string $relationshipPart): ?string
+    {
+        if ($relationshipPart === '_rels/.rels') {
+            return '';
+        }
+
+        if (preg_match('/\A(?<directory>(?:[A-Za-z0-9_.-]+\/)*)_rels\/(?<file>[A-Za-z0-9_.-]+)\.rels\z/', $relationshipPart, $matches) !== 1) {
+            return null;
+        }
+
+        return $matches['directory'] . $matches['file'];
     }
 
     private function stripAttachedTemplateReferences(string $xml): string
@@ -2263,7 +2403,7 @@ final readonly class LibreOfficeConverter
 {
     public const string ENGINE = 'libreoffice';
 
-    public const string ENGINE_VERSION = '26.2.5';
+    public const string ENGINE_VERSION = '25.8.7.3';
 
     private const int TIMEOUT_SECONDS = 30;
 
@@ -2290,7 +2430,7 @@ final readonly class LibreOfficeConverter
             $filter = 'pdf:writer_pdf_Export:{"ExportBookmarks":{"type":"boolean","value":"true"},"ExportLinksRelativeFsys":{"type":"boolean","value":"false"},"UseTaggedPDF":{"type":"boolean","value":"true"}}';
             $profileUrl = 'file://' . $profileDirectory;
             $this->run([
-                '/opt/libreoffice26.2/program/soffice',
+                '/usr/bin/soffice',
                 '--headless',
                 '--nologo',
                 '--nodefault',
@@ -2328,7 +2468,7 @@ final readonly class LibreOfficeConverter
 
     public function verifyHealth(): void
     {
-        $output = $this->run(['/opt/libreoffice26.2/program/soffice', '--headless', '--version']);
+        $output = $this->run(['/usr/bin/soffice', '--headless', '--version']);
         if (!str_contains($output, self::ENGINE_VERSION)) {
             throw new ProcessorUnavailable('DOCX converter version is unexpected.');
         }
@@ -2351,8 +2491,9 @@ final readonly class LibreOfficeConverter
                 'HOME' => '/tmp',
                 'LANG' => 'C.UTF-8',
                 'LC_ALL' => 'C.UTF-8',
-                'PATH' => '/usr/bin:/bin:/opt/libreoffice26.2/program',
+                'PATH' => '/usr/bin:/bin',
                 'SAL_DISABLE_OPENCL' => '1',
+                'SAL_USE_VCLPLUGIN' => 'svp',
             ],
             ['bypass_shell' => true, 'suppress_errors' => true],
         );

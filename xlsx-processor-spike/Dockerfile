@@ -1,6 +1,6 @@
 # Dedicated XLSX parser/projection image. It receives one bounded workbook over
 # a private Unix socket and has no application source, storage, or credentials.
-FROM node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS xlsx-processor-spike
+FROM node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS xlsx-processor-base
 
 ENV HOME=/tmp/home \
     NODE_ENV=production \
@@ -20,16 +20,19 @@ RUN npm ci --ignore-scripts --omit=dev \
     && npm cache clean --force
 
 COPY --chown=xlsx-spike:xlsx-spike src ./src
-COPY --chown=xlsx-spike:xlsx-spike test ./test
 COPY --chown=xlsx-spike:xlsx-spike README.md ./README.md
 COPY --chown=xlsx-spike:xlsx-spike healthcheck.cjs ./healthcheck.cjs
 COPY --chown=xlsx-spike:xlsx-spike licenses ./licenses
 
 USER xlsx-spike
 
+FROM xlsx-processor-base AS xlsx-processor-spike
+
+COPY --chown=xlsx-spike:xlsx-spike test ./test
+
 CMD ["npm", "test"]
 
-FROM xlsx-processor-spike AS xlsx-processor-spike-service
+FROM xlsx-processor-base AS xlsx-processor-spike-service
 
 USER root
 

@@ -23,6 +23,30 @@ function retainTabulatorLicense() {
   };
 }
 
+function enforceStandaloneXlsxViewer() {
+  return {
+    name: 'enforce-standalone-xlsx-viewer',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      const viewer = Object.values(bundle).find(
+        (output) =>
+          output.type === 'chunk' &&
+          output.facadeModuleId?.endsWith('/resources/js/xlsx-viewer.js'),
+      );
+
+      if (viewer === undefined) {
+        throw new Error('The production XLSX viewer entry was not emitted.');
+      }
+
+      if (viewer.imports.length > 0 || viewer.dynamicImports.length > 0) {
+        throw new Error(
+          'The production XLSX viewer must be a standalone classic script for its opaque sandbox.',
+        );
+      }
+    },
+  };
+}
+
 function originFromUrl(url) {
   try {
     return new URL(url).origin;
@@ -75,6 +99,7 @@ export default defineConfig(({ mode }) => {
         refresh: true,
       }),
       tailwindcss(),
+      enforceStandaloneXlsxViewer(),
       retainTabulatorLicense(),
     ],
   };

@@ -275,7 +275,7 @@
 
                         <label class="af-file-drop block">
                             <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">DOCX document</span>
-                            <span class="mt-1 block text-xs text-zinc-500">Macros, embedded packages, external content, and unsupported active features are rejected. Normal web hyperlinks may remain clickable in the PDF preview.</span>
+                            <span class="mt-1 block text-xs text-zinc-500">Macros, embedded packages, external content, and unsupported active features are rejected. External links remain in the exact original but become inert visible text in the PDF preview.</span>
                             <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="docx_file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @error('docx_file') aria-invalid="true" aria-describedby="create-docx-file-error" autofocus @enderror>
                             @error('docx_file')
                                 <span class="mt-3 block text-sm font-medium text-red-700 dark:text-red-300" id="create-docx-file-error" role="alert">{{ $message }} Select the document again after correcting the issue.</span>

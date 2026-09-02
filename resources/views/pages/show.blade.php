@@ -319,7 +319,7 @@
                                         <span data-artifact-fullscreen-label>Fullscreen</span>
                                     </button>
                                 </div>
-                                <iframe class="af-artifact-iframe h-[calc(100vh-13rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" allow="" src="{{ $artifactPreviewUrl }}" title="Read-only Excel preview"></iframe>
+                                <iframe class="af-artifact-iframe h-[calc(100vh-13rem)] min-h-[38rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900" data-artifact-preview-frame loading="eager" referrerpolicy="no-referrer" sandbox="allow-scripts" allow="" src="{{ $artifactPreviewUrl }}" title="Read-only Excel preview"></iframe>
                             </div>
                         @else
                             <div class="af-callout">The retained workbook preview is currently unavailable.</div>
@@ -332,9 +332,9 @@
                                 <p class="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Word document</p>
                                 <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Exact original retained as immutable version {{ $version?->version_number }}. The preview is a validated, searchable PDF derivative.</p>
                                 @if ($docxFacts !== null)
-                                    <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400" data-docx-facts>{{ $docxFacts->page_count }} preview {{ $docxFacts->page_count === 1 ? 'page' : 'pages' }} · {{ $docxFacts->external_hyperlink_count }} external {{ $docxFacts->external_hyperlink_count === 1 ? 'link' : 'links' }}</p>
+                                    <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400" data-docx-facts>{{ $docxFacts->page_count }} preview {{ $docxFacts->page_count === 1 ? 'page' : 'pages' }} · {{ $docxFacts->external_hyperlink_count }} external {{ $docxFacts->external_hyperlink_count === 1 ? 'link' : 'links' }} in original</p>
                                 @endif
-                                <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400"><span class="font-semibold">Viewer profile:</span> Browser-native PDF on the isolated, cookieless artifact origin. Normal HTTP, HTTPS, and email hyperlinks may be interactive.</p>
+                                <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400"><span class="font-semibold">Viewer profile:</span> Browser-native PDF on the isolated, cookieless artifact origin. External links become inert visible text; bounded internal document links may remain interactive.</p>
                             </div>
                             @if ($docxArtifactsEnabled)
                                 <div class="flex flex-wrap items-center gap-2">

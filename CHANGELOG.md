@@ -69,6 +69,20 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ### Fixed
 
+- Removed direct popup authority from typed XLSX preview frames. External targets
+  now require a destination-visible, source/origin/shape-checked confirmation on
+  the app origin before a no-opener/no-referrer tab can open. DOCX conversion
+  copies now preserve external-link text while removing the relationships and
+  wrappers, and the independent PDFBox profile rejects any emitted URI action.
+- Rechecked XLSX and DOCX network containment on every authenticated processing
+  request, tightened PDF/XLSX/DOCX Unix sockets to processor-group-only access,
+  removed XLSX test fixtures from the service image, and replaced the DOCX
+  development HTTP server/relay with a rootless, single-thread FrankenPHP
+  runtime. Both FrankenPHP binaries now pin the scanner-fixed gRPC 1.83.1.
+- Raised the still-bounded XLSX service task budget from 16 to 32 so its Node
+  listener, single projection worker, and authenticated Docker health probe can
+  overlap without exhausting runtime threads and timing out an upload. The
+  production runtime gate now exercises that exact overlap.
 - Closed a per-page storage-quota undercount during XLSX and DOCX in-place
   reprocessing. Positive derivative growth is now checked under row locks
   against the complete retained version graph; the retention-aware projection
