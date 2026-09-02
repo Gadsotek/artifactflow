@@ -45,6 +45,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Vite as ViteFacade;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -89,6 +90,11 @@ final class OfficeArtifactHttpTest extends TestCase
 
         ViteFacade::clearResolvedInstance();
         $this->app->instance(Vite::class, new class() extends Vite {
+            public function __invoke($entrypoints, $buildDirectory = null): HtmlString
+            {
+                return new HtmlString('');
+            }
+
             public function asset($asset, $buildDirectory = null): string
             {
                 return match ($asset) {
