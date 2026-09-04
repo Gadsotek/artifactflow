@@ -1,0 +1,12 @@
+services:
+  app:
+    volumes:
+      - ./docker/e2e.env:/var/www/html/.env:ro
+
+  e2e-app:
+    volumes:
+      - ./docker/e2e.env:/var/www/html/.env:ro
+
+  e2e-artifact-host:
+    volumes:
+      - ./docker/e2e.env:/var/www/html/.env:ro

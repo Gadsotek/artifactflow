@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace App\Application\PageCatalog;
 
 use App\Models\PageVersion;
+use App\Models\PageVersionDerivative;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 /**
  * Reaper for orphaned artifact blobs: files on the `artifacts` disk that no
- * page_versions row references. Orphans arise from the best-effort cleanup in
+ * page_versions or page_version_derivatives row references. Orphans arise from the best-effort cleanup in
  * HardDeletePage (the row/quota mutation commits inside the transaction, but the
  * subsequent Storage delete runs outside it and can fail -- see the
  * PageArtifactDeleteFailed audit path) and from writes interrupted after the
@@ -97,6 +98,22 @@ final readonly class PruneOrphanArtifacts
                 function (EloquentCollection $versions) use (&$paths): void {
                     foreach ($versions as $version) {
                         $paths[$version->content_storage_path] = true;
+                    }
+                },
+                'uid',
+            );
+
+        PageVersionDerivative::query()
+            ->select(['uid', 'storage_path'])
+            ->orderBy('uid')
+            ->chunkById(
+                self::KNOWN_PATH_BATCH_SIZE,
+                /**
+                 * @param EloquentCollection<int, PageVersionDerivative> $derivatives
+                 */
+                function (EloquentCollection $derivatives) use (&$paths): void {
+                    foreach ($derivatives as $derivative) {
+                        $paths[$derivative->storage_path] = true;
                     }
                 },
                 'uid',

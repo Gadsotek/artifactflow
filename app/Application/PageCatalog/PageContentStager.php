@@ -11,37 +11,76 @@ use Throwable;
 
 final readonly class PageContentStager
 {
+    public function stageDerivative(PreparedArtifactDerivative $derivative): PreparedArtifactDerivative
+    {
+        return $derivative->withStagedContent($this->stage(
+            content: $derivative->content,
+            storageFilename: $derivative->storageFilename,
+            namespace: 'derivatives',
+            failureMessage: 'Failed to stage artifact derivative.',
+        ));
+    }
+
     public function stageForPersistence(PreparedPageContent $prepared): PreparedPageContent
     {
-        if (!$prepared->requiresPrivateStaging) {
-            return $prepared;
+        if ($prepared->requiresPrivateStaging) {
+            $prepared = $prepared->withStagedContent($this->stage(
+                content: $prepared->content,
+                storageFilename: $prepared->storageFilename,
+                namespace: $prepared->derivative === null && $prepared->storageFilename === 'document.pdf'
+                    ? 'pdf'
+                    : 'artifacts',
+                failureMessage: 'Failed to stage artifact content.',
+            ));
         }
 
+        if ($prepared->derivative instanceof PreparedArtifactDerivative) {
+            try {
+                $prepared = $prepared->withStagedDerivative(
+                    $this->stageDerivative($prepared->derivative),
+                );
+            } catch (Throwable $exception) {
+                $prepared->discardStaging();
+
+                throw $exception;
+            }
+        }
+
+        return $prepared;
+    }
+
+    private function stage(
+        string $content,
+        string $storageFilename,
+        string $namespace,
+        string $failureMessage,
+    ): StagedArtifactContent {
         $storagePath = sprintf(
-            'staging/pdf/%s/%s',
+            'staging/%s/%s/%s',
+            $namespace,
             (string) Str::ulid(),
-            $prepared->storageFilename,
+            $storageFilename,
         );
         $stagedContent = new StagedArtifactContent(
             storagePath: $storagePath,
-            contentHash: hash('sha256', $prepared->content),
-            byteSize: strlen($prepared->content),
+            contentHash: hash('sha256', $content),
+            byteSize: strlen($content),
         );
 
         try {
-            $stored = Storage::disk('artifacts')->put($storagePath, $prepared->content);
+            $stored = Storage::disk('artifacts')->put($storagePath, $content);
         } catch (Throwable $exception) {
             $stagedContent->discard();
 
-            throw new RuntimeException('Failed to stage PDF content.', 0, $exception);
+            throw new RuntimeException($failureMessage, 0, $exception);
         }
 
         if (!$stored) {
             $stagedContent->discard();
 
-            throw new RuntimeException('Failed to stage PDF content.');
+            throw new RuntimeException($failureMessage);
         }
 
-        return $prepared->withStagedContent($stagedContent);
+        return $stagedContent;
     }
 }

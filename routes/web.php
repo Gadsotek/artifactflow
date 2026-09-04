@@ -14,6 +14,10 @@ use App\Http\Controllers\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DemoContentController;
+use App\Http\Controllers\DocumentOriginalController;
+use App\Http\Controllers\DocumentOriginalDownloadController;
+use App\Http\Controllers\DocxPreviewController;
+use App\Http\Controllers\DocxReprocessController;
 use App\Http\Controllers\ExternalArtifactPreviewController;
 use App\Http\Controllers\ExternalShareArtifactPreviewUrlController;
 use App\Http\Controllers\ExternalShareBootstrapController;
@@ -49,6 +53,7 @@ use App\Http\Controllers\WorkspaceInvitationController;
 use App\Http\Controllers\WorkspaceInvitationJoinController;
 use App\Http\Controllers\WorkspaceMembershipController;
 use App\Http\Controllers\WorkspaceSettingsController;
+use App\Http\Controllers\XlsxReprocessController;
 use App\Http\Middleware\EnforceCurrentAuthenticationRevision;
 use App\Http\Middleware\EnforceTwoFactorEnrollment;
 use App\Http\Middleware\RejectArtifactHostRuntime;
@@ -76,6 +81,36 @@ Route::get('/artifact-previews/{pageUid}/versions/{versionUid}', ArtifactPreview
 
 Route::get('/pdf-artifacts/{pageUid}/versions/{versionUid}', PdfArtifactController::class)
     ->name('pdf-artifacts.show')
+    ->middleware([RequireArtifactHostRuntime::class, 'throttle:artifact-previews'])
+    ->withoutMiddleware([
+        Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+        Illuminate\Cookie\Middleware\EncryptCookies::class,
+        Illuminate\Foundation\Http\Middleware\PreventRequestForgery::class,
+        Illuminate\Session\Middleware\StartSession::class,
+        Illuminate\View\Middleware\ShareErrorsFromSession::class,
+    ])
+    ->where([
+        'pageUid' => '[0-9A-Za-z]{26}',
+        'versionUid' => '[0-9A-Za-z]{26}',
+    ]);
+
+Route::get('/document-originals/{pageUid}/versions/{versionUid}', DocumentOriginalController::class)
+    ->name('document-originals.show')
+    ->middleware([RequireArtifactHostRuntime::class, 'throttle:artifact-previews'])
+    ->withoutMiddleware([
+        Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+        Illuminate\Cookie\Middleware\EncryptCookies::class,
+        Illuminate\Foundation\Http\Middleware\PreventRequestForgery::class,
+        Illuminate\Session\Middleware\StartSession::class,
+        Illuminate\View\Middleware\ShareErrorsFromSession::class,
+    ])
+    ->where([
+        'pageUid' => '[0-9A-Za-z]{26}',
+        'versionUid' => '[0-9A-Za-z]{26}',
+    ]);
+
+Route::get('/docx-previews/{pageUid}/versions/{versionUid}', DocxPreviewController::class)
+    ->name('docx-previews.show')
     ->middleware([RequireArtifactHostRuntime::class, 'throttle:artifact-previews'])
     ->withoutMiddleware([
         Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
@@ -290,6 +325,9 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
         Route::get('/pages/{page}/download', [PdfDownloadController::class, 'current'])
             ->middleware('can:view,page')
             ->name('pages.pdf.download');
+        Route::get('/pages/{page}/document-original', [DocumentOriginalDownloadController::class, 'current'])
+            ->middleware('can:view,page')
+            ->name('pages.document-original.download');
         Route::post('/pages/{page}/markdown-preview', MarkdownPreviewController::class)
             ->middleware(['can:update,page', 'throttle:artifactflow-markdown-previews'])
             ->name('pages.markdown-preview');
@@ -352,6 +390,12 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
         Route::post('/pages/{page}/pdf/reprocess', PdfReprocessController::class)
             ->middleware(['can:update,page', 'throttle:artifactflow-page-writes'])
             ->name('pages.pdf.reprocess');
+        Route::post('/pages/{page}/xlsx/reprocess', XlsxReprocessController::class)
+            ->middleware(['can:update,page', 'throttle:artifactflow-page-writes'])
+            ->name('pages.xlsx.reprocess');
+        Route::post('/pages/{page}/docx/reprocess', DocxReprocessController::class)
+            ->middleware(['can:update,page', 'throttle:artifactflow-page-writes'])
+            ->name('pages.docx.reprocess');
         Route::get('/pages/{page}/versions/{version}', PageVersionInspectionController::class)
             ->middleware('can:view,page')
             ->name('pages.versions.show');
@@ -361,6 +405,9 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
         Route::get('/pages/{page}/versions/{version}/download', [PdfDownloadController::class, 'history'])
             ->middleware('can:view,page')
             ->name('pages.versions.pdf.download');
+        Route::get('/pages/{page}/versions/{version}/document-original', [DocumentOriginalDownloadController::class, 'history'])
+            ->middleware('can:view,page')
+            ->name('pages.versions.document-original.download');
         Route::post('/pages/{page}/versions/{version}/restore', [PageVersionController::class, 'restore'])
             ->middleware(['can:update,page', 'throttle:artifactflow-page-writes'])
             ->name('pages.versions.restore');

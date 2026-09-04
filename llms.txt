@@ -4,16 +4,16 @@
 
 ArtifactFlow preserves the output, not the conversation. It keeps the authoritative source or normalized original, immutable content versions, searchable content, ownership, permissions, safe previews, and audit history. It is not agent memory, a vector database, a chat archive, an AI generator, or a static site generator.
 
-The current public alpha supports Markdown pages with Mermaid diagrams, self-contained HTML artifacts, normalized PNG/JPEG images, and default-off native-text PDF artifacts. It searches authoritative text and metadata, keeps retained versions, and exposes approved read and write operations through scoped MCP access. PDF requires an explicitly enabled isolated processor; Word documents and PDF OCR remain later candidates. Untrusted HTML executes only on a separate cookieless artifact origin; image uploads are decoded in a dedicated parser service and only normalized pixels are retained. The security page and threat model document these boundaries and their residual risks.
+The current public alpha supports Markdown pages with Mermaid diagrams, self-contained HTML artifacts, normalized PNG/JPEG images, and default-off native-text PDF, typed XLSX, and searchable DOCX artifacts. It searches authoritative or bounded derived text and metadata, keeps retained versions, and exposes approved format-specific read and write operations through scoped MCP access. Every binary format requires its explicitly enabled isolated processor boundary; DOCX additionally requires independent validation by the PDF processor, while PDF OCR remains later work. Untrusted HTML executes only on a separate cookieless artifact origin; image uploads retain only normalized pixels, XLSX preview receives only a typed visible-cell manifest, and DOCX preview receives only a validated passive PDF derivative. The security page and threat model document these boundaries and their residual risks.
 
 ## Product
 
 - [Home](https://artifactflow.app/): Product overview, current screenshots, capabilities, alpha status, and project boundaries.
 - [Artifact workflow](https://artifactflow.app/workflow/): Stable identity, immutable content versions, draft lifecycle state, metadata changes, and format-specific payloads.
 - [Security architecture](https://artifactflow.app/security/): Two-origin isolation, sandbox and CSP controls, signed previews, defense in depth, and residual risks.
-- [MCP server](https://artifactflow.app/mcp/): Current operations, token scopes, authority limits, untrusted-data envelopes, and write safeguards.
+- [MCP server](https://artifactflow.app/mcp/): Current text and binary operations, Office read boundaries, token scopes, authority limits, untrusted-data envelopes, and write safeguards.
 - [Self-hosting](https://artifactflow.app/self-hosting/): Local evaluation and production requirements for origins, runtime roles, PostgreSQL, storage, secrets, and mail.
-- [Product roadmap](https://artifactflow.app/roadmap/): Current alpha boundary, post-alpha and beta candidates, required proof, and explicit non-promises.
+- [Product roadmap](https://artifactflow.app/roadmap/): Current alpha boundary, default-off document formats, required production proof, later candidates, and explicit non-promises.
 
 ## Guides
 
@@ -24,7 +24,7 @@ The current public alpha supports Markdown pages with Mermaid diagrams, self-con
 ## Repository documentation
 
 - [GitHub repository](https://github.com/Gadsotek/artifactflow): Source code, installation instructions, license, and project status.
-- [Artifact lifecycle](https://github.com/Gadsotek/artifactflow/blob/main/docs/ARTIFACT-LIFECYCLE.md): Authoritative identity, immutable-version, draft, metadata, and future document-payload semantics.
+- [Artifact lifecycle](https://github.com/Gadsotek/artifactflow/blob/main/docs/ARTIFACT-LIFECYCLE.md): Authoritative identity, immutable-version, draft, metadata, and format-specific document-payload semantics.
 - [Threat model](https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md): Security boundaries, attacker cases, maintained controls, and documented residual risks.
 - [Security policy](https://github.com/Gadsotek/artifactflow/blob/main/SECURITY.md): Supported versions and vulnerability reporting process.
 - [Operations guide](https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md): Production configuration, deployment, backup, restore, and release operations.

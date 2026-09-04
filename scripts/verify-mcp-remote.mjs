@@ -5,10 +5,13 @@ import { fileURLToPath } from 'node:url';
 
 const EXPECTED_VERSION = '0.8.2';
 const EXPECTED_NODE_RANGE = '>=20.18.1';
-const EXPECTED_LOCK_SHA256 = '57377bfe3b15e87873edbfd5ff07dffe750baad1a44748df2c977189b57e9b92';
+const EXPECTED_LOCK_SHA256 = '406184fe7b2c95b342d7ba21f3c432d5e1be7e31024c024860f9f2e32c6feed2';
+const EXPECTED_QS_VERSION = '6.16.0';
 const MINIMUM_NODE_VERSION = [20, 18, 1];
 const EXPECTED_INTEGRITY =
   'sha512-8wGCVQckLvW+ONz0tc11henp73lbbrt7QOTH7w6qusCpcY+zNSKwBfXF1Mx2xu6z8ncLqLxE1H1CMBCJCx9lcA==';
+const EXPECTED_QS_INTEGRITY =
+  'sha512-h6fhOIaRrID2CbEY2fqs+7t+UXZo+MLAnU5gRIq85uFtdiUPCdsApMlHhXogKVM4HM2DVbIjGNTTYH2OcmP1vA==';
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const bridgeDirectory = resolve(repositoryRoot, 'scripts/mcp-remote-bridge');
 const lockPath = resolve(bridgeDirectory, 'package-lock.json');
@@ -35,6 +38,7 @@ const lock = readJson(lockPath);
 const connectorSource = readFileSync(resolve(repositoryRoot, 'scripts/connect-mcp.sh'), 'utf8');
 const lockedRoot = lock.packages?.[''];
 const lockedBridge = lock.packages?.['node_modules/mcp-remote'];
+const lockedQs = lock.packages?.['node_modules/qs'];
 
 const nodeVersion = process.versions.node.split('.').map((part) => Number.parseInt(part, 10));
 let nodeIsSupported = true;
@@ -79,6 +83,10 @@ requireCondition(
   `mcp-remote must remain exactly pinned to ${EXPECTED_VERSION} in package.json.`,
 );
 requireCondition(
+  manifest.overrides?.qs === EXPECTED_QS_VERSION,
+  `qs must remain overridden to the reviewed ${EXPECTED_QS_VERSION} security release.`,
+);
+requireCondition(
   lock.lockfileVersion === 3,
   'The mcp-remote bridge requires npm lockfileVersion 3.',
 );
@@ -93,6 +101,14 @@ requireCondition(
 requireCondition(
   lockedBridge?.integrity === EXPECTED_INTEGRITY,
   'The reviewed mcp-remote tarball integrity changed; re-review it before updating the pin.',
+);
+requireCondition(
+  lockedQs?.version === EXPECTED_QS_VERSION,
+  `The lock resolved qs to ${lockedQs?.version ?? 'nothing'}, expected ${EXPECTED_QS_VERSION}.`,
+);
+requireCondition(
+  lockedQs?.integrity === EXPECTED_QS_INTEGRITY,
+  'The reviewed qs tarball integrity changed; re-review it before updating the override.',
 );
 
 let registryPackages = 0;

@@ -37,6 +37,7 @@ final readonly class RestorePageVersion
         private PageVersionPruner $versionPruner,
         private ArtifactContentDeleter $artifactContentDeleter,
         private PageVersionChangeSummaryRules $changeSummaryRules,
+        private PageVersionStorage $versionStorage,
     ) {
     }
 
@@ -74,9 +75,10 @@ final readonly class RestorePageVersion
         }
 
         $restoredVersion = null;
+        $restoredStoragePaths = [];
         $prunedStoragePaths = [];
-        $closureCompleted = false;
         $preparedAppend = null;
+        $transactionCallbackCompleted = false;
 
         try {
             $changeSummary = $this->changeSummaryRules->normalize($command->changeSummary);
@@ -85,6 +87,7 @@ final readonly class RestorePageVersion
                 $page,
                 $sourceContent,
                 PageVersionSource::Restore,
+                expectedCurrentVersionUid: $command->expectedCurrentVersionUid,
                 operation: VersionOperation::Restore,
                 lineage: new VersionLineage(
                     sourceVersionUid: $sourceVersion->uid,
@@ -99,8 +102,9 @@ final readonly class RestorePageVersion
                 $command,
                 $page,
                 &$prunedStoragePaths,
+                &$restoredStoragePaths,
                 &$restoredVersion,
-                &$closureCompleted,
+                &$transactionCallbackCompleted,
                 $preparedAppend,
                 $sourceVersion,
             ): PageVersion {
@@ -119,21 +123,20 @@ final readonly class RestorePageVersion
                     page: $page,
                     expectedCurrentVersionUid: $command->expectedCurrentVersionUid,
                 );
+                $restoredStoragePaths = $this->versionStorage->paths($restoredVersion);
 
                 $this->recordRestored($page, $sourceVersion, $restoredVersion, $actorUid, $previousCurrentVersionUid);
 
                 $prunedStoragePaths = $this->versionPruner->pruneToCap($page, $actorUid);
-                $closureCompleted = true;
+                $transactionCallbackCompleted = true;
 
                 return $restoredVersion;
             });
         } catch (Throwable $exception) {
-            // Delete the staged blob only on a pre-commit rollback (the closure
-            // failed). A commit-phase failure after the closure completed leaves the
-            // restored version row durable, so its blob must survive; the orphan
-            // reaper handles any post-commit anomaly (matching UpdatePageContent).
-            if (!$closureCompleted && $restoredVersion instanceof PageVersion) {
-                Storage::disk('artifacts')->delete($restoredVersion->content_storage_path);
+            // Preserve promoted paths after callback completion because PostgreSQL
+            // may have committed before the connection failure was observed.
+            if (!$transactionCallbackCompleted && $restoredStoragePaths !== []) {
+                Storage::disk('artifacts')->delete($restoredStoragePaths);
             }
 
             if ($exception instanceof BlockedPageContentException) {

@@ -39,6 +39,22 @@ it('rejects secrets published in the repository fixtures', function (): void {
         ->and(SecretStrength::isProductionSafe('base64:' . base64_encode(random_bytes(32))))->toBeTrue();
 });
 
+it('rejects every published processor fallback in production secret roles', function (string $secret): void {
+    expect(SecretStrength::isPublishedFixtureSecret($secret))->toBeTrue()
+        ->and(SecretStrength::isStrong($secret))->toBeFalse()
+        ->and(SecretStrength::isProductionSafe($secret))->toBeFalse();
+})->with([
+    'local XLSX' => 'artifactflow-local-xlsx-processor-secret-not-for-production',
+    'local DOCX' => 'artifactflow-local-docx-processor-secret-not-for-production',
+    'e2e image' => 'artifactflow-e2e-image-parser-secret',
+    'e2e PDF' => 'artifactflow-e2e-pdf-processor-secret',
+    'e2e XLSX' => 'artifactflow-e2e-xlsx-processor-secret',
+    'e2e DOCX' => 'artifactflow-e2e-docx-processor-secret',
+    'runtime PDF' => 'artifactflow-private-processor-runtime-test-secret',
+    'runtime XLSX' => 'artifactflow-xlsx-runtime-test-secret',
+    'runtime DOCX' => 'artifactflow-docx-runtime-test-secret',
+]);
+
 it('normalizes base64 secrets to their raw bytes', function (): void {
     expect(SecretStrength::normalized('base64:' . base64_encode('payload')))->toBe('payload')
         ->and(SecretStrength::normalized('plain'))->toBe('plain')

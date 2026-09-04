@@ -95,6 +95,21 @@ final class McpToolArguments
         return $value === '' ? null : $value;
     }
 
+    public function nullableRawString(string $key): ?string
+    {
+        $value = $this->arguments[$key] ?? null;
+
+        if ($value === null) {
+            return null;
+        }
+
+        if (!is_string($value) || $value === '') {
+            throw new DomainRuleViolation(sprintf('Argument [%s] must be a non-empty string.', $key));
+        }
+
+        return $value;
+    }
+
     public function requiredNonNegativeInt(string $key): int
     {
         $value = $this->arguments[$key] ?? null;

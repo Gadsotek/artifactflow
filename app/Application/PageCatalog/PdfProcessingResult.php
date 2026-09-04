@@ -13,6 +13,8 @@ final readonly class PdfProcessingResult
 {
     public const string PROCESSOR_PROFILE = 'pdfbox-3.0.8-native-text-v1';
 
+    public const string DOCX_PREVIEW_PROCESSOR_PROFILE = 'pdfbox-3.0.8-docx-preview-v1';
+
     public function __construct(
         public int $pageCount,
         public string $pdfVersion,
@@ -22,8 +24,10 @@ final readonly class PdfProcessingResult
     ) {
     }
 
-    public static function fromJson(string $json): self
-    {
+    public static function fromJson(
+        string $json,
+        string $expectedProfile = self::PROCESSOR_PROFILE,
+    ): self {
         try {
             $decoded = json_decode($json, true, 8, JSON_THROW_ON_ERROR);
         } catch (JsonException $exception) {
@@ -55,7 +59,8 @@ final readonly class PdfProcessingResult
             || !is_string($pdfVersion)
             || preg_match('/^(?:1\.[0-7]|2\.0)$/D', $pdfVersion) !== 1
             || !$state instanceof PdfExtractionState
-            || $processorProfile !== self::PROCESSOR_PROFILE
+            || !in_array($expectedProfile, [self::PROCESSOR_PROFILE, self::DOCX_PREVIEW_PROCESSOR_PROFILE], true)
+            || $processorProfile !== $expectedProfile
             || !is_string($text)
             || strlen($text) > PdfProcessorConfiguration::MAX_TEXT_BYTES
             || !PageContentEncoding::isStorable($text)

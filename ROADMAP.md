@@ -2,7 +2,7 @@
 
 ArtifactFlow is a self-hosted, versioned artifact vault for deliberate outputs created with AI. It preserves the artifact, its authoritative source or original, retained versions, searchable content, ownership, permissions, previews, and audit history. It is not agent memory, a chat archive, or an AI generation platform.
 
-The open-source alpha has shipped. Its current bounded formats are Markdown, self-contained HTML, normalized PNG/JPEG screenshots or images, and default-off native-text PDF artifacts. Three-level nested shared workspaces shipped in v0.0.9. Alpha work should stay focused on security, correctness, release readiness, documentation, and deliberately scoped feature slices. Searchable Word documents remain the next format candidate after the PDF processing boundary; PDF OCR is a separate later milestone.
+The open-source alpha has shipped. Its bounded formats are Markdown, self-contained HTML, normalized PNG/JPEG screenshots or images, and default-off native-text PDF, Excel `.xlsx`, and Word `.docx` artifacts. Three-level nested shared workspaces shipped in v0.0.9. Alpha work should stay focused on security, correctness, release readiness, documentation, and deliberately scoped feature slices. PDF OCR is a separate later milestone.
 
 This roadmap records direction, not a release promise. Every item still requires tests-first implementation and the security gates in `AGENTS.md`.
 
@@ -59,7 +59,7 @@ Current image support deliberately stays small:
 - no OCR is performed, so full-text discovery comes from editable catalog metadata;
 - MCP may read the normalized image and update only its description under ordinary token, authorization, scan, concurrency, rate-limit, and audit rules.
 
-Raster decoding now runs in a separately resource-isolated, internal-only processing service. PDF/DOCX parsing must preserve or strengthen that boundary, with format-specific parser and renderer limits, before those formats ship.
+Raster, PDF, XLSX, and DOCX processing each run behind separately resource-isolated, internal-only services with format-specific parser, renderer, and output limits. No native office parser runs in the Laravel runtime or a browser.
 
 ## Alpha: expiring and one-time external share links
 
@@ -141,40 +141,71 @@ PDFs must not be converted into executable HTML or displayed in the authenticate
 - workspace moves atomically transfer original bytes, and tests prove restricted artifact-host grants, exact transport boundaries, signed URL expiry/revision, and processor concurrency limits;
 - browser tests prove the native viewer stays on the artifact origin, sends no app cookies, cannot access app-origin credentials, and uses the narrowly documented PDF-only sandbox exception or falls back to deliberate download without changing the HTML/image cage.
 
-## Later focus: searchable Word document artifacts
+## Default-off searchable XLSX workbook artifacts
+
+Public security contract: [XLSX architecture decision](docs/architecture/xlsx-artifacts.md).
+
+Implementation status (2026-08-30): bounded `.xlsx` support is implemented as a
+default-off production opt-in. The exact original is retained privately; a
+dedicated SheetJS CE processor emits only the canonical `xlsx-view-manifest-v1`
+typed projection; search indexes normalized visible cell content; and an
+application-owned Tabulator viewer renders that projection on the opaque,
+cookieless artifact origin. Formulas are never evaluated. Hidden sheets, rows,
+columns, objects, comments, charts, and advanced formatting are deliberately
+omitted. Web and MCP creation/replacement, current and historical originals,
+version restoration, in-place reprocessing, lifecycle accounting, integrity
+checks, and the narrow external-share presentation use the same authorization
+and feature-flag boundary.
+
+XLSX processing is not an antivirus verdict. Downloading the retained original
+is an explicit transfer of untrusted workbook bytes. Production enablement must
+pin the reviewed processor image, prove one-worker resource and network
+containment, configure its dedicated HMAC secret, and complete the browser and
+evidence-first review gates in the public decision.
+
+## Default-off searchable Word document artifacts
 
 Tracking: [GitHub issue #33](https://github.com/Gadsotek/artifactflow/issues/33)
 
-Word document support is focused on modern `.docx` files. Legacy binary `.doc` and macro-enabled `.docm` files remain outside the first design. A Word document should participate in the same workspace catalog, permissions, lifecycle, versioning, tags, search, preview, download, and MCP experience as other artifacts.
+Implementation status (2026-08-30): bounded modern `.docx` support is
+implemented as a default-off production opt-in. Legacy binary `.doc`,
+macro-enabled `.docm`, encrypted packages, and documents containing unsupported
+active or embedded content remain outside the accepted profile. A Word document
+participates in the same workspace catalog, permissions, lifecycle, versioning,
+tags, search, preview, exact-original download, external-sharing, and MCP
+experience as other artifacts.
 
-Planned experience:
+Implemented experience:
 
 - upload a DOCX artifact into a personal or shared workspace with the usual title, description, category, tags, and owner;
 - extract paragraphs, headings, lists, tables, links, document properties, and other useful text into permission-aware search;
 - provide a safe, non-executable preview without injecting converted document HTML into the authenticated application DOM;
 - download the authorized original while keeping it in private storage;
 - replace the document by appending an immutable artifact version and retaining the original plus extracted-text history for each version;
-- define how an optional generator source, such as Markdown or Python, can be preserved beside a generated DOCX without pretending that every uploaded document has one.
+- keep optional generator-source preservation out of this slice rather than pretending every uploaded document has one.
 
 DOCX is a ZIP/XML container, not trusted text. Processing must reject malformed packages, external relationships, macros, embedded active content, oversized decompression, excessive part counts, parser exhaustion, and unsupported encryption before any derived preview becomes available.
 
-### Security and processing plan
+### Security and processing boundary
 
-1. Define compressed and expanded byte limits, part-count limits, parser time, memory, relationship, image, table, and text-extraction limits.
-2. Validate the package signature, content types, relationships, and ZIP structure rather than trusting the extension or browser-supplied MIME type.
-3. Parse and convert only in an isolated worker whose OS or container boundary denies outbound network access and enforces hard resource limits.
-4. Keep the original private. Render previews into non-executable derivatives, or use an equally isolated viewer boundary, without allowing document links, embedded objects, or converted markup to inherit the app origin.
-5. Escape extracted text and metadata everywhere they appear. A parser or preview failure must remain visible and must never make the original public.
-6. Apply workspace and page authorization consistently to upload, processing status, preview, download, search snippets, MCP access, version history, archival, deletion, and every derivative.
+1. Compressed bytes, expanded bytes, package parts, relationships, media, pages, output bytes, parser time, memory, processes, and temporary storage are bounded independently.
+2. The dedicated DOCX processor validates ZIP/OPC structure, exact namespaces, content types, relationships, targets, and active-content exclusions before conversion; extension and client MIME are never trusted.
+3. LibreOffice runs as one isolated conversion process under a networkless container and hard resource limits. The resulting PDF is independently submitted to the PDFBox processor's DOCX-preview profile before it can be stored, indexed, or delivered.
+4. The exact original stays private. Only the validated passive PDF derivative is previewed on the artifact origin; converted HTML never enters the authenticated application DOM.
+5. Extracted text and metadata remain untrusted and escaped. Parser or preview failure fails the whole write without exposing the original or a partial derivative.
+6. Workspace and page authorization applies consistently to upload, processing status, preview, original download, search snippets, MCP access, version history, archival, deletion, and every derivative.
 
-### Required proof before beta
+### Required proof before production enablement
 
-- ordinary DOCX files become searchable and previewable with useful structure retained;
+- ordinary DOCX files become searchable and previewable as text-bearing passive PDFs;
 - replacing a Word document appends a version and removes stale extracted text from current search results;
 - malformed ZIPs, zip bombs, external relationships, macros, embedded objects, encrypted files, and parser-exhaustion inputs fail safely;
 - restricted titles, snippets, extracted text, originals, preview derivatives, and processing status never leak through search, Library, direct URLs, MCP, logs, or jobs;
-- deletion and retention rules remove the original, extracted text, preview derivatives, and any attached generator source for the affected version;
+- deletion and retention rules remove the original, extracted text, and preview derivative for the affected version;
 - browser tests prove document previews cannot execute document-provided active content or access app-origin credentials.
+
+The complete accepted contract and operator evidence requirements are in
+[`docs/architecture/docx-artifacts.md`](docs/architecture/docx-artifacts.md).
 
 ## Released in v0.0.9: nested shared workspaces
 

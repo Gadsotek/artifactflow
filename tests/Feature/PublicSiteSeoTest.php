@@ -558,10 +558,12 @@ final class PublicSiteSeoTest extends TestCase
         $this->assertIsString($repositoryLlms);
         $this->assertSame($siteLlms, $repositoryLlms);
         $this->assertStringContainsString('normalized PNG/JPEG images', $siteLlms);
-        $this->assertStringContainsString('searches authoritative text and metadata', $siteLlms);
+        $this->assertStringContainsString('default-off native-text PDF, typed XLSX, and searchable DOCX artifacts', $siteLlms);
+        $this->assertStringContainsString('searches authoritative or bounded derived text and metadata', $siteLlms);
         $this->assertStringContainsString('immutable content versions', $siteLlms);
         $this->assertStringContainsString('## Guides', $siteLlms);
         $this->assertStringNotContainsString('Indexes metadata, not full text', $siteLlms);
+        $this->assertStringNotContainsString('Word documents and PDF OCR remain later candidates', $siteLlms);
     }
 
     public function test_public_guides_answer_discovery_questions_with_first_party_evidence(): void
@@ -584,6 +586,8 @@ final class PublicSiteSeoTest extends TestCase
             'https://github.com/Gadsotek/artifactflow/blob/main/docs/ARTIFACT-LIFECYCLE.md',
             $vaultGuide,
         );
+        $this->assertStringContainsString('default-off native-text PDF, typed XLSX, and searchable DOCX artifacts', $vaultGuide);
+        $this->assertStringNotContainsString('Word documents and PDF OCR remain later candidates', $vaultGuide);
         $this->assertStringContainsString(
             '<h1>How should AI-generated HTML run safely?</h1>',
             $htmlGuide,
@@ -695,6 +699,8 @@ final class PublicSiteSeoTest extends TestCase
             '<strong>Terminology:</strong> An artifact is the managed record. Each version retains its authoritative source or original; previews and runtimes are derived ways to use it.',
             $homepage,
         );
+        $this->assertStringContainsString('default-off PDF, XLSX, and DOCX', $homepage);
+        $this->assertStringContainsString('bounded Office selections or extracted text', $homepage);
         $this->assertStringNotContainsString(
             'future binary documents retain private originals and bounded derivatives',
             $homepage,
@@ -818,7 +824,7 @@ final class PublicSiteSeoTest extends TestCase
         }
     }
 
-    public function test_roadmap_tracks_opt_in_pdf_after_released_nested_workspaces(): void
+    public function test_roadmap_tracks_default_off_document_formats_after_released_nested_workspaces(): void
     {
         $roadmap = file_get_contents(base_path('ROADMAP.md'));
         $roadmapPage = file_get_contents(base_path('site/roadmap/index.html'));
@@ -827,10 +833,16 @@ final class PublicSiteSeoTest extends TestCase
         $this->assertIsString($roadmapPage);
         $this->assertStringContainsString('## Released in v0.0.9: nested shared workspaces', $roadmap);
         $this->assertStringContainsString('## Opt-in searchable PDF artifacts', $roadmap);
-        $this->assertStringContainsString('## Later focus: searchable Word document artifacts', $roadmap);
+        $this->assertStringContainsString('## Default-off searchable XLSX workbook artifacts', $roadmap);
+        $this->assertStringContainsString('## Default-off searchable Word document artifacts', $roadmap);
         $this->assertStringContainsString('Nested shared workspaces', $roadmapPage);
         $this->assertStringContainsString('Searchable PDF artifacts', $roadmapPage);
+        $this->assertStringContainsString('Searchable Excel workbooks', $roadmapPage);
         $this->assertStringContainsString('Searchable Word documents', $roadmapPage);
+        $this->assertStringContainsString('ArtifactFlow Roadmap | Governed Document Formats', $roadmapPage);
+        $this->assertStringNotContainsString('Word Next', $roadmapPage);
+        $this->assertStringContainsString('application-owned typed viewer', $roadmapPage);
+        $this->assertStringContainsString('independently validated passive PDF', $roadmapPage);
         $this->assertStringContainsString('DOCX', $roadmapPage);
         $this->assertStringContainsString('OCR remains a later PDF milestone.', $roadmapPage);
         $this->assertStringContainsString('browser-native viewing on the existing cookieless artifact origin', $roadmapPage);
@@ -879,7 +891,7 @@ final class PublicSiteSeoTest extends TestCase
             $this->assertStringContainsString('metadata revision', $workflow);
             $this->assertStringContainsString('not a content-version snapshot', $workflow);
             $this->assertStringContainsString(
-                'PDF support is a default-off production opt-in; DOCX remains roadmap direction only',
+                'PDF, XLSX, and DOCX support are independent default-off production opt-ins',
                 $workflow,
             );
             $this->assertStringContainsString('Per-version catalog metadata is not promised', $workflow);
@@ -889,6 +901,8 @@ final class PublicSiteSeoTest extends TestCase
         $this->assertStringContainsString('href="/workflow/"', $homepage);
         $this->assertStringContainsString("browser's native PDF viewer on the existing cookieless artifact origin", $workflowDocumentation);
         $this->assertStringContainsString("browser's native viewer on the existing cookieless artifact origin", $workflowPage);
+        $this->assertStringContainsString('canonical typed manifest', $workflowPage);
+        $this->assertStringContainsString('independently validated PDF derivative', $workflowPage);
         $this->assertStringContainsString('Preview deliberately transfers the authorized original', $workflowPage);
         $this->assertStringContainsString('may not be visible in the document', $workflowPage);
         $this->assertStringContainsString(
@@ -899,6 +913,51 @@ final class PublicSiteSeoTest extends TestCase
             '- [Artifact workflow](https://artifactflow.app/workflow/):',
             $llms,
         );
+    }
+
+    public function test_public_mcp_page_tracks_the_complete_office_tool_and_scope_contract(): void
+    {
+        $mcpPage = file_get_contents(base_path('site/mcp/index.html'));
+
+        $this->assertIsString($mcpPage);
+        $this->assertStringContainsString('Twenty tools cover discovery, governed reads, and versioned changes.', $mcpPage);
+        foreach (['create_xlsx', 'create_docx', 'replace_xlsx', 'replace_docx'] as $tool) {
+            $this->assertStringContainsString("<code>{$tool}</code>", $mcpPage);
+        }
+        foreach (['mcp:upload', 'mcp:organize', 'mcp:share'] as $scope) {
+            $this->assertStringContainsString("<code>{$scope}</code>", $mcpPage);
+        }
+        $this->assertStringContainsString('canonical uppercase range capped at 1,000 cells', $mcpPage);
+        $this->assertStringContainsString('validated PDF-derived text', $mcpPage);
+        $this->assertStringContainsString(
+            'search-only tokens receive catalog metadata without content-derived facts',
+            $mcpPage,
+        );
+        $this->assertStringNotContainsString('Ten operations cover discovery', $mcpPage);
+    }
+
+    public function test_public_self_hosting_page_names_the_office_processor_boundary(): void
+    {
+        $selfHostingPage = file_get_contents(base_path('site/self-hosting/index.html'));
+
+        $this->assertIsString($selfHostingPage);
+        $this->assertStringContainsString('<code>xlsx-processor</code>', $selfHostingPage);
+        $this->assertStringContainsString('<code>docx-processor</code>', $selfHostingPage);
+        $this->assertStringContainsString('separate PDF processor', $selfHostingPage);
+        $this->assertStringContainsString('default-off', $selfHostingPage);
+        $this->assertStringContainsString('independent processor image digests', $selfHostingPage);
+    }
+
+    public function test_public_security_page_explains_native_office_parser_and_preview_boundaries(): void
+    {
+        $securityPage = file_get_contents(base_path('site/security/index.html'));
+
+        $this->assertIsString($securityPage);
+        $this->assertStringContainsString('Native documents are hostile parser input.', $securityPage);
+        $this->assertStringContainsString('strict ZIP and OPC admission', $securityPage);
+        $this->assertStringContainsString('independent PDFBox DOCX-preview profile', $securityPage);
+        $this->assertStringContainsString('Antivirus is not the security boundary', $securityPage);
+        $this->assertStringContainsString('container-runtime or kernel escape', $securityPage);
     }
 
     private function htmlXPath(string $path): DOMXPath

@@ -1,0 +1,22 @@
+{
+  "name": "artifactflow-xlsx-viewer-spike",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Read-only typed XLSX manifest viewer spike",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "pretest": "npm run build",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "tabulator-tables": "6.5.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

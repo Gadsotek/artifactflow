@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\Diagnostics;
 
 use App\Application\Administration\InstallationLimitCeilings;
+use App\Application\Http\BoundedResponseReader;
 use App\Application\Identity\TurnstileConfiguration;
 use App\Application\PageCatalog\ImageArtifactLimits;
 use App\Application\PageCatalog\ImageNormalizationConfiguration;
@@ -23,21 +24,27 @@ use Illuminate\Contracts\Config\Repository;
  * enforces at boot, reported as a full pass/fail punch list instead of throwing on
  * the first violation. It never writes. Universal invariants are graded in every
  * environment; production-hardening invariants are graded as failures only in
- * production and reported as skipped (with the current value) locally, so the same
- * command is useful both before `make up-local` and before a production deploy.
+ * production and normally reported as skipped (with the current value) locally.
+ * Enabled XLSX/DOCX capabilities additionally run their signed live readiness
+ * checks in local mode, so the same command verifies the developer stack and a
+ * production deployment without weakening the production-only invariants.
  */
 final readonly class DeploymentDoctor
 {
     private RateLimiterCacheConfiguration $rateLimiterCache;
     private SecurityInvariants $invariants;
+    private ProcessorHealthProbe $processorHealthProbe;
 
     public function __construct(
         private Repository $config,
         ?RateLimiterCacheConfiguration $rateLimiterCache = null,
         ?SecurityInvariants $invariants = null,
+        ?ProcessorHealthProbe $processorHealthProbe = null,
     ) {
         $this->rateLimiterCache = $rateLimiterCache ?? new RateLimiterCacheConfiguration($config);
         $this->invariants = $invariants ?? new SecurityInvariants($config);
+        $this->processorHealthProbe = $processorHealthProbe
+            ?? new HttpProcessorHealthProbe(new BoundedResponseReader());
     }
 
     public function run(): DoctorReport
@@ -52,6 +59,8 @@ final readonly class DeploymentDoctor
             $this->dedicatedSigningKeyCheck(),
             $this->imageParserCheck($production),
             $this->pdfReleaseGateCheck($production),
+            $this->xlsxReleaseGateCheck($production),
+            $this->docxReleaseGateCheck($production),
             $this->artifactFrameAncestorsCheck(),
             $this->artifactReadLimitCheck(),
             $this->httpsOriginsCheck($production),
@@ -187,6 +196,13 @@ final readonly class DeploymentDoctor
             $comparisonSecrets[] = $imageParserSecret;
         }
 
+        foreach (['xlsx_processor.shared_secret', 'docx_processor.shared_secret'] as $key) {
+            $other = SecretStrength::normalized($this->string($key));
+            if ($other !== null) {
+                $comparisonSecrets[] = $other;
+            }
+        }
+
         if (
             !SecretStrength::isProductionSafe($configured)
             || $secret === null
@@ -217,8 +233,19 @@ final readonly class DeploymentDoctor
             );
         }
 
+        $health = $this->processorHealthProbe->pdf(new ProcessorHealthTarget(
+            origin: $origin->compact(),
+            socketPath: $this->optionalSocketPath('pdf_processor.socket_path'),
+            sharedSecret: $secret,
+            connectTimeoutSeconds: $connectTimeout,
+            timeoutSeconds: $requestTimeout,
+        ));
+        if (!$health->healthy) {
+            return $this->fail($id, $label, 'Authenticated PDF health challenge failed: ' . $health->detail);
+        }
+
         return $this->pass($id, $label, sprintf(
-            'Processor origin is %s with dedicated authentication and bounded timeouts.',
+            'Processor origin is %s with dedicated authentication, bounded timeouts, and a passing live profile/containment check.',
             $origin->compact(),
         ));
     }
@@ -256,6 +283,436 @@ final readonly class DeploymentDoctor
         }
 
         return $this->pass('cache_store', 'Cache store', sprintf("Rate limiter cache store is '%s'.", $label));
+    }
+
+    private function xlsxReleaseGateCheck(bool $production): DoctorCheck
+    {
+        $enabled = $this->config->get('xlsx_processor.enabled', false);
+        $id = 'xlsx_release_gate';
+        $label = 'XLSX processor isolation';
+
+        if (!is_bool($enabled)) {
+            return $this->fail($id, $label, 'XLSX_PROCESSOR_ENABLED must be true or false.');
+        }
+
+        if ($enabled && !UnixSocketPath::isValidOptional($this->untrimmedString('xlsx_processor.socket_path'))) {
+            return $this->fail(
+                $id,
+                $label,
+                'XLSX_PROCESSOR_SOCKET_PATH must be empty or an absolute filesystem path.',
+            );
+        }
+
+        if (!$production && !$enabled) {
+            return $this->skipped(
+                $id,
+                $label,
+                'XLSX remains disabled by default.',
+            );
+        }
+
+        $runtimeRole = $this->string('app.runtime_role');
+
+        if (!$production) {
+            if ($runtimeRole !== 'app') {
+                return $this->skipped($id, $label, 'Run the live XLSX processor check from the app runtime.');
+            }
+
+            $target = $this->localProcessorHealthTarget('xlsx_processor', $id, $label, 'XLSX');
+
+            if ($target instanceof DoctorCheck) {
+                return $target;
+            }
+
+            $health = $this->processorHealthProbe->xlsx($target);
+
+            if (!$health->healthy) {
+                return $this->fail($id, $label, 'Authenticated XLSX health challenge failed: ' . $health->detail);
+            }
+
+            return $this->pass(
+                $id,
+                $label,
+                sprintf(
+                    'Local processor origin is %s with a passing live profile/containment check; production additionally requires the dedicated deployment boundary.',
+                    $target->origin,
+                ),
+            );
+        }
+
+        if ($runtimeRole !== 'app' && (
+            $this->string('xlsx_processor.url') !== ''
+            || $this->string('xlsx_processor.socket_path') !== ''
+            || $this->string('xlsx_processor.shared_secret') !== ''
+        )) {
+            return $this->fail(
+                $id,
+                $label,
+                'Remove XLSX_PROCESSOR_URL, XLSX_PROCESSOR_SOCKET_PATH, and XLSX_PROCESSOR_SHARED_SECRET from every non-app runtime role.',
+            );
+        }
+
+        if ($runtimeRole !== 'app') {
+            if ($enabled && $runtimeRole !== 'artifact-host') {
+                return $this->fail(
+                    $id,
+                    $label,
+                    'Set XLSX_PROCESSOR_ENABLED=false for worker and scheduler runtime roles.',
+                );
+            }
+
+            return $this->pass(
+                $id,
+                $label,
+                $runtimeRole === 'artifact-host' && $enabled
+                    ? 'XLSX presentation is enabled without processor credentials on the artifact host.'
+                    : sprintf("Runtime role '%s' has no XLSX processor credential.", $runtimeRole),
+            );
+        }
+
+        if (!$enabled) {
+            return $this->pass($id, $label, 'XLSX remains disabled by default.');
+        }
+
+        $origin = OriginNormalizer::tryParsePureOrigin($this->string('xlsx_processor.url'));
+
+        if ($origin === null) {
+            return $this->fail($id, $label, 'XLSX_PROCESSOR_URL must be a pure HTTP or HTTPS origin.');
+        }
+
+        if (!$origin->isHttps() && trim($this->untrimmedString('xlsx_processor.socket_path')) === '') {
+            return $this->fail(
+                $id,
+                $label,
+                'XLSX_PROCESSOR_URL must use HTTPS when XLSX_PROCESSOR_SOCKET_PATH is empty.',
+            );
+        }
+
+        $previousApplicationSecrets = $this->previousApplicationSecrets();
+
+        if ($previousApplicationSecrets === null) {
+            return $this->fail(
+                $id,
+                $label,
+                'APP_PREVIOUS_KEYS must be valid before XLSX processor secret isolation can be verified.',
+            );
+        }
+
+        $configured = $this->string('xlsx_processor.shared_secret');
+        $secret = SecretStrength::normalized($configured);
+        $comparisonSecrets = array_values(array_filter([
+            SecretStrength::normalized($this->string('app.key')),
+            ...$previousApplicationSecrets,
+            SecretStrength::normalized($this->string('app.artifact_url_signing_key')),
+            SecretStrength::normalized($this->string('image_parser.shared_secret')),
+            SecretStrength::normalized($this->string('pdf_processor.shared_secret')),
+            SecretStrength::normalized($this->string('docx_processor.shared_secret')),
+        ], is_string(...)));
+
+        if (
+            !SecretStrength::isProductionSafe($configured)
+            || $secret === null
+            || $this->invariants->secretReusesAny($secret, $comparisonSecrets)
+        ) {
+            return $this->fail(
+                $id,
+                $label,
+                'XLSX_PROCESSOR_SHARED_SECRET must be a strong dedicated secret.',
+            );
+        }
+
+        $connectTimeout = $this->config->get('xlsx_processor.connect_timeout_seconds');
+        $requestTimeout = $this->config->get('xlsx_processor.timeout_seconds');
+
+        if (
+            !is_int($connectTimeout)
+            || $connectTimeout < 1
+            || $connectTimeout > 60
+            || !is_int($requestTimeout)
+            || $requestTimeout < 1
+            || $requestTimeout > 60
+        ) {
+            return $this->fail(
+                $id,
+                $label,
+                'XLSX_PROCESSOR_CONNECT_TIMEOUT_SECONDS and XLSX_PROCESSOR_TIMEOUT_SECONDS must be integers between 1 and 60.',
+            );
+        }
+
+        $health = $this->processorHealthProbe->xlsx(new ProcessorHealthTarget(
+            origin: $origin->compact(),
+            socketPath: $this->optionalSocketPath('xlsx_processor.socket_path'),
+            sharedSecret: $secret,
+            connectTimeoutSeconds: $connectTimeout,
+            timeoutSeconds: $requestTimeout,
+        ));
+        if (!$health->healthy) {
+            return $this->fail($id, $label, 'Authenticated XLSX health challenge failed: ' . $health->detail);
+        }
+
+        return $this->pass($id, $label, sprintf(
+            'Processor origin is %s with dedicated authentication, bounded timeouts, and a passing live profile/containment check.',
+            $origin->compact(),
+        ));
+    }
+
+    private function optionalSocketPath(string $key): ?string
+    {
+        $path = trim($this->untrimmedString($key));
+
+        return $path === '' ? null : $path;
+    }
+
+    private function localProcessorHealthTarget(
+        string $configPrefix,
+        string $checkId,
+        string $checkLabel,
+        string $processorLabel,
+    ): ProcessorHealthTarget|DoctorCheck {
+        $origin = OriginNormalizer::tryParsePureOrigin($this->string($configPrefix . '.url'));
+
+        if ($origin === null) {
+            return $this->fail(
+                $checkId,
+                $checkLabel,
+                sprintf('%s processor URL must be a pure HTTP or HTTPS origin.', $processorLabel),
+            );
+        }
+
+        $secret = SecretStrength::normalized($this->string($configPrefix . '.shared_secret'));
+
+        if ($secret === null || $secret === '') {
+            return $this->fail(
+                $checkId,
+                $checkLabel,
+                sprintf('%s processor shared secret is missing.', $processorLabel),
+            );
+        }
+
+        $connectTimeout = $this->config->get($configPrefix . '.connect_timeout_seconds');
+        $requestTimeout = $this->config->get($configPrefix . '.timeout_seconds');
+
+        if (
+            !is_int($connectTimeout)
+            || $connectTimeout < 1
+            || $connectTimeout > 60
+            || !is_int($requestTimeout)
+            || $requestTimeout < 1
+            || $requestTimeout > 60
+        ) {
+            return $this->fail(
+                $checkId,
+                $checkLabel,
+                sprintf('%s processor connect and request timeouts must be integers between 1 and 60.', $processorLabel),
+            );
+        }
+
+        return new ProcessorHealthTarget(
+            origin: $origin->compact(),
+            socketPath: $this->optionalSocketPath($configPrefix . '.socket_path'),
+            sharedSecret: $secret,
+            connectTimeoutSeconds: $connectTimeout,
+            timeoutSeconds: $requestTimeout,
+        );
+    }
+
+    private function docxReleaseGateCheck(bool $production): DoctorCheck
+    {
+        $enabled = $this->config->get('docx_processor.enabled', false);
+        $id = 'docx_release_gate';
+        $label = 'DOCX processor isolation';
+        if (!is_bool($enabled)) {
+            return $this->fail($id, $label, 'DOCX_PROCESSOR_ENABLED must be true or false.');
+        }
+        if ($enabled && !UnixSocketPath::isValidOptional($this->untrimmedString('docx_processor.socket_path'))) {
+            return $this->fail($id, $label, 'DOCX_PROCESSOR_SOCKET_PATH must be empty or an absolute filesystem path.');
+        }
+        if (!$production && !$enabled) {
+            return $this->skipped(
+                $id,
+                $label,
+                'DOCX remains disabled by default.',
+            );
+        }
+
+        $runtimeRole = $this->string('app.runtime_role');
+
+        if (!$production) {
+            if ($runtimeRole !== 'app') {
+                return $this->skipped($id, $label, 'Run the live DOCX/PDF processor-chain check from the app runtime.');
+            }
+
+            if ($this->config->get('pdf_processor.enabled', false) !== true) {
+                return $this->fail($id, $label, 'DOCX artifacts require PDF_PROCESSOR_ENABLED=true.');
+            }
+
+            if (!UnixSocketPath::isValidOptional($this->untrimmedString('pdf_processor.socket_path'))) {
+                return $this->fail($id, $label, 'PDF_PROCESSOR_SOCKET_PATH must be empty or an absolute filesystem path.');
+            }
+
+            $docxTarget = $this->localProcessorHealthTarget('docx_processor', $id, $label, 'DOCX');
+
+            if ($docxTarget instanceof DoctorCheck) {
+                return $docxTarget;
+            }
+
+            $docxHealth = $this->processorHealthProbe->docx($docxTarget);
+
+            if (!$docxHealth->healthy) {
+                return $this->fail($id, $label, 'Authenticated DOCX health challenge failed: ' . $docxHealth->detail);
+            }
+
+            $pdfTarget = $this->localProcessorHealthTarget('pdf_processor', $id, $label, 'Downstream PDF');
+
+            if ($pdfTarget instanceof DoctorCheck) {
+                return $pdfTarget;
+            }
+
+            $pdfHealth = $this->processorHealthProbe->pdf($pdfTarget);
+
+            if (!$pdfHealth->healthy) {
+                return $this->fail(
+                    $id,
+                    $label,
+                    'Authenticated downstream PDF health challenge failed: ' . $pdfHealth->detail,
+                );
+            }
+
+            return $this->pass(
+                $id,
+                $label,
+                sprintf(
+                    'Local processor origin is %s with passing live DOCX/PDF health checks; production additionally requires both dedicated deployment boundaries.',
+                    $docxTarget->origin,
+                ),
+            );
+        }
+        if ($runtimeRole !== 'app' && (
+            $this->string('docx_processor.url') !== ''
+            || $this->string('docx_processor.socket_path') !== ''
+            || $this->string('docx_processor.shared_secret') !== ''
+        )) {
+            return $this->fail(
+                $id,
+                $label,
+                'Remove DOCX_PROCESSOR_URL, DOCX_PROCESSOR_SOCKET_PATH, and DOCX_PROCESSOR_SHARED_SECRET from every non-app runtime role.',
+            );
+        }
+        if ($runtimeRole !== 'app') {
+            if ($enabled && $runtimeRole !== 'artifact-host') {
+                return $this->fail($id, $label, 'Set DOCX_PROCESSOR_ENABLED=false for worker and scheduler runtime roles.');
+            }
+
+            if ($enabled && $this->config->get('pdf_processor.enabled', false) !== true) {
+                return $this->fail($id, $label, 'DOCX artifacts require PDF_PROCESSOR_ENABLED=true.');
+            }
+
+            return $this->pass(
+                $id,
+                $label,
+                $runtimeRole === 'artifact-host' && $enabled
+                    ? 'DOCX presentation is enabled without processor credentials on the artifact host.'
+                    : sprintf("Runtime role '%s' has no DOCX processor credential.", $runtimeRole),
+            );
+        }
+        if (!$enabled) {
+            return $this->pass($id, $label, 'DOCX remains disabled by default.');
+        }
+        if ($this->config->get('pdf_processor.enabled', false) !== true) {
+            return $this->fail($id, $label, 'DOCX artifacts require PDF_PROCESSOR_ENABLED=true.');
+        }
+
+        $origin = OriginNormalizer::tryParsePureOrigin($this->string('docx_processor.url'));
+        if ($origin === null) {
+            return $this->fail($id, $label, 'DOCX_PROCESSOR_URL must be a pure HTTP or HTTPS origin.');
+        }
+        if (!$origin->isHttps() && trim($this->untrimmedString('docx_processor.socket_path')) === '') {
+            return $this->fail($id, $label, 'DOCX_PROCESSOR_URL must use HTTPS when DOCX_PROCESSOR_SOCKET_PATH is empty.');
+        }
+
+        $previous = $this->previousApplicationSecrets();
+        if ($previous === null) {
+            return $this->fail($id, $label, 'APP_PREVIOUS_KEYS must be valid before DOCX processor secret isolation can be verified.');
+        }
+        $configured = $this->string('docx_processor.shared_secret');
+        $secret = SecretStrength::normalized($configured);
+        $comparisonSecrets = array_values(array_filter([
+            SecretStrength::normalized($this->string('app.key')),
+            ...$previous,
+            SecretStrength::normalized($this->string('app.artifact_url_signing_key')),
+            SecretStrength::normalized($this->string('image_parser.shared_secret')),
+            SecretStrength::normalized($this->string('pdf_processor.shared_secret')),
+            SecretStrength::normalized($this->string('xlsx_processor.shared_secret')),
+        ], is_string(...)));
+        if (
+            !SecretStrength::isProductionSafe($configured)
+            || $secret === null
+            || $this->invariants->secretReusesAny($secret, $comparisonSecrets)
+        ) {
+            return $this->fail($id, $label, 'DOCX_PROCESSOR_SHARED_SECRET must be a strong dedicated secret.');
+        }
+
+        $connectTimeout = $this->config->get('docx_processor.connect_timeout_seconds');
+        $requestTimeout = $this->config->get('docx_processor.timeout_seconds');
+        if (
+            !is_int($connectTimeout)
+            || $connectTimeout < 1
+            || $connectTimeout > 60
+            || !is_int($requestTimeout)
+            || $requestTimeout < 1
+            || $requestTimeout > 60
+        ) {
+            return $this->fail(
+                $id,
+                $label,
+                'DOCX_PROCESSOR_CONNECT_TIMEOUT_SECONDS and DOCX_PROCESSOR_TIMEOUT_SECONDS must be integers between 1 and 60.',
+            );
+        }
+
+        $docxHealth = $this->processorHealthProbe->docx(new ProcessorHealthTarget(
+            origin: $origin->compact(),
+            socketPath: $this->optionalSocketPath('docx_processor.socket_path'),
+            sharedSecret: $secret,
+            connectTimeoutSeconds: $connectTimeout,
+            timeoutSeconds: $requestTimeout,
+        ));
+        if (!$docxHealth->healthy) {
+            return $this->fail($id, $label, 'Authenticated DOCX health challenge failed: ' . $docxHealth->detail);
+        }
+
+        $pdfOrigin = OriginNormalizer::tryParsePureOrigin($this->string('pdf_processor.url'));
+        $pdfSocketPath = $this->optionalSocketPath('pdf_processor.socket_path');
+        $pdfSecret = SecretStrength::normalized($this->string('pdf_processor.shared_secret'));
+        $pdfConnectTimeout = $this->config->get('pdf_processor.connect_timeout_seconds');
+        $pdfRequestTimeout = $this->config->get('pdf_processor.timeout_seconds');
+        if (
+            $pdfOrigin === null
+            || $pdfSecret === null
+            || !is_int($pdfConnectTimeout)
+            || $pdfConnectTimeout < 1
+            || $pdfConnectTimeout > 60
+            || !is_int($pdfRequestTimeout)
+            || $pdfRequestTimeout < 1
+            || $pdfRequestTimeout > 60
+        ) {
+            return $this->fail($id, $label, 'DOCX downstream PDF processor configuration is invalid.');
+        }
+
+        $pdfHealth = $this->processorHealthProbe->pdf(new ProcessorHealthTarget(
+            origin: $pdfOrigin->compact(),
+            socketPath: $pdfSocketPath,
+            sharedSecret: $pdfSecret,
+            connectTimeoutSeconds: $pdfConnectTimeout,
+            timeoutSeconds: $pdfRequestTimeout,
+        ));
+        if (!$pdfHealth->healthy) {
+            return $this->fail($id, $label, 'Authenticated downstream PDF health challenge failed: ' . $pdfHealth->detail);
+        }
+
+        return $this->pass($id, $label, sprintf(
+            'Processor origin is %s with dedicated authentication, bounded timeouts, and passing live DOCX/PDF health checks.',
+            $origin->compact(),
+        ));
     }
 
     private function imageParserCheck(bool $production): DoctorCheck

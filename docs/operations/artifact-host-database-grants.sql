@@ -12,6 +12,9 @@ GRANT USAGE ON SCHEMA public TO artifactflow_artifact_host;
 
 GRANT SELECT ON TABLE public.pages TO artifactflow_artifact_host;
 GRANT SELECT ON TABLE public.page_versions TO artifactflow_artifact_host;
+GRANT SELECT ON TABLE public.page_version_derivatives TO artifactflow_artifact_host;
+GRANT SELECT ON TABLE public.xlsx_version_facts TO artifactflow_artifact_host;
+GRANT SELECT ON TABLE public.docx_version_facts TO artifactflow_artifact_host;
 GRANT SELECT ON TABLE public.external_shares TO artifactflow_artifact_host;
 GRANT SELECT ON TABLE public.external_share_sessions TO artifactflow_artifact_host;
 GRANT SELECT ON TABLE public.installation_settings TO artifactflow_artifact_host;

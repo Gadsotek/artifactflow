@@ -56,7 +56,7 @@ php \
     /srv/pdf-processor-spike/public/index.php &
 server_pid=$!
 
-socat "UNIX-LISTEN:${socket_path},fork,mode=0666" "TCP:127.0.0.1:${port}" &
+socat "UNIX-LISTEN:${socket_path},fork,mode=0660" "TCP:127.0.0.1:${port}" &
 relay_pid=$!
 
 cleanup() {

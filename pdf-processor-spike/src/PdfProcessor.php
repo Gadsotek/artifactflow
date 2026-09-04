@@ -157,10 +157,15 @@ final readonly class ProcessorConfiguration
 
 final readonly class ProcessorRequest
 {
+    public const string UPLOADED_PROFILE = 'pdfbox-3.0.8-native-text-v1';
+
+    public const string DOCX_PREVIEW_PROFILE = 'pdfbox-3.0.8-docx-preview-v1';
+
     public function __construct(
         public string $nonce,
         public string $inputSha256,
         public string $bytes,
+        public string $profile = self::UPLOADED_PROFILE,
     ) {
     }
 
@@ -172,6 +177,7 @@ final readonly class ProcessorRequest
         array $server,
         string $bytes,
         ?int $currentTime = null,
+        string $profile = self::UPLOADED_PROFILE,
     ): self {
         $timestamp = self::serverValue($server, 'HTTP_X_ARTIFACTFLOW_PROCESSOR_TIMESTAMP');
         $nonce = self::serverValue($server, 'HTTP_X_ARTIFACTFLOW_PROCESSOR_NONCE');
@@ -204,14 +210,38 @@ final readonly class ProcessorRequest
         }
 
         $inputSha256 = hash('sha256', $bytes);
-        $expected = hash_hmac('sha256', implode("\n", [
-            'artifactflow-pdf-processor-request-v1',
-            $timestamp,
-            $nonce,
-            $contentType,
-            $contentLength,
-            $inputSha256,
-        ]), $configuration->sharedSecret);
+        if (!in_array($profile, [self::UPLOADED_PROFILE, self::DOCX_PREVIEW_PROFILE], true)) {
+            throw new ProcessorRejection('Invalid PDF processor profile.');
+        }
+
+        $declaredProfile = self::serverValue($server, 'HTTP_X_ARTIFACTFLOW_PROCESSOR_PROFILE');
+        $signatureParts = $profile === self::DOCX_PREVIEW_PROFILE
+            ? [
+                'artifactflow-pdf-processor-docx-preview-request-v1',
+                $timestamp,
+                $nonce,
+                $profile,
+                $contentType,
+                $contentLength,
+                $inputSha256,
+            ]
+            : [
+                'artifactflow-pdf-processor-request-v1',
+                $timestamp,
+                $nonce,
+                $contentType,
+                $contentLength,
+                $inputSha256,
+            ];
+
+        if (
+            ($profile === self::DOCX_PREVIEW_PROFILE && $declaredProfile !== $profile)
+            || ($profile === self::UPLOADED_PROFILE && $declaredProfile !== '')
+        ) {
+            throw new ProcessorAuthenticationFailure('Unauthenticated PDF processor request.');
+        }
+
+        $expected = hash_hmac('sha256', implode("\n", $signatureParts), $configuration->sharedSecret);
 
         if (!hash_equals($expected, $signature)) {
             throw new ProcessorAuthenticationFailure('Unauthenticated PDF processor request.');
@@ -229,10 +259,14 @@ final readonly class ProcessorRequest
             nonce: $nonce,
             inputSha256: $inputSha256,
             bytes: $bytes,
+            profile: $profile,
         );
     }
 
-    public static function fromGlobals(ProcessorConfiguration $configuration): self
+    public static function fromGlobals(
+        ProcessorConfiguration $configuration,
+        string $profile = self::UPLOADED_PROFILE,
+    ): self
     {
         /** @var array<string, string> $server */
         $server = array_filter(
@@ -251,7 +285,7 @@ final readonly class ProcessorRequest
             throw new ProcessorRejection('Invalid PDF processor request body.');
         }
 
-        return self::authenticated($configuration, $server, $bytes);
+        return self::authenticated($configuration, $server, $bytes, profile: $profile);
     }
 
     /**
@@ -283,6 +317,8 @@ final readonly class ProcessorRequest
 
 final readonly class ProcessorHealthRequest
 {
+    private const string RESPONSE_CONTEXT = 'artifactflow-pdf-processor-health-response-v1';
+
     public function __construct(public string $nonce)
     {
     }
@@ -347,6 +383,17 @@ final readonly class ProcessorHealthRequest
             'X-ArtifactFlow-Processor-Nonce' => $nonce,
             'X-ArtifactFlow-Processor-Signature' => self::signature($configuration, $timestamp, $nonce),
         ];
+    }
+
+    public static function responseSignature(string $nonce, string $responseBody, string $secret): string
+    {
+        return hash_hmac('sha256', implode("\n", [
+            self::RESPONSE_CONTEXT,
+            $nonce,
+            'application/json',
+            (string) strlen($responseBody),
+            hash('sha256', $responseBody),
+        ]), $secret);
     }
 
     private static function signature(
@@ -530,6 +577,16 @@ final readonly class PdfBoxEngine
 
     public function inspect(string $bytes): EngineInspection
     {
+        return $this->inspectWithCommand($bytes, 'inspect');
+    }
+
+    public function inspectDocxPreview(string $bytes): EngineInspection
+    {
+        return $this->inspectWithCommand($bytes, 'inspect-docx-preview');
+    }
+
+    private function inspectWithCommand(string $bytes, string $operation): EngineInspection
+    {
         $path = tempnam($this->temporaryDirectory, 'artifactflow-pdf-');
 
         if (!is_string($path)) {
@@ -547,7 +604,7 @@ final readonly class PdfBoxEngine
                 throw new EngineUnavailable('PDF engine input could not be written.');
             }
 
-            return EngineInspection::fromJson($this->run([...$this->command, 'inspect', $path]));
+            return EngineInspection::fromJson($this->run([...$this->command, $operation, $path]));
         } finally {
             if (is_file($path)) {
                 unlink($path);
@@ -702,8 +759,6 @@ final readonly class PdfBoxEngine
 
 final readonly class ProcessorResult
 {
-    private const string PROFILE = 'pdfbox-3.0.8-native-text-v1';
-
     public function __construct(
         public int $pageCount,
         public string $pdfVersion,
@@ -713,13 +768,16 @@ final readonly class ProcessorResult
     ) {
     }
 
-    public static function fromInspection(EngineInspection $inspection): self
+    public static function fromInspection(
+        EngineInspection $inspection,
+        string $profile = ProcessorRequest::UPLOADED_PROFILE,
+    ): self
     {
         return new self(
             pageCount: $inspection->pageCount,
             pdfVersion: $inspection->pdfVersion,
             extractionState: $inspection->extractionState(),
-            processorProfile: self::PROFILE,
+            processorProfile: $profile,
             text: $inspection->text,
         );
     }
@@ -747,10 +805,15 @@ final readonly class ProcessorResult
 
     public function signature(ProcessorRequest $request, string $sharedSecret): string
     {
+        $context = $request->profile === ProcessorRequest::DOCX_PREVIEW_PROFILE
+            ? 'artifactflow-pdf-processor-docx-preview-response-v1'
+            : 'artifactflow-pdf-processor-response-v1';
+
         return hash_hmac('sha256', implode("\n", [
-            'artifactflow-pdf-processor-response-v1',
+            $context,
             $request->nonce,
             $request->inputSha256,
+            ...($request->profile === ProcessorRequest::DOCX_PREVIEW_PROFILE ? [$request->profile] : []),
             hash('sha256', $this->toJson()),
         ]), $sharedSecret);
     }

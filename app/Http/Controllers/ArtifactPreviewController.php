@@ -7,6 +7,9 @@ namespace App\Http\Controllers;
 use App\Application\PageCatalog\ArtifactContentReader;
 use App\Application\PageCatalog\ArtifactPreviewUrl;
 use App\Application\PageCatalog\RasterImageInspector;
+use App\Application\PageCatalog\XlsxManifestContentReader;
+use App\Application\PageCatalog\XlsxProcessorConfiguration;
+use App\Application\PageCatalog\XlsxViewerAssets;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\ArtifactPreviewPurpose;
 use App\Domain\PageCatalog\PageType;
@@ -23,6 +26,9 @@ final class ArtifactPreviewController
         private ArtifactContentReader $contentReader,
         private RasterImageInspector $imageInspector,
         private ArtifactSandboxResponder $responder,
+        private XlsxManifestContentReader $xlsxManifestReader,
+        private XlsxProcessorConfiguration $xlsxConfiguration,
+        private XlsxViewerAssets $xlsxViewerAssets,
     ) {
     }
 
@@ -66,6 +72,7 @@ final class ArtifactPreviewController
         if (
             !$page->type->usesArtifactHostPreview()
             || $page->type === PageType::Pdf
+            || $page->type === PageType::Docx
             || $version->page_uid !== $page->uid
             || ($purpose === ArtifactPreviewPurpose::Current && $page->current_version_uid !== $version->uid)
         ) {
@@ -76,6 +83,28 @@ final class ArtifactPreviewController
             $this->logRejection('top_level_navigation', $page->uid, $versionUid);
 
             return $this->responder->topLevelNavigationNotice($this->openInAppUrl($page->uid, $version->uid, $purpose));
+        }
+
+        if ($page->type === PageType::Xlsx) {
+            if (!$this->xlsxConfiguration->enabled()) {
+                $this->rejectNotFound('xlsx_disabled', $pageUid, $versionUid);
+            }
+
+            $manifest = $this->xlsxManifestReader->read($version);
+
+            if ($manifest === null) {
+                $this->rejectNotFound('invalid_xlsx_manifest', $pageUid, $versionUid);
+            }
+
+            try {
+                $assets = $this->xlsxViewerAssets->paths();
+            } catch (\LogicException) {
+                $this->rejectNotFound('xlsx_viewer_unavailable', $pageUid, $versionUid);
+            }
+
+            $this->logServed($page->uid, $version->uid, $purpose);
+
+            return $this->responder->xlsxDocument($manifest, $assets);
         }
 
         $content = $this->contentReader->read($version->content_storage_path);

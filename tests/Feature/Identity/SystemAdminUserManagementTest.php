@@ -206,7 +206,7 @@ final class SystemAdminUserManagementTest extends TestCase
 
         $this->actingAs($admin)
             ->withSession([
-                RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->addSecond()->getTimestamp(),
+                RequireRecentSystemAdminTwoFactorConfirmation::SESSION_KEY => now()->addHour()->getTimestamp(),
             ])
             ->get('/admin/users')
             ->assertRedirect('/admin/confirm-two-factor');

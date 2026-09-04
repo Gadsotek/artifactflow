@@ -186,6 +186,17 @@ final class PdfProcessorServiceIntegrationTest extends TestCase
         $request = ProcessorHealthRequest::authenticated($this->configuration(), $server);
 
         $this->assertSame($nonce, $request->nonce);
+        $body = '{"status":"ok"}';
+        $this->assertSame(
+            hash_hmac('sha256', implode("\n", [
+                'artifactflow-pdf-processor-health-response-v1',
+                $nonce,
+                'application/json',
+                (string) strlen($body),
+                hash('sha256', $body),
+            ]), self::SHARED_SECRET),
+            ProcessorHealthRequest::responseSignature($nonce, $body, self::SHARED_SECRET),
+        );
 
         $server['HTTP_X_ARTIFACTFLOW_PROCESSOR_NONCE'] = str_repeat('f', 32);
 

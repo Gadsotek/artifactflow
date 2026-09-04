@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\PageCatalog;
 
 use App\Models\PageVersion;
+use App\Models\PageVersionDerivative;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\Storage;
@@ -17,7 +18,8 @@ final readonly class VerifyArtifactIntegrity
     public function handle(int $sampleSize, bool $all): ArtifactIntegrityVerificationResult
     {
         $query = PageVersion::query()
-            ->select(['uid', 'content_storage_path', 'content_hash']);
+            ->select(['uid', 'content_storage_path', 'content_hash'])
+            ->with('derivatives:uid,page_version_uid,storage_path,content_hash');
 
         $disk = Storage::disk('artifacts');
         $result = new ArtifactIntegrityVerificationResult();
@@ -54,14 +56,28 @@ final readonly class VerifyArtifactIntegrity
         Filesystem $disk,
         ArtifactIntegrityVerificationResult $result,
     ): void {
+        $this->verifyBlob($version->content_storage_path, $version->content_hash, $disk, $result);
+
+        foreach ($version->derivatives as $derivative) {
+            /** @var PageVersionDerivative $derivative */
+            $this->verifyBlob($derivative->storage_path, $derivative->content_hash, $disk, $result);
+        }
+    }
+
+    private function verifyBlob(
+        string $path,
+        string $expectedHash,
+        Filesystem $disk,
+        ArtifactIntegrityVerificationResult $result,
+    ): void {
         try {
-            if (!$disk->exists($version->content_storage_path)) {
+            if (!$disk->exists($path)) {
                 $result->recordMissingFile();
 
                 return;
             }
 
-            $content = $disk->get($version->content_storage_path);
+            $content = $disk->get($path);
         } catch (FilesystemException) {
             $result->recordMissingFile();
 
@@ -74,7 +90,7 @@ final readonly class VerifyArtifactIntegrity
             return;
         }
 
-        if (hash('sha256', $content) !== $version->content_hash) {
+        if (!hash_equals($expectedHash, hash('sha256', $content))) {
             $result->recordHashMismatch();
 
             return;

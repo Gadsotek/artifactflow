@@ -23,6 +23,10 @@ final class StorePageRequest extends AppFormRequest
 
     private ?string $validatedPdfContent = null;
 
+    private ?string $validatedXlsxContent = null;
+
+    private ?string $validatedDocxContent = null;
+
     /**
      * @return array<string, list<mixed>>
      */
@@ -60,6 +64,16 @@ final class StorePageRequest extends AppFormRequest
                 'nullable',
                 'file',
                 'max:' . $this->pdfUploadRules()->maxUploadKilobytes(),
+            ],
+            'xlsx_file' => [
+                'nullable',
+                'file',
+                'max:' . $this->xlsxUploadRules()->maxUploadKilobytes(),
+            ],
+            'docx_file' => [
+                'nullable',
+                'file',
+                'max:' . $this->docxUploadRules()->maxUploadKilobytes(),
             ],
         ];
     }
@@ -110,6 +124,26 @@ final class StorePageRequest extends AppFormRequest
                 return;
             }
 
+            if ($type === PageType::Xlsx->value) {
+                $this->validatedXlsxContent = $this->xlsxUploadRules()->validateUpload(
+                    $validator,
+                    'xlsx_file',
+                    $this->xlsxFile(),
+                );
+
+                return;
+            }
+
+            if ($type === PageType::Docx->value) {
+                $this->validatedDocxContent = $this->docxUploadRules()->validateUpload(
+                    $validator,
+                    'docx_file',
+                    $this->docxFile(),
+                );
+
+                return;
+            }
+
             if ($type !== PageType::HtmlArtifact->value) {
                 return;
             }
@@ -143,6 +177,14 @@ final class StorePageRequest extends AppFormRequest
 
         if ($this->pageType() === PageType::Pdf) {
             return $this->validatedPdfContent ?? '';
+        }
+
+        if ($this->pageType() === PageType::Xlsx) {
+            return $this->validatedXlsxContent ?? '';
+        }
+
+        if ($this->pageType() === PageType::Docx) {
+            return $this->validatedDocxContent ?? '';
         }
 
         if ($this->pageType() === PageType::HtmlArtifact && $this->string('mode')->toString() === PageCreationMode::HtmlUpload->value) {
@@ -187,6 +229,8 @@ final class StorePageRequest extends AppFormRequest
         $file = match ($this->pageType()) {
             PageType::Image => $this->imageFile(),
             PageType::Pdf => $this->pdfFile(),
+            PageType::Xlsx => $this->xlsxFile(),
+            PageType::Docx => $this->docxFile(),
             default => $this->htmlFile(),
         };
 
@@ -195,7 +239,7 @@ final class StorePageRequest extends AppFormRequest
 
     public function pageVersionSource(): PageVersionSource
     {
-        if (in_array($this->pageType(), [PageType::Image, PageType::Pdf], true)) {
+        if (in_array($this->pageType(), [PageType::Image, PageType::Pdf, PageType::Xlsx, PageType::Docx], true)) {
             return PageVersionSource::Upload;
         }
 
@@ -236,6 +280,8 @@ final class StorePageRequest extends AppFormRequest
             ),
             PageType::Image->value => $mode === PageCreationMode::ImageUpload->value,
             PageType::Pdf->value => $mode === PageCreationMode::PdfUpload->value,
+            PageType::Xlsx->value => $mode === PageCreationMode::XlsxUpload->value,
+            PageType::Docx->value => $mode === PageCreationMode::DocxUpload->value,
             default => false,
         };
     }
@@ -299,6 +345,20 @@ final class StorePageRequest extends AppFormRequest
         return $file instanceof UploadedFile ? $file : null;
     }
 
+    private function xlsxFile(): ?UploadedFile
+    {
+        $file = $this->file('xlsx_file');
+
+        return $file instanceof UploadedFile ? $file : null;
+    }
+
+    private function docxFile(): ?UploadedFile
+    {
+        $file = $this->file('docx_file');
+
+        return $file instanceof UploadedFile ? $file : null;
+    }
+
     private function installationLimit(string $key): int
     {
         return app(InstallationLimitSettings::class)->integer($key);
@@ -317,5 +377,15 @@ final class StorePageRequest extends AppFormRequest
     private function pdfUploadRules(): PdfUploadRules
     {
         return app(PdfUploadRules::class);
+    }
+
+    private function xlsxUploadRules(): XlsxUploadRules
+    {
+        return app(XlsxUploadRules::class);
+    }
+
+    private function docxUploadRules(): DocxUploadRules
+    {
+        return app(DocxUploadRules::class);
     }
 }

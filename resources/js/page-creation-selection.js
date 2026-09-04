@@ -13,5 +13,13 @@ export function creationModeForPageType(type, currentMode) {
     return 'pdf_upload';
   }
 
+  if (type === 'xlsx') {
+    return 'xlsx_upload';
+  }
+
+  if (type === 'docx') {
+    return 'docx_upload';
+  }
+
   return HTML_CREATION_MODES.has(currentMode) ? currentMode : 'html_upload';
 }

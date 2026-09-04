@@ -152,7 +152,7 @@ jobs:
   # separate job cuts the critical path while preserving every engine and test.
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
 
     steps:
       - name: Checkout
@@ -251,7 +251,7 @@ jobs:
 
   container-image:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -266,7 +266,7 @@ jobs:
           path: ~/.cache/trivy
           key: trivy-${{ runner.os }}
 
-      - name: Build production image
+      - name: Build production images
         run: |
           make build-prod \
             DOCKER_BUILD='docker buildx build --load' \
@@ -286,7 +286,7 @@ jobs:
             ! php -m | grep -qi pcov
           '
 
-      - name: Scan production image (Trivy)
+      - name: Scan production images (Trivy)
         run: make scan-image
 
       - name: Normalize Trivy cache ownership

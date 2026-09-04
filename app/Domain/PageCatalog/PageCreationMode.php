@@ -16,4 +16,6 @@ enum PageCreationMode: string
     case HtmlUpload = 'html_upload';
     case ImageUpload = 'image_upload';
     case PdfUpload = 'pdf_upload';
+    case XlsxUpload = 'xlsx_upload';
+    case DocxUpload = 'docx_upload';
 }

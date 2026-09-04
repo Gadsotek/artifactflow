@@ -33,7 +33,7 @@ final readonly class McpCreateTool
         return $this->errors->guard(function () use ($actor, $token, $input): McpToolResult {
             $type = $input->type;
 
-            if ($type === PageType::Image || $type === PageType::Pdf) {
+            if (in_array($type, [PageType::Image, PageType::Pdf, PageType::Xlsx, PageType::Docx], true)) {
                 throw new DomainRuleViolation('Binary artifacts must be created through a dedicated authenticated upload.');
             }
 

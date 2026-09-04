@@ -11,7 +11,7 @@ final class RecountStorageCommand extends Command
 {
     protected $signature = 'artifactflow:recount-storage';
 
-    protected $description = 'Recompute per-workspace used storage counters from page versions and correct any drift.';
+    protected $description = 'Recompute per-workspace used storage from retained originals and derivatives.';
 
     public function handle(RecountWorkspaceStorage $recountWorkspaceStorage): int
     {

@@ -359,10 +359,14 @@ JSON;
     private function makeBridgeToolPath(string $home): string
     {
         $directory = $home . '/.test-bin';
+        $lockSha256 = hash_file('sha256', base_path('scripts/mcp-remote-bridge/package-lock.json'));
+
+        $this->assertIsString($lockSha256);
+
         mkdir($directory, 0700, true);
         file_put_contents(
             $directory . '/node',
-            "#!/bin/sh\nif [ \"\${1:-}\" = \"--version\" ]; then printf 'v20.18.1\\n'; else printf '57377bfe3b15e87873edbfd5ff07dffe750baad1a44748df2c977189b57e9b92'; fi\n",
+            "#!/bin/sh\nif [ \"\${1:-}\" = \"--version\" ]; then printf 'v20.18.1\\n'; else printf '{$lockSha256}'; fi\n",
         );
         chmod($directory . '/node', 0700);
 

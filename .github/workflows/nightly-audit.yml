@@ -166,7 +166,7 @@ jobs:
 
   container-audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -184,7 +184,7 @@ jobs:
           path: ~/.cache/trivy
           key: trivy-${{ runner.os }}
 
-      - name: Build production image
+      - name: Build production images
         id: production-image
         continue-on-error: true
         run: |
@@ -201,7 +201,7 @@ jobs:
           set -o pipefail
           sh scripts/verify-artifact-caddy-headers.sh artifactflow-app:production 2>&1 | tee nightly-results/caddy-headers.log
 
-      - name: Scan production image (Trivy)
+      - name: Scan production images (Trivy)
         id: trivy
         continue-on-error: true
         run: |
@@ -230,7 +230,7 @@ jobs:
         run: |
           failed=0
           if [ "$PRODUCTION_IMAGE_OUTCOME" != success ]; then
-            echo "NIGHTLY_FAILED_TASK=Build production image"
+            echo "NIGHTLY_FAILED_TASK=Build production images"
             failed=1
           fi
           if [ "$CADDY_HEADERS_OUTCOME" != success ]; then
@@ -238,7 +238,7 @@ jobs:
             failed=1
           fi
           if [ "$TRIVY_OUTCOME" != success ]; then
-            echo "NIGHTLY_FAILED_TASK=Scan production image (Trivy)"
+            echo "NIGHTLY_FAILED_TASK=Scan production images (Trivy)"
             failed=1
           fi
           exit "$failed"

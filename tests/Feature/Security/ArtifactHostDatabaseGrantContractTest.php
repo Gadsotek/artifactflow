@@ -20,6 +20,9 @@ final class ArtifactHostDatabaseGrantContractTest extends TestCase
         foreach ([
             'pages',
             'page_versions',
+            'page_version_derivatives',
+            'xlsx_version_facts',
+            'docx_version_facts',
             'external_shares',
             'external_share_sessions',
             'installation_settings',

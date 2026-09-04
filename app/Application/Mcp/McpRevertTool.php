@@ -26,6 +26,8 @@ final readonly class McpRevertTool
         private RevertToPreviousVersion $revertToPreviousVersion,
         private McpToolErrorMapper $errors,
         private McpPdfVersionPayload $pdfPayload,
+        private McpXlsxVersionPayload $xlsxPayload,
+        private McpDocxVersionPayload $docxPayload,
     ) {
     }
 
@@ -45,6 +47,8 @@ final readonly class McpRevertTool
             ));
 
             $pdf = null;
+            $xlsx = null;
+            $docx = null;
 
             if ($page->type === PageType::Pdf) {
                 $pdf = $this->pdfPayload->forVersion($result->restoredVersion);
@@ -54,12 +58,29 @@ final readonly class McpRevertTool
                 }
             }
 
+            if ($page->type === PageType::Xlsx) {
+                $xlsx = $this->xlsxPayload->facts($result->restoredVersion);
+
+                if ($xlsx === null) {
+                    throw new \App\Domain\DomainRuleViolation('XLSX processing facts are unavailable.');
+                }
+            }
+
+            if ($page->type === PageType::Docx) {
+                $docx = $this->docxPayload->facts($result->restoredVersion);
+                if ($docx === null) {
+                    throw new \App\Domain\DomainRuleViolation('DOCX processing facts are unavailable.');
+                }
+            }
+
             return McpToolResult::success(new McpRevertedPayload(
                 pageUid: $page->uid,
                 versionUid: $result->restoredVersion->uid,
                 currentVersionUid: $result->restoredVersion->uid,
                 restoredFromVersionUid: $result->restoredFromVersion->uid,
                 pdf: $pdf,
+                xlsx: $xlsx,
+                docx: $docx,
             ));
         }, self::STALE_CONFLICT_MESSAGE);
     }

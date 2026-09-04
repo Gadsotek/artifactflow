@@ -27,6 +27,8 @@ final class EnforceRuntimeRoleSurface
             'artifact-previews/*',
             'external-artifact-previews/*',
             'pdf-artifacts/*',
+            'document-originals/*',
+            'docx-previews/*',
         );
         $runtimeRole = config('app.runtime_role');
         $isArtifactHost = $runtimeRole === 'artifact-host';

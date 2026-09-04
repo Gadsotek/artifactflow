@@ -1,8 +1,8 @@
 name: Release
 
-# Tag-driven release: build the production image, gate it on the same Trivy
-# scan the quality suite uses, push it to GHCR, and publish a GitHub Release
-# whose notes carry the immutable image digest for operators to pin.
+# Tag-driven release: build every production runtime image, gate them on the
+# same Trivy scan the quality suite uses, push them to GHCR, and publish a
+# GitHub Release whose notes carry immutable image digests for operators to pin.
 on:
   push:
     tags:
@@ -16,6 +16,8 @@ env:
   DOCKER_BUILDKIT: '1'
   IMAGE: ghcr.io/gadsotek/artifactflow
   PDF_PROCESSOR_IMAGE: ghcr.io/gadsotek/artifactflow-pdf-processor
+  XLSX_PROCESSOR_IMAGE: ghcr.io/gadsotek/artifactflow-xlsx-processor
+  DOCX_PROCESSOR_IMAGE: ghcr.io/gadsotek/artifactflow-docx-processor
 
 jobs:
   quality:
@@ -27,7 +29,7 @@ jobs:
   release:
     needs: quality
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     permissions:
       contents: write
       packages: write
@@ -43,7 +45,7 @@ jobs:
       - name: Set up Docker Buildx
         run: docker buildx create --use --driver docker-container
 
-      - name: Build production image
+      - name: Build production images
         run: |
           make build-prod \
             DOCKER_BUILD='docker buildx build --load' \
@@ -55,7 +57,7 @@ jobs:
           path: ~/.cache/trivy
           key: trivy-${{ runner.os }}
 
-      - name: Scan production image (Trivy)
+      - name: Scan production images (Trivy)
         run: make scan-image
 
       - name: Log in to GHCR
@@ -67,17 +69,6 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           docker tag artifactflow-app:production "$IMAGE:$VERSION"
           docker push "$IMAGE:$VERSION"
-          # Only move :latest for a final release (vMAJOR.MINOR.PATCH). A
-          # pre-release tag (v1.2.0-rc1, v2.0.0-beta, ...) publishes its exact
-          # version tag but must never become :latest, so `docker pull …:latest`
-          # cannot silently land on an unfinished build.
-          if printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            docker tag artifactflow-app:production "$IMAGE:latest"
-            docker push "$IMAGE:latest"
-            echo "Moved :latest to $VERSION (final release)."
-          else
-            echo "Left :latest unchanged ($VERSION is a pre-release)."
-          fi
           REPO_DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:$VERSION")"
           echo "digest=$REPO_DIGEST" >> "$GITHUB_OUTPUT"
           echo "digest_only=${REPO_DIGEST#*@}" >> "$GITHUB_OUTPUT"
@@ -88,14 +79,27 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           docker tag artifactflow-pdf-processor-service:production "$PDF_PROCESSOR_IMAGE:$VERSION"
           docker push "$PDF_PROCESSOR_IMAGE:$VERSION"
-          if printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            docker tag artifactflow-pdf-processor-service:production "$PDF_PROCESSOR_IMAGE:latest"
-            docker push "$PDF_PROCESSOR_IMAGE:latest"
-            echo "Moved PDF processor :latest to $VERSION (final release)."
-          else
-            echo "Left PDF processor :latest unchanged ($VERSION is a pre-release)."
-          fi
           REPO_DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "$PDF_PROCESSOR_IMAGE:$VERSION")"
+          echo "digest=$REPO_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "digest_only=${REPO_DIGEST#*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Push dedicated XLSX processor image
+        id: push-xlsx-processor
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          docker tag artifactflow-xlsx-processor-service:production "$XLSX_PROCESSOR_IMAGE:$VERSION"
+          docker push "$XLSX_PROCESSOR_IMAGE:$VERSION"
+          REPO_DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "$XLSX_PROCESSOR_IMAGE:$VERSION")"
+          echo "digest=$REPO_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "digest_only=${REPO_DIGEST#*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Push dedicated DOCX processor image
+        id: push-docx-processor
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          docker tag artifactflow-docx-processor:production "$DOCX_PROCESSOR_IMAGE:$VERSION"
+          docker push "$DOCX_PROCESSOR_IMAGE:$VERSION"
+          REPO_DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "$DOCX_PROCESSOR_IMAGE:$VERSION")"
           echo "digest=$REPO_DIGEST" >> "$GITHUB_OUTPUT"
           echo "digest_only=${REPO_DIGEST#*@}" >> "$GITHUB_OUTPUT"
 
@@ -111,6 +115,16 @@ jobs:
             -v "$PWD:/out" \
             aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
             image --format cyclonedx --output /out/sbom.pdf-processor.cdx.json artifactflow-pdf-processor-service:production
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -v "$PWD:/out" \
+            aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
+            image --format cyclonedx --output /out/sbom.xlsx-processor.cdx.json artifactflow-xlsx-processor-service:production
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -v "$PWD:/out" \
+            aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
+            image --format cyclonedx --output /out/sbom.docx-processor.cdx.json artifactflow-docx-processor:production
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -142,6 +156,36 @@ jobs:
           sbom-path: sbom.pdf-processor.cdx.json
           push-to-registry: true
 
+      - name: Attest XLSX processor build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.XLSX_PROCESSOR_IMAGE }}
+          subject-digest: ${{ steps.push-xlsx-processor.outputs.digest_only }}
+          push-to-registry: true
+
+      - name: Attest XLSX processor SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ env.XLSX_PROCESSOR_IMAGE }}
+          subject-digest: ${{ steps.push-xlsx-processor.outputs.digest_only }}
+          sbom-path: sbom.xlsx-processor.cdx.json
+          push-to-registry: true
+
+      - name: Attest DOCX processor build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.DOCX_PROCESSOR_IMAGE }}
+          subject-digest: ${{ steps.push-docx-processor.outputs.digest_only }}
+          push-to-registry: true
+
+      - name: Attest DOCX processor SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ env.DOCX_PROCESSOR_IMAGE }}
+          subject-digest: ${{ steps.push-docx-processor.outputs.digest_only }}
+          sbom-path: sbom.docx-processor.cdx.json
+          push-to-registry: true
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -159,15 +203,29 @@ jobs:
             echo "${{ steps.push-pdf-processor.outputs.digest }}"
             echo '```'
             echo
-            echo "Verify build provenance and SBOM before running either image (needs the GitHub CLI):"
+            echo "Dedicated XLSX processor image (pin by digest):"
+            echo
+            echo '```'
+            echo "${{ steps.push-xlsx-processor.outputs.digest }}"
+            echo '```'
+            echo
+            echo "Dedicated DOCX processor image (pin by digest):"
+            echo
+            echo '```'
+            echo "${{ steps.push-docx-processor.outputs.digest }}"
+            echo '```'
+            echo
+            echo "Verify build provenance and SBOM before running any image (needs the GitHub CLI):"
             echo
             echo '```'
             echo "gh attestation verify oci://${{ steps.push.outputs.digest }} --repo ${{ github.repository }}"
             echo "gh attestation verify oci://${{ steps.push-pdf-processor.outputs.digest }} --repo ${{ github.repository }}"
+            echo "gh attestation verify oci://${{ steps.push-xlsx-processor.outputs.digest }} --repo ${{ github.repository }}"
+            echo "gh attestation verify oci://${{ steps.push-docx-processor.outputs.digest }} --repo ${{ github.repository }}"
             echo '```'
             echo
-            echo "SLSA build provenance and CycloneDX SBOMs are keyless-signed (Sigstore), attested to both image digests, pushed alongside them in the registry, and attached to this release."
-            echo "Both images were scanned with Trivy (vuln, secret, misconfig; HIGH/CRITICAL gate) before publishing."
+            echo "SLSA build provenance and CycloneDX SBOMs are keyless-signed (Sigstore), attested to all four image digests, pushed alongside them in the registry, and attached to this release."
+            echo "All four images were scanned with Trivy (vuln, secret, misconfig; HIGH/CRITICAL gate) before publishing."
             echo "Self-hosting docs: docs/OPERATIONS.md. AGPL Section 13 applies to network use; see COMMERCIAL.md for the commercial path."
           } > release-notes.md
           gh release create "$GITHUB_REF_NAME" \
@@ -176,7 +234,25 @@ jobs:
             --generate-notes \
             --verify-tag \
             sbom.cdx.json \
-            sbom.pdf-processor.cdx.json
+            sbom.pdf-processor.cdx.json \
+            sbom.xlsx-processor.cdx.json \
+            sbom.docx-processor.cdx.json
+
+      # Mutable tags move only after all immutable images, attestations, SBOMs,
+      # and the GitHub Release exist. This avoids exposing a mixed runtime set
+      # when a later image or attestation fails.
+      - name: Publish final-release latest tags
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Left all :latest tags unchanged ($VERSION is a pre-release)."
+            exit 0
+          fi
+          docker buildx imagetools create --tag "$IMAGE:latest" "${{ steps.push.outputs.digest }}"
+          docker buildx imagetools create --tag "$PDF_PROCESSOR_IMAGE:latest" "${{ steps.push-pdf-processor.outputs.digest }}"
+          docker buildx imagetools create --tag "$XLSX_PROCESSOR_IMAGE:latest" "${{ steps.push-xlsx-processor.outputs.digest }}"
+          docker buildx imagetools create --tag "$DOCX_PROCESSOR_IMAGE:latest" "${{ steps.push-docx-processor.outputs.digest }}"
+          echo "Moved all :latest tags to $VERSION (final release)."
 
       - name: Normalize Trivy cache ownership
         if: always()
