@@ -30,7 +30,7 @@
     "@codemirror/lang-html": "^6.4.12",
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.12.4",
-    "@codemirror/state": "^6.7.1",
+    "@codemirror/state": "^6.7.2",
     "@lezer/highlight": "^1.2.3",
     "codemirror": "^6.0.2",
     "laravel-echo": "^2.4.0",
