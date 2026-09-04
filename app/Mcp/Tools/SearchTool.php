@@ -50,6 +50,8 @@ final class SearchTool extends ArtifactFlowTool
                 PageType::HtmlArtifact->value,
                 PageType::Image->value,
                 PageType::Pdf->value,
+                PageType::Xlsx->value,
+                PageType::Docx->value,
             ]),
             'status' => $schema->string()->enum(PageStatus::class),
             'category_uid' => $schema->string(),

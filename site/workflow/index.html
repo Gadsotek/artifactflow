@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Artifact Identity, Drafts, and Versions | ArtifactFlow</title>
-<meta name="description" content="How ArtifactFlow assigns stable artifact identity, appends immutable content versions, separates draft status from unsaved preview, and plans document artifacts.">
+<meta name="description" content="How ArtifactFlow assigns stable artifact identity, appends immutable content versions, separates draft status from unsaved preview, and governs PDF, Excel, and Word artifacts.">
 <link rel="canonical" href="https://artifactflow.app/workflow/">
 <meta property="og:title" content="Artifact Identity, Drafts, and Versions | ArtifactFlow">
-<meta property="og:description" content="Understand stable artifact identity, immutable revisions, draft lifecycle state, metadata changes, the default-off PDF milestone, and future DOCX versions.">
+<meta property="og:description" content="Understand stable artifact identity, immutable revisions, draft lifecycle state, metadata changes, and default-off PDF, XLSX, and DOCX versions.">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://artifactflow.app/workflow/">
 <meta property="og:site_name" content="ArtifactFlow">
@@ -28,7 +28,7 @@
   "@context": "https://schema.org",
   "@type": "WebPage",
   "name": "Artifact identity, drafts, and versions",
-  "description": "ArtifactFlow's current identity and version rules, product guidance, and document-artifact roadmap direction.",
+  "description": "ArtifactFlow's current identity and version rules, product guidance, and default-off document-artifact lifecycle.",
   "url": "https://artifactflow.app/workflow/",
   "isPartOf": { "@id": "https://artifactflow.app/#website" }
 }
@@ -143,14 +143,18 @@
         </section>
 
         <section id="documents">
-          <p class="kicker">Roadmap direction</p>
+          <p class="kicker">Current opt-in implementation</p>
           <h2>Document formats keep the original and derive bounded ways to use it.</h2>
-          <p>PDF support is a default-off production opt-in; DOCX remains roadmap direction only. Each PDF replacement appends an immutable version with a private original. The implemented PDF slice derives bounded untrusted embedded text through an isolated processor and uses the browser's native viewer on the existing cookieless artifact origin; embedded strings may not be visible in the document, and OCR remains a later milestone.</p>
-          <p>The planned boundary keeps authorization consistent across search, native viewing, forced-attachment download, version history, MCP, extraction status, workspace moves, and deletion. Preview deliberately transfers the authorized original. Per-version catalog metadata is not promised; that needs a separate product and data-model decision.</p>
+          <p>PDF, XLSX, and DOCX support are independent default-off production opt-ins. Every replacement appends an immutable version whose exact private original participates in the same permission, retention, quota, integrity, and audit rules as the rest of the vault.</p>
+          <p>PDF derives bounded untrusted embedded text through an isolated processor and uses the browser's native viewer on the existing cookieless artifact origin; embedded strings may not be visible in the document, and OCR remains a later milestone. Preview deliberately transfers the authorized original.</p>
+          <p>XLSX is parsed only by its networkless SheetJS CE processor. Search and the application-owned read-only grid receive a canonical typed manifest of bounded visible cells, cached formula values, merges, and reviewed links; the browser never parses or receives the workbook original for preview.</p>
+          <p>DOCX is strictly admitted and converted by the networkless LibreOffice processor. Only an independently validated PDF derivative with selectable text becomes the browser preview and search source; converted HTML and original DOCX bytes never enter the preview frame.</p>
+          <p>The implemented boundary keeps authorization consistent across search, viewing, forced-attachment original download, version history, MCP, extraction status, workspace moves, and deletion. Per-version catalog metadata is not promised; that needs a separate product and data-model decision.</p>
           <p>For generated DOCX, preserving an optional generator source such as Markdown or Python beside the binary original remains an open design question. ArtifactFlow must not pretend every uploaded document has one.</p>
           <div class="page-links">
             <a class="page-link" href="https://github.com/Gadsotek/artifactflow/issues/32"><strong>PDF issue #32 ↗</strong><span>Private originals, bounded native-text extraction, native artifact-origin viewing, search, and immutable replacement; OCR follows later.</span></a>
-            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/issues/33"><strong>DOCX issue #33 ↗</strong><span>ZIP and relationship limits, extracted structure, safe preview, and optional source pairing.</span></a>
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/architecture/xlsx-artifacts.md"><strong>XLSX architecture ↗</strong><span>Strict package admission, typed projection, safe links, read-only viewing, and production proof.</span></a>
+            <a class="page-link" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/architecture/docx-artifacts.md"><strong>DOCX architecture ↗</strong><span>ZIP and relationship limits, isolated conversion, independent PDF validation, and exact-original handling.</span></a>
             <a class="page-link" href="/roadmap/"><strong>Product roadmap</strong><span>Candidate scope, required proof, and explicit non-promises.</span></a>
             <a class="page-link" href="/security/"><strong>Security model</strong><span>Current executable HTML boundary and documented residual risks.</span></a>
           </div>
@@ -166,7 +170,7 @@
         <a href="#drafts">Drafts</a>
         <a href="#metadata">Content and metadata</a>
         <a href="#formats">Current formats</a>
-        <a href="#documents">PDF and DOCX direction</a>
+        <a href="#documents">Document formats</a>
       </aside>
     </div>
   </article>

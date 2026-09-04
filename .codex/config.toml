@@ -12,6 +12,8 @@ extends = ":workspace"
 [permissions.artifactflow-edit.filesystem.":workspace_roots"]
 ".env*" = "deny"
 "**/.env*" = "deny"
+".env.example" = "write"
+".env.production.example" = "write"
 ".npmrc" = "deny"
 "auth.json" = "deny"
 "credentials" = "deny"

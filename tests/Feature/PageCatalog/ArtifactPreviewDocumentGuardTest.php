@@ -974,6 +974,21 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         }
     }
 
+    public function test_firefox_foreign_title_end_br_differential_cannot_hide_an_iframe_in_cdata(): void
+    {
+        $iframeId = 'firefox-foreign-title-end-br-breakout';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><svg><g></script><title></br></title><![CDATA[x></g></svg>'
+            . '<iframe ID=' . $iframeId . '></iframe></script>',
+        );
+
+        $this->assertStringNotContainsString('<iframe id=' . $iframeId, strtolower($hardened));
+        $this->assertStringContainsString(
+            '<template data-artifactflow-blocked-browsing-context ID=' . $iframeId,
+            $hardened,
+        );
+    }
+
     public function test_ignored_foreign_start_tags_do_not_change_cdata_handling(): void
     {
         $cases = [

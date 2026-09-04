@@ -83,5 +83,7 @@ final class PageContentPreparationArchitectureTest extends TestCase
         $this->assertTrue($preparer->supportsSearchTextReindex(PageType::HtmlArtifact));
         $this->assertTrue($preparer->supportsSearchTextReindex(PageType::Image));
         $this->assertFalse($preparer->supportsSearchTextReindex(PageType::Pdf));
+        $this->assertFalse($preparer->supportsSearchTextReindex(PageType::Xlsx));
+        $this->assertFalse($preparer->supportsSearchTextReindex(PageType::Docx));
     }
 }

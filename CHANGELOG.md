@@ -6,6 +6,160 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+### Added
+
+- Added default-off Excel `.xlsx` artifacts with exact private originals, a
+  strict isolated SheetJS CE projection service, independently validated typed
+  manifests, searchable visible-cell text, and an application-owned read-only
+  Tabulator viewer on the cookieless artifact origin.
+- Added default-off Word `.docx` artifacts with exact private originals and a
+  strict isolated LibreOffice conversion service. The exact PDF derivative must
+  pass the separate PDFBox DOCX-preview profile and contain selectable,
+  searchable text before it can be persisted or delivered.
+- Integrated both office formats with create/replace, immutable versions,
+  restore and in-place reprocessing, quota/retention/deletion/integrity
+  accounting, current/history preview and authenticated original download,
+  permission-aware search, external sharing, and dedicated MCP create/replace/
+  read/search/revert behavior.
+- Advanced the MCP contract to `0.9.0`; XLSX content reads now require an
+  explicit visible worksheet plus canonical range of at most 1,000 cells and
+  return a response-size-checked selection instead of an unbounded full
+  manifest. Metadata-only workbook reads need no selector.
+
+### Security
+
+- Kept workbook and Word package bytes out of the browser and Laravel parser
+  process; processor requests and responses are bounded, HMAC-authenticated,
+  replay-resistant, and constrained to single-worker network-denied services.
+- Added page/version/purpose/expiry/access-revision-bound office delivery URLs,
+  strict artifact-host response policies, safe spreadsheet hyperlink handling,
+  and fail-closed feature revalidation across web, external-share, and MCP
+  delivery surfaces. Antivirus is deliberately not claimed; isolation remains
+  the security boundary.
+- Tightened DOCX admission to an exact PNG/JPEG/bounded-EMF media profile and
+  explicit ZIP container, compression, Unix-file-type, content-type, and
+  relationship-graph checks. EMF admission requires the registered or legacy
+  Office media type plus a structurally bounded contiguous record stream and
+  rejects driver/OpenGL escape records before LibreOffice. Added authenticated
+  live processor health challenges and composite database ownership/kind
+  constraints for both Office derivative types.
+
+### Operations
+
+- Added installer planning, independent processor secrets, production boot and
+  doctor validation, local/e2e Compose services, restricted artifact-host
+  database grants, and public operator/architecture/lifecycle documentation for
+  both formats. Make, CI, and tagged releases now build and runtime-test both
+  Office processors, prove the DOCX-to-PDFBox searchable-preview chain, scan
+  every image, and publish independent XLSX/DOCX digests with SBOM and
+  provenance attestations. Final-release `:latest` tags move only after all
+  immutable images, attestations, SBOMs, and the GitHub Release exist.
+  Production remains default-off pending
+  deployment-specific containment and cross-browser evidence.
+- The interactive installer now asks about Word before standalone PDF. Selecting
+  Word enables the required PDF chain and skips the redundant PDF question;
+  declining Word leads to the independent PDF choice and then XLSX. It runs the
+  doctor in every environment and requires signed live XLSX plus DOCX/PDF checks
+  after local services reload. Isolated PHP/browser test wrappers use the committed
+  interpolation guard and no longer read or scaffold the developer `.env`.
+- Aligned the public roadmap, workflow, security, self-hosting, MCP, artifact-vault
+  guide, and synchronized `llms.txt` copies with the implemented default-off
+  Office model, including typed XLSX projection and independently validated
+  DOCX PDF previews, instead of describing Word as future-only work.
+
+### Fixed
+
+- Removed direct popup authority from typed XLSX preview frames. External targets
+  now require a destination-visible, source/origin/shape-checked confirmation on
+  the app origin before a no-opener/no-referrer tab can open. DOCX conversion
+  copies now preserve external-link text while removing the relationships and
+  wrappers, and the independent PDFBox profile rejects any emitted URI action.
+- Rechecked XLSX and DOCX network containment on every authenticated processing
+  request, tightened PDF/XLSX/DOCX Unix sockets to processor-group-only access,
+  removed XLSX test fixtures from the service image, and replaced the DOCX
+  development HTTP server/relay with a rootless, single-thread FrankenPHP
+  runtime. Both FrankenPHP binaries now pin the scanner-fixed gRPC 1.83.1.
+- Raised the still-bounded XLSX service task budget from 16 to 32 so its Node
+  listener, single projection worker, and authenticated Docker health probe can
+  overlap without exhausting runtime threads and timing out an upload. The
+  production runtime gate now exercises that exact overlap.
+- Closed a per-page storage-quota undercount during XLSX and DOCX in-place
+  reprocessing. Positive derivative growth is now checked under row locks
+  against the complete retained version graph; the retention-aware projection
+  remains limited to operations that actually append and prune a version.
+- Accepted ordinary XLSX ZIP data descriptors with exact CRC/size/boundary
+  validation. After complete package validation, SheetJS receives a parser-only
+  descriptor-free ZIP assembled from the exact validated compressed payloads;
+  the retained workbook remains byte-exact. Unsupported same-workbook hyperlink
+  destinations now omit only the link instead of rejecting an otherwise usable
+  workbook. Unsafe external schemes still fail closed. Word package thumbnails
+  now include common EMF/WMF
+  variants behind the exact root thumbnail relationship and are stripped without
+  native parsing before LibreOffice.
+- Isolated the browser suite's cache and processor admission locks in its
+  temporary database. E2E Office requests can no longer collide with a developer's
+  simultaneously running local app through the checkout's shared file cache.
+- Replaced narrow Office optional-part allowlists with bounded passive package
+  profiles. XLSX now accepts standard tables, drawings, images, comments/VML,
+  custom XML, thumbnails, pivots, connections, exact worksheet custom-property
+  binaries, and similar internal Open XML parts while omitting them from the
+  typed manifest. DOCX now accepts standard
+  passive chart, diagram, drawing, modern-comment, and custom-XML parts; its
+  conversion copy removes custom XML bindings/data, printer payloads, thumbnails,
+  embedded fonts, and a settings-owned external attached-template relationship
+  before being revalidated. Macros, ActiveX/OLE, embedded packages, all other
+  unsafe external relationships, generic binary parts, attacker-defined
+  relationship types, DTDs, and package escapes remain rejected.
+- Added privacy-safe XLSX rejection diagnostics to processor logs. Responses
+  retain the generic rejection contract, while operators receive only an opaque
+  fixed-message hash without workbook names, cells, links, or package paths.
+- Made DOCX embedded-file/OLE rejection actionable through one fixed allowlisted
+  reason. The UI identifies that unsupported feature without exposing package
+  paths, filenames, parser errors, or arbitrary processor-supplied details.
+- Accepted Word documents containing bounded OOXML obfuscated embedded fonts
+  without exposing LibreOffice to the untrusted font programs. The exact original
+  remains private and byte-for-byte retained; the processor verifies the fixed
+  font-table relationship and content type, strips all embedded-font parts and
+  references from a conversion copy, revalidates it, and renders with fallback
+  fonts. Wrong content types, external or misbound font relationships, excessive
+  font counts, and direct native-font parsing remain rejected.
+- Accepted the bounded EMF vector images emitted by real Word documents. The
+  processor now verifies the EMF signature, header, declared byte and record
+  counts, aligned record boundaries, object-handle ceiling, terminal EOF, image
+  relationship, and exact `image/emf` or `image/x-emf` content type. Mislabeled,
+  truncated, count-confused, driver-escape, WMF, and SVG inputs still fail
+  closed, and the DOCX-to-PDFBox runtime gate covers an embedded EMF.
+- Accepted modern Word's passive `stylesWithEffects` companion under its exact
+  Microsoft relationship, target, and content type. The DOCX runtime gate now
+  also creates a real LibreOffice `.docx` export and proves that preflight and
+  PDF conversion accept it while misbound style relationships still fail.
+- Fixed XLSX processor authentication for installer-generated `base64:`
+  secrets. Laravel, the deployment doctor, processor startup, and the container
+  healthcheck now use the same decoded HMAC key bytes; the production-image
+  runtime gate proves a Base64-configured service accepts the decoded
+  application-side challenge.
+- Prevented the XLSX processor from advertising readiness before its cold
+  SheetJS worker path is usable. Startup now runs one bounded child-process
+  rejection self-test before binding the service socket, and container health
+  start periods cover that fail-closed readiness check.
+- Made storage recount and the admin workspace/page usage breakdown include
+  XLSX manifest and DOCX PDF-preview derivatives. Recounting can no longer
+  remove derivative bytes from the quota counter.
+- Aligned historical XLSX preview sandbox permissions with the current and
+  external-share viewers so reviewed safe hyperlinks remain usable without an
+  opener or referrer, and added both Office ADRs to the public-doc allowlist.
+- Fixed the standalone XLSX maximum-row stress fixture and added Office MCP
+  regressions proving scope, token-ceiling, concurrency, and Base64 checks run
+  before processor dispatch.
+- Fixed unknown commit-outcome handling for create, update, restore, and Office
+  reprocess operations. Failures after transaction callback completion now
+  preserve the complete promoted original/derivative graph because PostgreSQL
+  may already have committed it; genuine rollback orphans are removed later by
+  the age-gated, reference-aware orphan reaper.
+- Completed the XLSX viewer's dark theme across headers, rows, borders, hover
+  and selection states, links, empty-sheet messaging, and the formula bar. The
+  empty `No formula` state now uses a distinct neutral high-contrast style.
+
 ## v0.1.0 — 2026-08-28
 
 Feature, security, and deployment release. It makes the completed native-text

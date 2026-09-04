@@ -29,6 +29,16 @@ final readonly class PdfProcessorClient
 
     public function inspect(string $untrustedBytes): PdfProcessingResult
     {
+        return $this->inspectForProfile($untrustedBytes, null);
+    }
+
+    public function inspectDocxPreview(string $untrustedBytes): PdfProcessingResult
+    {
+        return $this->inspectForProfile($untrustedBytes, PdfProcessorProtocol::DOCX_PREVIEW_PROFILE);
+    }
+
+    private function inspectForProfile(string $untrustedBytes, ?string $profile): PdfProcessingResult
+    {
         if (!$this->configuration->enabled()) {
             throw new DomainRuleViolation('PDF artifacts are disabled for this installation.');
         }
@@ -42,6 +52,7 @@ final readonly class PdfProcessorClient
                 fn (PdfProcessingReservation $reservation): PdfProcessingResult => $this->inspectUnderAdmission(
                     $untrustedBytes,
                     $reservation,
+                    $profile,
                 ),
             );
         } catch (LogicException $exception) {
@@ -56,29 +67,39 @@ final readonly class PdfProcessorClient
     private function inspectUnderAdmission(
         string $untrustedBytes,
         PdfProcessingReservation $reservation,
+        ?string $profile,
     ): PdfProcessingResult {
         $timestamp = (string) time();
         $nonce = bin2hex(random_bytes(16));
 
         try {
             $secret = $this->configuration->sharedSecret();
-            $endpoint = $this->configuration->origin() . '/v1/inspect';
+            $endpoint = $this->configuration->origin() . ($profile === PdfProcessorProtocol::DOCX_PREVIEW_PROFILE
+                ? '/v1/inspect-docx-preview'
+                : '/v1/inspect');
+            $headers = [
+                'Accept' => 'application/json',
+                'Accept-Encoding' => 'identity',
+                'X-ArtifactFlow-Processor-Timestamp' => $timestamp,
+                'X-ArtifactFlow-Processor-Nonce' => $nonce,
+                'X-ArtifactFlow-Processor-Signature' => PdfProcessorProtocol::requestSignature(
+                    $timestamp,
+                    $nonce,
+                    $untrustedBytes,
+                    $secret,
+                    $profile,
+                ),
+            ];
+
+            if ($profile === PdfProcessorProtocol::DOCX_PREVIEW_PROFILE) {
+                $headers['X-ArtifactFlow-Processor-Profile'] = $profile;
+            }
+
             $request = Http::connectTimeout($this->configuration->connectTimeoutSeconds())
                 ->timeout($this->configuration->timeoutSeconds())
                 ->withoutRedirecting()
                 ->withOptions($this->transportOptions(PdfProcessorConfiguration::MAX_RESPONSE_BYTES))
-                ->withHeaders([
-                    'Accept' => 'application/json',
-                    'Accept-Encoding' => 'identity',
-                    'X-ArtifactFlow-Processor-Timestamp' => $timestamp,
-                    'X-ArtifactFlow-Processor-Nonce' => $nonce,
-                    'X-ArtifactFlow-Processor-Signature' => PdfProcessorProtocol::requestSignature(
-                        $timestamp,
-                        $nonce,
-                        $untrustedBytes,
-                        $secret,
-                    ),
-                ])
+                ->withHeaders($headers)
                 ->withBody($untrustedBytes, 'application/pdf');
 
             if ($this->configuration->socketPath() !== null) {
@@ -125,7 +146,14 @@ final readonly class PdfProcessorClient
             $this->unavailable($reason, $response->status());
         }
 
-        return $this->verifiedResult($response, $body, $nonce, hash('sha256', $untrustedBytes), $secret);
+        return $this->verifiedResult(
+            $response,
+            $body,
+            $nonce,
+            hash('sha256', $untrustedBytes),
+            $secret,
+            $profile,
+        );
     }
 
     private function verifiedResult(
@@ -134,6 +162,7 @@ final readonly class PdfProcessorClient
         string $nonce,
         string $inputSha256,
         string $secret,
+        ?string $profile,
     ): PdfProcessingResult {
         try {
             $contentType = strtolower(trim((string) strtok($response->header('Content-Type'), ';')));
@@ -143,14 +172,19 @@ final readonly class PdfProcessorClient
                 $contentType !== 'application/json'
                 || preg_match('/^[a-f0-9]{64}$/D', $signature) !== 1
                 || !hash_equals(
-                    PdfProcessorProtocol::responseSignature($nonce, $inputSha256, $body, $secret),
+                    PdfProcessorProtocol::responseSignature($nonce, $inputSha256, $body, $secret, $profile),
                     $signature,
                 )
             ) {
                 throw new LogicException('Invalid PDF processor response.');
             }
 
-            return PdfProcessingResult::fromJson($body);
+            return PdfProcessingResult::fromJson(
+                $body,
+                $profile === PdfProcessorProtocol::DOCX_PREVIEW_PROFILE
+                    ? PdfProcessingResult::DOCX_PREVIEW_PROCESSOR_PROFILE
+                    : PdfProcessingResult::PROCESSOR_PROFILE,
+            );
         } catch (Throwable) {
             $this->unavailable('invalid_response', $response->status());
         }

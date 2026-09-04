@@ -12,6 +12,7 @@ use App\Domain\DomainRuleViolation;
 use App\Domain\Events\DomainEventType;
 use App\Domain\PageCatalog\InvalidPageStatusTransition;
 use App\Domain\PageCatalog\PageStatus;
+use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PageVersionSource;
 use App\Domain\PageCatalog\StalePageVersionException;
 use App\Domain\Provenance\VersionOperation;
@@ -32,6 +33,8 @@ final readonly class PageVersionAppender
         private WorkspaceStorageQuota $storageQuota,
         private PageVersionWriter $versionWriter,
         private RealtimeConfiguration $realtimeConfiguration,
+        private PageVersionStorage $versionStorage,
+        private OfficeArtifactStoragePreflight $officeStoragePreflight,
     ) {
     }
 
@@ -52,6 +55,8 @@ final readonly class PageVersionAppender
             page: $page,
             content: $content,
             source: $source,
+            baseVersionUid: $baseVersionUid,
+            expectedCurrentVersionUid: $expectedCurrentVersionUid,
             provenance: $provenance,
             operation: $operation,
             lineage: $lineage,
@@ -68,12 +73,21 @@ final readonly class PageVersionAppender
         Page $page,
         string $content,
         PageVersionSource $source,
+        ?string $baseVersionUid = null,
+        ?string $expectedCurrentVersionUid = null,
         ?VersionProvenanceInput $provenance = null,
         VersionOperation $operation = VersionOperation::Update,
         ?VersionLineage $lineage = null,
         ?string $changeSummary = null,
     ): PreparedPageVersionAppend {
         $this->ensurePageAcceptsContentChanges($page);
+
+        if ($page->type === PageType::Xlsx || $page->type === PageType::Docx) {
+            $this->ensureExpectedCurrentVersion($page, $expectedCurrentVersionUid);
+            $this->ensureBaseVersionIsCurrent($page, $baseVersionUid, $source);
+            $this->officeStoragePreflight->forVersionAppend($page, $content);
+        }
+
         $actorUid = ActorId::fromUser($actor);
         $prepared = $this->contentPreparer->prepareForPersistence($page->type, $content, $actorUid, $source);
 
@@ -156,7 +170,7 @@ final readonly class PageVersionAppender
             return $version;
         } catch (Throwable $exception) {
             if ($version instanceof PageVersion) {
-                Storage::disk('artifacts')->delete($version->content_storage_path);
+                Storage::disk('artifacts')->delete($this->versionStorage->paths($version));
             }
 
             throw $exception;

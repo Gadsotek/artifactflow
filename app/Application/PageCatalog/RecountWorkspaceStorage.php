@@ -5,15 +5,16 @@ declare(strict_types=1);
 namespace App\Application\PageCatalog;
 
 use App\Models\PageVersion;
+use App\Models\PageVersionDerivative;
 use App\Models\Workspace;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Reconciles workspaces.used_storage_bytes against the authoritative SUM of
- * page_versions.byte_size. The counter is maintained transactionally by the
- * version write/delete/move handlers; this recount exists as an operational
- * safety net for drift introduced outside those handlers.
+ * Reconciles workspaces.used_storage_bytes against the authoritative sum of
+ * retained originals and their derivatives. The counter is maintained
+ * transactionally by the version write/delete/move handlers; this recount
+ * exists as an operational safety net for drift introduced outside them.
  */
 final readonly class RecountWorkspaceStorage
 {
@@ -61,10 +62,16 @@ final readonly class RecountWorkspaceStorage
                 return false;
             }
 
-            $actualBytes = (int) PageVersion::query()
+            $originalBytes = (int) PageVersion::query()
                 ->join('pages', 'page_versions.page_uid', '=', 'pages.uid')
                 ->where('pages.workspace_uid', $workspace->uid)
                 ->sum('page_versions.byte_size');
+            $derivativeBytes = (int) PageVersionDerivative::query()
+                ->join('page_versions', 'page_version_derivatives.page_version_uid', '=', 'page_versions.uid')
+                ->join('pages', 'page_versions.page_uid', '=', 'pages.uid')
+                ->where('pages.workspace_uid', $workspace->uid)
+                ->sum('page_version_derivatives.byte_size');
+            $actualBytes = $originalBytes + $derivativeBytes;
 
             if ($workspace->used_storage_bytes === $actualBytes) {
                 return false;

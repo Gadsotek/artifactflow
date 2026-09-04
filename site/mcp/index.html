@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MCP Server for AI Artifacts | ArtifactFlow</title>
-<meta name="description" content="Connect approved AI clients to ArtifactFlow's versioned artifact vault through scoped MCP search, read, create, update, and revert operations.">
+<meta name="description" content="Connect approved AI clients to ArtifactFlow's versioned artifact vault through scoped MCP discovery, bounded document reads, format-specific creation and replacement, organization, sharing, and revert operations.">
 <link rel="canonical" href="https://artifactflow.app/mcp/">
 <meta property="og:title" content="MCP Server for AI Artifacts | ArtifactFlow">
-<meta property="og:description" content="Search, read, create, update, and revert AI artifacts through scoped MCP tools and the same policies used by people.">
+<meta property="og:description" content="Search, read, create, replace, organize, share, and revert text, image, PDF, XLSX, and DOCX artifacts through scoped MCP tools and the same policies used by people.">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://artifactflow.app/mcp/">
 <meta property="og:site_name" content="ArtifactFlow">
@@ -165,14 +165,18 @@
 
         <section id="tools">
           <p class="kicker">Current tools</p>
-          <h2>Ten operations cover discovery and versioned content changes.</h2>
+          <h2>Twenty tools cover discovery, governed reads, and versioned changes.</h2>
           <ul class="detail-list">
             <li><strong><code>list_workspaces</code></strong>Lists only workspaces reachable within the token's live scope.</li>
             <li><strong><code>list_taxonomy</code></strong>Returns searchable global tags and workspace-qualified categories visible through reachable content.</li>
-            <li><strong><code>search</code> and <code>read</code></strong>Find authorized pages and read one page inside an explicit untrusted-data envelope.</li>
+            <li><strong><code>search</code> and <code>read</code></strong>Find authorized pages and read one page inside an explicit untrusted-data envelope. XLSX content requires an exact visible sheet and canonical uppercase range capped at 1,000 cells; DOCX returns only bounded validated PDF-derived text. Search includes safe XLSX/DOCX facts only with <code>mcp:read</code>; search-only tokens receive catalog metadata without content-derived facts.</li>
             <li><strong><code>create</code></strong>Creates Markdown or single-file HTML through the normal page creation handler, including optional category and tag names.</li>
+            <li><strong><code>create_image</code>, <code>create_pdf</code>, <code>create_xlsx</code>, and <code>create_docx</code></strong>Create bounded binary artifacts from canonical Base64 only after the page-operation and upload scopes, authorization, and format processor gates pass.</li>
             <li><strong><code>create_category</code> and <code>create_tag</code></strong>Create taxonomy only with live Editor authority in the supplied in-scope workspace.</li>
+            <li><strong><code>organize</code></strong>Revision-safely changes only title, hierarchy, category, and tags through the catalog's normal validation and authorization path.</li>
             <li><strong><code>update</code>, <code>update_description</code>, and <code>revert</code></strong>Append a version from a fresh base, revise only searchable description metadata, or revert without overwriting history.</li>
+            <li><strong><code>replace_image</code>, <code>replace_pdf</code>, <code>replace_xlsx</code>, and <code>replace_docx</code></strong>Append a processed binary version from a fresh base under <code>mcp:update</code> plus <code>mcp:upload</code>; neither Office original nor the DOCX PDF derivative is returned.</li>
+            <li><strong><code>create_external_share</code></strong>Creates only the narrow expiring or one-time bearer capability for an owned editable page when live workspace policy permits it.</li>
           </ul>
         </section>
 
@@ -208,7 +212,7 @@
             <strong>Hard authority ceiling</strong>
             <p>MCP de-elevates workspace and page Admin access to Editor. Tokens cannot manage page access, archive, hard-delete, transfer ownership, or gain installation-wide content access through System Admin status.</p>
           </div>
-          <p>Scopes are explicit: <code>mcp:search</code>, <code>mcp:read</code>, <code>mcp:create</code>, and <code>mcp:update</code>. Search metadata can itself be sensitive, so a search-only token should still be bound to the smallest useful workspace set.</p>
+          <p>Scopes are explicit: <code>mcp:search</code>, <code>mcp:read</code>, <code>mcp:create</code>, <code>mcp:update</code>, <code>mcp:upload</code>, <code>mcp:organize</code>, and <code>mcp:share</code>. Binary create requires create plus upload; binary replacement requires update plus upload. Search metadata can itself be sensitive, so a search-only token should still be bound to the smallest useful workspace set.</p>
         </section>
 
         <section id="untrusted-data">
@@ -222,6 +226,7 @@
   "data": "# Deployment notes\n..."
 }</code></pre>
           <p>The envelope makes the trust boundary explicit, but an MCP client can still be influenced by what it reads. Human write approval is a client policy, not a guarantee the server can impose on every MCP consumer.</p>
+          <p>Office reads preserve that framing without returning files: XLSX emits only the selected typed cells and safe workbook facts, while DOCX emits bounded text extracted from the independently validated preview. Original bytes, preview PDF bytes, storage paths, signed URLs, hidden workbook content, and processor diagnostics remain unavailable through MCP.</p>
         </section>
 
         <section id="writes">

@@ -1,6 +1,6 @@
 # ArtifactFlow: Architecture (one-pager)
 
-ArtifactFlow is a self-hosted, versioned artifact vault for tools and documents created with AI. These diagrams show how the current Markdown, HTML, raster-image, and feature-gated PDF artifact types move through that vault and how untrusted HTML execution stays isolated from authenticated data.
+ArtifactFlow is a self-hosted, versioned artifact vault for tools and documents created with AI. These diagrams show how the current Markdown, HTML, raster-image, and feature-gated PDF, XLSX, and DOCX artifact types move through that vault and how untrusted execution and parser work stay isolated from authenticated data.
 
 Two self-contained SVGs (open in any browser; embeddable in the main README):
 
@@ -25,6 +25,12 @@ Accepted security-sensitive architecture decisions:
   cookieless artifact origin, authorization-first search snippets, restricted
   artifact-host grants, and the focused security proof required before its
   default-off implementation can be production-enabled.
+- [`xlsx-artifacts.md`](xlsx-artifacts.md): exact workbook originals, strict
+  isolated SheetJS projection, canonical typed manifests, an application-owned
+  opaque-origin grid, lifecycle/search/sharing/MCP behavior, and production gates.
+- [`docx-artifacts.md`](docx-artifacts.md): exact Word originals, strict isolated
+  LibreOffice-to-PDF conversion, independent PDFBox validation and text
+  extraction, derived-only sharing, and the dual-processor production boundary.
 
 > Diagrams reflect the *actual* current code. Yes, the implementation is AI-assisted; the rigor behind it (repeated security audits, PHPStan-max, a documented threat model, a broad test suite including browser-level sandbox proofs) is the point.
 
@@ -35,7 +41,7 @@ Accepted security-sensitive architecture decisions:
 - **HTTP** (`app/Http`): thin controllers (parse → authorize → delegate → respond), a middleware pipeline that enforces the runtime-role split + security headers + password/admin-2FA sudo step-up, and FormRequests for validation.
 - **Application** (`app/Application`): where the logic lives, as `command → handler` use-cases:
   - `Identity/`: users, workspaces (Personal/Shared), memberships (Admin/Editor/Reader), invitations.
-  - `PageCatalog/` ★ (the core): pages (Markdown | HtmlArtifact | Image | Pdf), immutable versions, access grants, categories/tags, search, rendering, the artifact-preview signing/serving.
+  - `PageCatalog/` ★ (the core): pages (Markdown | HtmlArtifact | Image | Pdf | Xlsx | Docx), immutable versions and derivatives, access grants, categories/tags, search, rendering, and artifact-preview/original signing and serving.
   - `Provenance/`: observed version ingests, declared producers, external origin references, and restore lineage.
   - `Administration/`: installation-wide limit settings (newest, cleanest code).
   - `Events/` (transactional outbox) + `Audit/` (append-only trail): cross-cutting.

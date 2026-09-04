@@ -1,0 +1,20 @@
+{
+  "reviewedFor": ["AGPL-3.0-or-later distribution", "separately licensed commercial distribution"],
+  "approvedLicenses": [
+    "0BSD",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BlueOak-1.0.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unlicense"
+  ],
+  "npmMetadataOverrides": {
+    "khroma@2.1.0": {
+      "license": "MIT",
+      "source": "https://github.com/fabiospampinato/khroma/blob/v2.1.0/license"
+    }
+  }
+}

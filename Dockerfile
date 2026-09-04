@@ -181,7 +181,7 @@ WORKDIR /go/src/app/caddy
 
 RUN go version | grep -E '^go version go1\.26\.6[[:space:]]' \
     && go get golang.org/x/crypto@v0.55.0 \
-    && go get google.golang.org/grpc@v1.82.1 \
+    && go get google.golang.org/grpc@v1.83.1 \
     && go get github.com/getkin/kin-openapi@v0.144.0 \
     && go mod tidy
 
@@ -191,7 +191,7 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
         -ldflags "-w -s -X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP v1.12.6 PHP $PHP_VERSION Caddy' -X 'github.com/caddyserver/caddy/v2.CustomBinaryName=frankenphp' -X 'github.com/caddyserver/caddy/v2/modules/caddyhttp.ServerHeader=FrankenPHP Caddy'" \
         -buildvcs=true \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.82\.1' \
+        | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.83\.1' \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.144\.0' \
     && go version -m /usr/local/bin/frankenphp \
@@ -208,7 +208,8 @@ COPY --from=frankenphp-security-builder /usr/local/bin/frankenphp /usr/local/bin
 # alone; the release image digest, SBOM, and provenance identify the exact output.
 # The source-rebuilt binary above uses Go 1.26.6 for CVE-2026-39821 and
 # CVE-2026-46600, upgrades grpc-go for GHSA-hrxh-6v49-42gf, and upgrades
-# kin-openapi for GHSA-r277-6w6q-xmqw.
+# kin-openapi for GHSA-r277-6w6q-xmqw, and upgrades x/crypto for
+# CVE-2026-56854.
 # Current apk minimums: c-ares CVE-2026-33630 is fixed in 1.34.8-r0;
 # OpenSSL CVE-2026-14456 is fixed in 3.5.8-r0; PostgreSQL client library
 # findings reported against 18.4-r0 are fixed in 18.5-r0.
@@ -235,6 +236,7 @@ ENV APP_ENV=production \
 WORKDIR /var/www/html
 
 COPY artisan composer.json ./
+COPY LICENSE THIRD_PARTY_NOTICES.md ./
 COPY app ./app
 COPY bootstrap ./bootstrap
 COPY config ./config

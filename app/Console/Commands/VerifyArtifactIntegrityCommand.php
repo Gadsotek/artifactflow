@@ -11,7 +11,7 @@ final class VerifyArtifactIntegrityCommand extends Command
 {
     protected $signature = 'artifactflow:verify-artifacts {--sample=25} {--all} {--json}';
 
-    protected $description = 'Verify stored page-version artifact files exist and match their recorded SHA-256 hashes.';
+    protected $description = 'Verify stored page-version originals and derivatives match their recorded SHA-256 hashes.';
 
     public function handle(VerifyArtifactIntegrity $verifyArtifactIntegrity): int
     {

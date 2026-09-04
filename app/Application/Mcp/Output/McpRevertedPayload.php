@@ -14,6 +14,8 @@ final readonly class McpRevertedPayload implements McpWirePayload
         public string $currentVersionUid,
         public string $restoredFromVersionUid,
         public ?McpPdfFactsView $pdf = null,
+        public ?McpXlsxFactsView $xlsx = null,
+        public ?McpDocxFactsView $docx = null,
     ) {
     }
 
@@ -31,6 +33,14 @@ final readonly class McpRevertedPayload implements McpWirePayload
 
         if ($this->pdf !== null) {
             $payload['pdf'] = $this->pdf->toWire();
+        }
+
+        if ($this->xlsx !== null) {
+            $payload['xlsx'] = $this->xlsx->toWire();
+        }
+
+        if ($this->docx !== null) {
+            $payload['docx'] = $this->docx->toWire();
         }
 
         return $payload;

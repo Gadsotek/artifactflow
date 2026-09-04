@@ -17,9 +17,12 @@ use App\Domain\PageCatalog\PageContentEncoding;
 use App\Domain\PageCatalog\PageSecurityScanStatus;
 use App\Domain\PageCatalog\PageVersionSource;
 use App\Domain\Provenance\VersionOperation;
+use App\Models\DocxVersionFact;
 use App\Models\Page;
 use App\Models\PageVersion;
+use App\Models\PageVersionDerivative;
 use App\Models\PdfVersionFact;
+use App\Models\XlsxVersionFact;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use LogicException;
@@ -119,26 +122,54 @@ final readonly class PageVersionWriter
             $versionUid,
             $prepared->storageFilename,
         );
-        $pdfExtraction = $prepared->pdfProcessingResult instanceof PdfProcessingResult
-            ? $this->pdfExtractionPersistence->fromResult($prepared->pdfProcessingResult)
+        $derivativeStoragePath = $prepared->derivative instanceof PreparedArtifactDerivative
+            ? $this->storagePath(
+                $page,
+                $versionNumber,
+                $versionUid,
+                $prepared->derivative->storageFilename,
+            )
+            : null;
+        $effectivePdfResult = $prepared->pdfProcessingResult
+            ?? $prepared->docxProcessingResult?->pdf;
+        $pdfExtraction = $effectivePdfResult instanceof PdfProcessingResult
+            ? $this->pdfExtractionPersistence->fromResult($effectivePdfResult)
             : null;
 
         if ($prepared->requiresPrivateStaging && !($prepared->stagedContent instanceof StagedArtifactContent)) {
-            throw new LogicException('Prepared PDF content must be privately staged before persistence.');
+            throw new LogicException('Prepared artifact content must be privately staged before persistence.');
         }
 
-        if ($prepared->stagedContent instanceof StagedArtifactContent) {
-            try {
+        if (
+            $prepared->derivative instanceof PreparedArtifactDerivative
+            && !($prepared->derivative->stagedContent instanceof StagedArtifactContent)
+        ) {
+            throw new LogicException('Prepared artifact derivative must be privately staged before persistence.');
+        }
+
+        try {
+            if ($prepared->stagedContent instanceof StagedArtifactContent) {
                 $prepared->stagedContent->promoteTo($storagePath, $failureMessage);
-            } catch (Throwable $exception) {
-                Storage::disk('artifacts')->delete($storagePath);
-
-                throw $exception;
+            } elseif (Storage::disk('artifacts')->put($storagePath, $content) === false) {
+                throw new RuntimeException($failureMessage);
             }
-        } elseif (Storage::disk('artifacts')->put($storagePath, $content) === false) {
-            Storage::disk('artifacts')->delete($storagePath);
 
-            throw new RuntimeException($failureMessage);
+            if (
+                $prepared->derivative instanceof PreparedArtifactDerivative
+                && is_string($derivativeStoragePath)
+            ) {
+                $prepared->derivative->stagedContent->promoteTo(
+                    $derivativeStoragePath,
+                    'Failed to store artifact derivative.',
+                );
+            }
+        } catch (Throwable $exception) {
+            Storage::disk('artifacts')->delete(array_filter([
+                $storagePath,
+                $derivativeStoragePath,
+            ], is_string(...)));
+
+            throw $exception;
         }
 
         try {
@@ -148,7 +179,7 @@ final readonly class PageVersionWriter
                 'version_number' => $versionNumber,
                 'content_storage_path' => $storagePath,
                 'content_hash' => $prepared->contentHash(),
-                'byte_size' => $prepared->byteSize(),
+                'byte_size' => $prepared->originalByteSize(),
                 'scan_status' => $scan->hasWarningFindings()
                     ? PageSecurityScanStatus::Warnings
                     : PageSecurityScanStatus::Clean,
@@ -163,10 +194,24 @@ final readonly class PageVersionWriter
                     ?? $this->cappedText($prepared->textProjection->extractedText),
                 'source_text' => $this->cappedText($prepared->textProjection->sourceText),
             ]);
+            $derivative = $this->persistDerivative($version, $prepared, $derivativeStoragePath);
+            $version->setRelation(
+                'derivatives',
+                new \Illuminate\Database\Eloquent\Collection(
+                    $derivative instanceof PageVersionDerivative ? [$derivative] : [],
+                ),
+            );
             $pdfMetadata = $this->persistPdfFacts(
                 $version,
                 $prepared->pdfProcessingResult,
                 $pdfExtraction,
+            );
+            $xlsxMetadata = $this->persistXlsxFacts($version, $prepared->xlsxProcessingResult, $derivative);
+            $docxMetadata = $this->persistDocxFacts(
+                $version,
+                $prepared->docxProcessingResult,
+                $pdfExtraction,
+                $derivative,
             );
 
             $this->storageQuota->recordBytesStored($page->workspace_uid, $prepared->byteSize());
@@ -176,7 +221,7 @@ final readonly class PageVersionWriter
                 $version,
                 $actorUid,
                 $provenance?->wasSupplied() ?? false,
-                $pdfMetadata,
+                $pdfMetadata + $xlsxMetadata + $docxMetadata,
             );
             $this->provenanceRecorder->record(
                 page: $page,
@@ -190,7 +235,10 @@ final readonly class PageVersionWriter
 
             return $version;
         } catch (Throwable $exception) {
-            Storage::disk('artifacts')->delete($storagePath);
+            Storage::disk('artifacts')->delete(array_filter([
+                $storagePath,
+                $derivativeStoragePath,
+            ], is_string(...)));
 
             throw $exception;
         }
@@ -336,5 +384,103 @@ final readonly class PageVersionWriter
         return [
             'pdf_extraction_state' => $extraction->state->value,
         ];
+    }
+
+    private function persistDerivative(
+        PageVersion $version,
+        PreparedPageContent $prepared,
+        ?string $storagePath,
+    ): ?PageVersionDerivative {
+        if (!($prepared->derivative instanceof PreparedArtifactDerivative) || !is_string($storagePath)) {
+            return null;
+        }
+
+        return PageVersionDerivative::query()->forceCreate([
+            'uid' => (string) Str::ulid(),
+            'page_version_uid' => $version->uid,
+            'kind' => $prepared->derivative->kind,
+            'storage_path' => $storagePath,
+            'content_hash' => $prepared->derivative->contentHash(),
+            'byte_size' => $prepared->derivative->byteSize(),
+        ]);
+    }
+
+    /**
+     * @return array{xlsx_truncated: bool}|array{}
+     */
+    private function persistXlsxFacts(
+        PageVersion $version,
+        ?XlsxProcessingResult $result,
+        ?PageVersionDerivative $derivative,
+    ): array {
+        if (!($result instanceof XlsxProcessingResult)) {
+            return [];
+        }
+
+        if (!($derivative instanceof PageVersionDerivative)) {
+            throw new LogicException('XLSX facts require a persisted manifest derivative.');
+        }
+
+        XlsxVersionFact::query()->forceCreate([
+            'page_version_uid' => $version->uid,
+            'manifest_derivative_uid' => $derivative->uid,
+            'processor_profile' => $result->processorProfile,
+            'manifest_schema' => 'xlsx-view-manifest-v1',
+            'engine_name' => $result->engineName,
+            'engine_version' => $result->engineVersion,
+            'package_entry_count' => $result->packageEntryCount,
+            'expanded_bytes' => $result->expandedBytes,
+            'visible_sheet_count' => $result->visibleSheetCount,
+            'omitted_hidden_sheet_count' => $result->omittedHiddenSheetCount,
+            'projected_row_extent_count' => $result->projectedRowExtentCount,
+            'projected_column_extent_count' => $result->projectedColumnExtentCount,
+            'omitted_hidden_row_count' => $result->omittedHiddenRowCount,
+            'omitted_hidden_column_count' => $result->omittedHiddenColumnCount,
+            'cell_count' => $result->cellCount,
+            'formula_count' => $result->formulaCount,
+            'uncached_formula_count' => $result->formulasWithoutCachedResultCount,
+            'link_count' => $result->linkCount,
+            'merge_count' => $result->mergeCount,
+            'truncated' => $result->truncated,
+            'processed_at' => now(),
+        ]);
+
+        return ['xlsx_truncated' => $result->truncated];
+    }
+
+    /** @return array{docx_extraction_state: string}|array{} */
+    private function persistDocxFacts(
+        PageVersion $version,
+        ?DocxProcessingResult $result,
+        ?PersistedPdfExtraction $extraction,
+        ?PageVersionDerivative $derivative,
+    ): array {
+        if (!($result instanceof DocxProcessingResult)) {
+            return [];
+        }
+        if (!($derivative instanceof PageVersionDerivative) || !($extraction instanceof PersistedPdfExtraction)) {
+            throw new LogicException('DOCX facts require a persisted PDF derivative and extraction.');
+        }
+
+        $conversion = $result->conversion;
+        DocxVersionFact::query()->forceCreate([
+            'page_version_uid' => $version->uid,
+            'preview_derivative_uid' => $derivative->uid,
+            'docx_processor_profile' => $conversion->processorProfile,
+            'pdf_processor_profile' => $result->pdf->processorProfile,
+            'engine_name' => $conversion->engineName,
+            'engine_version' => $conversion->engineVersion,
+            'package_entry_count' => $conversion->packageEntryCount,
+            'expanded_bytes' => $conversion->expandedBytes,
+            'relationship_count' => $conversion->relationshipCount,
+            'media_count' => $conversion->mediaCount,
+            'external_hyperlink_count' => $conversion->externalHyperlinkCount,
+            'page_count' => $result->pdf->pageCount,
+            'pdf_version' => $result->pdf->pdfVersion,
+            'extraction_state' => $extraction->state,
+            'processed_at' => now(),
+        ]);
+
+        return ['docx_extraction_state' => $extraction->state->value];
     }
 }

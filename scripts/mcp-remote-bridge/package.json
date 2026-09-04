@@ -10,5 +10,8 @@
   },
   "dependencies": {
     "mcp-remote": "0.8.2"
+  },
+  "overrides": {
+    "qs": "6.16.0"
   }
 }

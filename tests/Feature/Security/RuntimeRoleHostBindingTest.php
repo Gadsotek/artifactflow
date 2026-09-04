@@ -143,6 +143,28 @@ final class RuntimeRoleHostBindingTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_artifact_runtime_routes_word_previews_to_the_session_free_controller(): void
+    {
+        $this->configureOrigins('artifact-host');
+        $pageUid = str_repeat('A', 26);
+        $versionUid = str_repeat('B', 26);
+        Log::shouldReceive('warning')
+            ->once()
+            ->with('docx_preview.rejected', [
+                'page_uid' => $pageUid,
+                'reason' => 'missing_record',
+                'version_uid' => $versionUid,
+            ]);
+
+        $this->get(sprintf(
+            '%s/docx-previews/%s/versions/%s?v=1&purpose=current&issued=1&expires=2&revision=0&signature=%s',
+            self::ARTIFACT_ORIGIN,
+            $pageUid,
+            $versionUid,
+            str_repeat('0', 64),
+        ))->assertNotFound();
+    }
+
     public function test_artifact_runtime_refuses_a_preview_request_on_the_application_hostname(): void
     {
         $this->configureOrigins('artifact-host');

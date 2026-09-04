@@ -10,9 +10,11 @@ use App\Application\Mcp\Output\McpReadPayload;
 use App\Application\Mcp\Output\McpUntrustedImage;
 use App\Application\Mcp\Output\McpUntrustedText;
 use App\Application\PageCatalog\ArtifactContentReader;
+use App\Application\PageCatalog\DocxProcessorConfiguration;
 use App\Application\PageCatalog\ImageArtifactLimits;
 use App\Application\PageCatalog\PdfProcessorConfiguration;
 use App\Application\PageCatalog\RasterImageInspector;
+use App\Application\PageCatalog\XlsxProcessorConfiguration;
 use App\Application\Provenance\ProvenanceReadModel;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\PageType;
@@ -37,6 +39,10 @@ final readonly class McpReadTool
         private McpProvenancePayload $provenancePayload,
         private McpPdfVersionPayload $pdfPayload,
         private PdfProcessorConfiguration $pdfConfiguration,
+        private XlsxProcessorConfiguration $xlsxConfiguration,
+        private McpXlsxVersionPayload $xlsxPayload,
+        private DocxProcessorConfiguration $docxConfiguration,
+        private McpDocxVersionPayload $docxPayload,
     ) {
     }
 
@@ -48,9 +54,28 @@ final readonly class McpReadTool
             return McpToolResult::notFound();
         }
 
+        if ($page->type !== PageType::Xlsx && ($input->xlsxSheet !== null || $input->xlsxRange !== null)) {
+            return McpToolResult::error(McpToolError::invalidRequest(
+                'Arguments [xlsx_sheet] and [xlsx_range] are available only for Excel workbook reads.',
+            ));
+        }
+
         if ($page->type === PageType::Pdf && !$this->pdfConfiguration->enabled()) {
             return McpToolResult::error(McpToolError::unsupportedContentType(
                 'PDF content is not available through MCP yet.',
+            ));
+        }
+
+        if ($page->type === PageType::Xlsx && !$this->xlsxConfiguration->enabled()) {
+            return McpToolResult::error(McpToolError::unsupportedContentType(
+                'Excel workbook content is not available through MCP.',
+            ));
+        }
+
+        if ($page->type === PageType::Docx
+            && (!$this->docxConfiguration->enabled() || !$this->pdfConfiguration->enabled())) {
+            return McpToolResult::error(McpToolError::unsupportedContentType(
+                'Word document content is not available through MCP.',
             ));
         }
 
@@ -85,6 +110,70 @@ final readonly class McpReadTool
                     ? McpUntrustedText::fromNullable($version->extracted_text)
                     : null,
                 pdf: $pdf,
+            ));
+        }
+
+        if ($page->type === PageType::Xlsx) {
+            $xlsx = $this->xlsxPayload->facts($version);
+
+            if (
+                $input->includes(McpReadSection::Content)
+                && ($input->xlsxSheet === null || $input->xlsxRange === null)
+            ) {
+                return McpToolResult::error(McpToolError::invalidRequest(
+                    'Excel workbook content reads require both [xlsx_sheet] and [xlsx_range].',
+                ));
+            }
+
+            $selection = $input->includes(McpReadSection::Content)
+                ? $this->xlsxPayload->selection(
+                    $version,
+                    (string) $input->xlsxSheet,
+                    (string) $input->xlsxRange,
+                )
+                : null;
+
+            if ($xlsx === null || ($input->includes(McpReadSection::Content) && $selection === null)) {
+                return McpToolResult::error(McpToolError::contentUnavailable(
+                    'Page content is unavailable.',
+                ));
+            }
+
+            $hierarchy = $this->hierarchy->forPages($actor, [$page]);
+
+            return McpToolResult::success(new McpReadPayload(
+                page: $this->payload->forPage($page),
+                currentVersionUid: $version->uid,
+                currentVersionChangeSummary: $this->changeSummary($version),
+                hierarchy: $hierarchy[$page->uid],
+                provenance: $input->includes(McpReadSection::Provenance)
+                    ? $this->provenancePayload->make($this->provenance->forVersion($version))
+                    : null,
+                xlsx: $xlsx,
+                xlsxSelection: $selection,
+            ));
+        }
+
+
+        if ($page->type === PageType::Docx) {
+            $docx = $this->docxPayload->facts($version);
+            if ($docx === null) {
+                return McpToolResult::error(McpToolError::contentUnavailable('Page content is unavailable.'));
+            }
+            $hierarchy = $this->hierarchy->forPages($actor, [$page]);
+
+            return McpToolResult::success(new McpReadPayload(
+                page: $this->payload->forPage($page),
+                currentVersionUid: $version->uid,
+                currentVersionChangeSummary: $this->changeSummary($version),
+                hierarchy: $hierarchy[$page->uid],
+                provenance: $input->includes(McpReadSection::Provenance)
+                    ? $this->provenancePayload->make($this->provenance->forVersion($version))
+                    : null,
+                content: $input->includes(McpReadSection::Content)
+                    ? McpUntrustedText::fromNullable($version->extracted_text)
+                    : null,
+                docx: $docx,
             ));
         }
 

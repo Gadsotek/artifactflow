@@ -1,0 +1,28 @@
+{
+	auto_https off
+	admin off
+	persist_config off
+
+	frankenphp {
+		num_threads 1
+		max_threads 1
+	}
+}
+
+http:// {
+	bind {$DOCX_PROCESSOR_BIND}
+
+	root * /srv/docx-processor/public
+
+	request_body {
+		max_size 17MB
+	}
+
+	header {
+		-Server
+		Cache-Control "no-store"
+		X-Content-Type-Options "nosniff"
+	}
+
+	php_server
+}

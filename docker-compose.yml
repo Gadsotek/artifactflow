@@ -118,6 +118,74 @@ services:
       retries: 6
       start_period: 30s
 
+  xlsx-processor:
+    build:
+      context: ./xlsx-processor-spike
+      dockerfile: Dockerfile
+      target: xlsx-processor-spike-service
+    image: artifactflow-xlsx-processor-service:local
+    environment:
+      XLSX_PROCESSOR_SHARED_SECRET: ${XLSX_PROCESSOR_SHARED_SECRET:-artifactflow-local-xlsx-processor-secret-not-for-production}
+      XLSX_PROCESSOR_SOCKET_PATH: /run/artifactflow/xlsx-processor/processor.sock
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 32
+    mem_limit: 384m
+    cpus: 1.0
+    network_mode: none
+    volumes:
+      - xlsx-processor-socket:/run/artifactflow/xlsx-processor
+    depends_on:
+      xlsx-processor-socket-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "/srv/xlsx-processor-spike/healthcheck.cjs"]
+      interval: 30s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
+
+  docx-processor:
+    build:
+      context: ./docx-processor
+      dockerfile: Dockerfile
+    image: artifactflow-docx-processor:local
+    environment:
+      DOCX_PROCESSOR_SHARED_SECRET: ${DOCX_PROCESSOR_SHARED_SECRET:-artifactflow-local-docx-processor-secret-not-for-production}
+      DOCX_PROCESSOR_MAX_CLOCK_SKEW_SECONDS: 120
+      DOCX_PROCESSOR_SOCKET_PATH: /run/artifactflow/docx-processor/processor.sock
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=192m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: 1.0
+    network_mode: none
+    ulimits:
+      nofile:
+        soft: 256
+        hard: 256
+    volumes:
+      - docx-processor-socket:/run/artifactflow/docx-processor
+    depends_on:
+      docx-processor-socket-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "php", "/srv/docx-processor/healthcheck.php"]
+      interval: 30s
+      timeout: 8s
+      retries: 6
+      start_period: 15s
+
   app:
     build:
       context: .
@@ -129,6 +197,10 @@ services:
         INSTALL_XDEBUG: ${INSTALL_XDEBUG:-0}
         INSTALL_PCOV: ${INSTALL_PCOV:-1}
     image: artifactflow-app:dev
+    group_add:
+      - "10002"
+      - "10003"
+      - "10004"
     environment: &app-environment
       APP_NAME: ${APP_NAME:-artifactflow}
       APP_ENV: ${APP_ENV:-local}
@@ -163,6 +235,18 @@ services:
       PDF_PROCESSOR_SHARED_SECRET: ${PDF_PROCESSOR_SHARED_SECRET:-artifactflow-local-pdf-processor-secret-not-for-production}
       PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS: ${PDF_PROCESSOR_CONNECT_TIMEOUT_SECONDS:-2}
       PDF_PROCESSOR_TIMEOUT_SECONDS: ${PDF_PROCESSOR_TIMEOUT_SECONDS:-15}
+      XLSX_PROCESSOR_ENABLED: ${XLSX_PROCESSOR_ENABLED:-false}
+      XLSX_PROCESSOR_URL: ${XLSX_PROCESSOR_URL:-http://localhost}
+      XLSX_PROCESSOR_SOCKET_PATH: /run/artifactflow/xlsx-processor/processor.sock
+      XLSX_PROCESSOR_SHARED_SECRET: ${XLSX_PROCESSOR_SHARED_SECRET:-artifactflow-local-xlsx-processor-secret-not-for-production}
+      XLSX_PROCESSOR_CONNECT_TIMEOUT_SECONDS: ${XLSX_PROCESSOR_CONNECT_TIMEOUT_SECONDS:-2}
+      XLSX_PROCESSOR_TIMEOUT_SECONDS: ${XLSX_PROCESSOR_TIMEOUT_SECONDS:-15}
+      DOCX_PROCESSOR_ENABLED: ${DOCX_PROCESSOR_ENABLED:-false}
+      DOCX_PROCESSOR_URL: ${DOCX_PROCESSOR_URL:-http://localhost}
+      DOCX_PROCESSOR_SOCKET_PATH: /run/artifactflow/docx-processor/processor.sock
+      DOCX_PROCESSOR_SHARED_SECRET: ${DOCX_PROCESSOR_SHARED_SECRET:-artifactflow-local-docx-processor-secret-not-for-production}
+      DOCX_PROCESSOR_CONNECT_TIMEOUT_SECONDS: ${DOCX_PROCESSOR_CONNECT_TIMEOUT_SECONDS:-2}
+      DOCX_PROCESSOR_TIMEOUT_SECONDS: ${DOCX_PROCESSOR_TIMEOUT_SECONDS:-35}
       IMAGE_NORMALIZATION_USER_PIXEL_BUDGET_PER_MINUTE: ${IMAGE_NORMALIZATION_USER_PIXEL_BUDGET_PER_MINUTE:-67108864}
       IMAGE_NORMALIZATION_INSTALLATION_PIXEL_BUDGET_PER_MINUTE: ${IMAGE_NORMALIZATION_INSTALLATION_PIXEL_BUDGET_PER_MINUTE:-268435456}
       IMAGE_NORMALIZATION_USER_WORK_BUDGET_PER_MINUTE: ${IMAGE_NORMALIZATION_USER_WORK_BUDGET_PER_MINUTE:-67108864}
@@ -225,6 +309,8 @@ services:
       - composer-cache:/home/app/.composer/cache
       - image-parser-socket:/run/artifactflow/image-parser:ro
       - pdf-processor-socket:/run/artifactflow/pdf-processor:ro
+      - xlsx-processor-socket:/run/artifactflow/xlsx-processor:ro
+      - docx-processor-socket:/run/artifactflow/docx-processor:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -233,6 +319,10 @@ services:
       image-parser:
         condition: service_healthy
       pdf-processor:
+        condition: service_healthy
+      xlsx-processor:
+        condition: service_healthy
+      docx-processor:
         condition: service_healthy
     networks:
       - default
@@ -259,6 +349,10 @@ services:
       APP_RUNTIME_ROLE: artifact-host
       APP_URL: ${ARTIFACT_URL:-http://127.0.0.1:18081}
       APP_HOST_PORT: ${ARTIFACT_HOST_PORT:-18081}
+      # The app's Vite server writes public/hot into the shared checkout. XLSX
+      # previews deliberately load only hashed same-origin build assets, so the
+      # isolated artifact runtime must ignore that app-origin development marker.
+      VITE_HOT_FILE: /tmp/artifactflow-artifact-host-no-hot
       SESSION_DRIVER: array
       QUEUE_CONNECTION: sync
       IMAGE_PARSER_URL: ""
@@ -269,6 +363,14 @@ services:
       PDF_PROCESSOR_URL: ""
       PDF_PROCESSOR_SOCKET_PATH: ""
       PDF_PROCESSOR_SHARED_SECRET: ""
+      # Delivery needs only the enablement gate; this runtime receives no XLSX
+      # processor endpoint, socket, or shared credential.
+      XLSX_PROCESSOR_URL: ""
+      XLSX_PROCESSOR_SOCKET_PATH: ""
+      XLSX_PROCESSOR_SHARED_SECRET: ""
+      DOCX_PROCESSOR_URL: ""
+      DOCX_PROCESSOR_SOCKET_PATH: ""
+      DOCX_PROCESSOR_SHARED_SECRET: ""
     volumes: &app-volumes
       - ./:/var/www/html:delegated
       - ./vendor:/var/www/html/vendor
@@ -320,7 +422,8 @@ services:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "php", "/srv/image-parser/healthcheck.php"]
-      interval: 5s
+      interval: 1m
+      start_interval: 5s
       timeout: 3s
       retries: 6
       start_period: 5s
@@ -355,14 +458,91 @@ services:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "php", "/srv/pdf-processor-spike/healthcheck.php"]
-      interval: 5s
+      interval: 1m
+      start_interval: 5s
       timeout: 15s
+      retries: 6
+      start_period: 10s
+
+  e2e-xlsx-processor:
+    profiles: ["e2e"]
+    build:
+      context: ./xlsx-processor-spike
+      dockerfile: Dockerfile
+      target: xlsx-processor-spike-service
+    image: artifactflow-xlsx-processor-service:local
+    environment:
+      XLSX_PROCESSOR_SHARED_SECRET: ${E2E_XLSX_PROCESSOR_SHARED_SECRET:-artifactflow-e2e-xlsx-processor-secret}
+      XLSX_PROCESSOR_SOCKET_PATH: /run/artifactflow/xlsx-processor/processor.sock
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 32
+    mem_limit: 384m
+    cpus: 1.0
+    network_mode: none
+    volumes:
+      - e2e-xlsx-processor-socket:/run/artifactflow/xlsx-processor
+    depends_on:
+      e2e-xlsx-processor-socket-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "/srv/xlsx-processor-spike/healthcheck.cjs"]
+      interval: 1m
+      start_interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
+
+  e2e-docx-processor:
+    profiles: ["e2e"]
+    build:
+      context: ./docx-processor
+      dockerfile: Dockerfile
+    image: artifactflow-docx-processor:local
+    environment:
+      DOCX_PROCESSOR_SHARED_SECRET: ${E2E_DOCX_PROCESSOR_SHARED_SECRET:-artifactflow-e2e-docx-processor-secret}
+      DOCX_PROCESSOR_MAX_CLOCK_SKEW_SECONDS: 120
+      DOCX_PROCESSOR_SOCKET_PATH: /run/artifactflow/docx-processor/processor.sock
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=192m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: 1.0
+    network_mode: none
+    ulimits:
+      nofile:
+        soft: 256
+        hard: 256
+    volumes:
+      - e2e-docx-processor-socket:/run/artifactflow/docx-processor
+    depends_on:
+      e2e-docx-processor-socket-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "php", "/srv/docx-processor/healthcheck.php"]
+      interval: 1m
+      start_interval: 5s
+      timeout: 8s
       retries: 6
       start_period: 10s
 
   e2e-app:
     profiles: ["e2e"]
     image: artifactflow-app:dev
+    group_add:
+      - "10002"
+      - "10003"
+      - "10004"
     build:
       context: .
       dockerfile: Dockerfile
@@ -390,6 +570,7 @@ services:
       DB_DATABASE: ${E2E_DB_DATABASE:-artifactflow_test_e2e}
       DB_USERNAME: ${TEST_DB_USERNAME:-app_user}
       DB_PASSWORD: ${TEST_DB_PASSWORD:-app_local_password}
+      CACHE_STORE: database
       QUEUE_CONNECTION: sync
       MAIL_MAILER: array
       TURNSTILE_SITE_KEY: ""
@@ -410,6 +591,14 @@ services:
       PDF_PROCESSOR_URL: http://localhost
       PDF_PROCESSOR_SOCKET_PATH: /run/artifactflow/e2e-pdf-processor/processor.sock
       PDF_PROCESSOR_SHARED_SECRET: ${E2E_PDF_PROCESSOR_SHARED_SECRET:-artifactflow-e2e-pdf-processor-secret}
+      XLSX_PROCESSOR_ENABLED: "true"
+      XLSX_PROCESSOR_URL: http://localhost
+      XLSX_PROCESSOR_SOCKET_PATH: /run/artifactflow/e2e-xlsx-processor/processor.sock
+      XLSX_PROCESSOR_SHARED_SECRET: ${E2E_XLSX_PROCESSOR_SHARED_SECRET:-artifactflow-e2e-xlsx-processor-secret}
+      DOCX_PROCESSOR_ENABLED: "true"
+      DOCX_PROCESSOR_URL: http://localhost
+      DOCX_PROCESSOR_SOCKET_PATH: /run/artifactflow/e2e-docx-processor/processor.sock
+      DOCX_PROCESSOR_SHARED_SECRET: ${E2E_DOCX_PROCESSOR_SHARED_SECRET:-artifactflow-e2e-docx-processor-secret}
     command: ["sh", "/var/www/html/docker/start-e2e-app.sh"]
     ports:
       - "127.0.0.1:${E2E_APP_PORT:-18180}:8000"
@@ -422,6 +611,8 @@ services:
       - e2e-artifacts:/var/www/html/storage/app/e2e_private_artifacts
       - e2e-image-parser-socket:/run/artifactflow/e2e-image-parser:ro
       - e2e-pdf-processor-socket:/run/artifactflow/e2e-pdf-processor:ro
+      - e2e-xlsx-processor-socket:/run/artifactflow/e2e-xlsx-processor:ro
+      - e2e-docx-processor-socket:/run/artifactflow/e2e-docx-processor:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -430,6 +621,10 @@ services:
       e2e-image-parser:
         condition: service_healthy
       e2e-pdf-processor:
+        condition: service_healthy
+      e2e-xlsx-processor:
+        condition: service_healthy
+      e2e-docx-processor:
         condition: service_healthy
     networks:
       - default
@@ -486,6 +681,14 @@ services:
       PDF_PROCESSOR_URL: ""
       PDF_PROCESSOR_SOCKET_PATH: ""
       PDF_PROCESSOR_SHARED_SECRET: ""
+      XLSX_PROCESSOR_ENABLED: "true"
+      XLSX_PROCESSOR_URL: ""
+      XLSX_PROCESSOR_SOCKET_PATH: ""
+      XLSX_PROCESSOR_SHARED_SECRET: ""
+      DOCX_PROCESSOR_ENABLED: "true"
+      DOCX_PROCESSOR_URL: ""
+      DOCX_PROCESSOR_SOCKET_PATH: ""
+      DOCX_PROCESSOR_SHARED_SECRET: ""
       ARTIFACT_STORAGE_ROOT: /var/www/html/storage/app/e2e_private_artifacts
       VITE_HOT_FILE: /tmp/artifactflow-e2e-no-hot
     volumes:
@@ -583,6 +786,80 @@ services:
     volumes:
       - e2e-pdf-processor-socket:/socket
 
+  xlsx-processor-socket-init:
+    image: artifactflow-xlsx-processor-service:local
+    user: "0:0"
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "chmod 0755 /socket && chown 10003:10003 /socket"]
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+    restart: "no"
+    volumes:
+      - xlsx-processor-socket:/socket
+
+  e2e-xlsx-processor-socket-init:
+    profiles: ["e2e"]
+    image: artifactflow-xlsx-processor-service:local
+    user: "0:0"
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "chmod 0755 /socket && chown 10003:10003 /socket"]
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+    restart: "no"
+    volumes:
+      - e2e-xlsx-processor-socket:/socket
+
+  docx-processor-socket-init:
+    image: artifactflow-docx-processor:local
+    user: "0:0"
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "chmod 0755 /socket && chown 10004:10004 /socket"]
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+    restart: "no"
+    volumes:
+      - docx-processor-socket:/socket
+
+  e2e-docx-processor-socket-init:
+    profiles: ["e2e"]
+    image: artifactflow-docx-processor:local
+    user: "0:0"
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "chmod 0755 /socket && chown 10004:10004 /socket"]
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+    restart: "no"
+    volumes:
+      - e2e-docx-processor-socket:/socket
+
   e2e-image-parser-socket-init:
     profiles: ["e2e"]
     image: artifactflow-image-parser:dev
@@ -650,6 +927,14 @@ services:
       PDF_PROCESSOR_URL: ""
       PDF_PROCESSOR_SOCKET_PATH: ""
       PDF_PROCESSOR_SHARED_SECRET: ""
+      XLSX_PROCESSOR_ENABLED: "false"
+      XLSX_PROCESSOR_URL: ""
+      XLSX_PROCESSOR_SOCKET_PATH: ""
+      XLSX_PROCESSOR_SHARED_SECRET: ""
+      DOCX_PROCESSOR_ENABLED: "false"
+      DOCX_PROCESSOR_URL: ""
+      DOCX_PROCESSOR_SOCKET_PATH: ""
+      DOCX_PROCESSOR_SHARED_SECRET: ""
     volumes: *app-volumes
     depends_on:
       app:
@@ -674,6 +959,14 @@ services:
       PDF_PROCESSOR_URL: ""
       PDF_PROCESSOR_SOCKET_PATH: ""
       PDF_PROCESSOR_SHARED_SECRET: ""
+      XLSX_PROCESSOR_ENABLED: "false"
+      XLSX_PROCESSOR_URL: ""
+      XLSX_PROCESSOR_SOCKET_PATH: ""
+      XLSX_PROCESSOR_SHARED_SECRET: ""
+      DOCX_PROCESSOR_ENABLED: "false"
+      DOCX_PROCESSOR_URL: ""
+      DOCX_PROCESSOR_SOCKET_PATH: ""
+      DOCX_PROCESSOR_SHARED_SECRET: ""
     volumes: *app-volumes
     depends_on:
       app:
@@ -717,6 +1010,14 @@ services:
       PDF_PROCESSOR_URL: ""
       PDF_PROCESSOR_SOCKET_PATH: ""
       PDF_PROCESSOR_SHARED_SECRET: ""
+      XLSX_PROCESSOR_ENABLED: "false"
+      XLSX_PROCESSOR_URL: ""
+      XLSX_PROCESSOR_SOCKET_PATH: ""
+      XLSX_PROCESSOR_SHARED_SECRET: ""
+      DOCX_PROCESSOR_ENABLED: "false"
+      DOCX_PROCESSOR_URL: ""
+      DOCX_PROCESSOR_SOCKET_PATH: ""
+      DOCX_PROCESSOR_SHARED_SECRET: ""
       # Reverb must share the app's cache store so `reverb:restart` crosses
       # processes. Before first-install migrations exist, both fall back to the
       # shared file cache. The isolated origin probe overrides only this store;
@@ -819,6 +1120,10 @@ volumes:
   e2e-image-parser-socket:
   pdf-processor-socket:
   e2e-pdf-processor-socket:
+  xlsx-processor-socket:
+  e2e-xlsx-processor-socket:
+  docx-processor-socket:
+  e2e-docx-processor-socket:
   node-modules:
   composer-cache:
   npm-cache:

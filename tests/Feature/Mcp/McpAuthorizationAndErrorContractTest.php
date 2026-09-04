@@ -237,7 +237,7 @@ final class McpAuthorizationAndErrorContractTest extends McpTestCase
         $tools->assertOk();
         $toolDefinitions = $tools->json('result.tools');
         $this->assertIsArray($toolDefinitions);
-        $this->assertCount(16, $toolDefinitions);
+        $this->assertCount(20, $toolDefinitions);
         $this->assertContains('list_taxonomy', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_category', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_tag', array_column($toolDefinitions, 'name'));
@@ -246,6 +246,10 @@ final class McpAuthorizationAndErrorContractTest extends McpTestCase
         $this->assertContains('replace_image', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_pdf', array_column($toolDefinitions, 'name'));
         $this->assertContains('replace_pdf', array_column($toolDefinitions, 'name'));
+        $this->assertContains('create_xlsx', array_column($toolDefinitions, 'name'));
+        $this->assertContains('replace_xlsx', array_column($toolDefinitions, 'name'));
+        $this->assertContains('create_docx', array_column($toolDefinitions, 'name'));
+        $this->assertContains('replace_docx', array_column($toolDefinitions, 'name'));
         $this->assertContains('create_external_share', array_column($toolDefinitions, 'name'));
         $this->assertContains('update_description', array_column($toolDefinitions, 'name'));
         $read = collect($toolDefinitions)->firstWhere('name', 'read');
@@ -258,6 +262,12 @@ final class McpAuthorizationAndErrorContractTest extends McpTestCase
         $this->assertIsArray($requiredReadArguments);
         $this->assertContains('page_uid', $requiredReadArguments);
         $this->assertNotContains('include', $requiredReadArguments);
+        $readProperties = data_get($read, 'inputSchema.properties');
+        $this->assertIsArray($readProperties);
+        $this->assertArrayHasKey('xlsx_sheet', $readProperties);
+        $this->assertArrayHasKey('xlsx_range', $readProperties);
+        $this->assertNotContains('xlsx_sheet', $requiredReadArguments);
+        $this->assertNotContains('xlsx_range', $requiredReadArguments);
         $search = collect($toolDefinitions)->firstWhere('name', 'search');
         $this->assertIsArray($search);
         $this->assertNull(data_get($search, 'inputSchema.properties.tag_uids.maxItems'));
@@ -267,6 +277,8 @@ final class McpAuthorizationAndErrorContractTest extends McpTestCase
                 PageType::HtmlArtifact->value,
                 PageType::Image->value,
                 PageType::Pdf->value,
+                PageType::Xlsx->value,
+                PageType::Docx->value,
             ],
             data_get($search, 'inputSchema.properties.type.enum'),
         );
@@ -331,6 +343,19 @@ final class McpAuthorizationAndErrorContractTest extends McpTestCase
         $this->assertIsArray($requiredReplacePdfArguments);
         $this->assertContains('base_version_uid', $requiredReplacePdfArguments);
         $this->assertContains('pdf_base64', $requiredReplacePdfArguments);
+        foreach ([
+            'create_xlsx' => 'xlsx_base64',
+            'replace_xlsx' => 'xlsx_base64',
+            'create_docx' => 'docx_base64',
+            'replace_docx' => 'docx_base64',
+        ] as $documentToolName => $binaryArgument) {
+            $documentTool = collect($toolDefinitions)->firstWhere('name', $documentToolName);
+            $this->assertIsArray($documentTool);
+            $requiredArguments = data_get($documentTool, 'inputSchema.required');
+            $this->assertIsArray($requiredArguments);
+            $this->assertContains($binaryArgument, $requiredArguments);
+            $this->assertContains('change_summary', $requiredArguments);
+        }
         $update = collect($toolDefinitions)->firstWhere('name', 'update');
         $this->assertIsArray($update);
         $updateContentSummary = data_get($update, 'inputSchema.properties.content.description');

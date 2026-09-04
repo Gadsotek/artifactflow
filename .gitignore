@@ -69,6 +69,9 @@ compose.local.yml
 # Dependencies
 /vendor/
 /node_modules/
+/xlsx-processor-spike/node_modules/
+/xlsx-viewer-spike/node_modules/
+/xlsx-viewer-spike/dist/
 /scripts/mcp-remote-bridge/node_modules/
 
 # Python runtime output

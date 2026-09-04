@@ -11,6 +11,7 @@ use App\Application\Mcp\McpRequestContext;
 use App\Domain\Events\DomainEventType;
 use App\Models\Page;
 use App\Models\PageVersion;
+use App\Models\PageVersionDerivative;
 use RuntimeException;
 
 /**
@@ -88,6 +89,21 @@ final readonly class PageVersionPruner
         /** @var list<string> $prunedPaths */
         $prunedPaths = [];
         $releasedBytes = 0;
+        $prunedVersionUids = $versions->slice($limit)
+            ->pluck('uid')
+            ->filter(static fn (mixed $uid): bool => is_string($uid))
+            ->values()
+            ->all();
+        /** @var array<string, list<PageVersionDerivative>> $derivativesByVersion */
+        $derivativesByVersion = [];
+
+        if ($prunedVersionUids !== []) {
+            foreach (PageVersionDerivative::query()
+                ->whereIn('page_version_uid', $prunedVersionUids)
+                ->get(['page_version_uid', 'storage_path', 'byte_size']) as $derivative) {
+                $derivativesByVersion[$derivative->page_version_uid][] = $derivative;
+            }
+        }
 
         foreach ($versions->slice($limit) as $version) {
             if ($version->uid === $currentVersionUid) {
@@ -102,6 +118,11 @@ final readonly class PageVersionPruner
 
             $releasedBytes += $version->byte_size;
             $prunedPaths[] = $version->content_storage_path;
+
+            foreach ($derivativesByVersion[$version->uid] ?? [] as $derivative) {
+                $releasedBytes += $derivative->byte_size;
+                $prunedPaths[] = $derivative->storage_path;
+            }
         }
 
         $this->storageQuota->recordBytesReleased($workspaceUid, $releasedBytes);

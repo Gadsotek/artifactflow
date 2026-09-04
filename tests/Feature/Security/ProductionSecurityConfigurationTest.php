@@ -38,6 +38,178 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_xlsx_slice_can_be_enabled_in_production_with_a_dedicated_processor_boundary(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'xlsx_processor.enabled' => true,
+            'xlsx_processor.url' => 'https://xlsx-processor.internal:8443',
+            'xlsx_processor.socket_path' => null,
+            'xlsx_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('x', 32)),
+            'xlsx_processor.connect_timeout_seconds' => 2,
+            'xlsx_processor.timeout_seconds' => 15,
+        ]);
+
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_docx_slice_can_be_enabled_in_production_with_dedicated_docx_and_pdf_boundaries(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'docx_processor.enabled' => true,
+            'docx_processor.url' => 'https://docx-processor.internal:8443',
+            'docx_processor.socket_path' => null,
+            'docx_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('d', 32)),
+            'docx_processor.connect_timeout_seconds' => 2,
+            'docx_processor.timeout_seconds' => 35,
+        ]);
+
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_production_rejects_the_published_local_office_processor_secrets(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'xlsx_processor.enabled' => true,
+            'xlsx_processor.url' => 'https://xlsx-processor.internal:8443',
+            'xlsx_processor.socket_path' => null,
+            'xlsx_processor.shared_secret' => 'artifactflow-local-xlsx-processor-secret-not-for-production',
+            'xlsx_processor.connect_timeout_seconds' => 2,
+            'xlsx_processor.timeout_seconds' => 15,
+        ]);
+        $this->assertUnsafeConfiguration('XLSX processor shared secret must be strong and dedicated.');
+
+        $this->configureSafeProductionValues();
+        config([
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'docx_processor.enabled' => true,
+            'docx_processor.url' => 'https://docx-processor.internal:8443',
+            'docx_processor.socket_path' => null,
+            'docx_processor.shared_secret' => 'artifactflow-local-docx-processor-secret-not-for-production',
+            'docx_processor.connect_timeout_seconds' => 2,
+            'docx_processor.timeout_seconds' => 35,
+        ]);
+        $this->assertUnsafeConfiguration('DOCX processor shared secret must be strong and dedicated.');
+    }
+
+    public function test_production_office_boot_gate_rejects_every_unsafe_boundary_dimension(): void
+    {
+        $validXlsx = [
+            'xlsx_processor.enabled' => true,
+            'xlsx_processor.url' => 'https://xlsx-processor.internal:8443',
+            'xlsx_processor.socket_path' => null,
+            'xlsx_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('x', 32)),
+            'xlsx_processor.connect_timeout_seconds' => 2,
+            'xlsx_processor.timeout_seconds' => 15,
+        ];
+        foreach ([
+            [['xlsx_processor.enabled' => 'yes'], 'XLSX_PROCESSOR_ENABLED must be true or false.'],
+            [[
+                'app.runtime_role' => 'worker',
+                'image_parser.shared_secret' => '',
+            ], 'XLSX processor URL, socket path, and shared secret must not be available'],
+            [[
+                'app.runtime_role' => 'worker',
+                'image_parser.shared_secret' => '',
+                'xlsx_processor.url' => '',
+                'xlsx_processor.socket_path' => null,
+                'xlsx_processor.shared_secret' => '',
+            ], 'XLSX artifacts must not be enabled for worker or scheduler'],
+            [['xlsx_processor.url' => 'not-an-origin'], 'XLSX processor URL must be a pure HTTP or HTTPS origin.'],
+            [['xlsx_processor.socket_path' => 'relative.sock'], 'XLSX processor socket path must be an absolute filesystem path.'],
+            [[
+                'xlsx_processor.url' => 'http://xlsx-processor.internal',
+                'xlsx_processor.socket_path' => null,
+            ], 'XLSX processor URL must use HTTPS'],
+            [['xlsx_processor.shared_secret' => 'short'], 'XLSX processor shared secret must be strong and dedicated.'],
+            [['xlsx_processor.timeout_seconds' => 0], 'XLSX processor connect and request timeouts'],
+        ] as [$override, $message]) {
+            $this->configureSafeProductionValues();
+            config(array_merge($validXlsx, $override));
+            $this->assertUnsafeConfigurationContains($message);
+        }
+
+        $validDocx = [
+            'pdf_processor.enabled' => true,
+            'pdf_processor.url' => 'https://pdf-processor.internal:8443',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('q', 32)),
+            'pdf_processor.connect_timeout_seconds' => 2,
+            'pdf_processor.timeout_seconds' => 15,
+            'docx_processor.enabled' => true,
+            'docx_processor.url' => 'https://docx-processor.internal:8443',
+            'docx_processor.socket_path' => null,
+            'docx_processor.shared_secret' => 'base64:' . base64_encode(str_repeat('d', 32)),
+            'docx_processor.connect_timeout_seconds' => 2,
+            'docx_processor.timeout_seconds' => 35,
+        ];
+        foreach ([
+            [['docx_processor.enabled' => 'yes'], 'DOCX_PROCESSOR_ENABLED must be true or false.'],
+            [[
+                'app.runtime_role' => 'worker',
+                'image_parser.shared_secret' => '',
+                'pdf_processor.enabled' => false,
+                'pdf_processor.url' => '',
+                'pdf_processor.shared_secret' => '',
+            ], 'DOCX processor URL, socket path, and shared secret must not be available'],
+            [[
+                'app.runtime_role' => 'worker',
+                'image_parser.shared_secret' => '',
+                'pdf_processor.enabled' => false,
+                'pdf_processor.url' => '',
+                'pdf_processor.shared_secret' => '',
+                'docx_processor.url' => '',
+                'docx_processor.socket_path' => null,
+                'docx_processor.shared_secret' => '',
+            ], 'DOCX artifacts must not be enabled for worker or scheduler'],
+            [['docx_processor.url' => 'not-an-origin'], 'DOCX processor URL must be a pure HTTP or HTTPS origin.'],
+            [['docx_processor.socket_path' => 'relative.sock'], 'DOCX processor socket path must be an absolute filesystem path.'],
+            [[
+                'docx_processor.url' => 'http://docx-processor.internal',
+                'docx_processor.socket_path' => null,
+            ], 'DOCX processor URL must use HTTPS'],
+            [['docx_processor.shared_secret' => 'short'], 'DOCX processor shared secret must be strong and dedicated.'],
+            [['docx_processor.timeout_seconds' => 0], 'DOCX processor connect and request timeouts'],
+        ] as [$override, $message]) {
+            $this->configureSafeProductionValues();
+            config(array_merge($validDocx, $override));
+            $this->assertUnsafeConfigurationContains($message);
+        }
+    }
+
+    public function test_docx_enabled_artifact_host_requires_pdf_presentation_to_be_enabled(): void
+    {
+        $this->configureSafeProductionValues();
+        config([
+            'app.runtime_role' => 'artifact-host',
+            'image_parser.shared_secret' => '',
+            'cache.limiter' => 'database_artifact_limiter',
+            'pdf_processor.enabled' => false,
+            'pdf_processor.url' => '',
+            'pdf_processor.socket_path' => null,
+            'pdf_processor.shared_secret' => '',
+            'docx_processor.enabled' => true,
+            'docx_processor.url' => '',
+            'docx_processor.socket_path' => null,
+            'docx_processor.shared_secret' => '',
+        ]);
+
+        $this->assertUnsafeConfiguration('DOCX artifacts require the PDF processor to be enabled.');
+    }
+
     public function test_pdf_slice_remains_backward_compatible_and_default_off_in_production(): void
     {
         $this->configureSafeProductionValues();
@@ -1297,6 +1469,18 @@ final class ProductionSecurityConfigurationTest extends TestCase
             'pdf_processor.shared_secret' => '',
             'pdf_processor.connect_timeout_seconds' => 2,
             'pdf_processor.timeout_seconds' => 15,
+            'xlsx_processor.enabled' => false,
+            'xlsx_processor.url' => '',
+            'xlsx_processor.socket_path' => null,
+            'xlsx_processor.shared_secret' => '',
+            'xlsx_processor.connect_timeout_seconds' => 2,
+            'xlsx_processor.timeout_seconds' => 15,
+            'docx_processor.enabled' => false,
+            'docx_processor.url' => '',
+            'docx_processor.socket_path' => null,
+            'docx_processor.shared_secret' => '',
+            'docx_processor.connect_timeout_seconds' => 2,
+            'docx_processor.timeout_seconds' => 35,
             'reverb.apps.apps.0.configured_allowed_origins' => ['https://app.example.test'],
             'reverb.apps.apps.0.allowed_origins' => ['app.example.test'],
             'reverb.apps.apps.0.max_connections' => 1000,
@@ -1327,6 +1511,16 @@ final class ProductionSecurityConfigurationTest extends TestCase
             $this->fail('Expected unsafe production security configuration to be rejected.');
         } catch (RuntimeException $exception) {
             $this->assertSame($message, $exception->getMessage());
+        }
+    }
+
+    private function assertUnsafeConfigurationContains(string $message): void
+    {
+        try {
+            app(ProductionSecurityConfiguration::class)->ensureSafe();
+            $this->fail('Expected unsafe production security configuration to be rejected.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString($message, $exception->getMessage());
         }
     }
 

@@ -175,12 +175,14 @@ test('sandboxed HTML artifact blocks guarded outbound APIs without TCP or UDP eg
 
     await page.locator('select[name="type"]').selectOption('html_artifact');
     await page.locator('select[name="mode"]').selectOption('html_paste');
-    await page.locator('input[name="title"]').fill(title);
 
     // Wait for the async CodeMirror language switch to settle before typing so
     // the trailing setValue() cannot clobber the inserted content on slow runs.
     await expect(editorForm).toHaveAttribute('data-editor-language', 'html');
     await expect(editorForm).toHaveAttribute('data-editor-ready', 'true');
+    const titleInput = page.locator('input[name="title"]');
+    await titleInput.fill(title);
+    await expect(titleInput).toHaveValue(title);
 
     const sourceEditor = page.locator('[data-source-editor-mount] .cm-content');
     await expect(sourceEditor).toBeVisible();
@@ -391,6 +393,7 @@ test('sandboxed HTML artifact blocks guarded outbound APIs without TCP or UDP eg
     // Guard against a lost editor sync before saving.
     await expect(sourceEditor).toContainText('egress-suite-fired');
     await expect(page.locator('[data-editor-textarea]')).toHaveValue(/egress-suite-fired/u);
+    await expect(titleInput).toHaveValue(title);
 
     const previewResponsePromise = page.waitForResponse(
       (response) =>

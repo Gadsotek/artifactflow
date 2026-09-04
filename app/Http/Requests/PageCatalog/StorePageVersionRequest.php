@@ -22,6 +22,10 @@ final class StorePageVersionRequest extends AppFormRequest
 
     private ?string $validatedPdfContent = null;
 
+    private ?string $validatedXlsxContent = null;
+
+    private ?string $validatedDocxContent = null;
+
     /**
      * @return array<string, list<mixed>>
      */
@@ -48,6 +52,16 @@ final class StorePageVersionRequest extends AppFormRequest
                 'nullable',
                 'file',
                 'max:' . $this->pdfUploadRules()->maxUploadKilobytes(),
+            ],
+            'xlsx_file' => [
+                'nullable',
+                'file',
+                'max:' . $this->xlsxUploadRules()->maxUploadKilobytes(),
+            ],
+            'docx_file' => [
+                'nullable',
+                'file',
+                'max:' . $this->docxUploadRules()->maxUploadKilobytes(),
             ],
             'base_version_uid' => ['nullable', 'string', 'size:26'],
             'change_summary' => [
@@ -102,6 +116,37 @@ final class StorePageVersionRequest extends AppFormRequest
                 return;
             }
 
+            if ($page->type === PageType::Xlsx) {
+                if ($mode !== PageVersionSource::Upload) {
+                    $validator->errors()->add('mode', 'Excel workbooks can only be replaced by upload.');
+
+                    return;
+                }
+
+                $this->validatedXlsxContent = $this->xlsxUploadRules()->validateUpload(
+                    $validator,
+                    'xlsx_file',
+                    $this->xlsxFile(),
+                );
+
+                return;
+            }
+
+            if ($page->type === PageType::Docx) {
+                if ($mode !== PageVersionSource::Upload) {
+                    $validator->errors()->add('mode', 'Word documents can only be replaced by upload.');
+
+                    return;
+                }
+                $this->validatedDocxContent = $this->docxUploadRules()->validateUpload(
+                    $validator,
+                    'docx_file',
+                    $this->docxFile(),
+                );
+
+                return;
+            }
+
             if ($page->type === PageType::Markdown && $mode !== PageVersionSource::Editor) {
                 $validator->errors()->add('mode', 'Markdown pages must be edited as source text.');
 
@@ -126,6 +171,8 @@ final class StorePageVersionRequest extends AppFormRequest
                 ? match ($page->type) {
                     PageType::Image => $this->imageFile(),
                     PageType::Pdf => $this->pdfFile(),
+                    PageType::Xlsx => $this->xlsxFile(),
+                    PageType::Docx => $this->docxFile(),
                     default => $this->htmlFile(),
                 }
             : null;
@@ -136,6 +183,14 @@ final class StorePageVersionRequest extends AppFormRequest
 
             if ($page instanceof Page && $page->type === PageType::Pdf) {
                 return $this->validatedPdfContent ?? '';
+            }
+
+            if ($page instanceof Page && $page->type === PageType::Xlsx) {
+                return $this->validatedXlsxContent ?? '';
+            }
+
+            if ($page instanceof Page && $page->type === PageType::Docx) {
+                return $this->validatedDocxContent ?? '';
             }
 
             return $file instanceof UploadedFile ? $file->getContent() : '';
@@ -248,6 +303,20 @@ final class StorePageVersionRequest extends AppFormRequest
         return $file instanceof UploadedFile ? $file : null;
     }
 
+    private function xlsxFile(): ?UploadedFile
+    {
+        $file = $this->file('xlsx_file');
+
+        return $file instanceof UploadedFile ? $file : null;
+    }
+
+    private function docxFile(): ?UploadedFile
+    {
+        $file = $this->file('docx_file');
+
+        return $file instanceof UploadedFile ? $file : null;
+    }
+
     private function installationLimit(string $key): int
     {
         return app(InstallationLimitSettings::class)->integer($key);
@@ -266,5 +335,15 @@ final class StorePageVersionRequest extends AppFormRequest
     private function pdfUploadRules(): PdfUploadRules
     {
         return app(PdfUploadRules::class);
+    }
+
+    private function xlsxUploadRules(): XlsxUploadRules
+    {
+        return app(XlsxUploadRules::class);
+    }
+
+    private function docxUploadRules(): DocxUploadRules
+    {
+        return app(DocxUploadRules::class);
     }
 }

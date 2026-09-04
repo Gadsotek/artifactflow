@@ -19,7 +19,8 @@ self-test log, SCTP socket denial, and a health boundary that fails when the
 listener or PDFBox engine is unavailable. A fixed health process outside the
 parser filter may connect only to the container's loopback `/health` endpoint
 and handles no document bytes. Every probe carries a fresh timestamp, nonce,
-and domain-separated HMAC under the processor secret. That route admits only
+and domain-separated HMAC under the processor secret; its response is signed
+over the challenge nonce and exact JSON bytes. That route admits only
 the direct loopback peer, ignores forwarded client-address claims, and verifies
 the signature before engine admission, so a loopback TLS sidecar does not turn
 external health traffic into native work. The server and every PDFBox child stay

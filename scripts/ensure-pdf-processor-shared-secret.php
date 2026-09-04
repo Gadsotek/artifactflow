@@ -9,7 +9,13 @@ function ensurePdfProcessorSharedSecret(string $envPath): int
     return ensureLocalBoundarySecret(
         $envPath,
         'PDF_PROCESSOR_SHARED_SECRET',
-        ['APP_KEY', 'ARTIFACT_URL_SIGNING_KEY', 'IMAGE_PARSER_SHARED_SECRET'],
+        [
+            'APP_KEY',
+            'ARTIFACT_URL_SIGNING_KEY',
+            'IMAGE_PARSER_SHARED_SECRET',
+            'XLSX_PROCESSOR_SHARED_SECRET',
+            'DOCX_PROCESSOR_SHARED_SECRET',
+        ],
     );
 }
 

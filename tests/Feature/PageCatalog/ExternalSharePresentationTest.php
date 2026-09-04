@@ -18,19 +18,29 @@ use App\Application\Identity\CreateSharedWorkspace;
 use App\Application\Identity\CreateUser;
 use App\Application\PageCatalog\CreatePage;
 use App\Application\PageCatalog\CreatePageCommand;
+use App\Application\PageCatalog\DocxProcessorProtocol;
+use App\Application\PageCatalog\PdfProcessingResult;
+use App\Application\PageCatalog\XlsxManifestValidator;
+use App\Application\PageCatalog\XlsxProcessorProtocol;
 use App\Domain\DomainRuleViolation;
 use App\Domain\ExternalSharing\ExternalPagePresentation;
 use App\Domain\ExternalSharing\ExternalShareMode;
 use App\Domain\ExternalSharing\ExternalShareSessionKind;
+use App\Domain\PageCatalog\ArtifactDerivativeKind;
 use App\Domain\PageCatalog\PageType;
+use App\Models\DocxVersionFact;
 use App\Models\ExternalShare;
 use App\Models\InstallationSettings;
 use App\Models\Page;
 use App\Models\PageVersion;
+use App\Models\PageVersionDerivative;
 use App\Models\User;
+use App\Models\XlsxVersionFact;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Vite;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Vite as ViteFacade;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Tests\TestCase;
@@ -53,6 +63,8 @@ final class ExternalSharePresentationTest extends TestCase
             PageType::HtmlArtifact->value => ExternalPagePresentation::SandboxedHtml,
             PageType::Image->value => ExternalPagePresentation::ScriptlessImage,
             PageType::Pdf->value => ExternalPagePresentation::NativePdf,
+            PageType::Xlsx->value => ExternalPagePresentation::TypedSpreadsheet,
+            PageType::Docx->value => ExternalPagePresentation::DerivedDocumentPdf,
         ], $presentations);
     }
 
@@ -80,6 +92,157 @@ final class ExternalSharePresentationTest extends TestCase
         }
 
         $this->assertSame(0, ExternalShare::query()->where('page_uid', $page->uid)->count());
+    }
+
+    public function test_office_external_share_creation_requires_each_complete_preview_pipeline(): void
+    {
+        [$owner, $page] = $this->pageFixture(PageType::Markdown, '# Placeholder');
+
+        foreach ([
+            [PageType::Xlsx, ['xlsx_processor.enabled' => false], 'Excel workbook'],
+            [PageType::Docx, [
+                'docx_processor.enabled' => true,
+                'pdf_processor.enabled' => false,
+            ], 'Word document'],
+        ] as [$type, $configuration, $label]) {
+            $page->forceFill(['type' => $type])->save();
+            config($configuration);
+
+            try {
+                app(CreateExternalShare::class)->handle(
+                    $owner,
+                    new CreateExternalShareCommand(
+                        $page->uid,
+                        ExternalShareMode::ExpiresAt,
+                        CarbonImmutable::now()->addHour(),
+                    ),
+                );
+                $this->fail(sprintf('%s external sharing must fail closed when its preview pipeline is disabled.', $label));
+            } catch (DomainRuleViolation $exception) {
+                $this->assertSame(
+                    sprintf('External sharing is not available while %s artifacts are disabled.', $label),
+                    $exception->getMessage(),
+                );
+            }
+        }
+
+        $this->assertSame(0, ExternalShare::query()->where('page_uid', $page->uid)->count());
+    }
+
+    public function test_xlsx_external_share_serves_only_the_validated_typed_manifest(): void
+    {
+        $this->configureOfficePreviewOrigins();
+        config(['xlsx_processor.enabled' => true]);
+        [$owner, $page, $version, $derivative] = $this->officePageFixture(
+            PageType::Xlsx,
+            "PK\x03\x04private-original-workbook",
+            $this->xlsxManifest('Externally visible cell'),
+        );
+        [$shareUid, $sessionUid, $credential, $secret, $windowToken] = $this->viewCredential($owner, $page);
+
+        $viewer = $this->viewerContent($shareUid, $sessionUid, $credential, $windowToken);
+        $viewer
+            ->assertOk()
+            ->assertSee('data-xlsx-preview', false)
+            ->assertSee('sandbox="allow-scripts"', false)
+            ->assertSee('data-artifact-preview-refresh-endpoint', false)
+            ->assertSee('Read-only Excel preview. Formulas are not recalculated')
+            ->assertSee('original workbook bytes are never shared')
+            ->assertDontSee('document-original', false)
+            ->assertDontSee($secret);
+
+        $context = $this->externalContext($shareUid, $sessionUid, $credential);
+        $content = app(ExternalShareViewerContent::class)->forContext($context);
+        $this->assertNotNull($content);
+        $this->assertSame(ExternalPagePresentation::TypedSpreadsheet, $content->presentation);
+        $previewUrl = $content->artifactPreviewUrl;
+        $this->assertIsString($previewUrl);
+
+        config(['app.runtime_role' => 'artifact-host']);
+        $preview = $this->withHeader('Sec-Fetch-Dest', 'iframe')->get($previewUrl);
+        $preview
+            ->assertOk()
+            ->assertSee('id="xlsx-manifest" type="application/octet-stream"', false)
+            ->assertDontSee('private-original-workbook', false)
+            ->assertHeaderMissing('Set-Cookie')
+            ->assertHeaderMissing('Access-Control-Allow-Origin');
+        $this->assertStringContainsString(
+            'Externally visible cell',
+            $this->embeddedXlsxManifest((string) $preview->getContent()),
+        );
+        $csp = (string) $preview->headers->get('Content-Security-Policy');
+        $this->assertStringContainsString('sandbox allow-scripts', $csp);
+        $this->assertStringNotContainsString('allow-popups', $csp);
+        $this->assertStringContainsString("connect-src 'none'", $csp);
+        $this->assertStringContainsString("frame-src 'none'", $csp);
+
+        Storage::disk('artifacts')->put($derivative->storage_path, '{"tampered":true}');
+        $this->withHeader('Sec-Fetch-Dest', 'iframe')
+            ->get($previewUrl)
+            ->assertNotFound()
+            ->assertHeader('X-Frame-Options', 'DENY');
+
+        Storage::disk('artifacts')->put($derivative->storage_path, $this->xlsxManifest('Externally visible cell'));
+        config(['xlsx_processor.enabled' => false]);
+        $this->withHeader('Sec-Fetch-Dest', 'iframe')->get($previewUrl)->assertNotFound();
+        $this->assertSame($version->uid, $page->current_version_uid);
+    }
+
+    public function test_docx_external_share_serves_only_the_searchable_pdf_derivative(): void
+    {
+        $this->configureOfficePreviewOrigins();
+        config([
+            'docx_processor.enabled' => true,
+            'pdf_processor.enabled' => true,
+        ]);
+        $previewPdf = "%PDF-1.7\nSearchable shared Word preview\n%%EOF\n";
+        [$owner, $page, , $derivative] = $this->officePageFixture(
+            PageType::Docx,
+            "PK\x03\x04private-original-document",
+            $previewPdf,
+        );
+        [$shareUid, $sessionUid, $credential, $secret, $windowToken] = $this->viewCredential($owner, $page);
+
+        $viewer = $this->viewerContent($shareUid, $sessionUid, $credential, $windowToken);
+        $viewer
+            ->assertOk()
+            ->assertSee('data-docx-preview', false)
+            ->assertSee('title="Word document PDF preview"', false)
+            ->assertSee('Searchable PDF preview derived from the retained Word document')
+            ->assertSee('The original DOCX is not shared')
+            ->assertDontSee('sandbox=', false)
+            ->assertDontSee('data-artifact-preview-refresh-endpoint', false)
+            ->assertDontSee('document-original', false)
+            ->assertDontSee($secret);
+
+        $context = $this->externalContext($shareUid, $sessionUid, $credential);
+        $content = app(ExternalShareViewerContent::class)->forContext($context);
+        $this->assertNotNull($content);
+        $this->assertSame(ExternalPagePresentation::DerivedDocumentPdf, $content->presentation);
+        $previewUrl = $content->artifactPreviewUrl;
+        $this->assertIsString($previewUrl);
+
+        config(['app.runtime_role' => 'artifact-host']);
+        $preview = $this->withHeader('Sec-Fetch-Dest', 'iframe')->get($previewUrl);
+        $preview
+            ->assertOk()
+            ->assertContent($previewPdf)
+            ->assertHeader('Content-Type', 'application/pdf')
+            ->assertHeaderMissing('Set-Cookie')
+            ->assertHeaderMissing('Access-Control-Allow-Origin');
+        $csp = (string) $preview->headers->get('Content-Security-Policy');
+        $this->assertStringContainsString('frame-ancestors http://app.example.test', $csp);
+        $this->assertStringNotContainsString('sandbox', $csp);
+
+        Storage::disk('artifacts')->put($derivative->storage_path, "%PDF-1.7\ntampered\n%%EOF\n");
+        $this->withHeader('Sec-Fetch-Dest', 'iframe')
+            ->get($previewUrl)
+            ->assertNotFound()
+            ->assertHeader('X-Frame-Options', 'DENY');
+
+        Storage::disk('artifacts')->put($derivative->storage_path, $previewPdf);
+        config(['pdf_processor.enabled' => false]);
+        $this->withHeader('Sec-Fetch-Dest', 'iframe')->get($previewUrl)->assertNotFound();
     }
 
     public function test_pdf_uses_the_native_viewer_and_a_share_bound_pdf_response(): void
@@ -451,6 +614,174 @@ final class ExternalSharePresentationTest extends TestCase
         $this->assertStringNotContainsString('sandbox allow-scripts', $csp);
         $this->assertStringContainsString("script-src 'none'", $csp);
         $this->assertStringContainsString('img-src data:', $csp);
+    }
+
+    private function configureOfficePreviewOrigins(): void
+    {
+        config([
+            'app.artifact_frame_ancestors' => 'http://app.example.test',
+            'app.artifact_url' => 'http://artifacts.example.test',
+            'app.artifact_url_signing_key' => str_repeat('e', 32),
+            'app.url' => 'http://app.example.test',
+        ]);
+
+        ViteFacade::clearResolvedInstance();
+        $this->app->instance(Vite::class, new class() extends Vite {
+            public function asset($asset, $buildDirectory = null): string
+            {
+                return match ($asset) {
+                    'resources/js/xlsx-viewer.js' => 'http://artifacts.example.test/build/assets/xlsx-viewer-test.js',
+                    'resources/css/xlsx-viewer.css' => 'http://artifacts.example.test/build/assets/xlsx-viewer-test.css',
+                    default => '',
+                };
+            }
+        });
+    }
+
+    /**
+     * @return array{User, Page, PageVersion, PageVersionDerivative}
+     */
+    private function officePageFixture(PageType $type, string $original, string $derivativeBytes): array
+    {
+        [$owner, $page] = $this->pageFixture(PageType::Markdown, '# Placeholder');
+        $version = PageVersion::query()->where('page_uid', $page->uid)->sole();
+        Storage::disk('artifacts')->put($version->content_storage_path, $original);
+        $version->forceFill([
+            'byte_size' => strlen($original),
+            'content_hash' => hash('sha256', $original),
+            'extracted_text' => $type === PageType::Docx ? 'Searchable shared Word preview' : 'Externally visible cell',
+        ])->save();
+        $page->forceFill(['type' => $type])->save();
+        $page = $page->refresh();
+        $derivativePath = sprintf(
+            'pages/%s/versions/%d/external-share-%s',
+            $page->uid,
+            $version->version_number,
+            $type === PageType::Xlsx ? 'manifest.json' : 'preview.pdf',
+        );
+        Storage::disk('artifacts')->put($derivativePath, $derivativeBytes);
+        $kind = $type === PageType::Xlsx
+            ? ArtifactDerivativeKind::XlsxManifest
+            : ArtifactDerivativeKind::DocxPreviewPdf;
+        $derivative = PageVersionDerivative::query()->forceCreate([
+            'page_version_uid' => $version->uid,
+            'kind' => $kind,
+            'storage_path' => $derivativePath,
+            'content_hash' => hash('sha256', $derivativeBytes),
+            'byte_size' => strlen($derivativeBytes),
+        ]);
+
+        if ($type === PageType::Xlsx) {
+            XlsxVersionFact::query()->forceCreate([
+                'page_version_uid' => $version->uid,
+                'manifest_derivative_uid' => $derivative->uid,
+                'processor_profile' => XlsxProcessorProtocol::PROCESSOR_PROFILE,
+                'manifest_schema' => 'xlsx-view-manifest-v1',
+                'engine_name' => XlsxProcessorProtocol::ENGINE_NAME,
+                'engine_version' => XlsxProcessorProtocol::ENGINE_VERSION,
+                'package_entry_count' => 8,
+                'expanded_bytes' => 1_024,
+                'visible_sheet_count' => 1,
+                'omitted_hidden_sheet_count' => 0,
+                'projected_row_extent_count' => 1,
+                'projected_column_extent_count' => 1,
+                'omitted_hidden_row_count' => 0,
+                'omitted_hidden_column_count' => 0,
+                'cell_count' => 1,
+                'formula_count' => 0,
+                'uncached_formula_count' => 0,
+                'link_count' => 0,
+                'merge_count' => 0,
+                'truncated' => false,
+                'processed_at' => CarbonImmutable::now(),
+            ]);
+        } else {
+            DocxVersionFact::query()->forceCreate([
+                'page_version_uid' => $version->uid,
+                'preview_derivative_uid' => $derivative->uid,
+                'docx_processor_profile' => DocxProcessorProtocol::PROCESSOR_PROFILE,
+                'pdf_processor_profile' => PdfProcessingResult::DOCX_PREVIEW_PROCESSOR_PROFILE,
+                'engine_name' => DocxProcessorProtocol::ENGINE_NAME,
+                'engine_version' => DocxProcessorProtocol::ENGINE_VERSION,
+                'package_entry_count' => 7,
+                'expanded_bytes' => 2_048,
+                'relationship_count' => 2,
+                'media_count' => 0,
+                'external_hyperlink_count' => 1,
+                'page_count' => 1,
+                'pdf_version' => '1.7',
+                'extraction_state' => 'indexed',
+                'processed_at' => CarbonImmutable::now(),
+            ]);
+        }
+
+        return [$owner, $page, $version, $derivative];
+    }
+
+    private function xlsxManifest(string $value): string
+    {
+        return app(XlsxManifestValidator::class)->validate([
+            'schema' => 'xlsx-view-manifest-v1',
+            'profile' => XlsxProcessorProtocol::PROCESSOR_PROFILE,
+            'workbook' => [
+                'visibleSheetCount' => 1,
+                'omittedHiddenSheetCount' => 0,
+                'cellCount' => 1,
+                'formulaCount' => 0,
+                'formulasWithoutCachedResultCount' => 0,
+                'linkCount' => 0,
+                'mergeCount' => 0,
+                'truncated' => false,
+            ],
+            'sheets' => [[
+                'name' => 'Visible',
+                'rowExtent' => 1,
+                'columnExtent' => 1,
+                'omittedHiddenRowCount' => 0,
+                'omittedHiddenColumnCount' => 0,
+                'merges' => [],
+                'cells' => [[
+                    'coordinate' => 'A1',
+                    'kind' => 'string',
+                    'display' => $value,
+                    'value' => $value,
+                ]],
+            ]],
+            'searchText' => '[Visible] A1 ' . $value,
+        ])->manifestJson;
+    }
+
+    private function externalContext(
+        string $shareUid,
+        string $sessionUid,
+        string $credential,
+    ): ExternalShareViewContext {
+        $context = app(ResolveExternalShareView::class)->withCredential(
+            $shareUid,
+            $sessionUid,
+            $credential,
+            static fn (ExternalShareViewContext $context): ExternalShareViewContext => $context,
+        );
+        $this->assertNotNull($context);
+
+        return $context;
+    }
+
+    private function embeddedXlsxManifest(string $html): string
+    {
+        $matched = preg_match(
+            '/<script id="xlsx-manifest" type="application\/octet-stream">([A-Za-z0-9_-]+)<\/script>/D',
+            $html,
+            $matches,
+        );
+        $this->assertSame(1, $matched);
+        $encoded = $matches[1];
+        $standard = strtr($encoded, '-_', '+/');
+        $padding = (4 - strlen($standard) % 4) % 4;
+        $decoded = base64_decode($standard . str_repeat('=', $padding), true);
+        $this->assertIsString($decoded);
+
+        return $decoded;
     }
 
     /**

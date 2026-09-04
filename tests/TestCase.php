@@ -38,6 +38,8 @@ abstract class TestCase extends BaseTestCase
             // Http::fake(). Real Unix-socket transport is covered by e2e.
             'image_parser.socket_path' => null,
             'pdf_processor.socket_path' => null,
+            'xlsx_processor.socket_path' => null,
+            'docx_processor.socket_path' => null,
         ]);
     }
 
