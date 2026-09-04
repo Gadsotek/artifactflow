@@ -61,6 +61,12 @@ async function initialiseContent(root) {
   if (root.querySelector('[data-artifact-preview-refresh-endpoint]')) {
     await import('./artifact-preview-refresh');
   }
+
+  if (root.querySelector('[data-xlsx-preview]')) {
+    await import('./xlsx-external-link-confirmation').then(
+      ({ initialiseXlsxExternalLinkConfirmation }) => initialiseXlsxExternalLinkConfirmation(root),
+    );
+  }
 }
 
 async function loadViewer() {

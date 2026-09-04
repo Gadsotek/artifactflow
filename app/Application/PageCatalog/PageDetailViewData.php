@@ -13,12 +13,14 @@ use App\Application\Provenance\ProvenanceReadModel;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
 use App\Models\Category;
+use App\Models\DocxVersionFact;
 use App\Models\Page;
 use App\Models\PageVersion;
 use App\Models\PdfVersionFact;
 use App\Models\Tag;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Models\XlsxVersionFact;
 
 final readonly class PageDetailViewData
 {
@@ -35,6 +37,8 @@ final readonly class PageDetailViewData
         private ExternalSharingPolicySettings $externalSharingPolicy,
         private ListExternalShares $externalShares,
         private PdfProcessorConfiguration $pdfProcessorConfiguration,
+        private XlsxProcessorConfiguration $xlsxProcessorConfiguration,
+        private DocxProcessorConfiguration $docxProcessorConfiguration,
     ) {
     }
 
@@ -48,7 +52,9 @@ final readonly class PageDetailViewData
      *     canMoveWorkspace: bool,
      *     canMutateContent: bool,
      *     canOpenContentEditor: bool,
+     *     canReprocessDocx: bool,
      *     canReprocessPdf: bool,
+     *     canReprocessXlsx: bool,
      *     canRestoreVersions: bool,
      *     canManageAccess: bool,
      *     category: Category|null,
@@ -73,6 +79,10 @@ final readonly class PageDetailViewData
      *     pagePresenceEnabled: bool,
      *     pdfArtifactsEnabled: bool,
      *     pdfExtractionStatus: PdfExtractionStatusView|null,
+     *     xlsxArtifactsEnabled: bool,
+     *     xlsxFacts: XlsxVersionFact|null,
+     *     docxArtifactsEnabled: bool,
+     *     docxFacts: DocxVersionFact|null,
      *     pageProvenance: PageVersionProvenanceView|null,
      *     renderedEditorMarkdown: string|null,
      *     renderedMarkdown: string|null,
@@ -92,6 +102,9 @@ final readonly class PageDetailViewData
         $canOpenContentEditor = $canMutateContent && match ($page->type) {
             PageType::Image => true,
             PageType::Pdf => $this->pdfProcessorConfiguration->enabled(),
+            PageType::Xlsx => $this->xlsxProcessorConfiguration->enabled(),
+            PageType::Docx => $this->docxProcessorConfiguration->enabled()
+                && $this->pdfProcessorConfiguration->enabled(),
             default => $content->sourcePreview !== null,
         };
         $tags = array_values($page->tags()->orderBy('name')->get()->all());
@@ -113,8 +126,20 @@ final readonly class PageDetailViewData
                 && $page->type === PageType::Pdf
                 && $page->current_version_uid !== null
                 && $this->pdfProcessorConfiguration->enabled(),
+            'canReprocessXlsx' => $canMutateContent
+                && $page->type === PageType::Xlsx
+                && $page->current_version_uid !== null
+                && $this->xlsxProcessorConfiguration->enabled(),
+            'canReprocessDocx' => $canMutateContent
+                && $page->type === PageType::Docx
+                && $page->current_version_uid !== null
+                && $this->docxProcessorConfiguration->enabled()
+                && $this->pdfProcessorConfiguration->enabled(),
             'canRestoreVersions' => $canMutateContent
-                && ($page->type !== PageType::Pdf || $this->pdfProcessorConfiguration->enabled()),
+                && ($page->type !== PageType::Pdf || $this->pdfProcessorConfiguration->enabled())
+                && ($page->type !== PageType::Xlsx || $this->xlsxProcessorConfiguration->enabled())
+                && ($page->type !== PageType::Docx || ($this->docxProcessorConfiguration->enabled()
+                    && $this->pdfProcessorConfiguration->enabled())),
             'canManageAccess' => $canManageAccess,
             'category' => $page->category_uid === null ? null : Category::query()->find($page->category_uid),
             'contentUnavailable' => $content->contentUnavailable,
@@ -145,6 +170,11 @@ final readonly class PageDetailViewData
             'pagePresenceEnabled' => $this->realtimeConfiguration->enabled(),
             'pdfArtifactsEnabled' => $this->pdfProcessorConfiguration->enabled(),
             'pdfExtractionStatus' => $this->pdfExtractionStatus($page, $content->version),
+            'xlsxArtifactsEnabled' => $this->xlsxProcessorConfiguration->enabled(),
+            'xlsxFacts' => $this->xlsxFacts($page, $content->version),
+            'docxArtifactsEnabled' => $this->docxProcessorConfiguration->enabled()
+                && $this->pdfProcessorConfiguration->enabled(),
+            'docxFacts' => $this->docxFacts($page, $content->version),
             'pageProvenance' => $content->version instanceof PageVersion
                 ? $this->provenance->forVersion($content->version)
                 : null,
@@ -237,10 +267,40 @@ final readonly class PageDetailViewData
                 'dialog_id' => 'pdf-version-dialog',
                 'label' => 'Replace PDF',
             ],
+            PageType::Xlsx => [
+                'dialog_id' => 'xlsx-version-dialog',
+                'label' => 'Replace workbook',
+            ],
+            PageType::Docx => [
+                'dialog_id' => 'docx-version-dialog',
+                'label' => 'Replace Word document',
+            ],
             PageType::Markdown => [
                 'dialog_id' => 'page-content-dialog',
                 'label' => 'Edit Markdown',
             ],
         };
+    }
+
+    private function xlsxFacts(Page $page, ?PageVersion $version): ?XlsxVersionFact
+    {
+        if ($page->type !== PageType::Xlsx || !($version instanceof PageVersion)) {
+            return null;
+        }
+
+        $facts = XlsxVersionFact::query()->whereKey($version->uid)->first();
+
+        return $facts instanceof XlsxVersionFact ? $facts : null;
+    }
+
+    private function docxFacts(Page $page, ?PageVersion $version): ?DocxVersionFact
+    {
+        if ($page->type !== PageType::Docx || !($version instanceof PageVersion)) {
+            return null;
+        }
+
+        $facts = DocxVersionFact::query()->whereKey($version->uid)->first();
+
+        return $facts instanceof DocxVersionFact ? $facts : null;
     }
 }

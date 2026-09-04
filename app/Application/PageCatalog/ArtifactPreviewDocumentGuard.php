@@ -111,6 +111,7 @@ final class ArtifactPreviewDocumentGuard
         $openSelects = 0;
         $selectForeignDepth = null;
         $selectNoframesRawTextAlternate = false;
+        $foreignEndTagIntegrationPointAlternate = false;
 
         while ($offset < $length) {
             if ($rawTextTag !== null) {
@@ -202,7 +203,8 @@ final class ArtifactPreviewDocumentGuard
                         $html,
                         $tagOffset,
                         $scriptingEnabled,
-                        $foreignContent->currentElementIsHtmlIntegrationPoint(),
+                        $foreignContent->currentElementIsHtmlIntegrationPoint()
+                            || $foreignEndTagIntegrationPointAlternate,
                         $openFramesets > 0,
                         $rewriteDepth,
                         $rewriteBudget,
@@ -235,6 +237,9 @@ final class ArtifactPreviewDocumentGuard
             $offset = $tag['end'] + 1;
 
             if ($tag['closing']) {
+                $startsHtmlAlternate = in_array($tag['name'], ['br', 'p'], true)
+                    && $foreignContent->currentElementIsHtmlIntegrationPoint();
+
                 if ($openSelects > 0) {
                     $selectDepth = $selectForeignDepth ?? 0;
 
@@ -257,6 +262,18 @@ final class ArtifactPreviewDocumentGuard
                     }
                 } else {
                     $foreignContent->consumeEndTag($tag['name']);
+                }
+
+                if ($startsHtmlAlternate) {
+                    // Firefox can reach an HTML/bogus-comment interpretation after
+                    // a foreign </br> or </p> at an SVG/MathML integration point,
+                    // while the other maintained engines keep the surrounding
+                    // foreign branch. Keep the primary state intact, but scan later
+                    // CDATA for the Firefox interpretation too. Latching this
+                    // conservative branch affects only already malformed markup and
+                    // prevents a later nested context from hiding in unterminated
+                    // CDATA.
+                    $foreignEndTagIntegrationPointAlternate = true;
                 }
 
                 if ($tag['name'] === 'frameset' && $openFramesets > 0) {

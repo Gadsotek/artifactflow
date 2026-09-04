@@ -27,7 +27,7 @@ if [[ -z "$app_ip" ]]; then
     exit 1
 fi
 
-for service in e2e-image-parser e2e-pdf-processor; do
+for service in e2e-image-parser e2e-pdf-processor e2e-docx-processor; do
     processor_id="$(container_id "$service")"
     network_mode="$(docker inspect --format='{{.HostConfig.NetworkMode}}' "$processor_id")"
 
@@ -47,6 +47,41 @@ for service in e2e-image-parser e2e-pdf-processor; do
         }
     '
 done
+
+xlsx_processor_id="$(container_id e2e-xlsx-processor)"
+xlsx_network_mode="$(docker inspect --format='{{.HostConfig.NetworkMode}}' "$xlsx_processor_id")"
+
+if [[ "$xlsx_network_mode" != 'none' ]]; then
+    printf 'e2e-xlsx-processor must use Docker network mode none, got %s.\n' "$xlsx_network_mode" >&2
+    exit 1
+fi
+
+docker exec --env CALLBACK_TARGET="$app_ip" "$xlsx_processor_id" node -e '
+    const net = require("node:net");
+    const targets = [[process.env.CALLBACK_TARGET, 8000], ["169.254.169.254", 80]];
+    let pending = targets.length;
+
+    for (const [host, port] of targets) {
+        const socket = net.createConnection({ host, port });
+        let completed = false;
+        const denied = () => {
+            if (completed) return;
+            completed = true;
+            socket.destroy();
+            pending -= 1;
+            if (pending === 0) process.exit(0);
+        };
+
+        socket.setTimeout(1000, denied);
+        socket.once("error", denied);
+        socket.once("connect", () => {
+            console.error(`XLSX processor callback probe unexpectedly connected to ${host}:${port}.`);
+            process.exit(1);
+        });
+    }
+
+    setTimeout(() => process.exit(pending === 0 ? 0 : 1), 3000);
+'
 
 docker exec --env CALLBACK_TARGET="$app_ip" "$artifact_id" php -r '
     foreach ([[getenv("CALLBACK_TARGET"), 8000], ["169.254.169.254", 80]] as [$host, $port]) {

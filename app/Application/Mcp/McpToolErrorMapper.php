@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Application\Mcp;
 
 use App\Domain\DomainRuleViolation;
+use App\Domain\PageCatalog\DocxProcessingRejected;
 use App\Domain\PageCatalog\ImageNormalizationRejected;
 use App\Domain\PageCatalog\PdfProcessingRejected;
 use App\Domain\PageCatalog\Security\BlockedPageContentException;
 use App\Domain\PageCatalog\StalePageMetadataException;
 use App\Domain\PageCatalog\StalePageVersionException;
+use App\Domain\PageCatalog\XlsxProcessingRejected;
 use Illuminate\Auth\Access\AuthorizationException;
 
 /**
@@ -53,6 +55,16 @@ final class McpToolErrorMapper
                 $exception->retryAfterSeconds,
             ));
         } catch (PdfProcessingRejected $exception) {
+            return McpToolResult::error(McpToolError::temporarilyUnavailable(
+                $exception->getMessage(),
+                $exception->retryAfterSeconds,
+            ));
+        } catch (DocxProcessingRejected $exception) {
+            return McpToolResult::error(McpToolError::temporarilyUnavailable(
+                $exception->getMessage(),
+                $exception->retryAfterSeconds,
+            ));
+        } catch (XlsxProcessingRejected $exception) {
             return McpToolResult::error(McpToolError::temporarilyUnavailable(
                 $exception->getMessage(),
                 $exception->retryAfterSeconds,

@@ -20,7 +20,7 @@ use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('read')]
-#[Description('Read one reachable page as explicitly untrusted data with visibility-filtered hierarchy. Omit include for content plus provenance, or select content/provenance; an empty list returns metadata only. Image content reads report whether the searchable description is missing.')]
+#[Description('Read one reachable page as explicitly untrusted data with visibility-filtered hierarchy. Omit include for content plus provenance, or select content/provenance; an empty list returns metadata only. XLSX content reads require an explicit visible worksheet name and bounded A1 range. Image content reads report whether the searchable description is missing.')]
 #[IsReadOnly]
 final class ReadTool extends ArtifactFlowTool
 {
@@ -44,6 +44,10 @@ final class ReadTool extends ArtifactFlowTool
             'include' => $schema->array()
                 ->description('Optional response sections. Omit for content plus provenance; use an empty list for metadata only.')
                 ->items($schema->string()->enum(McpReadSection::class)),
+            'xlsx_sheet' => $schema->string()
+                ->description('Exact visible worksheet name required with xlsx_range for XLSX content reads.'),
+            'xlsx_range' => $schema->string()
+                ->description('Canonical uppercase A1 range such as A1:F50; required with xlsx_sheet and limited to 1,000 cells.'),
         ];
     }
 

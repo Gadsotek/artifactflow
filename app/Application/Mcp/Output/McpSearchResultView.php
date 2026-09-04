@@ -22,6 +22,8 @@ final readonly class McpSearchResultView implements McpWirePayload
         public McpHierarchyView $hierarchy,
         public ?string $updatedAt,
         public ?McpUntrustedText $snippet,
+        public ?McpXlsxFactsView $xlsx = null,
+        public ?McpDocxFactsView $docx = null,
     ) {
     }
 
@@ -47,6 +49,14 @@ final readonly class McpSearchResultView implements McpWirePayload
 
         if ($this->snippet !== null) {
             $payload['snippet'] = $this->snippet->toWire();
+        }
+
+        if ($this->xlsx !== null) {
+            $payload['xlsx'] = $this->xlsx->toWire();
+        }
+
+        if ($this->docx !== null) {
+            $payload['docx'] = $this->docx->toWire();
         }
 
         return $payload;

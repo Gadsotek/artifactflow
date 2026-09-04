@@ -39,12 +39,12 @@ final class ArtifactParserDifferentialCorpusTest extends TestCase
         $matchingCases = array_values(array_filter(
             $cases,
             static fn (mixed $case): bool => is_array($case)
-                && ($case['id'] ?? null) === 'generated/049/family-3',
+                && ($case['id'] ?? null) === 'regression/complexity-exhaustion',
         ));
 
         $this->assertCount(1, $matchingCases);
         $rejectedCase = $matchingCases[0];
-        $this->assertSame('generated/049/family-3', $rejectedCase['id']);
+        $this->assertSame('regression/complexity-exhaustion', $rejectedCase['id']);
         $this->assertSame('rejected', $rejectedCase['outcome'] ?? null);
         $this->assertArrayHasKey('hardened', $rejectedCase);
         $this->assertNull($rejectedCase['hardened']);

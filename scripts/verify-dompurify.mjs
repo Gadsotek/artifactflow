@@ -1,4 +1,6 @@
-// Fails if the resolved DOMPurify version drifts from the pinned one.
+// Fails if a locked dependency license leaves the reviewed policy or the
+// resolved DOMPurify version drifts from the pinned one. This entrypoint is
+// shared by local audit, CI, and the nightly dependency job.
 //
 // DOMPurify is the sanitizer that runs on the MAIN app origin over rendered
 // Mermaid SVG (resources/js/mermaid-renderer.js), so its version is security
@@ -7,14 +9,22 @@
 // regeneration could silently drop that override — this check, wired into
 // `make audit` (audit-js), turns that into a loud failure.
 
+/* global console */
+
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import process from 'node:process';
+import { URL, fileURLToPath } from 'node:url';
+import { auditRepositoryLicenses } from './license-audit/verify-dependency-licenses.mjs';
 
 const EXPECTED = '3.4.13';
 
+auditRepositoryLicenses();
+
 // Read the installed manifest directly: the package restricts subpath access via
 // "exports", so module resolution (require('dompurify/package.json')) is refused.
-const manifestPath = fileURLToPath(new URL('../node_modules/dompurify/package.json', import.meta.url));
+const manifestPath = fileURLToPath(
+  new URL('../node_modules/dompurify/package.json', import.meta.url),
+);
 
 let version;
 try {

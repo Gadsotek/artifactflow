@@ -87,6 +87,8 @@ final class PageVersionFactory extends Factory
             PageType::HtmlArtifact => ['index', 'html'],
             PageType::Image => ['preview', 'png'],
             PageType::Pdf => ['document', 'pdf'],
+            PageType::Xlsx => ['workbook', 'xlsx'],
+            PageType::Docx => ['document', 'docx'],
         };
 
         return sprintf(

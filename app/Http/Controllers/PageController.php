@@ -22,16 +22,19 @@ use App\Application\PageCatalog\PageSearch;
 use App\Application\PageCatalog\PageSearchFilters;
 use App\Application\PageCatalog\PageSearchSort;
 use App\Application\PageCatalog\PdfProcessorConfiguration;
+use App\Application\PageCatalog\XlsxProcessorConfiguration;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\CategoryRuleViolation;
 use App\Domain\PageCatalog\ImageNormalizationRejected;
 use App\Domain\PageCatalog\PageStatus;
 use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PdfProcessingRejected;
+use App\Domain\PageCatalog\XlsxProcessingRejected;
 use App\Domain\Provenance\ProvenanceSearchScope;
 use App\Http\Requests\PageCatalog\StorePageRequest;
 use App\Http\Support\ImageNormalizationRejectionResponse;
 use App\Http\Support\PdfProcessingRejectionResponse;
+use App\Http\Support\XlsxProcessingRejectionResponse;
 use App\Models\Page;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -57,6 +60,8 @@ final class PageController
         private readonly PageFilterTaxonomy $filterTaxonomy,
         private readonly PageFilterProvenance $filterProvenance,
         private readonly PdfProcessorConfiguration $pdfProcessorConfiguration,
+        private readonly XlsxProcessorConfiguration $xlsxProcessorConfiguration,
+        private readonly \App\Application\PageCatalog\DocxProcessorConfiguration $docxProcessorConfiguration,
     ) {
     }
 
@@ -136,6 +141,9 @@ final class PageController
             'editableWorkspaces' => $editableWorkspaces,
             'parentPages' => $parentPages,
             'pdfArtifactsEnabled' => $this->pdfProcessorConfiguration->enabled(),
+            'xlsxArtifactsEnabled' => $this->xlsxProcessorConfiguration->enabled(),
+            'docxArtifactsEnabled' => $this->docxProcessorConfiguration->enabled()
+                && $this->pdfProcessorConfiguration->enabled(),
             'renderedEditorMarkdown' => $renderedEditorMarkdown,
             'selectedParentPageUid' => $selectedParentPageUid,
             'selectedWorkspaceUid' => $selectedWorkspaceUid,
@@ -169,7 +177,15 @@ final class PageController
         } catch (ImageNormalizationRejected $exception) {
             return ImageNormalizationRejectionResponse::make($exception);
         } catch (PdfProcessingRejected $exception) {
-            return PdfProcessingRejectionResponse::make($exception, $request, 'pdf_file');
+            return PdfProcessingRejectionResponse::make(
+                $exception,
+                $request,
+                $request->pageType() === PageType::Docx ? 'docx_file' : 'pdf_file',
+            );
+        } catch (XlsxProcessingRejected $exception) {
+            return XlsxProcessingRejectionResponse::make($exception, $request, 'xlsx_file');
+        } catch (\App\Domain\PageCatalog\DocxProcessingRejected $exception) {
+            return \App\Http\Support\DocxProcessingRejectionResponse::make($exception, $request, 'docx_file');
         } catch (CategoryRuleViolation $exception) {
             throw ValidationException::withMessages([
                 'category_name' => $exception->getMessage(),
@@ -178,6 +194,8 @@ final class PageController
             $field = match ($request->pageType()) {
                 PageType::Image => 'image_file',
                 PageType::Pdf => 'pdf_file',
+                PageType::Xlsx => 'xlsx_file',
+                PageType::Docx => 'docx_file',
                 default => 'content',
             };
 

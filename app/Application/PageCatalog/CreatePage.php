@@ -46,6 +46,8 @@ final readonly class CreatePage
         private RealtimeConfiguration $realtimeConfiguration,
         private PageCatalogLiveAudience $liveAudience,
         private WorkspaceHierarchyGraph $workspaceHierarchy,
+        private PageVersionStorage $versionStorage,
+        private OfficeArtifactStoragePreflight $officeStoragePreflight,
     ) {
     }
 
@@ -79,6 +81,7 @@ final readonly class CreatePage
         $this->ensureCategoryInputIsUnambiguous($command);
         $this->metadataRules->ensureCategoryBelongsToWorkspace($command->categoryUid, $workspace->uid);
         $this->ensureParentPageIsAvailable($actor, $command->parentPageUid, $workspace->uid);
+        $this->officeStoragePreflight->forNewPage($workspace, $command->type, $command->content);
 
         try {
             $prepared = $this->contentPreparer->prepareForPersistence(
@@ -100,8 +103,8 @@ final readonly class CreatePage
 
         $byteSize = $prepared->byteSize();
         $scan = $prepared->scan;
-        $storagePath = null;
-        $closureCompleted = false;
+        $storagePaths = [];
+        $transactionCallbackCompleted = false;
 
         try {
             $page = DB::transaction(function () use (
@@ -113,8 +116,8 @@ final readonly class CreatePage
                 $ownerUserUid,
                 $prepared,
                 $scan,
-                &$storagePath,
-                &$closureCompleted,
+                &$storagePaths,
+                &$transactionCallbackCompleted,
                 $title,
                 $workspace,
                 $changeSummary,
@@ -199,7 +202,7 @@ final readonly class CreatePage
                     provenance: $command->provenance,
                     changeSummary: $changeSummary,
                 );
-                $storagePath = $version->content_storage_path;
+                $storagePaths = $this->versionStorage->paths($version);
                 $page->forceFill(['current_version_uid' => $version->uid])->save();
                 $this->tags->sync($page, $command->tagNames, $actorUid);
                 $this->searchVectors->refreshPage($page->uid);
@@ -209,18 +212,17 @@ final readonly class CreatePage
                 }
 
                 $refreshed = $page->refresh();
-                $closureCompleted = true;
+                $transactionCallbackCompleted = true;
 
                 return $refreshed;
             });
         } catch (Throwable $exception) {
-            // Clean up the staged blob only when the closure itself failed, i.e. the
-            // transaction rolled back. A failure raised by the commit after the
-            // closure completed leaves the version row durable, so deleting its blob
-            // would strand the page's current version; let PruneOrphanArtifacts sweep
-            // any post-commit anomaly instead (matching UpdatePageContent).
-            if (!$closureCompleted && $storagePath !== null) {
-                Storage::disk('artifacts')->delete($storagePath);
+            // Once the callback completed, commit acknowledgement may have been
+            // lost after PostgreSQL committed. Preserve every promoted path in
+            // that ambiguous state; genuine post-callback rollbacks leave only
+            // orphans, which the age-gated orphan reaper can delete safely.
+            if (!$transactionCallbackCompleted && $storagePaths !== []) {
+                Storage::disk('artifacts')->delete($storagePaths);
             }
 
             throw $exception;

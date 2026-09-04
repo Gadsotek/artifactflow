@@ -76,3 +76,9 @@ if (document.querySelector('[data-artifact-preview]')) {
   void import('./artifact-fullscreen');
   void import('./artifact-preview-refresh');
 }
+
+if (document.querySelector('[data-xlsx-preview]')) {
+  void import('./xlsx-external-link-confirmation').then(
+    ({ initialiseXlsxExternalLinkConfirmation }) => initialiseXlsxExternalLinkConfirmation(),
+  );
+}

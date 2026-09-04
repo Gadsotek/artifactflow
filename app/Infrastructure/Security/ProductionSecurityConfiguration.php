@@ -75,6 +75,8 @@ final readonly class ProductionSecurityConfiguration
         }
 
         $this->ensurePdfProcessorConfiguration();
+        $this->ensureXlsxProcessorConfiguration();
+        $this->ensureDocxProcessorConfiguration();
 
         $this->ensureArtifactReadLimitCanServeHtmlWrites();
         $this->ensureDatabaseDriver();
@@ -306,6 +308,13 @@ final readonly class ProductionSecurityConfiguration
             $comparisonSecrets[] = $imageParserSecret;
         }
 
+        foreach (['xlsx_processor.shared_secret', 'docx_processor.shared_secret'] as $key) {
+            $other = SecretStrength::normalized($this->string($key));
+            if ($other !== null) {
+                $comparisonSecrets[] = $other;
+            }
+        }
+
         if (
             !SecretStrength::isProductionSafe($configured)
             || $secret === null
@@ -342,6 +351,175 @@ final readonly class ProductionSecurityConfiguration
         }
 
         return $enabled;
+    }
+
+    private function ensureXlsxProcessorConfiguration(): void
+    {
+        $enabled = $this->config->get('xlsx_processor.enabled', false);
+
+        if (!is_bool($enabled)) {
+            throw new RuntimeException('XLSX_PROCESSOR_ENABLED must be true or false.');
+        }
+
+        $runtimeRole = $this->string('app.runtime_role');
+
+        if ($runtimeRole !== 'app' && (
+            $this->string('xlsx_processor.url') !== ''
+            || $this->string('xlsx_processor.socket_path') !== ''
+            || $this->string('xlsx_processor.shared_secret') !== ''
+        )) {
+            throw new RuntimeException(
+                'XLSX processor URL, socket path, and shared secret must not be available to non-app runtime roles.',
+            );
+        }
+
+        if ($runtimeRole !== 'app') {
+            if ($enabled && $runtimeRole !== 'artifact-host') {
+                throw new RuntimeException(
+                    'XLSX artifacts must not be enabled for worker or scheduler runtime roles.',
+                );
+            }
+
+            return;
+        }
+
+        if (!$enabled) {
+            return;
+        }
+
+        $origin = OriginNormalizer::tryParsePureOrigin($this->string('xlsx_processor.url'));
+
+        if ($origin === null) {
+            throw new RuntimeException('XLSX processor URL must be a pure HTTP or HTTPS origin.');
+        }
+
+        $socketPath = $this->untrimmedString('xlsx_processor.socket_path');
+
+        if (!UnixSocketPath::isValidOptional($socketPath)) {
+            throw new RuntimeException('XLSX processor socket path must be an absolute filesystem path.');
+        }
+
+        if (!$origin->isHttps() && trim($socketPath) === '') {
+            throw new RuntimeException('XLSX processor URL must use HTTPS when no Unix socket is configured.');
+        }
+
+        $configured = $this->string('xlsx_processor.shared_secret');
+        $secret = SecretStrength::normalized($configured);
+        $comparisonSecrets = array_values(array_filter([
+            SecretStrength::normalized($this->string('app.key')),
+            ...$this->previousApplicationKeys(),
+            SecretStrength::normalized($this->string('app.artifact_url_signing_key')),
+            SecretStrength::normalized($this->string('image_parser.shared_secret')),
+            SecretStrength::normalized($this->string('pdf_processor.shared_secret')),
+            SecretStrength::normalized($this->string('docx_processor.shared_secret')),
+        ], is_string(...)));
+
+        if (
+            !SecretStrength::isProductionSafe($configured)
+            || $secret === null
+            || $this->invariants->secretReusesAny($secret, $comparisonSecrets)
+        ) {
+            throw new RuntimeException(
+                'XLSX processor shared secret must be strong and dedicated.',
+            );
+        }
+
+        $connectTimeout = $this->config->get('xlsx_processor.connect_timeout_seconds');
+        $requestTimeout = $this->config->get('xlsx_processor.timeout_seconds');
+
+        if (
+            !is_int($connectTimeout)
+            || $connectTimeout < 1
+            || $connectTimeout > 60
+            || !is_int($requestTimeout)
+            || $requestTimeout < 1
+            || $requestTimeout > 60
+        ) {
+            throw new RuntimeException(
+                'XLSX processor connect and request timeouts must be integers between 1 and 60.',
+            );
+        }
+    }
+
+    private function ensureDocxProcessorConfiguration(): void
+    {
+        $enabled = $this->config->get('docx_processor.enabled', false);
+        if (!is_bool($enabled)) {
+            throw new RuntimeException('DOCX_PROCESSOR_ENABLED must be true or false.');
+        }
+
+        $runtimeRole = $this->string('app.runtime_role');
+        if ($runtimeRole !== 'app' && (
+            $this->string('docx_processor.url') !== ''
+            || $this->string('docx_processor.socket_path') !== ''
+            || $this->string('docx_processor.shared_secret') !== ''
+        )) {
+            throw new RuntimeException(
+                'DOCX processor URL, socket path, and shared secret must not be available to non-app runtime roles.',
+            );
+        }
+        if ($runtimeRole !== 'app') {
+            if ($enabled && $runtimeRole !== 'artifact-host') {
+                throw new RuntimeException('DOCX artifacts must not be enabled for worker or scheduler runtime roles.');
+            }
+
+            if ($enabled && $this->config->get('pdf_processor.enabled', false) !== true) {
+                throw new RuntimeException('DOCX artifacts require the PDF processor to be enabled.');
+            }
+
+            return;
+        }
+        if (!$enabled) {
+            return;
+        }
+        if ($this->config->get('pdf_processor.enabled', false) !== true) {
+            throw new RuntimeException('DOCX artifacts require the PDF processor to be enabled.');
+        }
+
+        $origin = OriginNormalizer::tryParsePureOrigin($this->string('docx_processor.url'));
+        if ($origin === null) {
+            throw new RuntimeException('DOCX processor URL must be a pure HTTP or HTTPS origin.');
+        }
+        $socketPath = $this->untrimmedString('docx_processor.socket_path');
+        if (!UnixSocketPath::isValidOptional($socketPath)) {
+            throw new RuntimeException('DOCX processor socket path must be an absolute filesystem path.');
+        }
+        if (!$origin->isHttps() && trim($socketPath) === '') {
+            throw new RuntimeException('DOCX processor URL must use HTTPS when no Unix socket is configured.');
+        }
+
+        $configured = $this->string('docx_processor.shared_secret');
+        $secret = SecretStrength::normalized($configured);
+        $comparisonSecrets = array_values(array_filter([
+            SecretStrength::normalized($this->string('app.key')),
+            ...$this->previousApplicationKeys(),
+            SecretStrength::normalized($this->string('app.artifact_url_signing_key')),
+            SecretStrength::normalized($this->string('image_parser.shared_secret')),
+            SecretStrength::normalized($this->string('pdf_processor.shared_secret')),
+            SecretStrength::normalized($this->string('xlsx_processor.shared_secret')),
+        ], is_string(...)));
+        if (
+            !SecretStrength::isProductionSafe($configured)
+            || $secret === null
+            || $this->invariants->secretReusesAny($secret, $comparisonSecrets)
+        ) {
+            throw new RuntimeException('DOCX processor shared secret must be strong and dedicated.');
+        }
+
+        $connectTimeout = $this->config->get('docx_processor.connect_timeout_seconds');
+        $requestTimeout = $this->config->get('docx_processor.timeout_seconds');
+        if (
+            !is_int($connectTimeout)
+            || $connectTimeout < 1
+            || $connectTimeout > 60
+            || !is_int($requestTimeout)
+            || $requestTimeout < 1
+            || $requestTimeout > 60
+        ) {
+            throw new RuntimeException(
+                'DOCX processor connect and request timeouts must be integers between 1 and 60.',
+            );
+        }
     }
 
     private function ensureArtifactReadLimitCanServeHtmlWrites(): void

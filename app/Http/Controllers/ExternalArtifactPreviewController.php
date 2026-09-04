@@ -8,9 +8,14 @@ use App\Application\ExternalSharing\ExternalArtifactPreviewUrl;
 use App\Application\ExternalSharing\ExternalShareViewContext;
 use App\Application\ExternalSharing\ResolveExternalShareView;
 use App\Application\PageCatalog\ArtifactContentReader;
+use App\Application\PageCatalog\DocxPreviewContentReader;
+use App\Application\PageCatalog\DocxProcessorConfiguration;
 use App\Application\PageCatalog\PdfArtifactContentReader;
 use App\Application\PageCatalog\PdfProcessorConfiguration;
 use App\Application\PageCatalog\RasterImageInspector;
+use App\Application\PageCatalog\XlsxManifestContentReader;
+use App\Application\PageCatalog\XlsxProcessorConfiguration;
+use App\Application\PageCatalog\XlsxViewerAssets;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\PageType;
 use App\Http\Support\ArtifactSandboxResponder;
@@ -31,6 +36,11 @@ final readonly class ExternalArtifactPreviewController
         private ArtifactSandboxResponder $responder,
         private PdfArtifactResponder $pdfResponder,
         private PdfProcessorConfiguration $pdfConfiguration,
+        private XlsxProcessorConfiguration $xlsxConfiguration,
+        private XlsxManifestContentReader $xlsxManifestReader,
+        private XlsxViewerAssets $xlsxViewerAssets,
+        private DocxProcessorConfiguration $docxConfiguration,
+        private DocxPreviewContentReader $docxPreviewReader,
     ) {
     }
 
@@ -61,6 +71,9 @@ final readonly class ExternalArtifactPreviewController
                     || $context->page->current_version_uid !== $version->uid
                     || $version->page_uid !== $context->page->uid
                     || ($context->page->type === PageType::Pdf && !$this->pdfConfiguration->enabled())
+                    || ($context->page->type === PageType::Xlsx && !$this->xlsxConfiguration->enabled())
+                    || ($context->page->type === PageType::Docx
+                        && (!$this->docxConfiguration->enabled() || !$this->pdfConfiguration->enabled()))
                     || !$context->page->type->usesArtifactHostPreview()
                     || !$this->urls->hasValidSignature(
                         $context,
@@ -76,9 +89,15 @@ final readonly class ExternalArtifactPreviewController
                     return $this->responder->topLevelNavigationNotice(null);
                 }
 
-                $content = $context->page->type === PageType::Pdf
-                    ? $this->pdfContentReader->read($version)
-                    : $this->contentReader->read($version->content_storage_path);
+                if ($context->page->type === PageType::Xlsx) {
+                    $content = $this->xlsxManifestReader->read($version);
+                } elseif ($context->page->type === PageType::Docx) {
+                    $content = $this->docxPreviewReader->read($version);
+                } else {
+                    $content = $context->page->type === PageType::Pdf
+                        ? $this->pdfContentReader->read($version)
+                        : $this->contentReader->read($version->content_storage_path);
+                }
 
                 if ($content === null) {
                     return null;
@@ -102,6 +121,20 @@ final readonly class ExternalArtifactPreviewController
 
                 if ($context->page->type === PageType::Pdf) {
                     return $this->pdfResponder->inline($content, $context->page, $version);
+                }
+
+                if ($context->page->type === PageType::Docx) {
+                    return $this->pdfResponder->inline($content, $context->page, $version);
+                }
+
+                if ($context->page->type === PageType::Xlsx) {
+                    try {
+                        $assets = $this->xlsxViewerAssets->paths();
+                    } catch (\LogicException) {
+                        return null;
+                    }
+
+                    return $this->responder->xlsxDocument($content, $assets);
                 }
 
                 return $this->responder->document($content, recoveryEnabled: true);

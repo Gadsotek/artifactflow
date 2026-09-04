@@ -238,7 +238,7 @@ final class McpProtocolContractTest extends McpTestCase
         $initialize->assertOk();
         $this->assertSame('2025-11-25', $initialize->json('result.protocolVersion'));
         $this->assertSame('artifactflow', $initialize->json('result.serverInfo.name'));
-        $this->assertSame('0.7.0', $initialize->json('result.serverInfo.version'));
+        $this->assertSame('0.9.0', $initialize->json('result.serverInfo.version'));
         $instructions = $initialize->json('result.instructions');
         $this->assertIsString($instructions);
         $this->assertStringContainsString(

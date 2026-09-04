@@ -6,6 +6,7 @@ namespace Tests\Feature\Auth;
 
 use App\Models\User;
 use App\Notifications\ResetPasswordNotification;
+use Illuminate\Auth\Passwords\PasswordBroker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Hash;
@@ -91,7 +92,7 @@ final class TurnstilePasswordResetTest extends TestCase
     {
         $this->enableTurnstile();
         $user = $this->createUser('reset-password@example.test');
-        $token = Password::broker()->createToken($user);
+        $token = $this->passwordBroker()->createToken($user);
         Http::fake([
             'https://challenges.cloudflare.com/turnstile/v0/siteverify' => Http::response([
                 'success' => true,
@@ -121,7 +122,7 @@ final class TurnstilePasswordResetTest extends TestCase
         $this->enableTurnstile();
         Notification::fake();
         $user = $this->createUser('rejected-reset@example.test');
-        $token = Password::broker()->createToken($user);
+        $token = $this->passwordBroker()->createToken($user);
         Http::fake([
             'https://challenges.cloudflare.com/turnstile/v0/siteverify' => Http::response([
                 'success' => true,
@@ -155,7 +156,7 @@ final class TurnstilePasswordResetTest extends TestCase
         ]);
 
         $this->assertTrue(Hash::check('old secure password', $user->refresh()->password));
-        $this->assertTrue(Password::broker()->tokenExists($user, $token));
+        $this->assertTrue($this->passwordBroker()->tokenExists($user, $token));
     }
 
     private function enableTurnstile(): void
@@ -168,6 +169,14 @@ final class TurnstilePasswordResetTest extends TestCase
             'turnstile.connect_timeout_seconds' => 2,
             'turnstile.timeout_seconds' => 5,
         ]);
+    }
+
+    private function passwordBroker(): PasswordBroker
+    {
+        $broker = Password::broker();
+        $this->assertInstanceOf(PasswordBroker::class, $broker);
+
+        return $broker;
     }
 
     private function createUser(string $email): User

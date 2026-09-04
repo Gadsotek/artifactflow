@@ -14,8 +14,8 @@ workspace allows Editors and page owners to share pages. This is not public
 publishing: a recipient receives a high-entropy bearer capability for one page
 and no catalog, workspace, identity, search, source, history, editing, MCP, or
 separate ArtifactFlow download authority. A native PDF view necessarily
-transfers the retained PDF bytes to the recipient's browser and is explicitly
-treated as download-equivalent.
+transfers either retained PDF bytes or a derived DOCX-preview PDF to the
+recipient's browser and is explicitly treated as download-equivalent.
 
 The product contract defines exactly two mutually exclusive modes:
 
@@ -26,7 +26,8 @@ The product contract defines exactly two mutually exclusive modes:
 Every share follows the page's latest current version. It is manually
 revocable, fails closed after page archival, deletion, workspace movement, or a
 relevant access-boundary change, and uses the existing safe presentation
-boundary for each page type.
+boundary for each page type. Exact XLSX and DOCX originals are never shared;
+their external presentations use only validated derivatives.
 
 ## Decision
 
@@ -202,7 +203,8 @@ Creation:
    requires `mcp:share`, token-workspace reach, live edit authority, and page
    ownership by the MCP principal, plus the workspace's live
    `allow_editor_page_sharing` policy;
-4. for a PDF, rechecks that PDF artifact support is enabled;
+4. for PDF, XLSX, or DOCX, rechecks that every processor required by that
+   format is enabled;
 5. rechecks installation policy and active-share bounds;
 6. generates the share secret and persists only its hash;
 7. records `page.external_share.created` in both the durable event journal and
@@ -282,9 +284,11 @@ Every viewer load and artifact-preview URL issuance rechecks:
 - the page still belongs to the copied workspace;
 - the page access revision still equals the copied revision.
 
-PDF viewer content and artifact delivery additionally recheck the live PDF
-feature switch. Disabling PDF support makes retained external PDF shares
-uniformly unavailable without deleting their revocable inventory rows.
+PDF, XLSX, and DOCX viewer content and artifact delivery additionally recheck
+their live feature switches; DOCX also rechecks PDF support because the stored
+preview passed that processor. Disabling a required processor makes retained
+shares of that type uniformly unavailable without deleting their revocable
+inventory rows.
 
 A new current version does not increment this sharing boundary and is resolved
 when the viewing session starts or the viewer refreshes. Historical versions
@@ -325,6 +329,17 @@ explicit safe presenter.
   app-only `frame-ancestors`, and an inline application-generated filename.
   This exception is registered only for `PageType::Pdf` and does not weaken
   HTML or image presentation.
+- XLSX uses the application-owned Tabulator viewer over the canonical typed
+  manifest on the opaque artifact origin. The iframe allows scripts but no
+  popup, same-origin, form, navigation, or network authority. An external target
+  requires a second, destination-visible confirmation on the app origin, whose
+  anchor sends no opener or referrer. Formula code is display-only and is never evaluated. The
+  exact original workbook is not transmitted.
+- DOCX uses only its independently PDFBox-validated passive-PDF derivative in
+  the browser-native PDF viewer. The iframe follows the same unsandboxed native
+  viewer exception as PDF, but external hyperlink actions are stripped before
+  conversion and independently rejected after it. The exact original DOCX has no anonymous
+  download or delivery path.
 - A future type cannot become shareable until its normal safe preview strategy
   is explicitly registered. There is no raw-byte fallback.
 
@@ -356,10 +371,11 @@ browser time zone; the server time zone is never presented as if it were local.
 
 It never exposes workspace membership, owner or sharer identity, hierarchy,
 taxonomy, search, source, history, provenance, internal links, realtime
-presence, MCP, a separate ArtifactFlow download endpoint, or authenticated
-navigation. PDF recipients can still save, print, copy, or forward bytes that
-their browser received; revocation cannot erase those bytes and the UI states
-that viewing a PDF is download-equivalent.
+presence, MCP, a separate ArtifactFlow download endpoint, original XLSX or
+DOCX bytes, or authenticated navigation. PDF and derived-DOCX-preview
+recipients can still save, print, copy, or forward PDF bytes that their browser
+received; revocation cannot erase those bytes and the UI states that native
+PDF viewing is download-equivalent.
 
 ## Rejected alternatives
 
@@ -408,8 +424,9 @@ Implementation remains disabled until focused PHP and cross-browser
   countdown and no ability to redeem the original one-time link again;
 - latest-version resolution with no history/source/catalog disclosure;
 - Markdown link non-disclosure, HTML opaque sandboxing, image scriptless
-  sandboxing, and PDF native-viewer origin/cookie/header isolation without
-  generic frame-policy relaxation in Chromium, Firefox, and WebKit;
+  sandboxing, XLSX typed-viewer/link isolation, and native PDF plus derived
+  DOCX PDF origin/cookie/header isolation without generic frame-policy
+  relaxation in Chromium, Firefox, and WebKit;
 - identical behavior whether or not the browser also has an authenticated
   ArtifactFlow session.
 

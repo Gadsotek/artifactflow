@@ -10,4 +10,6 @@ enum ExternalPagePresentation: string
     case SandboxedHtml = 'sandboxed_html';
     case ScriptlessImage = 'scriptless_image';
     case NativePdf = 'native_pdf';
+    case TypedSpreadsheet = 'typed_spreadsheet';
+    case DerivedDocumentPdf = 'derived_document_pdf';
 }

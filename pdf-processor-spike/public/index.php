@@ -49,17 +49,33 @@ try {
             respond(404, '{"error":"not_found"}', ['Content-Type' => 'application/json']);
         }
 
-        ProcessorHealthRequest::fromGlobals($configuration);
+        $healthRequest = ProcessorHealthRequest::fromGlobals($configuration);
         PdfBoxEngine::production()->verifyHealth();
-        respond(200, '{"status":"ok"}', ['Content-Type' => 'application/json']);
+        $body = '{"status":"ok"}';
+        respond(200, $body, [
+            'Content-Type' => 'application/json',
+            'X-ArtifactFlow-Processor-Nonce' => $healthRequest->nonce,
+            'X-ArtifactFlow-Processor-Signature' => ProcessorHealthRequest::responseSignature(
+                $healthRequest->nonce,
+                $body,
+                $configuration->sharedSecret,
+            ),
+        ]);
     }
 
-    if ($method !== 'POST' || $path !== '/v1/inspect') {
+    if ($method !== 'POST' || !in_array($path, ['/v1/inspect', '/v1/inspect-docx-preview'], true)) {
         respond(404, '{"error":"not_found"}', ['Content-Type' => 'application/json']);
     }
 
-    $request = ProcessorRequest::fromGlobals($configuration);
-    $result = ProcessorResult::fromInspection(PdfBoxEngine::production()->inspect($request->bytes));
+    $profile = $path === '/v1/inspect-docx-preview'
+        ? ProcessorRequest::DOCX_PREVIEW_PROFILE
+        : ProcessorRequest::UPLOADED_PROFILE;
+    $request = ProcessorRequest::fromGlobals($configuration, $profile);
+    $engine = PdfBoxEngine::production();
+    $inspection = $profile === ProcessorRequest::DOCX_PREVIEW_PROFILE
+        ? $engine->inspectDocxPreview($request->bytes)
+        : $engine->inspect($request->bytes);
+    $result = ProcessorResult::fromInspection($inspection, $profile);
     $body = $result->toJson();
 
     respond(200, $body, [

@@ -18,6 +18,8 @@ final class InstallCommand extends Command
 {
     protected $signature = 'artifactflow:install {--env=} {--seed-demo} {--reverb} '
         . '{--pdf : Enable experimental PDF artifacts in local or test mode} '
+        . '{--xlsx : Enable Excel workbook artifacts in local or test mode} '
+        . '{--docx : Enable Word document artifacts and their PDF previews in local or test mode} '
         . '{--name=} {--email=} {--password=}';
 
     protected $description = 'Guided first-run install: pick the target environment, provision keys, migrate, and create the system admin.';
@@ -36,13 +38,35 @@ final class InstallCommand extends Command
         }
 
         $local = $env !== 'production';
-        $needsAppKey = InstallationSecret::isMissing($this->configString('app.key'));
-        $needsSigningKey = InstallationSecret::isMissing($this->configString('app.artifact_url_signing_key'));
+        $appKey = $this->configString('app.key');
+        $signingKey = $this->configString('app.artifact_url_signing_key');
+        $imageParserSecret = $this->configString('image_parser.shared_secret');
+        $pdfProcessorSecret = $this->configString('pdf_processor.shared_secret');
+        $xlsxProcessorSecret = $this->configString('xlsx_processor.shared_secret');
+        $docxProcessorSecret = $this->configString('docx_processor.shared_secret');
+        $needsAppKey = InstallationSecret::isMissing($appKey);
+        $needsSigningKey = InstallationSecret::needsReplacement($signingKey, [$appKey]);
         $needsImageParserSecret = $this->imageParserIsEnabled()
-            && InstallationSecret::isMissing($this->configString('image_parser.shared_secret'));
+            && InstallationSecret::needsReplacement($imageParserSecret, [
+                $appKey,
+                $signingKey,
+                $pdfProcessorSecret,
+                $xlsxProcessorSecret,
+                $docxProcessorSecret,
+            ]);
         $wantsReverb = (bool) $this->option('reverb');
         $pdfWasEnabled = config('pdf_processor.enabled', false) === true;
+        $docxWasEnabled = config('docx_processor.enabled', false) === true;
+        $docxWasRequested = (bool) $this->option('docx');
         $pdfWasRequested = (bool) $this->option('pdf');
+        $xlsxWasEnabled = config('xlsx_processor.enabled', false) === true;
+        $xlsxWasRequested = (bool) $this->option('xlsx');
+
+        if (!$local && $docxWasRequested) {
+            $this->error('Word document artifacts can be enabled by the installer only in local or test mode.');
+
+            return 1;
+        }
 
         if (!$local && $pdfWasRequested) {
             $this->error('PDF artifacts can be enabled by the installer only in local or test mode.');
@@ -50,17 +74,76 @@ final class InstallCommand extends Command
             return 1;
         }
 
-        $shouldPromptForPdf = $local && !$pdfWasRequested && $this->input->isInteractive();
-        $shouldPersistPdfChoice = $local && ($pdfWasRequested || $shouldPromptForPdf);
+        if (!$local && $xlsxWasRequested) {
+            $this->error('Excel workbook artifacts can be enabled by the installer only in local or test mode.');
+
+            return 1;
+        }
+
+        // Ask about the dependent format first. A positive DOCX choice requires
+        // the complete DOCX -> PDF validation chain, so asking whether to enable
+        // PDF separately afterwards would offer a choice the installer cannot
+        // safely honor.
+        $shouldPromptForDocx = $local && !$docxWasRequested && $this->input->isInteractive();
+        $shouldPersistDocxChoice = $local && ($docxWasRequested || $shouldPromptForDocx);
+        $wantsDocx = $local && (
+            $docxWasRequested
+            || ($shouldPromptForDocx
+                ? $this->confirm('Enable Word document artifacts?', $docxWasEnabled)
+                : $docxWasEnabled)
+        );
+
+        if ($wantsDocx && !$pdfWasEnabled && !$pdfWasRequested) {
+            $this->line('Word previews require the PDF processor; enabling PDF support too.');
+        }
+
+        $shouldPromptForPdf = $local
+            && !$pdfWasRequested
+            && !$wantsDocx
+            && $this->input->isInteractive();
+        $shouldPersistPdfChoice = $local && ($pdfWasRequested || $wantsDocx || $shouldPromptForPdf);
         $wantsPdf = $local && (
-            $pdfWasRequested
+            $wantsDocx
+            || $pdfWasRequested
             || ($shouldPromptForPdf
                 ? $this->confirm('Enable experimental PDF artifacts?', $pdfWasEnabled)
                 : $pdfWasEnabled)
         );
+        $shouldPromptForXlsx = $local && !$xlsxWasRequested && $this->input->isInteractive();
+        $shouldPersistXlsxChoice = $local && ($xlsxWasRequested || $shouldPromptForXlsx);
+        $wantsXlsx = $local && (
+            $xlsxWasRequested
+            || ($shouldPromptForXlsx
+                ? $this->confirm('Enable Excel workbook artifacts?', $xlsxWasEnabled)
+                : $xlsxWasEnabled)
+        );
+        $xlsxSettingChanged = $shouldPersistXlsxChoice && $wantsXlsx !== $xlsxWasEnabled;
+        $needsXlsxProcessorSecret = $wantsXlsx
+            && InstallationSecret::needsReplacement($xlsxProcessorSecret, [
+                $appKey,
+                $signingKey,
+                $imageParserSecret,
+                $pdfProcessorSecret,
+                $docxProcessorSecret,
+            ]);
         $pdfSettingChanged = $shouldPersistPdfChoice && $wantsPdf !== $pdfWasEnabled;
         $needsPdfProcessorSecret = $wantsPdf
-            && InstallationSecret::isMissing($this->configString('pdf_processor.shared_secret'));
+            && InstallationSecret::needsReplacement($pdfProcessorSecret, [
+                $appKey,
+                $signingKey,
+                $imageParserSecret,
+                $xlsxProcessorSecret,
+                $docxProcessorSecret,
+            ]);
+        $docxSettingChanged = $shouldPersistDocxChoice && $wantsDocx !== $docxWasEnabled;
+        $needsDocxProcessorSecret = $wantsDocx
+            && InstallationSecret::needsReplacement($docxProcessorSecret, [
+                $appKey,
+                $signingKey,
+                $imageParserSecret,
+                $pdfProcessorSecret,
+                $xlsxProcessorSecret,
+            ]);
         $targetAppEnv = $local ? 'local' : 'production';
 
         if (!$local && ($needsAppKey || $needsSigningKey || $wantsReverb)) {
@@ -79,6 +162,10 @@ final class InstallCommand extends Command
             $wantsReverb,
             $wantsPdf,
             $needsPdfProcessorSecret,
+            $wantsXlsx,
+            $needsXlsxProcessorSecret,
+            $wantsDocx,
+            $needsDocxProcessorSecret,
         );
         $this->info(sprintf('Installing ArtifactFlow (%s mode).', $env));
 
@@ -142,6 +229,25 @@ final class InstallCommand extends Command
             }
         }
 
+        if ($plan->hasStep('xlsx_processor_secret')) {
+            $this->line('- Generating XLSX processor shared secret');
+
+            if (!$this->runGeneratorScript('scripts/ensure-xlsx-processor-shared-secret.php')) {
+                $this->error('Could not generate the XLSX processor shared secret.');
+
+                return 1;
+            }
+        }
+
+        if ($plan->hasStep('docx_processor_secret')) {
+            $this->line('- Generating DOCX processor shared secret');
+            if (!$this->runGeneratorScript('scripts/ensure-docx-processor-shared-secret.php')) {
+                $this->error('Could not generate the DOCX processor shared secret.');
+
+                return 1;
+            }
+        }
+
         $this->line('- Running database migrations');
         $migrationExitCode = Artisan::call('migrate', ['--force' => true]);
 
@@ -167,6 +273,16 @@ final class InstallCommand extends Command
             if ($shouldPersistPdfChoice) {
                 $environmentValues['PDF_PROCESSOR_ENABLED'] = $wantsPdf ? 'true' : 'false';
                 config(['pdf_processor.enabled' => $wantsPdf]);
+            }
+
+            if ($shouldPersistXlsxChoice) {
+                $environmentValues['XLSX_PROCESSOR_ENABLED'] = $wantsXlsx ? 'true' : 'false';
+                config(['xlsx_processor.enabled' => $wantsXlsx]);
+            }
+
+            if ($shouldPersistDocxChoice) {
+                $environmentValues['DOCX_PROCESSOR_ENABLED'] = $wantsDocx ? 'true' : 'false';
+                config(['docx_processor.enabled' => $wantsDocx]);
             }
 
             $envWriter->upsert($environmentValues);
@@ -227,9 +343,23 @@ final class InstallCommand extends Command
             || $plan->hasStep('image_parser_secret')
             || $plan->hasStep('reverb_keys')
             || $plan->hasStep('pdf_processor_secret')
+            || $plan->hasStep('xlsx_processor_secret')
+            || $plan->hasStep('docx_processor_secret')
             || $pdfSettingChanged
+            || $xlsxSettingChanged
+            || $docxSettingChanged
         )) {
             $this->line('Exit this container and rerun make up so local services reload the new configuration.');
+
+            if (
+                $plan->hasStep('xlsx_processor_secret')
+                || $plan->hasStep('docx_processor_secret')
+                || $xlsxSettingChanged
+                || $docxSettingChanged
+                || ($wantsDocx && $pdfSettingChanged)
+            ) {
+                $this->line('Then run make doctor; XLSX/DOCX artifacts are not ready until their enabled processor checks pass.');
+            }
         }
 
         return 0;

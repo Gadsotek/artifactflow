@@ -134,6 +134,22 @@
           </ul>
         </section>
 
+        <section id="native-documents">
+          <p class="kicker">Isolated native processing</p>
+          <h2>Native documents are hostile parser input.</h2>
+          <p>PDF, XLSX, and DOCX support remains default-off because each format crosses a native or complex parser boundary. The Laravel and browser runtimes never parse an Office original. Every enabled processor is separately credentialed, single-worker, resource-bounded, denied application source and storage credentials, and deployed with effective outbound-network denial.</p>
+          <ul class="detail-list">
+            <li><strong>Excel workbooks:</strong> strict ZIP and OPC admission runs before pinned SheetJS CE. Only a bounded canonical typed manifest of visible cells, cached formula results, simple merges, and reviewed links can reach search or the application-owned sandboxed viewer.</li>
+            <li><strong>Word documents:</strong> strict WordprocessingML admission runs before networkless LibreOffice conversion. The exact output must then pass the independent PDFBox DOCX-preview profile, including active-structure rejection and native selectable text, before it can be stored, searched, or previewed.</li>
+            <li><strong>Original downloads:</strong> exact XLSX and DOCX originals remain private and authorization-bound, but downloading them deliberately transfers untrusted Office bytes to the user's local software. External shares and MCP never return those originals.</li>
+          </ul>
+          <div class="callout">
+            <strong>Antivirus is not the security boundary</strong>
+            <p>Pattern scanning can block obvious secrets and flag suspicious content, but isolation, strict format admission, bounded derived outputs, authorization, and artifact-origin delivery are the controls that must hold when a document is intentionally hostile.</p>
+          </div>
+          <p>These processors reduce blast radius; they do not eliminate container-runtime or kernel escape risk. Keep SheetJS, LibreOffice, PDFBox, base images, and the container runtime patched, pin released image digests, and complete the documented browser and deployment checks before enabling a format.</p>
+        </section>
+
         <section id="provenance-trust">
           <p class="kicker">Provenance trust</p>
           <h2>A declared model is useful metadata, not a cryptographic proof.</h2>
@@ -175,6 +191,7 @@
         <a href="#browser-policy">Iframe and CSP</a>
         <a href="#preview-flows">Preview flows</a>
         <a href="#defense-in-depth">Defense in depth</a>
+        <a href="#native-documents">Native documents</a>
         <a href="#provenance-trust">Provenance trust</a>
         <a href="#residuals">Residual risks</a>
       </aside>

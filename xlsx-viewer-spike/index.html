@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    >
+    <title>ArtifactFlow XLSX viewer spike</title>
+    <link rel="stylesheet" href="./dist/viewer.css">
+  </head>
+  <body>
+    <main class="viewer-shell" aria-labelledby="viewer-title">
+      <header class="viewer-header">
+        <div>
+          <p class="eyebrow">ArtifactFlow preview spike</p>
+          <h1 id="viewer-title">Read-only Excel preview</h1>
+        </div>
+        <p class="warning">Formulas are not recalculated. Values are producer-stored caches.</p>
+      </header>
+
+      <nav id="sheet-tabs" class="sheet-tabs" aria-label="Visible workbook sheets" role="tablist"></nav>
+
+      <section class="formula-bar" aria-label="Selected cell details">
+        <span id="selected-coordinate" class="coordinate">No cell selected</span>
+        <span id="selected-value" class="cached-value"></span>
+        <code id="selected-formula" class="formula"></code>
+      </section>
+
+      <div id="workbook-grid" class="workbook-grid" aria-label="Workbook cells"></div>
+      <p id="viewer-status" class="status" role="status" aria-live="polite">Loading workbook preview…</p>
+    </main>
+
+    <script defer src="./dist/viewer.js"></script>
+  </body>
+</html>

@@ -14,12 +14,14 @@ use App\Application\Mcp\McpAccessTokenAuthenticator;
 use App\Application\Mcp\McpEffectiveAuthority;
 use App\Application\Mcp\McpRequestContext;
 use App\Application\Mcp\RecordMcpClientSession;
+use App\Application\PageCatalog\DocxPageContentStrategy;
 use App\Application\PageCatalog\PageAccess;
 use App\Application\PageCatalog\PageContentStrategy;
 use App\Application\PageCatalog\PageContentStrategyRegistry;
 use App\Application\PageCatalog\PdfPageContentStrategy;
 use App\Application\PageCatalog\RasterImagePageContentStrategy;
 use App\Application\PageCatalog\TextPageContentStrategy;
+use App\Application\PageCatalog\XlsxPageContentStrategy;
 use App\Http\Support\ExternalShareResponses;
 use App\Infrastructure\Security\ProductionSecurityConfiguration;
 use App\Models\McpAccessToken;
@@ -56,7 +58,13 @@ final class AppServiceProvider extends ServiceProvider
         $this->app->scoped(PageAccess::class);
         $this->app->singleton(InstallationReadiness::class);
         $this->app->tag(
-            [TextPageContentStrategy::class, RasterImagePageContentStrategy::class, PdfPageContentStrategy::class],
+            [
+                TextPageContentStrategy::class,
+                RasterImagePageContentStrategy::class,
+                PdfPageContentStrategy::class,
+                XlsxPageContentStrategy::class,
+                DocxPageContentStrategy::class,
+            ],
             PageContentStrategy::class,
         );
         $this->app

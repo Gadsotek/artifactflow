@@ -60,6 +60,7 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
             $app,
         );
         $this->assertStringContainsString('pdf-processor-socket:/run/artifactflow/pdf-processor:ro', $app);
+        $this->assertStringContainsString("group_add:\n      - \"10002\"\n      - \"10003\"\n      - \"10004\"", $app);
 
         foreach (
             [
@@ -138,6 +139,7 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('post_max_size=17M', $start);
         $this->assertStringContainsString('127.0.0.1:${port}', $start);
         $this->assertStringContainsString('UNIX-LISTEN:', $start);
+        $this->assertStringContainsString('mode=0660', $start);
     }
 
     public function test_http_boundary_is_narrow_authenticated_and_fail_closed(): void
@@ -151,7 +153,10 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('in_array($remoteAddress, $loopbackAddresses, true)', $index);
         $this->assertStringNotContainsString('HTTP_X_FORWARDED_FOR', $index);
         $this->assertStringContainsString('ProcessorHealthRequest::fromGlobals', $index);
-        $this->assertStringContainsString('$path !== \'/v1/inspect\'', $index);
+        $this->assertStringContainsString(
+            "in_array(\$path, ['/v1/inspect', '/v1/inspect-docx-preview'], true)",
+            $index,
+        );
         $this->assertStringContainsString('ProcessorRequest::fromGlobals', $index);
         $this->assertStringContainsString('PdfBoxEngine::production()', $index);
         $this->assertStringContainsString('->signature($request, $configuration->sharedSecret)', $index);
@@ -170,7 +175,11 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringNotContainsString('PdfBoxEngine::production()->verifyHealth()', $healthcheck);
         $this->assertStringContainsString('unix://', $healthcheck);
 
-        $serviceTest = $this->afterNeedle($makefile, 'pdf-processor-service-test:');
+        $serviceTest = explode(
+            'pdf-processor-private-service-build:',
+            $this->afterNeedle($makefile, 'pdf-processor-service-test:'),
+            2,
+        )[0];
         $this->assertStringContainsString('docker run -d --name "$$processor_container"', $serviceTest);
         $this->assertStringContainsString('.State.Health.Status', $serviceTest);
         $this->assertStringNotContainsString('--entrypoint php', $serviceTest);
@@ -223,7 +232,11 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('GET /health HTTP/1.1', $healthcheck);
         $this->assertStringContainsString('{"status":"ok"}', $healthcheck);
 
-        $privateTest = $this->afterNeedle($makefile, 'pdf-processor-private-service-test:');
+        $privateTest = explode(
+            'xlsx-processor-service-build:',
+            $this->afterNeedle($makefile, 'pdf-processor-private-service-test:'),
+            2,
+        )[0];
         $this->assertStringContainsString('--target pdf-processor-private-service', $makefile);
         $this->assertStringContainsString('--cap-drop ALL', $privateTest);
         $this->assertStringContainsString('--security-opt no-new-privileges', $privateTest);

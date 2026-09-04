@@ -8,8 +8,8 @@ use App\Application\Administration\InstallationLimitSettings;
 use App\Domain\DomainRuleViolation;
 use App\Models\Page;
 use App\Models\PageVersion;
+use App\Models\PageVersionDerivative;
 use App\Models\Workspace;
-use Illuminate\Support\Facades\DB;
 use LogicException;
 
 final readonly class WorkspaceStorageQuota
@@ -31,6 +31,58 @@ final readonly class WorkspaceStorageQuota
         }
 
         return $workspace;
+    }
+
+    /**
+     * Optimistic, non-locking rejection of a new page that cannot possibly fit.
+     * The exact locked quota check must still run when the prepared bytes persist.
+     */
+    public function preflightNewPageStorage(Workspace $workspace, int $minimumNewBytes): void
+    {
+        $freshWorkspace = $this->workspace($workspace->uid);
+        $this->ensureWorkspaceAllowsNewBytes($freshWorkspace, $minimumNewBytes);
+        $this->ensurePageAllowsNewBytes(null, $minimumNewBytes);
+    }
+
+    /**
+     * Optimistic, retention-aware rejection before an isolated native processor
+     * runs. The append path repeats this under page and workspace row locks.
+     */
+    public function preflightVersionAppendStorage(Page $page, int $minimumNewBytes): void
+    {
+        $freshWorkspace = $this->workspace($page->workspace_uid);
+        $this->ensureWorkspaceAllowsNewBytesForVersionAppend(
+            $freshWorkspace,
+            $page->uid,
+            $minimumNewBytes,
+        );
+        $this->ensurePageAllowsNewBytes($page->uid, $minimumNewBytes);
+    }
+
+    /**
+     * Optimistic lower-bound check for replacing an existing Office derivative.
+     * It permits a potentially shrinking replacement while rejecting a quota
+     * state that cannot hold even a one-byte valid derivative.
+     */
+    public function preflightDerivativeReplacementStorage(
+        Page $page,
+        int $existingDerivativeBytes,
+        int $minimumReplacementBytes,
+    ): void {
+        $workspace = $this->workspace($page->workspace_uid);
+        $workspaceUsageWithoutDerivative = max(0, $workspace->used_storage_bytes - $existingDerivativeBytes);
+        $workspaceLimit = $this->positiveLimit('pages.max_workspace_storage_bytes', 'workspace storage');
+
+        if ($workspaceUsageWithoutDerivative + $minimumReplacementBytes > $workspaceLimit) {
+            throw new DomainRuleViolation('Workspace page storage quota exceeded.');
+        }
+
+        $pageUsageWithoutDerivative = max(0, $this->storedPageBytes($page) - $existingDerivativeBytes);
+        $pageLimit = $this->positiveLimit('pages.max_page_storage_bytes', 'page storage');
+
+        if ($pageUsageWithoutDerivative + $minimumReplacementBytes > $pageLimit) {
+            throw new DomainRuleViolation('Page storage quota exceeded.');
+        }
     }
 
     /**
@@ -101,9 +153,16 @@ final readonly class WorkspaceStorageQuota
 
     public function storedPageBytes(Page $page): int
     {
-        return (int) PageVersion::query()
+        $originalBytes = (int) PageVersion::query()
             ->where('page_uid', $page->uid)
             ->sum('byte_size');
+        $derivativeBytes = (int) PageVersionDerivative::query()
+            ->whereIn('page_version_uid', PageVersion::query()
+                ->select('uid')
+                ->where('page_uid', $page->uid))
+            ->sum('byte_size');
+
+        return $originalBytes + $derivativeBytes;
     }
 
     public function ensurePageAllowsNewBytes(?string $pageUid, int $newBytes): void
@@ -114,6 +173,20 @@ final readonly class WorkspaceStorageQuota
             : $this->retainedPageBytes($pageUid);
 
         if ($usedBytes + $newBytes > $limit) {
+            throw new DomainRuleViolation('Page storage quota exceeded.');
+        }
+    }
+
+    /**
+     * Exact check for an in-place storage increase that does not append a page
+     * version and therefore cannot reclaim any retained history. Callers must
+     * hold the page row lock that serializes version-graph mutations.
+     */
+    public function ensurePageAllowsAdditionalStoredBytes(string $pageUid, int $newBytes): void
+    {
+        $limit = $this->positiveLimit('pages.max_page_storage_bytes', 'page storage');
+
+        if ($this->storedBytesForPageUid($pageUid) + $newBytes > $limit) {
             throw new DomainRuleViolation('Page storage quota exceeded.');
         }
     }
@@ -135,9 +208,7 @@ final readonly class WorkspaceStorageQuota
      */
     private function prunablePageBytes(string $pageUid): int
     {
-        $totalBytes = (int) PageVersion::query()
-            ->where('page_uid', $pageUid)
-            ->sum('byte_size');
+        $totalBytes = $this->storedBytesForPageUid($pageUid);
 
         return $totalBytes - $this->retainedPageBytes($pageUid);
     }
@@ -149,9 +220,7 @@ final readonly class WorkspaceStorageQuota
         // A non-positive retention limit disables pruning (mirrors
         // PageVersionPruner), so no existing version is ever reclaimed.
         if ($versionLimit < 1) {
-            return (int) PageVersion::query()
-                ->where('page_uid', $pageUid)
-                ->sum('byte_size');
+            return $this->storedBytesForPageUid($pageUid);
         }
 
         // The newcomer consumes one retained slot, so at most versionLimit - 1 of
@@ -166,12 +235,46 @@ final readonly class WorkspaceStorageQuota
         // Limit the newest rows via a subquery so the row cap constrains which
         // rows are summed, not the aggregate result.
         $newestRetained = PageVersion::query()
-            ->select('byte_size')
+            ->select(['uid', 'byte_size'])
             ->where('page_uid', $pageUid)
             ->orderByDesc('version_number')
-            ->limit($retainedExisting);
+            ->limit($retainedExisting)
+            ->get();
+        $versionUids = $newestRetained->pluck('uid')
+            ->filter(static fn (mixed $uid): bool => is_string($uid))
+            ->values()
+            ->all();
+        $originalBytes = 0;
 
-        return (int) DB::query()->fromSub($newestRetained, 'retained')->sum('byte_size');
+        foreach ($newestRetained as $version) {
+            $originalBytes += $version->byte_size;
+        }
+        $derivativeBytes = $versionUids === []
+            ? 0
+            : (int) PageVersionDerivative::query()
+                ->whereIn('page_version_uid', $versionUids)
+                ->sum('byte_size');
+
+        return $originalBytes + $derivativeBytes;
+    }
+
+    private function storedBytesForPageUid(string $pageUid): int
+    {
+        $versions = PageVersion::query()->select('uid')->where('page_uid', $pageUid);
+
+        return (int) PageVersion::query()->where('page_uid', $pageUid)->sum('byte_size')
+            + (int) PageVersionDerivative::query()->whereIn('page_version_uid', $versions)->sum('byte_size');
+    }
+
+    private function workspace(string $workspaceUid): Workspace
+    {
+        $workspace = Workspace::query()->find($workspaceUid);
+
+        if (!$workspace instanceof Workspace) {
+            throw new DomainRuleViolation('Workspace does not exist.');
+        }
+
+        return $workspace;
     }
 
     private function positiveLimit(string $key, string $label): int

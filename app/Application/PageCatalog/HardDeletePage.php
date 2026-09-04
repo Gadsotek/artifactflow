@@ -25,6 +25,7 @@ final readonly class HardDeletePage
         private DomainEventRecorder $events,
         private AuditLogger $audit,
         private WorkspaceStorageQuota $storageQuota,
+        private PageVersionStorage $versionStorage,
     ) {
     }
 
@@ -87,7 +88,7 @@ final readonly class HardDeletePage
                 ->get();
 
             foreach ($versions as $version) {
-                $storagePaths[] = $version->content_storage_path;
+                array_push($storagePaths, ...$this->versionStorage->paths($version));
             }
 
             $accessGrantCount = PageAccessGrant::query()

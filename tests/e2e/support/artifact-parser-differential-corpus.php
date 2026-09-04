@@ -157,6 +157,13 @@ $mandatoryCases = [
     'regression/foreign-end-p-cdata' =>
         '<!doctype html><svg></p><![CDATA[x>'
         . '<iframe id="af-parser-foreign-end" srcdoc="&lt;script&gt;window.ran=1&lt;/script&gt;"></iframe>',
+    'regression/firefox-svg-title-end-br-cdata' =>
+        '<!doctype html><svg><g></script><title></br></title><![CDATA[x></g></svg>'
+        . '<iframe ID=af-parser-firefox-title-end-br></iframe></script>',
+    'regression/complexity-exhaustion' =>
+        '<!doctype html><math><annotation-xml encoding="text/html"><![CDATA[x><noscript></math>'
+        . '<iframe id="af-parser-complexity-exhaustion" srcdoc="&lt;p&gt;leaf&lt;/p&gt;"></iframe>'
+        . '</annotation-xml></math>',
     'regression/frameset-ignored-svg-cdata' =>
         '<!doctype html><frameset><svg><![CDATA[x>'
         . '<frame id="af-parser-frameset-svg" src="about:blank">]]>',
