@@ -26,7 +26,7 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('font-dejavu=2.37-r6', $dockerfile);
         $this->assertStringContainsString('font-liberation=2.1.5-r2', $dockerfile);
         $this->assertStringContainsString('tzdata=2026c-r0', $dockerfile);
-        $this->assertStringContainsString('util-linux=2.42.1-r0', $dockerfile);
+        $this->assertStringContainsString('util-linux=2.42.3-r1', $dockerfile);
         $this->assertStringContainsString('"libcrypto3>=3.5.8-r0"', $dockerfile);
         $this->assertStringContainsString('"libssl3>=3.5.8-r0"', $dockerfile);
         $this->assertStringContainsString('"openssl>=3.5.8-r0"', $dockerfile);
