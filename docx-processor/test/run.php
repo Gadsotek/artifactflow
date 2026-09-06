@@ -1011,4 +1011,27 @@ if ($lateWriteOccurred) {
 }
 assertTrue(!$lateWriteOccurred, 'A descendant survived the DOCX converter process-group timeout.');
 
+foreach ([1, 0] as $leaderExitCode) {
+    $exitMarker = tempnam('/tmp', 'artifactflow-docx-exit-');
+    assertTrue(is_string($exitMarker), 'Could not allocate the DOCX exit marker.');
+    assertTrue(unlink($exitMarker), 'Could not prepare the DOCX exit marker.');
+    try {
+        $run->invoke(new LibreOfficeConverter(), [
+            PHP_BINARY,
+            __DIR__ . '/fixtures/descendant-worker.php',
+            $exitMarker,
+            (string) $leaderExitCode,
+        ]);
+        assertTrue($leaderExitCode === 0, 'A failed converter leader was accepted.');
+    } catch (ProcessorRejection) {
+        assertTrue($leaderExitCode !== 0, 'A successful converter leader was rejected.');
+    }
+    usleep(1_100_000);
+    $survived = file_exists($exitMarker);
+    if ($survived) {
+        unlink($exitMarker);
+    }
+    assertTrue(!$survived, 'A descendant survived DOCX converter exit ' . $leaderExitCode . '.');
+}
+
 echo "DOCX processor contract tests passed\n";

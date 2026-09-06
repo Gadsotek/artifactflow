@@ -1279,6 +1279,19 @@ final class ProductionSecurityConfigurationTest extends TestCase
         }
     }
 
+    public function test_image_parser_requires_https_unless_transport_uses_a_unix_socket(): void
+    {
+        $this->configureSafeProductionValues();
+        config(['image_parser.url' => 'http://image-parser.internal:8080', 'image_parser.socket_path' => null]);
+        $this->assertUnsafeConfiguration('Image parser URL must use HTTPS when no Unix socket is configured.');
+
+        config(['image_parser.socket_path' => '/run/artifactflow/image-parser/parser.sock']);
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+
+        config(['image_parser.url' => 'https://image-parser.internal', 'image_parser.socket_path' => null]);
+        app(ProductionSecurityConfiguration::class)->ensureSafe();
+    }
+
     public function test_image_normalization_budgets_must_cover_one_upload_without_exceeding_hard_ceilings(): void
     {
         $minimumWorkBudget = ImageNormalizationConfiguration::maximumWorkUnitsForInputBytes(1024 * 1024);
@@ -1455,7 +1468,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
             'pages.max_image_bytes' => 1024 * 1024,
             'pages.max_image_pixels' => 16 * 1024 * 1024,
             'pages.max_markdown_bytes' => 1024 * 1024,
-            'image_parser.url' => 'http://image-parser.internal:8080',
+            'image_parser.url' => 'https://image-parser.internal',
             'image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('p', 32)),
             'image_parser.connect_timeout_seconds' => 2,
             'image_parser.timeout_seconds' => 12,

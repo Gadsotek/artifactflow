@@ -57,7 +57,9 @@ final readonly class DisableTwoFactorForOperator
         DB::transaction(function () use ($clearEnforcement, $reason, $user): void {
             $lockedUser = User::query()
                 ->where('uid', $user->uid)
-                ->lockForUpdate()
+                // Preserve account serialization while active MCP writes finish
+                // their user foreign-key checks before releasing token leases.
+                ->lock('for no key update')
                 ->sole();
             $trustedDevicesRevoked = DB::table('trusted_devices')->where('user_uid', $lockedUser->uid)->delete();
             $mcpTokensRevoked = $this->mcpTokens->revokeActiveForPrincipal(

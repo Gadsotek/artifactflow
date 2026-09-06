@@ -2507,7 +2507,8 @@ final readonly class LibreOfficeConverter
         $stdout = '';
         $stderr = '';
         $deadline = microtime(true) + $timeoutSeconds;
-        $pid = null;
+        $initialStatus = proc_get_status($process);
+        $pid = is_int($initialStatus['pid'] ?? null) ? $initialStatus['pid'] : null;
         $exitCode = -1;
 
         try {
@@ -2531,13 +2532,13 @@ final readonly class LibreOfficeConverter
 
                 usleep(10_000);
             }
-        } catch (Throwable $exception) {
+        } finally {
+            // The leader can exit before its children, on success as well as
+            // failure. Stop its entire group before consuming output or
+            // admitting another document into this shared parser container.
             if (!is_int($pid) || !posix_kill(-$pid, SIGKILL)) {
                 proc_terminate($process, SIGKILL);
             }
-
-            throw $exception;
-        } finally {
             fclose($pipes[1]);
             fclose($pipes[2]);
             $closed = proc_close($process);

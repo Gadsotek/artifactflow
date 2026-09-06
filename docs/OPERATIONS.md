@@ -610,7 +610,8 @@ request. Production configuration is supplied as **environment variables** (from
 orchestrator or secret manager), not by editing a `.env` file inside the immutable image.
 Every value the gate requires (both artifact HTTPS origins, a dedicated
 `ARTIFACT_URL_SIGNING_KEY`, `APP_KEY`, and, when `IMAGE_PARSER_ENABLED=true` on the `app` runtime
-role, a pure internal `IMAGE_PARSER_URL` plus separate strong `IMAGE_PARSER_SHARED_SECRET`,
+role, a pure internal `IMAGE_PARSER_URL` using HTTPS unless a Unix socket is configured,
+plus a separate strong `IMAGE_PARSER_SHARED_SECRET`,
 when XLSX or DOCX is enabled its pure private processor origin/socket plus a
 dedicated strong secret, and for DOCX the complete enabled PDF processor boundary,
 `DB_SSLMODE=verify-full` + `DB_SSLROOTCERT`, a
@@ -645,7 +646,10 @@ compromised parser has no callback or external route. For a cross-host parser, t
 authenticated TLS on both ends, point `IMAGE_PARSER_URL` at that protected origin, and enforce a
 directional destination policy: app-to-parser is allowed, while parser-to-app, metadata-service,
 and internet connections are denied. An `internal` Docker bridge alone is not directional and is
-therefore insufficient.
+therefore insufficient. Production boot and `artifactflow:doctor` reject an HTTP
+`IMAGE_PARSER_URL` unless `IMAGE_PARSER_SOCKET_PATH` selects the actual Unix-socket
+transport. Existing network-HTTP deployments must configure HTTPS or a Unix socket
+before upgrading; a private DNS name alone does not provide confidentiality.
 
 PostgreSQL transport must verify the server identity in production. Set `DB_SSLMODE=verify-full` and mount a trusted CA bundle or database CA, then point `DB_SSLROOTCERT` at that file. The production boot guard rejects `disable`, `allow`, `prefer`, `require`, and `verify-ca` because those modes either permit cleartext fallback or skip hostname verification.
 

@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
@@ -421,6 +422,48 @@ test('hard-stops a non-responsive projection worker', async () => {
     }),
     (error) => error instanceof ProcessorProtocolError && error.code === 'processor_timeout',
   );
+});
+
+for (const mode of ['rejection', 'success']) {
+  for (const inheritStdio of [false, true]) {
+    test(`cleans up descendants on worker ${mode}, inherited stdio ${inheritStdio}`, async () => {
+      const marker = path.join(os.tmpdir(), `xlsx-descendant-${crypto.randomUUID()}`);
+      const result = runProjectionWorker({
+        input: Buffer.from(JSON.stringify({ marker, mode, inheritStdio })),
+        timeoutMs: 2_000,
+        workerPath: path.join(__dirname, 'fixtures', 'descendant-worker.fixture'),
+      });
+      if (mode === 'rejection') {
+        await assert.rejects(result, (error) => error.code === 'xlsx_rejected');
+      } else {
+        await result;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1_100));
+      const survived = fs.existsSync(marker);
+      if (survived) {
+        fs.unlinkSync(marker);
+      }
+      assert.equal(survived, false, 'worker descendants must stop before the next request');
+    });
+  }
+}
+
+test('keeps the deadline bounded even when an escaped child holds a pipe open', async () => {
+  const marker = path.join(os.tmpdir(), `xlsx-escaped-${crypto.randomUUID()}`);
+  const started = performance.now();
+  await assert.rejects(runProjectionWorker({
+    input: Buffer.from(JSON.stringify({ marker, mode: 'timeout', inheritStdio: true })),
+    timeoutMs: 400,
+    workerPath: path.join(__dirname, 'fixtures', 'descendant-worker.fixture'),
+  }), (error) => error.code === 'processor_timeout');
+  const elapsed = performance.now() - started;
+  // This fixture's escaped child exits on its own after 900 ms. Group cleanup
+  // cannot contain arbitrary native compromise, but it must not strand admission.
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  if (fs.existsSync(marker)) {
+    fs.unlinkSync(marker);
+  }
+  assert.ok(elapsed < 800, `deadline waited for an escaped child's pipe: ${elapsed} ms`);
 });
 
 test('serves one authenticated operation over a Unix socket and signs the bounded response', async (context) => {

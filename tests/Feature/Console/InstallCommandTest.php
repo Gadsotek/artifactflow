@@ -963,7 +963,7 @@ final class InstallCommandTest extends TestCase
             'hashing.bcrypt.rounds' => 12,
             'hashing.driver' => 'bcrypt',
             'image_parser.enabled' => true,
-            'image_parser.url' => 'http://image-parser.internal:8080',
+            'image_parser.url' => 'https://image-parser.internal',
             'image_parser.shared_secret' => $this->strongSecret('i'),
             'mail.default' => 'smtp',
             'queue.default' => 'database',

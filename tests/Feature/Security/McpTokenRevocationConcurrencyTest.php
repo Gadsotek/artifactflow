@@ -7,6 +7,9 @@ namespace Tests\Feature\Security;
 use App\Application\Administration\InstallationLimitSettings;
 use App\Application\Identity\CreateSharedWorkspace;
 use App\Application\Identity\CreateUser;
+use App\Application\Identity\DisableTwoFactor;
+use App\Application\Identity\DisableTwoFactorForOperator;
+use App\Application\Mcp\McpAccessTokenExecutionLock;
 use App\Application\Mcp\McpAccessTokenIssuer;
 use App\Application\Mcp\McpAccessTokenRevoker;
 use App\Application\PageCatalog\CreatePage;
@@ -22,6 +25,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 use Throwable;
 
@@ -199,6 +203,108 @@ final class McpTokenRevocationConcurrencyTest extends TestCase
         $this->assertSame(0, pcntl_wexitstatus($status));
         $this->assertNotNull($issuedToken->accessToken->refresh()->revoked_at);
         $this->assertSame(0, ExternalShare::query()->where('page_uid', $page->uid)->count());
+    }
+
+    /** @return array<string, array{bool}> */
+    public static function disableChannels(): array
+    {
+        return ['settings' => [false], 'operator' => [true]];
+    }
+
+    #[DataProvider('disableChannels')]
+    public function test_two_factor_disable_drains_an_in_flight_mcp_write_without_a_lock_cycle(bool $operator): void
+    {
+        Storage::fake('artifacts');
+        $user = app(CreateUser::class)->handle('Concurrent Human', 'disable-race@example.test', 'correct horse battery staple');
+        $user->forceFill([
+            'two_factor_secret' => 'JBSWY3DPEHPK3PXP',
+            'two_factor_confirmed_at' => now(),
+        ])->save();
+        $workspace = app(CreateSharedWorkspace::class)->handle($user, 'Disable Race');
+        $token = app(McpAccessTokenIssuer::class)->issue(
+            principal: $user,
+            name: 'Concurrent write',
+            scopes: [McpAccessTokenIssuer::SCOPE_CREATE],
+            expiresAt: now()->addHour(),
+            workspaceUids: [$workspace->uid],
+        )->accessToken;
+        $connection = config('database.connections.' . DB::getDefaultConnection());
+        $this->assertIsArray($connection);
+        config(['database.connections.two_factor_competing' => $connection]);
+        // Do not let the child's PDO destructor terminate the parent's session
+        // while that session is executing the in-flight write.
+        DB::disconnect();
+        $sockets = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        $this->assertIsArray($sockets);
+        [$parentSocket, $childSocket] = $sockets;
+        stream_set_timeout($parentSocket, 10);
+        stream_set_timeout($childSocket, 10);
+        $pid = pcntl_fork();
+        $this->assertNotSame(-1, $pid);
+        if ($pid === 0) {
+            fclose($parentSocket);
+            DB::setDefaultConnection('two_factor_competing');
+            try {
+                if (fgets($childSocket) !== "disable\n") {
+                    exit(1);
+                }
+                $backendPid = DB::scalar('SELECT pg_backend_pid()');
+                $this->assertIsInt($backendPid);
+                fwrite($childSocket, (string) $backendPid . "\n");
+                fflush($childSocket);
+                if ($operator) {
+                    app(DisableTwoFactorForOperator::class)->handle($user->email, 'Concurrency regression', false, true);
+                } else {
+                    app(DisableTwoFactor::class)->handle($user, $user->auth_revision);
+                }
+                fwrite($childSocket, "disabled\n");
+                fclose($childSocket);
+                exit(0);
+            } catch (Throwable $exception) {
+                fwrite($childSocket, 'error:' . get_debug_type($exception) . ':' . $exception->getCode() . "\n");
+                fclose($childSocket);
+                exit(1);
+            }
+        }
+        fclose($childSocket);
+        $outcome = false;
+        $status = 0;
+        try {
+            app(McpAccessTokenExecutionLock::class)->runShared($token->uid, function () use ($parentSocket, $user, $workspace): void {
+                fwrite($parentSocket, "disable\n");
+                fflush($parentSocket);
+                $backend = fgets($parentSocket);
+                $this->assertIsString($backend);
+                $backendPid = (int) $backend;
+                $deadline = microtime(true) + 5;
+                do {
+                    $waiting = DB::table('pg_locks')->where('pid', $backendPid)
+                        ->where('locktype', 'advisory')->where('granted', false)->exists();
+                    if (!$waiting) {
+                        usleep(10_000);
+                    }
+                } while (!$waiting && microtime(true) < $deadline);
+                $this->assertTrue($waiting, 'Two-factor disable did not wait for the active token execution.');
+                app(CreatePage::class)->handle($user, new CreatePageCommand(
+                    workspaceUid: $workspace->uid,
+                    type: PageType::Markdown,
+                    title: 'In-flight write before disable',
+                    description: null,
+                    content: '# In-flight write',
+                ));
+            });
+        } finally {
+            $outcome = fgets($parentSocket);
+            fclose($parentSocket);
+            pcntl_waitpid($pid, $status);
+            DB::purge('two_factor_competing');
+        }
+        $this->assertSame("disabled\n", $outcome);
+        $this->assertIsInt($status);
+        $this->assertSame(0, pcntl_wexitstatus($status));
+        $this->assertNull($user->refresh()->two_factor_confirmed_at);
+        $this->assertNotNull($token->refresh()->revoked_at);
+        $this->assertDatabaseHas('pages', ['title' => 'In-flight write before disable']);
     }
 
     private function enableExternalSharing(): void
