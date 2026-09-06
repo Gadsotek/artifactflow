@@ -30,13 +30,13 @@
     "@codemirror/lang-html": "^6.4.12",
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.12.4",
-    "@codemirror/state": "^6.7.1",
+    "@codemirror/state": "^6.7.2",
     "@lezer/highlight": "^1.2.3",
     "codemirror": "^6.0.2",
     "laravel-echo": "^2.4.0",
     "mermaid": "11.17.2",
     "pusher-js": "^8.6.0",
-    "tabulator-tables": "6.5.0"
+    "tabulator-tables": "6.5.2"
   },
   "scripts": {
     "build": "vite build",
@@ -55,7 +55,7 @@
     "concurrently": "^10.0.5",
     "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
-    "globals": "^17.11.0",
+    "globals": "^17.12.0",
     "laravel-vite-plugin": "^3.2.0",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.3.2",
