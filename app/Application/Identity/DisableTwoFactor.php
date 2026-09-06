@@ -29,7 +29,10 @@ final readonly class DisableTwoFactor
         return DB::transaction(function () use ($actor, $expectedAuthRevision): User {
             $user = User::query()
                 ->where('uid', $actor->uid)
-                ->lockForUpdate()
+                // Serialize account changes without blocking the user KEY SHARE
+                // references of an in-flight MCP write whose execution lease
+                // principal-wide revocation must drain below. No key is changed.
+                ->lock('for no key update')
                 ->sole();
 
             if ($user->auth_revision !== $expectedAuthRevision) {

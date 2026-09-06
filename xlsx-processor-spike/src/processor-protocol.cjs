@@ -372,6 +372,7 @@ function runProjectionWorker({
     const stdout = [];
     let stdoutBytes = 0;
     let settled = false;
+    let pendingError = null;
 
     function finishError(code) {
       if (settled) {
@@ -383,16 +384,24 @@ function runProjectionWorker({
     }
 
     const timer = setTimeout(() => {
+      pendingError ??= 'processor_timeout';
       terminateWorker(child);
-      finishError('processor_timeout');
+      // A compromised descendant can create another session and retain a pipe.
+      // Do not let that descriptor extend the supervisor's wall-clock budget.
+      child.stdin.destroy();
+      child.stdout.destroy();
+      child.stderr.destroy();
     }, timeoutMs);
 
     child.stdout.on('data', (chunk) => {
+      if (pendingError !== null) {
+        return;
+      }
       stdoutBytes += chunk.length;
 
       if (stdoutBytes > maxOutputBytes) {
+        pendingError = 'processor_output_limit_exceeded';
         terminateWorker(child);
-        finishError('processor_output_limit_exceeded');
 
         return;
       }
@@ -400,11 +409,24 @@ function runProjectionWorker({
       stdout.push(chunk);
     });
     child.stderr.on('data', () => {});
-    child.on('error', () => finishError('processor_unavailable'));
+    child.on('error', () => {
+      pendingError ??= 'processor_unavailable';
+      terminateWorker(child);
+    });
+    // 'close' can wait on inherited pipes after the leader exits. Kill its
+    // remaining process group at 'exit', including successful/rejected workers,
+    // and settle only after the leader is reaped and its streams are closed.
+    child.on('exit', () => terminateWorker(child));
     child.on('close', (code, signal) => {
       clearTimeout(timer);
 
       if (settled) {
+        return;
+      }
+
+      if (pendingError !== null) {
+        finishError(pendingError);
+
         return;
       }
 

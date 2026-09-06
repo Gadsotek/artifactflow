@@ -780,6 +780,14 @@ final readonly class DeploymentDoctor
             return $this->fail('image_parser', 'Image parser isolation', 'IMAGE_PARSER_URL must be a pure HTTP or HTTPS origin.');
         }
 
+        if (!$origin->isHttps() && trim($this->untrimmedString('image_parser.socket_path')) === '') {
+            return $this->fail(
+                'image_parser',
+                'Image parser isolation',
+                'IMAGE_PARSER_URL must use HTTPS when no Unix socket is configured.',
+            );
+        }
+
         $secret = SecretStrength::normalized($configured);
         $applicationSecret = SecretStrength::normalized($this->string('app.key'));
         $signingSecret = SecretStrength::normalized($this->string('app.artifact_url_signing_key'));

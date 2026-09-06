@@ -90,7 +90,9 @@ final class WorkspaceHierarchyConcurrencyTest extends TestCase
                     exit(1);
                 }
 
-                fwrite($childSocket, "preauthorized\n");
+                $backendPid = DB::scalar('SELECT pg_backend_pid()');
+                $this->assertIsInt($backendPid);
+                fwrite($childSocket, 'preauthorized:' . (string) $backendPid . "\n");
                 fflush($childSocket);
                 app(CreatePage::class)->handle($member, new CreatePageCommand(
                     workspaceUid: $child->uid,
@@ -115,10 +117,32 @@ final class WorkspaceHierarchyConcurrencyTest extends TestCase
 
         fclose($childSocket);
         $signal = fgets($parentSocket);
-        $this->assertSame("preauthorized\n", $signal);
-
-        app(ReparentWorkspace::class)->handle($admin, new ReparentWorkspaceCommand($child->uid, $newRoot->uid, true));
-        DB::commit();
+        try {
+            $this->assertIsString($signal);
+            $this->assertMatchesRegularExpression('/^preauthorized:[1-9][0-9]*\n$/D', $signal);
+            $backendPid = (int) substr($signal, strlen('preauthorized:'));
+            $deadline = microtime(true) + 5;
+            do {
+                $waiting = DB::table('pg_locks')
+                    ->where('pid', $backendPid)
+                    ->where('locktype', 'advisory')
+                    ->where('granted', false)
+                    ->exists();
+                if (!$waiting) {
+                    usleep(10_000);
+                }
+            } while (!$waiting && microtime(true) < $deadline);
+            // Preauthorization alone is too early: the uncached owner preflight
+            // must finish before the parent changes the membership tree. Observe
+            // the actual database wait at the handler's hierarchy lock.
+            $this->assertTrue($waiting, 'Page creation never waited on the hierarchy mutation lock.');
+            app(ReparentWorkspace::class)->handle($admin, new ReparentWorkspaceCommand($child->uid, $newRoot->uid, true));
+            DB::commit();
+        } finally {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+        }
 
         $outcome = fgets($parentSocket);
         fclose($parentSocket);

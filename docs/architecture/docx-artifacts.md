@@ -50,7 +50,9 @@ content are outside this release.
    targets, and all other external relationship types fail closed.
 5. Alpine's pinned LibreOffice Writer 25.8.7.3 package runs one conversion at a time under a 30-second process-
    group deadline and bounded bytes, memory, PIDs, CPU, files, and tmpfs. The
-   whole process group is terminated on timeout or any failed run.
+   whole process group is terminated on timeout, failure, and successful leader
+   exit before the next document is admitted. This cleans up same-group children;
+   it is not a fresh container boundary between jobs after arbitrary native compromise.
 6. The generated PDF is untrusted processor output. The independently isolated
    PDFBox profile rejects active structures and requires a complete bounded PDF
    with indexed text before storage.

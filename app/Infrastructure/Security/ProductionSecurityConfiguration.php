@@ -178,12 +178,17 @@ final readonly class ProductionSecurityConfiguration
 
     private function ensureImageParserConfiguration(): void
     {
-        if (OriginNormalizer::tryParsePureOrigin($this->string('image_parser.url')) === null) {
+        $origin = OriginNormalizer::tryParsePureOrigin($this->string('image_parser.url'));
+        if ($origin === null) {
             throw new RuntimeException('Image parser URL must be a pure HTTP or HTTPS origin.');
         }
 
         if (!UnixSocketPath::isValidOptional($this->untrimmedString('image_parser.socket_path'))) {
             throw new RuntimeException('Image parser socket path must be an absolute filesystem path.');
+        }
+
+        if (!$origin->isHttps() && trim($this->untrimmedString('image_parser.socket_path')) === '') {
+            throw new RuntimeException('Image parser URL must use HTTPS when no Unix socket is configured.');
         }
 
         $configured = $this->string('image_parser.shared_secret');

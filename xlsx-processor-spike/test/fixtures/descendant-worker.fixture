@@ -1,0 +1,33 @@
+'use strict';
+
+const { spawn } = require('node:child_process');
+const fs = require('node:fs');
+
+if (process.argv[2] === 'descendant') {
+  setTimeout(() => fs.writeFileSync(process.argv[3], 'survived'), 900);
+} else {
+  let input = '';
+  process.stdin.on('data', (chunk) => { input += chunk; });
+  process.stdin.on('end', () => {
+    const { marker, mode, inheritStdio } = JSON.parse(input);
+    spawn(process.execPath, [__filename, 'descendant', marker], {
+      detached: mode === 'timeout',
+      stdio: inheritStdio ? 'inherit' : 'ignore',
+    });
+    if (mode === 'timeout') {
+      setInterval(() => {}, 1_000);
+
+      return;
+    }
+    if (mode === 'success') {
+      process.stdout.write(JSON.stringify({
+        ok: true,
+        manifest: { profile: 'xlsx-typed-view-v1' },
+        package: { entryCount: 1, expandedBytes: 1 },
+      }));
+      process.exit(0);
+    }
+    process.stdout.write(JSON.stringify({ ok: false, code: 'rejected', diagnostic: '0123456789ab' }));
+    process.exit(2);
+  });
+}

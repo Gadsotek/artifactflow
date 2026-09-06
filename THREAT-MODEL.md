@@ -7,9 +7,8 @@ app, or persist anything. PNG/JPEG uploads must not retain metadata or appended 
 resource limits, or inherit application-origin authority. HTML self-navigation and image-decoder
 risk remain explicit, narrower residuals.
 
-It is deliberately opinionated about **what is a real boundary and what is theater**, because
-the most common way this class of feature gets broken is a well-meaning contributor relaxing a
-real control because a fake one "has it covered."
+It distinguishes browser-enforced isolation from narrower server and in-page controls.
+Each control must retain its own contract; success in one layer does not justify relaxing another.
 
 ---
 
@@ -30,25 +29,29 @@ We do **not** try to stop the artifact from misbehaving *within its own sealed b
 
 ---
 
-## 2. Real boundaries vs. theater
+## 2. Controls and the boundaries they enforce
 
-There are exactly **three** load-bearing controls. Everything else is convenience.
+Three browser-enforced controls form the foundation of application-origin isolation.
+Server rewriting and the early JavaScript guard additionally enforce the supported
+artifact profile, including nested-context and browser-specific egress restrictions.
+Their guarantees and limitations must be assessed separately.
 
 | Control | Enforced by | Load-bearing? |
 |---|---|---|
 | **Separate artifact origin** (distinct host from the app) | Browser same-origin policy | ✅ Yes: the foundation |
 | **iframe `sandbox="allow-scripts"`** (NO `allow-same-origin`) → opaque origin | Browser | ✅ Yes, but only while *embedded* |
 | **CSP via HTTP response header** (incl. `sandbox` directive, `default-src 'none'`, `connect-src 'none'`, `frame-src`, `fenced-frame-src`, and `child-src 'none'`, `form-action 'none'`, `frame-ancestors`) | Browser | ✅ Yes: the **only** thing that survives top-level/full-screen for the directives browsers enforce. The emitted `webrtc 'block'` is not counted: Chromium and WebKit ignore it. |
-| Injected JS guard (`ArtifactPreviewDocumentGuard`) monkeypatching `fetch`/`console`/storage/`open`/etc. | In-page JS | ❌ **No: cosmetic / defense-in-depth only** |
+| Server response hardener and early injected JS guard (`ArtifactPreviewDocumentGuard`) | Server tokenizer plus in-page JS | Required for the supported no-nested-context profile and guarded APIs such as top-realm WebRTC. They supplement the browser boundary and do not replace it. |
 | The `csp=` attribute on `<iframe>` | (not reliably supported) | ❌ **No: do not rely on it** |
 
-**Why the JS guard is theater (and why we keep it anyway):** it runs in the *same realm* as the
-hostile code, so it is bypassable by construction (fresh references from a child context,
-re-defining patched properties, using the setter you didn't patch). Its legitimate value is
-*ergonomics*: it softens the browser sandbox's hard `SecurityError`s (e.g. `localStorage`
-access in an opaque origin) into quiet no-ops so naive artifacts degrade gracefully instead of
-blanking, and it suppresses console noise. **It is never a security control. Never weaken the
-sandbox or CSP because the guard "handles" something.**
+**The guard has narrower guarantees than the browser boundary.** It runs in the same
+realm as hostile code, so unpatched APIs or fresh child realms can bypass individual
+restrictions. The early guard and server hardener therefore need their own adversarial
+browser corpus. In particular, disabling top-realm WebRTC constructors is a guard
+control where browsers do not enforce the CSP directive; it is not proof of complete
+network isolation. Some patches also provide ergonomics, such as quiet storage no-ops
+and console-noise suppression. **Never weaken origin isolation, sandboxing, or header
+CSP because the guard handles an API.**
 
 **Nested browsing contexts are unsupported.** Chromium can create an inline `srcdoc` or initial
 `about:blank` child realm under `frame-src 'none'` in every maintained browser; that fresh realm also
@@ -344,11 +347,11 @@ installation. Any authenticated human account may be shown another human account
 UID in coworker pickers, including System Admin accounts. Automation service accounts are excluded
 from those human pickers. A UID is an identifier, never a capability: knowing, enumerating, or
 submitting one must not bypass `can:invite`, `can:manageAccess`, role ceilings, locked-row
-reauthorization, or any read-time workspace/page check. Direct Reader page grants may target any
-registered human coworker; Editor/Admin page grants still require membership in the page workspace.
+reauthorization, or any read-time workspace/page check. Direct Reader and Editor page grants may
+target any registered human coworker; page Admin grants require membership in the page workspace.
 Adding a coworker directly to a workspace still requires invitation authority over that workspace.
-External people who do not have an installation account are outside this directory and outside the
-Alpha sharing model.
+External people without installation accounts are outside this directory. They can receive only
+the narrow bearer-capability presentation described in the external-sharing contract.
 
 Workspace and taxonomy labels are potentially sensitive metadata:
 
@@ -743,7 +746,10 @@ framing is advisory. The actual enforcement rules are:
   body in shared mode; manual and principal-wide revocation take the lease exclusively. The
   operation therefore commits before revocation or fails closed after it, instead of acting from
   the middleware's stale token snapshot. The session-scoped lease avoids wrapping parser or storage
-  I/O in a database transaction.
+  I/O in a database transaction. Two-factor disable serializes account updates with a
+  `FOR NO KEY UPDATE` user-row lock while draining token leases. This permits an already-running
+  write's foreign-key `KEY SHARE` checks to finish and prevents a user-row/token-lease deadlock;
+  concurrent token issuance and account-state mutations still serialize on the user row.
 - `list_taxonomy` requires `mcp:search` and returns only the category/tag vocabulary described in §9,
   intersected with the token's workspace ceiling. Its strings are explicit untrusted-data envelopes,
   just like other MCP-provided content.
@@ -966,5 +972,6 @@ don't merge, the security-critical directives) so an upstream weak directive can
 ## 16. One-line mental model
 
 > Untrusted code runs **on a throwaway origin, in a browser-sandboxed box, behind a header CSP
-> that travels with it.** The browser enforces the box; the origin makes escaping the box
-> pointless. Everything in-page JavaScript does is convenience, never containment.
+> that travels with it.** Origin isolation, sandboxing, and header CSP protect application
+> authority. The server hardener and early guard add the documented nested-context and API
+> restrictions; they require separate verification and cannot replace those browser controls.

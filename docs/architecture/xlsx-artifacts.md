@@ -169,7 +169,11 @@ Unix socket, `network_mode: none`, one worker, a read-only root, dropped
 capabilities, `no-new-privileges`, and explicit CPU, memory, PID, file, tmpfs, and
 time limits. The app role joins only the processor socket group. The service
 image excludes the test corpus, and every authenticated projection rechecks
-network containment before starting its isolated worker. The artifact-host role ignores the app's shared Vite hot marker and
+network containment before starting its isolated worker. On leader exit, including
+success or rejection, the supervisor kills remaining process-group children before
+settling the request; timeout and output-limit failures also wait for worker closure.
+This bounds ordinary same-group child lifetime, not persistence after arbitrary code
+execution inside the long-running container. The artifact-host role ignores the app's shared Vite hot marker and
 loads only built, hashed, same-origin viewer assets; local developers run
 `make build-assets` before enablement and after viewer changes. Cross-host operation additionally requires encrypted authenticated
 transport and an effective directional deny from the processor to the app,

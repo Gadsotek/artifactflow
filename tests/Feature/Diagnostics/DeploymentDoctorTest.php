@@ -145,6 +145,21 @@ final class DeploymentDoctorTest extends TestCase
         }
     }
 
+    public function test_image_parser_transport_requires_https_or_a_unix_socket_in_production(): void
+    {
+        foreach ([
+            ['http://image-parser.internal:8080', null, DoctorCheckStatus::Fail],
+            ['http://image-parser.internal:8080', '/run/artifactflow/image-parser/parser.sock', DoctorCheckStatus::Pass],
+            ['https://image-parser.internal', null, DoctorCheckStatus::Pass],
+        ] as [$url, $socketPath, $status]) {
+            $report = (new DeploymentDoctor($this->config('production', array_merge(
+                $this->hardenedProductionConfig(),
+                ['image_parser.url' => $url, 'image_parser.socket_path' => $socketPath],
+            ))))->run();
+            $this->assertSame($status, $this->check($report->checks, 'image_parser')->status);
+        }
+    }
+
     public function test_production_rejects_malformed_previous_application_keys_instead_of_discarding_them(): void
     {
         $report = (new DeploymentDoctor($this->config('production', array_merge(
@@ -1531,7 +1546,7 @@ final class DeploymentDoctorTest extends TestCase
             'database.connections.pgsql.password' => 'app-local-strong-password',
             'database.connections.pgsql.sslmode' => 'verify-full',
             'database.connections.pgsql.sslrootcert' => '/etc/ssl/certs/ca-certificates.crt',
-            'image_parser.url' => 'http://image-parser.internal:8080',
+            'image_parser.url' => 'https://image-parser.internal',
             'image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('p', 32)),
             'session.driver' => 'database',
             'session.secure' => true,
