@@ -40,7 +40,7 @@ RUN apk add --no-cache \
         "libssl3>=3.5.8-r0" \
         "openssl>=3.5.8-r0" \
         tzdata=2026c-r0 \
-        util-linux=2.42.1-r0 \
+        util-linux=2.42.3-r1 \
     && addgroup -S -g 10004 docx-processor \
     && adduser -S -D -H -u 10004 -G docx-processor -s /sbin/nologin docx-processor \
     && mkdir -p /srv/docx-processor /run/artifactflow/docx-processor \
