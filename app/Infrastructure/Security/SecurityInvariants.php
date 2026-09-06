@@ -76,10 +76,9 @@ final readonly class SecurityInvariants
     public function bcryptHashCost(string $hash): ?int
     {
         $info = password_get_info($hash);
-        $options = $info['options'] ?? null;
-        $cost = is_array($options) ? ($options['cost'] ?? null) : null;
+        $cost = $info['options']['cost'] ?? null;
 
-        if (($info['algoName'] ?? '') !== 'bcrypt' || !is_int($cost)) {
+        if ($info['algoName'] !== 'bcrypt' || !is_int($cost)) {
             return null;
         }
 
