@@ -6,6 +6,25 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.2.1 — 2026-09-07
+
+Release-pipeline correction and the first complete publication of the v0.2
+feature set. The v0.2.0 workflow failed twice. Each attempt pushed only the
+application, PDF-processor, and XLSX-processor `v0.2.0` image tags before the
+DOCX publication failure; the second attempt moved those three tags to new
+digests. Neither attempt produced SBOMs, provenance or SBOM attestations, a
+GitHub Release, or any `:latest` update. Do not treat or rerun v0.2.0 as a
+complete release; use v0.2.1.
+
+### Fixed
+
+- Separated the DOCX registry destination from Make's local
+  `DOCX_PROCESSOR_IMAGE` variable. Tagged release builds now retain
+  `artifactflow-docx-processor:production` through build, runtime tests,
+  scanning, and SBOM generation, then tag, push, and attest it as
+  `ghcr.io/gadsotek/artifactflow-docx-processor`. The release workflow contract
+  prevents future workflow-level reuse of the Make variable. ([#122](https://github.com/Gadsotek/artifactflow/pull/122))
+
 ## v0.2.0 — 2026-09-07
 
 Feature, security, and deployment release. It adds the completed default-off
