@@ -4323,16 +4323,16 @@
         },
         {
             "name": "resend/resend-php",
-            "version": "v1.12.0",
+            "version": "v1.13.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/resend/resend-php.git",
-                "reference": "a2ca2334fb890ba6e1b80cb9ef410fa1510a8820"
+                "reference": "54ce5a06114e67a106c557437cdec404fb1e6bc6"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/resend/resend-php/zipball/a2ca2334fb890ba6e1b80cb9ef410fa1510a8820",
-                "reference": "a2ca2334fb890ba6e1b80cb9ef410fa1510a8820",
+                "url": "https://api.github.com/repos/resend/resend-php/zipball/54ce5a06114e67a106c557437cdec404fb1e6bc6",
+                "reference": "54ce5a06114e67a106c557437cdec404fb1e6bc6",
                 "shasum": ""
             },
             "require": {
@@ -4376,9 +4376,9 @@
             ],
             "support": {
                 "issues": "https://github.com/resend/resend-php/issues",
-                "source": "https://github.com/resend/resend-php/tree/v1.12.0"
+                "source": "https://github.com/resend/resend-php/tree/v1.13.0"
             },
-            "time": "2026-08-27T20:30:16+00:00"
+            "time": "2026-09-03T19:51:40+00:00"
         },
         {
             "name": "symfony/clock",
