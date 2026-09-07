@@ -69,6 +69,10 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ### Fixed
 
+- Kept DOCX conversion and health nonces claimed through the complete signed
+  timestamp acceptance window. A request first accepted at the allowed
+  future-skew boundary can no longer be replayed after the old receipt-based
+  cache interval expires while the signed request remains timestamp-valid.
 - Removed direct popup authority from typed XLSX preview frames. External targets
   now require a destination-visible, source/origin/shape-checked confirmation on
   the app origin before a no-opener/no-referrer tab can open. DOCX conversion

@@ -317,7 +317,7 @@ final readonly class ProcessorContainment
 
 final class ProcessorReplayCache
 {
-    public static function claim(string $nonce, int $ttlSeconds): void
+    public static function claim(string $nonce, int $maxClockSkewSeconds): void
     {
         $directory = '/tmp/artifactflow-docx-nonces';
 
@@ -328,7 +328,9 @@ final class ProcessorReplayCache
         $now = time();
         foreach (glob($directory . '/*') ?: [] as $candidate) {
             $mtime = filemtime($candidate);
-            if (is_int($mtime) && $mtime + $ttlSeconds < $now) {
+            // A request accepted one skew window before its signed timestamp
+            // remains valid through the complete skew window after it.
+            if (is_int($mtime) && $mtime + (2 * $maxClockSkewSeconds) < $now) {
                 unlink($candidate);
             }
         }
