@@ -386,7 +386,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
 
         foreach ([
             'XLSX_PROCESSOR_IMAGE: ghcr.io/gadsotek/artifactflow-xlsx-processor',
-            'DOCX_PROCESSOR_IMAGE: ghcr.io/gadsotek/artifactflow-docx-processor',
+            'DOCX_PROCESSOR_REGISTRY_IMAGE: ghcr.io/gadsotek/artifactflow-docx-processor',
             'artifactflow-xlsx-processor-service:production',
             'artifactflow-docx-processor:production',
             'id: push-xlsx-processor',
@@ -396,10 +396,17 @@ final class CiCoverageGateConfigurationTest extends TestCase
             'steps.push-xlsx-processor.outputs.digest_only',
             'steps.push-docx-processor.outputs.digest_only',
             'subject-name: ${{ env.XLSX_PROCESSOR_IMAGE }}',
-            'subject-name: ${{ env.DOCX_PROCESSOR_IMAGE }}',
+            'subject-name: ${{ env.DOCX_PROCESSOR_REGISTRY_IMAGE }}',
+            'docker tag artifactflow-docx-processor:production "$DOCX_PROCESSOR_REGISTRY_IMAGE:$VERSION"',
         ] as $requiredReleaseContract) {
             $this->assertStringContainsString($requiredReleaseContract, $releaseWorkflow);
         }
+
+        $this->assertStringNotContainsString(
+            'DOCX_PROCESSOR_IMAGE',
+            $releaseWorkflow,
+            'The registry destination must not reuse or reference Make\'s local DOCX_PROCESSOR_IMAGE build variable.',
+        );
 
         $latestStep = '      - name: Publish final-release latest tags';
         $releaseStep = '      - name: Create GitHub Release';
@@ -411,7 +418,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
             'Mutable latest tags must move only after the immutable release and attestations exist.',
         );
         $this->assertStringContainsString(
-            'docker buildx imagetools create --tag "$DOCX_PROCESSOR_IMAGE:latest" "${{ steps.push-docx-processor.outputs.digest }}"',
+            'docker buildx imagetools create --tag "$DOCX_PROCESSOR_REGISTRY_IMAGE:latest" "${{ steps.push-docx-processor.outputs.digest }}"',
             $releaseWorkflow,
         );
 
