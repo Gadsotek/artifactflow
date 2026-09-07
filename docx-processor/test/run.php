@@ -984,6 +984,104 @@ try {
     // Expected.
 }
 
+$skewBoundaryConfiguration = new ProcessorConfiguration($secret);
+$skewBoundaryInitialNow = 1_700_000_100;
+$skewBoundaryTimestamp = (string) (
+    $skewBoundaryInitialNow + $skewBoundaryConfiguration->maxClockSkewSeconds
+);
+$skewBoundaryReplayNow = (int) $skewBoundaryTimestamp + 1;
+$skewBoundaryNonce = str_repeat('b', 32);
+$skewBoundaryServer = [
+    'HTTP_X_ARTIFACTFLOW_PROCESSOR_TIMESTAMP' => $skewBoundaryTimestamp,
+    'HTTP_X_ARTIFACTFLOW_PROCESSOR_NONCE' => $skewBoundaryNonce,
+    'HTTP_X_ARTIFACTFLOW_PROCESSOR_PROFILE' => ProcessorRequest::PROFILE,
+    'HTTP_X_ARTIFACTFLOW_INPUT_SHA256' => $hash,
+    'CONTENT_TYPE' => ProcessorRequest::MEDIA_TYPE,
+    'CONTENT_LENGTH' => (string) strlen($benign),
+];
+$skewBoundaryServer['HTTP_X_ARTIFACTFLOW_PROCESSOR_SIGNATURE'] = hash_hmac('sha256', implode("\n", [
+    'artifactflow-docx-processor-request-v1',
+    $skewBoundaryTimestamp,
+    $skewBoundaryNonce,
+    ProcessorRequest::PROFILE,
+    ProcessorRequest::MEDIA_TYPE,
+    (string) strlen($benign),
+    $hash,
+]), $secret);
+$skewBoundaryHealthNonce = str_repeat('7', 32);
+$skewBoundaryHealthServer = [
+    'HTTP_X_ARTIFACTFLOW_PROCESSOR_TIMESTAMP' => $skewBoundaryTimestamp,
+    'HTTP_X_ARTIFACTFLOW_PROCESSOR_NONCE' => $skewBoundaryHealthNonce,
+    'HTTP_X_ARTIFACTFLOW_PROCESSOR_SIGNATURE' => ProcessorHealthRequest::signature(
+        $skewBoundaryTimestamp,
+        $skewBoundaryHealthNonce,
+        $secret,
+    ),
+];
+
+ProcessorRequest::authenticated(
+    $skewBoundaryConfiguration,
+    $skewBoundaryServer,
+    $benign,
+    $skewBoundaryInitialNow,
+);
+ProcessorHealthRequest::authenticated(
+    $skewBoundaryConfiguration,
+    $skewBoundaryHealthServer,
+    $skewBoundaryInitialNow,
+);
+
+$replayCacheDirectory = '/tmp/artifactflow-docx-nonces';
+$skewBoundaryNoncePath = $replayCacheDirectory . '/' . $skewBoundaryNonce;
+$skewBoundaryHealthNoncePath = $replayCacheDirectory . '/' . $skewBoundaryHealthNonce;
+$oldReceiptBasedExpiry = time() - $skewBoundaryConfiguration->maxClockSkewSeconds - 1;
+assertTrue(
+    is_file($skewBoundaryNoncePath) && is_file($skewBoundaryHealthNoncePath),
+    'DOCX replay cache did not retain both future-skew boundary claims.',
+);
+assertTrue(
+    touch($skewBoundaryNoncePath, $oldReceiptBasedExpiry),
+    'Could not age the future-skewed DOCX conversion nonce claim.',
+);
+assertTrue(
+    touch($skewBoundaryHealthNoncePath, $oldReceiptBasedExpiry),
+    'Could not age the future-skewed DOCX health nonce claim.',
+);
+clearstatcache(true, $skewBoundaryNoncePath);
+clearstatcache(true, $skewBoundaryHealthNoncePath);
+
+$skewBoundaryReplayRejected = false;
+try {
+    ProcessorRequest::authenticated(
+        $skewBoundaryConfiguration,
+        $skewBoundaryServer,
+        $benign,
+        $skewBoundaryReplayNow,
+    );
+} catch (ProcessorAuthenticationFailure) {
+    $skewBoundaryReplayRejected = true;
+}
+
+$skewBoundaryHealthReplayRejected = false;
+try {
+    ProcessorHealthRequest::authenticated(
+        $skewBoundaryConfiguration,
+        $skewBoundaryHealthServer,
+        $skewBoundaryReplayNow,
+    );
+} catch (ProcessorAuthenticationFailure) {
+    $skewBoundaryHealthReplayRejected = true;
+}
+
+assertTrue(
+    $skewBoundaryReplayRejected,
+    'Future-skewed DOCX conversion request was accepted again while its timestamp remained acceptable.',
+);
+assertTrue(
+    $skewBoundaryHealthReplayRejected,
+    'Future-skewed DOCX health request was accepted again while its timestamp remained acceptable.',
+);
+
 $lateMarker = tempnam('/tmp', 'artifactflow-docx-timeout-');
 assertTrue(is_string($lateMarker), 'Could not allocate the DOCX timeout marker.');
 assertTrue(unlink($lateMarker), 'Could not prepare the DOCX timeout marker.');

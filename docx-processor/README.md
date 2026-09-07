@@ -43,6 +43,8 @@ profile, input media type, length, SHA-256, and exact response bytes. Health suc
 only when the pinned LibreOffice version runs and the process sees no
 non-loopback network interface. Replays, stale timestamps, partial or oversized
 bodies, response metadata mismatches, and multiple PHP CLI workers fail closed.
+Nonce claims cover the complete signed timestamp acceptance window, including a
+request first accepted at the tolerated future-skew boundary.
 The socket directory is supplied by the deployment; no public or general TCP
 listener is exposed.
 

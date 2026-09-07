@@ -688,7 +688,10 @@ The release-blocking attack model is:
   authenticated request at a time through a rootless FrankenPHP runtime pinned to one PHP thread, rechecks
   network containment after request authentication, creates a fresh temporary LibreOffice profile, allowlists the
   child environment, and terminates the complete process group on its bounded deadline or any failed
-  conversion. Success requires exactly one complete bounded PDF.
+  conversion. Domain-separated conversion and health HMACs bind a timestamp and nonce. Each accepted nonce
+  remains claimed for the request's complete timestamp-validity window, including tolerated positive clock
+  skew, so replay rejection occurs before native conversion or health-engine admission. Success requires
+  exactly one complete bounded PDF.
 - DOCX processor output is untrusted. The independent PDFBox container receives the PDF—not the DOCX
   processor key or original—and permits only bounded internal destinations while rejecting URI,
   JavaScript, launch/submit/import, remote-go-to, embedded

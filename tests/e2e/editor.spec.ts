@@ -125,10 +125,10 @@ function authenticatedDraftPreviewDocument(
 }
 
 async function openAuthenticatedDraftPreview(page: Page): Promise<void> {
-  await expect(page.locator('[data-html-draft-preview-form]')).toHaveAttribute(
-    'data-html-draft-preview-ready',
-    'true',
-  );
+  const form = page.locator('[data-html-draft-preview-form]');
+
+  await expect(form).toHaveAttribute('data-editor-ready', 'true');
+  await expect(form).toHaveAttribute('data-html-draft-preview-ready', 'true');
 
   const capabilityResponsePromise = page.waitForResponse(
     (response) => response.url() === draftPreviewCapabilityEndpoint,
