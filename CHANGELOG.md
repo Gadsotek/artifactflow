@@ -6,6 +6,16 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.2.0 — 2026-09-07
+
+Feature, security, and deployment release. It adds the completed default-off
+XLSX and DOCX artifact slices, publishes their independently deployable
+processor images alongside the application and PDF processor, and advances the
+MCP server contract to `0.9.0`. The published configuration keeps PDF, XLSX,
+and DOCX processing default-off. Operators may retain an already-approved PDF
+opt-in; every enabled processor still requires its documented containment and
+browser evidence gates.
+
 ### Added
 
 - Added default-off Excel `.xlsx` artifacts with exact private originals, a
@@ -26,6 +36,14 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   return a response-size-checked selection instead of an unbounded full
   manifest. Metadata-only workbook reads need no selector.
 
+### Changed
+
+- Production boot and `artifactflow:doctor` now require HTTPS for
+  `IMAGE_PARSER_URL` whenever no Unix socket is configured. Existing production
+  deployments that send parser traffic over network HTTP must configure HTTPS
+  or the actual Unix-socket transport before upgrading; the local networkless
+  socket topology is unchanged.
+
 ### Security
 
 - Kept workbook and Word package bytes out of the browser and Laravel parser
@@ -43,6 +61,13 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   rejects driver/OpenGL escape records before LibreOffice. Added authenticated
   live processor health challenges and composite database ownership/kind
   constraints for both Office derivative types.
+- Hardened XLSX and DOCX process supervision so timeouts, output-limit failures,
+  and completed leaders terminate the complete detached descendant process
+  group and close inherited pipes before another artifact can be admitted.
+- Removed the PostgreSQL lock cycle between two-factor disablement and an
+  in-flight MCP write. Settings and operator recovery now drain the active MCP
+  execution lease, revoke its tokens, and update authentication state in one
+  transaction; failures roll the complete change back.
 
 ### Operations
 
@@ -163,6 +188,21 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 - Completed the XLSX viewer's dark theme across headers, rows, borders, hover
   and selection states, links, empty-sheet messaging, and the formula bar. The
   empty `No formula` state now uses a distinct neutral high-contrast style.
+
+### Dependencies
+
+- Updated Laravel Framework 13.26.1 → 13.30.1 and Resend PHP 1.10.0 →
+  1.13.0.
+- Updated Larastan 3.10.0 → 3.11.0, Rector 2.6.3 → 2.6.6, and Rector
+  Laravel 2.5.0 → 2.6.2.
+- Updated Mermaid 11.17.1 → 11.17.2, CodeMirror State 6.7.1 → 6.7.2, and
+  Globals 17.11.0 → 17.12.0; added pinned Tabulator 6.5.2 for typed XLSX
+  previews.
+- Updated the reviewed MCP remote bridge from 0.2.1 → 0.8.3 and pinned its
+  transitive `qs` dependency to 6.16.0.
+- Rebuilt the application and DOCX FrankenPHP binaries with gRPC 1.83.1 and
+  `golang.org/x/crypto` 0.55.0, and pinned the DOCX runtime to patched
+  `util-linux` 2.42.3-r1.
 
 ## v0.1.0 — 2026-08-28
 
