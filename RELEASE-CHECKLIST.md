@@ -62,7 +62,10 @@ Set tester expectations explicitly:
   images. Confirm the tagged release publishes both Office images with their own
   immutable digests, CycloneDX SBOMs, and provenance attestations; a maintainer's
   local image build does not replace release provenance.
-- Confirm protected branches require **both** required status checks before merge or release: the aggregate `ci-required` check (from `ci.yml`, which folds in the DCO sign-off gate) **and** the `cla` check from the `CLA` workflow (`cla.yml`). The CLA runs in a separate `pull_request_target` workflow, so it can never be part of `ci-required`; requiring only `ci-required` would leave the CLA signature unenforced at merge — the "no CLA, no merge" guarantee depends on this second required check. If the repository is still private on a GitHub plan without branch protection, make it public or move it to a plan that supports branch protection before treating CI as enforced.
+- Require both protected-branch checks: `ci-required` (including DCO) and the
+  separate `cla` check. CLA runs on `pull_request_target` and cannot be folded
+  into the CI aggregate. Verify branch protection is supported and enabled;
+  passing CI alone does not enforce a merge policy.
 - Run the full gate set from `AGENTS.md`, including type coverage, line coverage, browser E2E, production image build, and Trivy image/config scans.
 - Do not deploy the repository `docker-compose.yml` as a production stack; it is local-only and intentionally uses development settings.
 

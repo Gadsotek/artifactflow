@@ -436,7 +436,7 @@ SH);
 
     public function test_operations_runbook_covers_backup_restore_keys_retention_and_verification(): void
     {
-        $operations = $this->readProjectFile('docs/OPERATIONS.md');
+        $operations = $this->readProjectFile('docs/operations/backup-restore.md');
 
         $this->assertStringContainsString('## Backup & Restore', $operations);
         $this->assertStringContainsString('PostgreSQL', $operations);

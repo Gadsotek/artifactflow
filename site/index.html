@@ -3,26 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ArtifactFlow | Versioned artifact vault for AI-generated work</title>
-<meta name="description" content="A self-hosted, versioned vault for AI-generated artifacts. Preserve source and versions, then run untrusted single-file HTML on a separate origin.">
+<title>ArtifactFlow | Open-source workspace for AI-generated artifacts</title>
+<meta name="description" content="Keep AI-generated work searchable, shareable, versioned, and independent of any model. Open-source, self-hosted, and accessible to your team and AI through MCP.">
 <link rel="canonical" href="https://artifactflow.app/">
-<meta property="og:title" content="ArtifactFlow | Versioned artifact vault for AI-generated work">
-<meta property="og:description" content="Keep source and every version. Run generated HTML tools on a separate origin away from the authenticated app.">
+<meta property="og:title" content="ArtifactFlow | Open-source workspace for AI-generated artifacts">
+<meta property="og:description" content="Keep AI-generated work searchable, shareable, versioned, and independent of any model. Open-source, self-hosted, and accessible to your team and AI through MCP.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://artifactflow.app/">
 <meta property="og:site_name" content="ArtifactFlow">
 <meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="ArtifactFlow | Versioned artifact vault for AI-generated work">
-<meta name="twitter:description" content="Preserve the output, not the conversation. Keep every version and run generated HTML away from the authenticated app origin.">
+<meta name="twitter:title" content="ArtifactFlow | Open-source workspace for AI-generated artifacts">
+<meta name="twitter:description" content="Keep AI-generated work searchable, shareable, versioned, and independent of any model. Open-source, self-hosted, and accessible to your team and AI through MCP.">
 <meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
-<meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#f8f9fc" media="(prefers-color-scheme: light)" data-theme-color="light">
 <meta name="theme-color" content="#0d0f13" media="(prefers-color-scheme: dark)" data-theme-color="dark">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<script src="/assets/theme.js?v=20260722-2" data-theme-bootstrap></script>
-    <link rel="stylesheet" href="/assets/site.css?v=20260723-3">
+<script src="/assets/theme.js?v=20260907-3" data-theme-bootstrap></script>
+    <link rel="stylesheet" href="/assets/site.css?v=20260908-1">
+    <link rel="stylesheet" href="/assets/home.css?v=20260907-3">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -32,8 +33,10 @@
       "@id": "https://artifactflow.app/#website",
       "url": "https://artifactflow.app/",
       "name": "ArtifactFlow",
-      "description": "A self-hosted, versioned artifact vault that preserves AI-generated work and runs untrusted single-file HTML on a separate origin.",
-      "publisher": { "@id": "https://artifactflow.app/#organization" }
+      "description": "Keep AI-generated work searchable, shareable, versioned, and independent of any model. Open-source, self-hosted, and accessible to your team and AI through MCP.",
+      "publisher": {
+        "@id": "https://artifactflow.app/#organization"
+      }
     },
     {
       "@type": "Organization",
@@ -41,207 +44,117 @@
       "name": "ArtifactFlow",
       "url": "https://artifactflow.app/",
       "logo": "https://artifactflow.app/assets/artifactflow-mark.svg",
-      "sameAs": ["https://github.com/Gadsotek/artifactflow"]
+      "sameAs": [
+        "https://github.com/Gadsotek/artifactflow"
+      ]
     }
   ]
 }
 </script>
 </head>
-<body>
+<body class="home-page">
 <a class="skip-link" href="#main">Skip to content</a>
 
 <header class="site-header">
   <div class="shell nav">
     <a class="brand" href="/" aria-label="ArtifactFlow home"><img class="brand-mark brand-mark-on-light" src="/assets/artifactflow-mark.svg" alt="" aria-hidden="true" width="512" height="512"><img class="brand-mark brand-mark-on-dark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512">Artifact<span class="brand-flow">Flow</span></a>
     <nav class="nav-links" aria-label="Main navigation">
-      <a href="/#product">Product</a>
-      <a href="/workflow/">Workflow</a>
-      <a href="/engineering-harness/">Harness</a>
-      <a href="/security/">Safety</a>
+<div class="primary-links"><a href="/#product">Product</a>
+      <a href="/workflow/">How it works</a>
       <a href="/mcp/">MCP</a>
-      <a href="/self-hosting/">Self-host</a>
-      <a href="/roadmap/">Roadmap</a>
-      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="3.5"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path></svg></span><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><path d="M20.4 15.3A8.5 8.5 0 0 1 8.7 3.6a8.5 8.5 0 1 0 11.7 11.7Z"></path></svg></span></button>
-      <a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a>
-    </nav>
+      <a href="/security/">Security</a>
+      <a href="/self-hosting/">Self-host</a></div>
+<div class="nav-actions"><button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="3.5"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path></svg></span><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><path d="M20.4 15.3A8.5 8.5 0 0 1 8.7 3.6a8.5 8.5 0 1 0 11.7 11.7Z"></path></svg></span></button>
+<a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a></div>
+</nav>
   </div>
 </header>
 
 <main id="main">
-  <section class="hero" id="top">
-    <div class="shell hero-grid">
+  <section class="hero home-hero" id="top">
+    <div class="shell">
       <div class="hero-copy">
-        <p class="eyebrow">Versioned artifact vault · public alpha</p>
-        <h1>Keep the artifact. Keep the source. Keep every version.</h1>
-        <p class="lede">ArtifactFlow is a self-hosted, versioned artifact vault for tools and documents created with AI. Keep their authoritative source, find them later, preview them, run generated HTML away from the authenticated app, and preserve every revision.</p>
-        <p class="hero-wedge"><strong>Built first for executable HTML</strong>Keep generated single-file HTML tools searchable and versioned, then run their untrusted code on a separate origin away from the app that holds your login.</p>
+        <p class="eyebrow">Open source · self-hosted · model-agnostic</p>
+        <h1>Your AI work, <span>in one place.</span></h1>
+        <p class="lede">Useful work gets lost across chats, files, and people.<br> Give it a home your team and AI can build on.</p>
         <div class="hero-actions">
-          <a class="button button-primary" href="#product">See how it works ↓</a>
-          <a class="button" href="/self-hosting/#local">Evaluate locally →</a>
+          <a class="button button-primary" href="/self-hosting/#local">Self-host ArtifactFlow <span aria-hidden="true">↗</span></a>
+          <a class="button" href="https://github.com/Gadsotek/artifactflow">View on GitHub <span aria-hidden="true">↗</span></a>
         </div>
-        <p class="hero-note">Current alpha: HTML, Markdown, Mermaid, normalized images, and default-off PDF, XLSX, and DOCX · AGPL-3.0-or-later · built for internal teams.</p>
       </div>
 
-      <div class="hero-visual" aria-label="ArtifactFlow application preview">
-        <figure class="window">
-          <div class="window-bar" aria-hidden="true">
-            <span class="window-dot"></span>
-            <span class="window-dot"></span>
-            <span class="window-dot"></span>
-            <span class="window-label">workspace / artifact vault</span>
-          </div>
+      <div class="artifact-stage" aria-label="AI-generated documents, diagrams, and tools come together in one shared ArtifactFlow workspace">
+        <div class="stage-orbit stage-orbit-outer" aria-hidden="true"></div>
+        <div class="stage-orbit stage-orbit-inner" aria-hidden="true"></div>
+        <svg class="stage-lines" viewBox="0 0 1100 470" fill="none" aria-hidden="true" focusable="false">
+          <path d="M120 110H250Q290 110 290 150V190M980 160H880Q840 160 840 200V250M160 360H270Q310 360 310 320V280M920 360H820Q790 360 790 320V290"></path>
+        </svg>
+
+        <div class="floating-artifact floating-document">
+          <span class="artifact-type artifact-type-document">MD <span>Document</span></span>
+          <strong>The idea worth keeping.</strong>
+          <span class="document-lines" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="artifact-meta">Architecture notes <span>↗</span></span>
+        </div>
+        <div class="floating-artifact floating-tool">
+          <span class="artifact-type artifact-type-tool">&lt;/&gt; <span>Interactive HTML</span></span>
+          <strong>More than a file.</strong>
+          <span class="mini-chart" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          <span class="artifact-meta">A tool you can use <span>↗</span></span>
+        </div>
+        <div class="floating-label floating-version"><span class="status-dot" aria-hidden="true"></span>New version. Same artifact.</div>
+        <div class="floating-label floating-access"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3M6 10h12v10H6z"></path></svg>Your team + authorized AI</div>
+
+        <figure class="product-window">
+          <div class="product-window-bar"><span class="window-lights" aria-hidden="true"><i></i><i></i><i></i></span><span>ArtifactFlow <span class="window-location">/ your workspace</span></span><span class="window-private">Private by default</span></div>
           <a class="preview-trigger" href="/assets/app-dashboard.jpg" data-preview-caption="Workspace dashboard" aria-label="Preview the ArtifactFlow workspace dashboard">
             <picture>
-              <source type="image/avif" srcset="/assets/app-dashboard-800.avif 800w, /assets/app-dashboard-1200.avif 1200w, /assets/app-dashboard-1600.avif 1600w" sizes="(max-width: 62rem) 90vw, 48vw">
-              <img src="/assets/app-dashboard.jpg" srcset="/assets/app-dashboard-800.jpg 800w, /assets/app-dashboard-1200.jpg 1200w, /assets/app-dashboard.jpg 1600w" sizes="(max-width: 62rem) 90vw, 48vw" alt="ArtifactFlow workspace dashboard with search, popular tags, drafts, and team members" width="1600" height="1000" fetchpriority="high">
+              <source type="image/avif" srcset="/assets/app-dashboard-800.avif 800w, /assets/app-dashboard-1200.avif 1200w, /assets/app-dashboard-1600.avif 1600w" sizes="(max-width: 44rem) 92vw, 760px">
+              <img src="/assets/app-dashboard.jpg" srcset="/assets/app-dashboard-800.jpg 800w, /assets/app-dashboard-1200.jpg 1200w, /assets/app-dashboard.jpg 1600w" sizes="(max-width: 44rem) 92vw, 760px" alt="ArtifactFlow workspace dashboard with search, popular tags, drafts, and team members" width="1600" height="1000" fetchpriority="high">
             </picture>
-            <span class="preview-hint">View full size</span>
+            <span class="preview-hint">Explore the workspace ↗</span>
           </a>
         </figure>
-        <div class="float-card">
-          <strong>Preserves the output.</strong>
-          <span>Not the conversation.</span>
-        </div>
       </div>
+
+      <div class="source-strip"><span>Bring the work. Choose your tools.</span><ul aria-label="Where your work begins"><li>ChatGPT</li><li>Claude</li><li>Codex</li><li>Cursor</li><li>Internal agents</li><li>Local files</li></ul></div>
+      <p class="flow-caption hero-caption">Save deliberately by paste, upload, or MCP. There is no automatic chat import. Floating cards illustrate artifact types.</p>
     </div>
   </section>
 
-  <div class="signal-strip" aria-label="Product summary">
-    <div class="shell signals">
-      <div class="signal"><strong>Source first</strong><span>Authoritative, portable content</span></div>
-      <div class="signal"><strong>Version native</strong><span>History, diffs, restore, revert</span></div>
-      <div class="signal"><strong>People + MCP</strong><span>One permission and audit model</span></div>
-      <div class="signal"><strong>Runnable HTML</strong><span>Separate origin, no app cookies</span></div>
-    </div>
-  </div>
-
-  <section class="section" id="product">
+  <section class="section workspace-section" id="product">
     <div class="shell">
       <div class="section-head">
-        <div>
-          <p class="kicker">The gap after generation</p>
-          <h2>The missing artifact layer between AI chat and production.</h2>
-        </div>
-        <p class="lede">Chat is temporary. A new repository, deployment, and release process are too much for every calculator, one-pager, runbook, diagram, or prototype. ArtifactFlow gives useful output a durable place in between.<span class="audience-statement">Built for technical teams that regularly create small internal tools, operational documents, diagrams, and prototypes with AI.</span></p>
+        <div><p class="kicker">From scattered output to shared work</p><h2>Keep it. Find it. Use it again.</h2></div>
+        <p class="lede">The architecture note in one chat. The dashboard in Downloads. Give useful AI-generated artifacts a home everyone can return to.</p>
       </div>
+      <ol class="value-loop">
+        <li><div class="feature-visual" aria-hidden="true"><svg viewBox="0 0 200 110"><rect x="34" y="18" width="100" height="68" rx="7" transform="rotate(-10 84 52)"></rect><rect x="58" y="20" width="100" height="68" rx="7" transform="rotate(8 108 54)"></rect><rect x="50" y="25" width="100" height="68" rx="7"></rect><path class="visual-ink" d="M65 42h34M65 55h70M65 68h50"></path><circle class="visual-dot" cx="133" cy="79" r="3"></circle></svg></div><span class="card-number">01 / KEEP &amp; ORGANIZE</span><h3>A home beyond the chat.</h3><p>Save the work with an owner, workspace, categories, and tags.</p></li>
+        <li><div class="feature-visual" aria-hidden="true"><svg viewBox="0 0 200 110"><rect x="22" y="14" width="156" height="27" rx="6"></rect><circle class="visual-ink" cx="38" cy="26" r="5"></circle><path class="visual-ink" d="m42 30 4 4M58 27h56"></path><rect x="33" y="51" width="134" height="16" rx="4"></rect><rect x="33" y="74" width="134" height="16" rx="4"></rect><path class="visual-ink" d="M45 59h65M45 82h44"></path><circle class="visual-dot" cx="155" cy="59" r="3"></circle></svg></div><span class="card-number">02 / FIND &amp; SHARE</span><h3>Useful to the whole team.</h3><p>Search content and metadata. Share with colleagues through page and workspace permissions.</p></li>
+        <li><div class="feature-visual" aria-hidden="true"><svg viewBox="0 0 200 110"><path class="visual-ink" d="M38 55h124"></path><circle cx="42" cy="55" r="16"></circle><circle cx="100" cy="55" r="16"></circle><circle cx="158" cy="55" r="22"></circle><path class="visual-ink" d="m148 55 7 7 13-14M42 48v14M94 55h12"></path><path d="M100 39V22h58v11" stroke-dasharray="3 4" fill="none"></path></svg></div><span class="card-number">03 / UPDATE &amp; REUSE</span><h3>The next version starts here.</h3><p>Keep retained history as people and authorized AI clients improve the same artifact.</p></li>
+      </ol>
+      <a class="text-link" href="/workflow/">Follow one artifact through the workflow →</a>
+    </div>
+  </section>
 
-      <div class="category-note">
-        <strong>Preserves the output, not the conversation.</strong>
-        <span>Not a vector database, chat archive, static site generator, or agent memory system. ArtifactFlow keeps the deliberate artifact that should survive after the chat ends.</span>
-      </div>
-
-      <div class="split-cards">
-        <article class="split-card">
-          <p class="mono">Before</p>
-          <h3>Useful output with nowhere durable to live.</h3>
-          <p><code>calculator-final-v3-really-final.html</code> sits in Downloads. The source is buried in a chat, ownership is unclear, and the next edit replaces the last copy.</p>
-        </article>
-        <article class="split-card">
-          <p class="mono">After</p>
-          <h3>A managed team asset without another software project.</h3>
-          <p>The same calculator has a stable identity, authoritative source, retained versions, ownership, permissions, search, safe preview, and a path for the next human or agent update.</p>
-        </article>
+  <section class="section model-section" id="agents">
+    <div class="shell model-grid">
+      <div><p class="kicker">Independent of the model</p><h2>Switch models. Keep your work.</h2><p class="lede">One workspace for people and AI. Find an artifact yourself, or let an MCP-compatible client find it for you.</p><a class="text-link" href="/mcp/">Give your AI the access it needs →</a></div>
+      <div class="continuity">
+        <div class="continuity-title"><span class="file-symbol" aria-hidden="true">MD</span><div><strong>Architecture notes</strong><span>One artifact. A continuing history.</span></div></div>
+        <ol class="version-journey">
+          <li><span class="version-label">v1</span><div><strong>Created with Claude</strong><span>An analysis worth keeping.</span></div></li>
+          <li><span class="version-label">v2</span><div><strong>Reviewed by your team</strong><span>Decisions added. Context preserved.</span></div></li>
+          <li><span class="version-label">v3</span><div><strong>Continued with Codex</strong><span>Retrieve the source. Save the next revision.</span></div></li>
+        </ol>
+        <p class="flow-caption">Illustrative workflow using authorized MCP-compatible clients. Versions follow your retention settings.</p>
       </div>
     </div>
   </section>
 
-  <section class="section" id="workflow" aria-labelledby="workflow-heading">
+  <section class="section gallery workspace-section" id="gallery">
     <div class="shell">
-      <div class="section-head">
-        <div>
-          <p class="kicker">The artifact lifecycle</p>
-          <h2 id="workflow-heading">From generated output to a reusable team asset.</h2>
-        </div>
-        <p class="lede">People can bring work in through the browser. Approved AI clients can preserve it through MCP. Both routes reach the same versions, permissions, search, and audit trail.</p>
-      </div>
-      <div class="problem-grid">
-        <article class="problem-card">
-          <span class="card-number">01 / PRESERVE</span>
-          <h3>Keep the authoritative source.</h3>
-          <p>Save a self-contained HTML tool or portable Markdown document, or upload a normalized image or default-off PDF, XLSX, or DOCX original, with its title, owner, workspace, tags, and category.</p>
-        </article>
-        <article class="problem-card">
-          <span class="card-number">02 / USE</span>
-          <h3>Search, preview, and run the result.</h3>
-          <p>Find artifacts by metadata or bounded searchable content. Read documents through their format-specific preview boundary and let interactive HTML run only inside its isolated artifact-origin frame.</p>
-        </article>
-        <article class="problem-card">
-          <span class="card-number">03 / IMPROVE</span>
-          <h3>Preserve the next version too.</h3>
-          <p>A person or agent updates the source without erasing history. Inspect source diffs, restore an earlier version, and preserve which provider/model produced the content when that identity is known.</p>
-        </article>
-      </div>
-      <p class="artifact-terms"><strong>Terminology:</strong> An artifact is the managed record. Each version retains its authoritative source or original; previews and runtimes are derived ways to use it.</p>
-    </div>
-  </section>
-
-  <section class="section agents" id="agents">
-    <div class="shell agents-grid">
-      <div>
-        <p class="kicker">One vault, two interfaces</p>
-        <h2>One vault for people and agents.</h2>
-        <p class="lede">ArtifactFlow is not an AI generator. It is the system of record that remains after the model moves on.</p>
-      </div>
-      <div>
-        <div class="split-cards interface-cards">
-          <article class="split-card">
-            <p class="mono">For approved agents</p>
-            <h3>Retrieve the source. Preserve the revision.</h3>
-            <p>MCP clients can search, read bounded Office selections or extracted text, create and replace supported formats, organize, share, update, and revert within explicit token and workspace scopes, while declaring exact version-level provider/model provenance when known.</p>
-          </article>
-          <article class="split-card">
-            <p class="mono">For people</p>
-            <h3>Search, inspect, preview, run, and govern.</h3>
-            <p>The web interface is the human control and consumption layer, including editing, workspace organization, permissions, ownership, and account security.</p>
-          </article>
-        </div>
-        <div class="mcp-animation" data-mcp-animation data-mcp-layout="compact" aria-label="Real MCP search, read, and update sequence">
-          <div class="code-card mcp-proof">
-            <header><span>Real MCP flow</span><span>search · read · update</span></header>
-            <div class="mcp-compact-flow" id="mcp-home-flow">
-              <div class="mcp-compact-step" data-mcp-step="search">
-                <span class="mcp-step-number">01</span>
-                <strong>search</strong>
-                <code>query: "Q3 capacity"</code>
-                <span>1 result · Q3 Capacity Plan</span>
-              </div>
-              <div class="mcp-compact-step" data-mcp-step="read">
-                <span class="mcp-step-number">02</span>
-                <strong>read</strong>
-                <code>page_uid: 01ky7atfyh…0hef0f</code>
-                <span>source + current_version_uid</span>
-              </div>
-              <div class="mcp-compact-step" data-mcp-step="update">
-                <span class="mcp-step-number">03</span>
-                <strong>update</strong>
-                <code>base_version_uid: 01KY7ATFYM…53H9NN</code>
-                <span>new immutable version preserved</span>
-              </div>
-            </div>
-          </div>
-          <div class="mcp-animation-controls">
-            <button class="button button-primary" type="button" aria-controls="mcp-home-flow" data-mcp-play>▶ Replay</button>
-            <span data-mcp-status aria-live="polite">Static transcript</span>
-          </div>
-        </div>
-        <p class="transcript-note">Captured from real MCP calls against an isolated test database. Identifiers are shortened for display; the full session is on the MCP page.</p>
-        <div class="detail-actions">
-          <a class="button" href="/mcp/#session">See the full MCP session →</a>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="section gallery" id="gallery" aria-labelledby="inside-heading">
-    <div class="shell">
-      <div class="section-head">
-        <div>
-          <p class="kicker">The product today</p>
-          <h2 id="inside-heading">Search the vault. Preview the artifact. Keep working.</h2>
-        </div>
-        <p class="lede">The screenshots show the product as it exists today, not concepts, mockups, or a future roadmap.</p>
-      </div>
-
+      <div class="section-head"><div><p class="kicker">The work keeps its shape</p><h2>Artifacts stay artifacts.</h2></div><p class="lede">HTML stays interactive. Markdown stays portable. Diagrams stay diagrams. Actual product screenshots below.</p></div>
       <div class="gallery-grid">
         <figure class="shot">
           <a class="preview-trigger" href="/assets/app-dashboard.jpg" data-preview-caption="Workspace dashboard" aria-label="Preview the workspace dashboard">
@@ -251,7 +164,7 @@
             </picture>
             <span class="preview-hint">View full size</span>
           </a>
-          <figcaption><strong>Artifact workspace.</strong> Search, drafts, tags, people, and workspace administration share one starting point.</figcaption>
+          <figcaption><strong>Find it.</strong> Search across your team’s work.</figcaption>
         </figure>
         <figure class="shot">
           <a class="preview-trigger" href="/assets/app-artifact-live.jpg" data-preview-caption="Live HTML artifact" aria-label="Preview a live HTML artifact">
@@ -261,7 +174,7 @@
             </picture>
             <span class="preview-hint">View full size</span>
           </a>
-          <figcaption><strong>Live HTML artifact.</strong> JavaScript runs inside the sandbox; script patterns are advisory findings, not the security boundary.</figcaption>
+          <figcaption><strong>Use it.</strong> Interactive HTML in an isolated preview.</figcaption>
         </figure>
         <figure class="shot">
           <a class="preview-trigger" href="/assets/app-markdown.jpg" data-preview-caption="Markdown and Mermaid page" aria-label="Preview a Markdown and Mermaid page">
@@ -271,12 +184,14 @@
             </picture>
             <span class="preview-hint">View full size</span>
           </a>
-          <figcaption><strong>Markdown + Mermaid.</strong> Portable source, rich editing, permission-aware wiki links, and strict diagram rendering.</figcaption>
+          <figcaption><strong>Build on it.</strong> Portable Markdown and Mermaid diagrams.</figcaption>
         </figure>
       </div>
+
+      <div class="format-strip" aria-label="Artifact formats"><span>HTML</span><span>Markdown</span><span>Mermaid</span><span>PNG / JPEG</span></div>
+      <p class="format-note">Also implemented: default-off PDF, XLSX, and DOCX. Each needs isolated processing and explicit production enablement. <a href="/roadmap/#documents">Format details →</a></p>
     </div>
   </section>
-
   <dialog class="image-preview" id="image-preview" aria-labelledby="preview-caption">
     <div class="preview-bar">
       <p class="preview-caption" id="preview-caption">Screenshot preview</p>
@@ -290,127 +205,36 @@
     </div>
   </dialog>
 
-  <section class="section safety" id="safety">
-    <div class="shell">
-      <div class="section-head">
-        <div>
-          <p class="kicker">Executable when useful</p>
-          <h2>Run generated HTML without turning it into a deployment.</h2>
-        </div>
-        <p class="lede">Interactive calculators, dashboards, diagrams, and runbooks remain usable, while untrusted code executes away from the authenticated application that holds the team's login and data.</p>
-      </div>
-      <div class="split-cards">
-        <article class="split-card">
-          <p class="mono">Authenticated app</p>
-          <h3>The place that knows the team.</h3>
-          <p>Search, source, versions, workspaces, permissions, and audit stay on the application origin. Artifact HTML never executes there.</p>
-        </article>
-        <article class="split-card">
-          <p class="mono">Isolated artifact runtime</p>
-          <h3>The place that assumes the code is hostile.</h3>
-          <p>HTML runs in an opaque sandbox on a separate cookieless origin. Ordinary network requests are blocked, with documented self-navigation and browser-dependent WebRTC residuals.</p>
-        </article>
-      </div>
-      <div class="safety-note">
-        <strong>Honest boundary:</strong>
-        <span>Scanning and the injected guard are bypassable defense in depth. Browser-enforced origin separation, the iframe sandbox, and response-header CSP carry the security boundary.</span>
-      </div>
-      <div class="detail-actions">
-        <a class="button button-light" href="/security/">Read the full security model →</a>
+  <section class="section workspace-section" id="self-host">
+    <div class="shell ownership-grid">
+      <div><p class="kicker">Open source · AGPL-3.0-or-later</p><h2>Your artifacts. Your infrastructure.</h2><p class="lede">Self-host with Docker. Control storage, retention, and access. Choose your AI clients independently; ArtifactFlow requires no model subscription or AI API key.</p><a class="text-link" href="/self-hosting/">Start with a local installation →</a></div>
+      <div class="ownership-visual" aria-label="Self-hosting keeps storage, access, retention, and AI tool choices under your control">
+        <strong>Yours.</strong><span>Your server. Your decisions.</span>
+        <div class="ownership-node">Your storage</div><div class="ownership-node">Your access rules</div><div class="ownership-node">Your AI tools</div><div class="ownership-node">Your retention</div>
       </div>
     </div>
   </section>
 
-  <section class="section" aria-labelledby="details-heading">
+  <section class="section safety workspace-section" id="safety">
     <div class="shell">
-      <div class="section-head">
-        <div>
-          <p class="kicker">Understand the boundaries</p>
-          <h2 id="details-heading">Follow each concern to its source.</h2>
-        </div>
-        <p class="lede">Detailed mechanics, operational requirements, product direction, and engineering provenance are documented separately.</p>
-      </div>
-      <div class="page-links">
-        <a class="page-link" href="/workflow/"><strong>Artifact workflow</strong><span>Stable identity, immutable versions, draft status, metadata changes, and format-specific payloads.</span></a>
-        <a class="page-link" href="/guides/ai-artifact-vault/"><strong>What is an AI artifact vault?</strong><span>A practical definition of the layer between AI chat and production.</span></a>
-        <a class="page-link" href="/guides/safe-ai-generated-html/"><strong>Safe AI-generated HTML</strong><span>Why executable artifacts need isolation, containment, and explicit residual risks.</span></a>
-        <a class="page-link" href="/guides/ai-artifact-storage/"><strong>Where should AI artifacts live?</strong><span>Compare chat, drives, Git, static hosting, and a versioned artifact vault.</span></a>
-        <a class="page-link" href="/mcp/"><strong>MCP for agents</strong><span>Scoped retrieval and versioned writes through the same application rules.</span></a>
-        <a class="page-link" href="/security/"><strong>Security model</strong><span>Why useful HTML can run without executing where users authenticate.</span></a>
-        <a class="page-link" href="/self-hosting/"><strong>Self-hosting</strong><span>Local evaluation, production roles, origins, storage, and boot checks.</span></a>
-        <a class="page-link" href="/engineering-harness/"><strong>Engineering harness</strong><span>How ArtifactFlow became the real security-sensitive workload for testing AI engineering guardrails.</span></a>
-        <a class="page-link" href="/roadmap/"><strong>Product roadmap</strong><span>Default-off PDF, Excel, and Word formats, proof requirements, and explicit non-promises.</span></a>
-      </div>
-    </div>
-  </section>
-
-  <section class="section alpha" aria-labelledby="alpha-heading">
-    <div class="shell alpha-box">
-      <div>
-        <p class="kicker">Public alpha · July 2026</p>
-        <h2 id="alpha-heading">Built, tested, and still young.</h2>
-        <p class="lede">Pin a revision. Expect breaking changes. Read the threat model before trusting it with work that matters.</p>
-      </div>
-      <ul class="alpha-list">
-        <li>Executable artifacts are currently limited to single-file HTML. Network access is intentionally constrained by the runtime security model.</li>
-        <li>No public sharing, marketplace, approval workflow, or built-in AI generation.</li>
-        <li>Source diffs exist; a visual diff UI does not yet.</li>
-        <li>Internally adversarially reviewed and broadly tested, but not independently audited by a third party.</li>
-      </ul>
+      <div class="section-head"><div><p class="kicker">Security is part of the product</p><h2>Treat generated content as untrusted.</h2></div><p class="lede">HTML can execute code. ArtifactFlow keeps it away from the app that holds your login.</p></div>
+      <div class="boundary-diagram"><div><span class="mono">App origin</span><strong>Your team’s workspace</strong><span>Identity · permissions · scoped MCP</span></div><span class="boundary-divider" aria-label="Separate origins">Separate origins</span><div><span class="mono">Artifact origin</span><strong>Isolated HTML preview</strong><span>Sandbox · restrictive CSP · no app cookies</span></div></div>
+      <p class="safety-note">Scanning is advisory. Isolation carries the boundary, with documented self-navigation and browser-dependent WebRTC residuals.</p>
+      <a class="button button-light" href="/security/">Explore the security model →</a>
     </div>
   </section>
 
   <section class="section closing">
-    <div class="shell closing-grid">
-      <div>
-        <p class="kicker">After the chat ends</p>
-        <h2>Run ArtifactFlow locally.</h2>
-        <p class="closing-copy">Evaluate the artifact workflow and security boundaries against your own use case.</p>
-      </div>
-      <div class="closing-actions">
-        <a class="button button-primary" href="/self-hosting/#local">Run locally →</a>
-        <a class="button button-light" href="https://github.com/Gadsotek/artifactflow">Inspect the source on GitHub ↗</a>
-      </div>
-    </div>
+    <div class="shell closing-grid"><div><p class="kicker">Keep the work worth keeping</p><h2>Make it your workspace.</h2><p class="closing-copy">Public alpha: expect changes, pin a revision, and review the threat model. Internally reviewed; not independently audited.</p></div><div class="closing-actions"><a class="button button-primary" href="/self-hosting/#local">Self-host ArtifactFlow →</a></div></div>
   </section>
 </main>
 
-<footer class="site-footer">
-  <div class="shell">
-    <div class="footer-grid">
-      <div>
-        <div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512"><span>Artifact<span class="brand-flow">Flow</span></span></div>
-        <p class="footer-summary">A self-hosted, versioned artifact vault for tools and documents created with AI.</p>
-      </div>
-      <div class="footer-column">
-        <strong>Product</strong>
-        <a href="/#product">What it does</a>
-        <a href="/workflow/">Artifact workflow</a>
-        <a href="/security/">Safety model</a>
-        <a href="/mcp/">MCP server</a>
-        <a href="/self-hosting/">Self-hosting</a>
-        <a href="/engineering-harness/">Engineering harness</a>
-        <a href="/roadmap/">Roadmap</a>
-      </div>
-      <div class="footer-column">
-        <strong>Repository</strong>
-        <a href="https://github.com/Gadsotek/artifactflow">Source</a>
-        <a href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md">Threat model</a>
-        <a href="https://github.com/Gadsotek/artifactflow/blob/main/SECURITY.md">Security policy</a>
-      </div>
-      <div class="footer-column">
-        <strong>License</strong>
-        <span>AGPL-3.0-or-later</span>
-        <a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a>
-        <a href="mailto:gadsotek@gmail.com">Contact</a>
-      </div>
-    </div>
-    <div class="footer-end">
-      <span>© 2026 Gadsotek</span>
-      <span>Preserves the output, not the conversation.</span>
-    </div>
-  </div>
-</footer>
+<footer class="site-footer"><div class="shell"><div class="footer-grid">
+  <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">The open-source, self-hosted workspace for AI-generated artifacts.</p></div>
+  <div class="footer-column"><strong>Product</strong><a href="/#product">Overview</a><a href="/workflow/">How it works</a><a href="/mcp/">MCP</a><a href="/security/">Security</a><a href="/self-hosting/">Self-hosting</a></div>
+  <div class="footer-column"><strong>Explore</strong><a href="/guides/ai-artifact-vault/">What is an artifact vault?</a><a href="/guides/ai-artifact-storage/">Where should AI work live?</a><a href="/guides/safe-ai-generated-html/">Running generated HTML</a><a href="/roadmap/">Roadmap</a><a href="/engineering-harness/">Engineering harness</a><a href="/llms.txt">For AI readers</a></div>
+  <div class="footer-column"><strong>Open source</strong><a href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md">Threat model</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/SECURITY.md">Security policy</a><span>AGPL-3.0-or-later</span><a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a><a href="mailto:gadsotek@gmail.com">Contact</a></div>
+  </div><div class="footer-end"><span>© 2026 Gadsotek</span><span>Preserves the output, not the conversation.</span></div></div></footer>
 <script src="/assets/site.js?v=20260723-1" defer></script>
 </body>
 </html>

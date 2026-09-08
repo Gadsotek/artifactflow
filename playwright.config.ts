@@ -7,6 +7,7 @@ const excludeNonArtifactSecurityTests = /^(?!.*@artifact-security)/u;
 
 export default defineConfig({
   testDir: './tests/e2e',
+  outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? './test-results',
   grep: requestedTestGrep,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

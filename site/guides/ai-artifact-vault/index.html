@@ -18,11 +18,11 @@
 <meta name="twitter:description" content="Stable identity, authoritative content, versions, search, permissions, safe use, and audit for AI-generated artifacts.">
 <meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
-<meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#f8f9fc" media="(prefers-color-scheme: light)" data-theme-color="light">
 <meta name="theme-color" content="#0d0f13" media="(prefers-color-scheme: dark)" data-theme-color="dark">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<script src="/assets/theme.js?v=20260722-2" data-theme-bootstrap></script>
-<link rel="stylesheet" href="/assets/site.css?v=20260723-3">
+<script src="/assets/theme.js?v=20260907-3" data-theme-bootstrap></script>
+<link rel="stylesheet" href="/assets/site.css?v=20260908-1">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -41,16 +41,14 @@
   <div class="shell nav">
     <a class="brand" href="/" aria-label="ArtifactFlow home"><img class="brand-mark brand-mark-on-light" src="/assets/artifactflow-mark.svg" alt="" aria-hidden="true" width="512" height="512"><img class="brand-mark brand-mark-on-dark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512">Artifact<span class="brand-flow">Flow</span></a>
     <nav class="nav-links" aria-label="Main navigation">
-      <a href="/#product">Product</a>
-      <a href="/workflow/">Workflow</a>
-      <a href="/engineering-harness/">Harness</a>
-      <a href="/security/">Safety</a>
+<div class="primary-links"><a href="/#product">Product</a>
+      <a href="/workflow/">How it works</a>
       <a href="/mcp/">MCP</a>
-      <a href="/self-hosting/">Self-host</a>
-      <a href="/roadmap/">Roadmap</a>
-      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="3.5"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path></svg></span><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><path d="M20.4 15.3A8.5 8.5 0 0 1 8.7 3.6a8.5 8.5 0 1 0 11.7 11.7Z"></path></svg></span></button>
-      <a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a>
-    </nav>
+      <a href="/security/">Security</a>
+      <a href="/self-hosting/">Self-host</a></div>
+<div class="nav-actions"><button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="3.5"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path></svg></span><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><path d="M20.4 15.3A8.5 8.5 0 0 1 8.7 3.6a8.5 8.5 0 1 0 11.7 11.7Z"></path></svg></span></button>
+<a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a></div>
+</nav>
   </div>
 </header>
 
@@ -82,11 +80,11 @@
           <h2>A folder of generated files is not yet an artifact vault.</h2>
           <ul class="detail-list">
             <li><strong>Stable identity</strong>One artifact keeps the same record even as its title, description, tags, lifecycle state, or content changes.</li>
-            <li><strong>Authoritative payload</strong>The system retains the source or normalized original that people and approved tools can retrieve again.</li>
+            <li><strong>Authoritative payload</strong>The system retains authoritative source or retained original bytes that people and approved tools can retrieve again. Images retain normalized pixels only.</li>
             <li><strong>Immutable content versions</strong>Each retained content change creates a new revision instead of silently overwriting history.</li>
             <li><strong>Search and ownership</strong>Artifacts stay findable and accountable outside the chat or laptop where they began.</li>
             <li><strong>Permissions and audit</strong>Reads and writes pass through one authority model and important changes remain explainable.</li>
-            <li><strong>Format-aware safe use</strong>Markdown, executable HTML, images, and future documents need different preview and processing boundaries.</li>
+            <li><strong>Format-aware safe use</strong>Markdown, executable HTML, images, and opt-in documents need different preview and processing boundaries.</li>
           </ul>
         </section>
 
@@ -110,7 +108,7 @@
         <section id="scope">
           <p class="kicker">ArtifactFlow today</p>
           <h2>The public alpha implements a narrow, testable slice.</h2>
-          <p>ArtifactFlow currently supports Markdown pages with Mermaid diagrams, self-contained single-file HTML artifacts, normalized PNG/JPEG images, and default-off native-text PDF, typed XLSX, and searchable DOCX artifacts in personal or shared workspaces. Approved AI clients can search and retrieve bounded authoritative or derived content, create supported artifacts, update editable descriptions, and preserve new versions through scoped MCP operations.</p>
+          <p>ArtifactFlow is a shared, model-agnostic workspace built on these artifact-management foundations. It currently supports Markdown pages with Mermaid diagrams, self-contained single-file HTML artifacts, normalized PNG/JPEG images, and default-off native-text PDF, typed XLSX, and searchable DOCX artifacts in personal or shared workspaces. Approved AI clients can search and retrieve bounded authoritative or derived content, create supported artifacts, update editable descriptions, and preserve new versions through scoped MCP operations.</p>
           <p>Each binary format requires its explicitly enabled isolated processor boundary; DOCX additionally requires independent validation by the PDF processor. PDF OCR remains a later candidate. Broad public sharing, a marketplace, AI generation, general static hosting, and full Confluence parity are not part of the current product boundary.</p>
           <div class="page-links">
             <a class="page-link" href="/workflow/"><strong>Artifact workflow</strong><span>Current identity, version, draft, metadata, and format invariants.</span></a>
@@ -133,16 +131,11 @@
   </article>
 </main>
 
-<footer class="site-footer">
-  <div class="shell">
-    <div class="footer-grid">
-      <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">A self-hosted, versioned artifact vault for tools and documents created with AI.</p></div>
-      <div class="footer-column"><strong>Explore</strong><a href="/">Home</a><a href="/workflow/">Artifact workflow</a><a href="/security/">Safety</a><a href="/mcp/">MCP server</a><a href="/self-hosting/">Self-hosting</a><a href="/engineering-harness/">Engineering harness</a><a href="/roadmap/">Roadmap</a></div>
-      <div class="footer-column"><strong>Guides</strong><a href="/guides/ai-artifact-vault/" aria-current="page">AI artifact vault</a><a href="/guides/safe-ai-generated-html/">Safe generated HTML</a><a href="/guides/ai-artifact-storage/">Where artifacts live</a></div>
-      <div class="footer-column"><strong>License</strong><span>AGPL-3.0-or-later</span><a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a><a href="mailto:gadsotek@gmail.com">Contact</a></div>
-    </div>
-    <div class="footer-end"><span>© 2026 Gadsotek</span><span>Preserves the output, not the conversation.</span></div>
-  </div>
-</footer>
+<footer class="site-footer"><div class="shell"><div class="footer-grid">
+  <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">The open-source, self-hosted workspace for AI-generated artifacts.</p></div>
+  <div class="footer-column"><strong>Product</strong><a href="/#product">Overview</a><a href="/workflow/">How it works</a><a href="/mcp/">MCP</a><a href="/security/">Security</a><a href="/self-hosting/">Self-hosting</a></div>
+  <div class="footer-column"><strong>Explore</strong><a href="/guides/ai-artifact-vault/">What is an artifact vault?</a><a href="/guides/ai-artifact-storage/">Where should AI work live?</a><a href="/guides/safe-ai-generated-html/">Running generated HTML</a><a href="/roadmap/">Roadmap</a><a href="/engineering-harness/">Engineering harness</a><a href="/llms.txt">For AI readers</a></div>
+  <div class="footer-column"><strong>Open source</strong><a href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md">Threat model</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/SECURITY.md">Security policy</a><span>AGPL-3.0-or-later</span><a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a><a href="mailto:gadsotek@gmail.com">Contact</a></div>
+  </div><div class="footer-end"><span>© 2026 Gadsotek</span><span>Preserves the output, not the conversation.</span></div></div></footer>
 </body>
 </html>

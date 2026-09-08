@@ -1,131 +1,78 @@
-# Security Policy
+# Security policy
 
-ArtifactFlow is a **security-sensitive**, self-hosted, versioned artifact vault for tools and
-documents created with AI. Its current core includes storing and rendering **untrusted,
-AI-generated HTML** and Markdown for multiple tenants. We take vulnerability reports seriously and
-appreciate responsible disclosure.
+ArtifactFlow is a self-hosted workspace for AI-generated artifacts, backed by
+a versioned artifact vault. It handles executable HTML and hostile binary input.
+Read the [threat model](THREAT-MODEL.md) before relying on its isolation.
 
-## Reporting a vulnerability
+## Report privately
 
-**Please do not open a public issue for security problems.** Public issues expose other users
-before a fix is available.
+Use [GitHub private vulnerability reporting](https://github.com/Gadsotek/artifactflow/security/advisories/new)
+or email [gadsotek@gmail.com](mailto:gadsotek@gmail.com) with subject
+`[ArtifactFlow security]`. PGP is available on request. Do not open a public
+issue or PR exposing a live vulnerability.
 
-Report privately via one of:
-
-1. **GitHub Security Advisories** (preferred): use the repository's **Security → Report a
-   vulnerability** ("Report a vulnerability" / private advisory) form.
-2. **Email**: `gadsotek@gmail.com` with subject `[ArtifactFlow security]`. PGP available on
-   request.
-
-Please include: a description, the affected version/commit, reproduction steps or a proof of
-concept, and the impact you observed. If you have a suggested fix, even better.
-
-### What to expect
-- **Acknowledgement** within 3 business days.
-- An initial assessment (severity, scope) within 7 business days.
-- We will keep you updated, credit you in the advisory (unless you prefer to remain anonymous),
-  and coordinate a disclosure timeline with you. Please allow a reasonable window to ship a fix
-  before any public disclosure.
+Include the affected version/commit, reproduction steps or proof of concept,
+and observed impact. We aim to acknowledge within **3 business days** and
+provide an initial assessment within **7 business days**. We coordinate fixes,
+disclosure, and credit; anonymity is available on request.
 
 ## Scope
 
-In scope: authentication/authorization and tenant isolation, the artifact rendering sandbox and
-origin isolation, signed-URL handling, server-side injection (SQLi/SSRF/path traversal), stored
-or reflected XSS on the application origin, CSRF, and insecure defaults in the shipped
-configuration.
+Reports should demonstrate impact on authentication, authorization, private
+data, origin/sandbox isolation, signed capabilities, server injection, app-origin
+XSS, CSRF, parser containment, or secure shipped defaults.
 
-Out of scope (unless they lead to one of the above): findings that require an already-compromised
-host or a misconfigured deployment that contradicts the documented setup; rate-limiting/volumetric
-DoS without amplification; missing hardening headers with no demonstrated impact; and the artifact
-sandbox executing the script content it is *designed* to execute in isolation (that is the
-intended model; see below).
+Artifact HTML intentionally executes JavaScript inside its isolated frame.
+Execution alone is not an escape. Report paths that exceed the documented
+boundary, including unexpected network behavior.
 
-## The artifact sandbox: understand the model first
+Compromised hosts, deployments contradicting required configuration, ordinary
+volumetric DoS without amplification, and missing headers without demonstrated
+impact are outside vulnerability scope unless they produce a covered defect.
+Unclear setup instructions still deserve a documentation report.
 
-A core, intentional design property is that **artifact HTML/JS executes**; it is contained by
-**origin isolation + an iframe sandbox + a strict Content-Security-Policy**, not by trying to
-sanitize the script away. Before reporting "the artifact ran JavaScript," please read
-[`THREAT-MODEL.md`](THREAT-MODEL.md), which documents exactly which controls are load-bearing.
-The interesting reports are ones that **escape** that containment (reach the application origin,
-another tenant's data, or the network), not ones that execute inside it.
+## Deployment requirements
 
-## Self-hosting note
+- Use `APP_ENV=production`. Local/testing configuration relaxes protections.
+- Keep app and artifact host on distinct HTTPS hostnames with no app cookies
+  reaching the artifact host. Ports alone do not isolate cookies.
+- Use restricted artifact-host database grants and separate database limiter
+  stores. Redis, Memcached, and DynamoDB limiter aliases are not supported in
+  the current production contract.
+- Keep private storage and dedicated processors isolated. Enable PDF/XLSX/DOCX
+  only after their deployment checks; DOCX also requires PDF.
+- Verify image digests/attestations, deliverable mail, recovery custody, and
+  tested backups through the [release checklist](RELEASE-CHECKLIST.md).
 
-ArtifactFlow is self-hostable, so deployment configuration is part of its security posture. The
-isolation guarantees depend on serving the app and the artifact host on **distinct origins** and
-on the settings in [`RELEASE-CHECKLIST.md`](RELEASE-CHECKLIST.md). A report that only reproduces
-under a configuration that violates that checklist is a documentation issue, not a vulnerability.
-But tell us, because the docs should make the safe path the easy one.
+## Known limits
 
-## Known limitations and operational requirements
+Prompt injection remains a client risk. MCP scopes, live authorization, Editor
+ceilings, concurrency, per-principal rate limits, and scanning enforce server
+operations. A client's human approval screen is not a server guarantee.
 
-Honest boundaries a self-hoster should understand before relying on ArtifactFlow:
+HTML self-navigation may send embedded or user-entered data externally;
+WebRTC blocking is browser-dependent. Revocation cannot erase delivered bytes.
+PDF/DOCX-PDF viewing is download-equivalent. Scanning and previews are not
+antivirus or redaction certificates. See the [threat model](THREAT-MODEL.md).
 
-- **The fail-closed boot gate requires `APP_ENV=production`.** The production safety checks
-  (overlapping origins, weak/reused signing key, non-HTTPS, public artifact storage, insecure
-  sessions, trusted-proxy sanity, …) run only when `APP_ENV` resolves to `production`; deploying
-  internet-facing with `APP_ENV=local`/`testing` disables the gate *and* relaxes the app CSP. The
-  default when `APP_ENV` is unset is `production`, and any value outside `{local, testing, build,
-  production}` aborts the boot — so this only bites if you explicitly ship a development env value.
-- **Prompt injection is not solved.** Page content is treated as untrusted *data* and structurally
-  framed (the MCP untrusted-data envelope, strict output escaping), but an AI client you point at
-  ArtifactFlow can still be influenced by content it reads. Do not grant a write-capable MCP token
-  to an agent you also feed untrusted external content; rely on scoping, the audit trail, and
-  revert for recovery.
-- **MCP write approval, if any, is a property of your client, not the server.** Server-side write
-  controls are: token workspace-scope + hard Editor cap, a fresh-TOTP step-up to mint a token,
-  per-token rate limiting, the unconditional on-save content scanner, and the audit trail. A
-  different MCP client may not prompt a human before writing.
-- **Run the app and artifact host with distinct database grants.** They share one image today, but
-  the artifact host needs more than read-only `pages`/`page_versions`: external preview validation
-  reads share/session/policy rows and uses row locks, while its database-backed rate limiter writes
-  only `artifact_rate_limit_cache`. Application security counters remain in the separately granted
-  `rate_limit_cache`; a better request fingerprint cannot replace this credential boundary. Use the
-  reviewed manifest in
-  [`docs/operations/artifact-host-database-grants.sql`](docs/operations/artifact-host-database-grants.sql)
-  and network-segment the role. The production gate currently fails closed for Redis, Memcached, and
-  DynamoDB limiter aliases because their ACL, network, or IAM boundary cannot be proven from Laravel
-  cache configuration. Do not grant general application-table writes.
-- **Hard account/workspace deletion is not supported.** User-authorship foreign keys
-  (page/version/grant authors and owners) have no `ON DELETE` action, so the database
-  refuses to drop a user that still authored content, and there is no application
-  delete/anonymize flow, so authored users and workspaces persist. If you have a
-  right-to-erasure obligation, handle it out of band until a supported flow exists.
-- **Search relevance depends on an application-maintained index.** The full-text `search_vector`
-  denormalizes owner/workspace/category/tag names and is refreshed by application code on every
-  write path (no database trigger backstop). If you extend the code, preserve that refresh contract
-  or rebuild with `php artisan artifactflow:reindex-search`.
+There is no general account erasure/anonymization workflow. Authorship records
+and backups require an operator retention policy. Supported workspace deletion
+is deliberately constrained; do not remove records directly to bypass it.
 
-## Repository-shipped AI agent hooks
+## Agent hooks
 
-This repository ships agent guard hooks: `.claude/settings.json` for Claude Code and
-`.codex/hooks.json` for Codex, both backed by the Python scripts in `scripts/ai-hooks/`. Because a
-repository that ships agent hooks runs them locally in the agent of anyone who opens it, they are a
-fair thing to inspect before you trust them, and we would rather point you at them than have you
-wonder.
-
-- **What they are.** Pre-action guard scripts. Before the assistant writes a file or runs a command,
-  the relevant script (`guard_file_write.py`, `guard_command.py`, `guard_prompt.py`, driven by
-  `policy.py`) inspects the proposed action and returns a verdict: allow, ask for confirmation, or
-  deny. As Claude Code and Codex pre-tool-use hooks, that verdict is their only influence over the
-  assistant: they gate the assistant's own actions, they do not grant it new capabilities.
-- **What they block or escalate.** The actions this project treats as unsafe for an assistant to take
-  on its own. Secret, generated, deletion, and Git-internal writes are denied. Editing AI
-  instructions, security contracts, the Makefile, hooks, policy, CI, or enforcement configuration
-  requires explicit approval. Pushes and destructive external actions also require approval, while
-  database-touching test commands are denied unless they use the isolated `make test` wrapper.
-- **Verify rather than trust.** The full source is in `scripts/ai-hooks/`, the wiring is in
-  `.claude/settings.json` and `.codex/hooks.json`, and the behavior is covered by
-  `scripts/ai-hooks/run_harness.py` (run in CI via `make ai-hooks-test`). The policy is split by
-  responsibility so each part can be inspected independently. Every invocation also emits a
-  non-sensitive stderr marker and appends an ignored local JSONL record to
-  `storage/logs/ai-hooks.jsonl`; neither output contains prompt, command, path, or credential data.
-  The same inspection habit applies to any repository that ships agent hooks: read them first.
+Tracked `.claude/` and `.codex/` settings can run repository-shipped pre-action
+hooks when those tools trust/activate the project. Inspect
+[their source and policy](scripts/ai-hooks/README.md) before using them.
+They gate agent actions, protect secrets and data, and require approval for
+protected changes and pushes; they do not add capabilities. Verify with
+`make ai-hooks-test`. Their local telemetry excludes prompt, command, path,
+and credential contents.
 
 ## Supported versions
 
-This project is pre-1.0; security fixes are applied to the latest `main`. Pin a commit and update
-forward for fixes until tagged releases exist. Supported deployments are Docker-first: use the
-bundled Compose stack for local evaluation and development, or deploy the production image as the
-separate runtime roles documented in the operations guide. The bundled `docker-compose.yml` is not
-a production template. Bare-metal/`composer install` deployments are not supported.
+ArtifactFlow is pre-1.0. Security fixes target the latest `main`; tagged releases
+exist. Pin a reviewed revision or verified image digest and update forward.
+Docker is the supported runtime: bundled Compose for local development,
+production images with separate roles for deployment. Bare-metal installs are
+not supported. No independent third-party security audit has been completed.

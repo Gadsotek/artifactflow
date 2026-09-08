@@ -1,73 +1,20 @@
-# ArtifactFlow: Architecture (one-pager)
+# Architecture maps and decisions
 
-ArtifactFlow is a self-hosted, versioned artifact vault for tools and documents created with AI. These diagrams show how the current Markdown, HTML, raster-image, and feature-gated PDF, XLSX, and DOCX artifact types move through that vault and how untrusted execution and parser work stay isolated from authenticated data.
+ArtifactFlow is a self-hosted workspace backed by a versioned artifact vault.
+Start with the [architecture overview](../ARCHITECTURE.md).
 
-Two self-contained SVGs (open in any browser; embeddable in the main README):
+| Diagram | Shows |
+| --- | --- |
+| [System map](overview.svg) | Runtime boundaries, layers, and modules |
+| [Design and workflows](workflows.svg) | Storage, preview, and request flows |
 
-> For the full **written** architecture — layers, application modules, the runtime-role split — see [`../ARCHITECTURE.md`](../ARCHITECTURE.md). This page is just the diagram index.
+| Decision | Contract |
+| --- | --- |
+| [External sharing](external-sharing.md) | Expiring or one-time page capabilities, isolated viewer sessions, live revocation |
+| [Nested workspaces](nested-workspaces.md) | Three levels, downward membership inheritance, exact MCP scope |
+| [PDF](pdf-artifacts.md) | Default-off validation, native text, download-equivalent viewing |
+| [XLSX](xlsx-artifacts.md) | Default-off typed projection and isolated read-only grid |
+| [DOCX](docx-artifacts.md) | Default-off conversion with independent PDF validation |
 
-| Diagram | What it answers |
-|---|---|
-| [`overview.svg`](overview.svg) | **Where what lives**: the layers, the application modules, and the directory map |
-| [`workflows.svg`](workflows.svg) | **Design & workflows**: the two-origin security model + the request flows that matter |
-
-Accepted security-sensitive architecture decisions:
-
-- [`external-sharing.md`](external-sharing.md): fragment capability exchange,
-  one-time redemption, isolated window-lived viewing sessions, scoped MCP
-  creation, lifecycle invalidation, and safe type-specific presentation for
-  external artifact shares.
-- [`nested-workspaces.md`](nested-workspaces.md): three-level shared-workspace
-  hierarchy, downward role inheritance, exact MCP scope semantics, serialized
-  hierarchy writes, and descendant access revocation.
-- [`pdf-artifacts.md`](pdf-artifacts.md): private PDF originals, isolated bounded
-  validation and embedded-text extraction, browser-native viewing on the existing
-  cookieless artifact origin, authorization-first search snippets, restricted
-  artifact-host grants, and the focused security proof required before its
-  default-off implementation can be production-enabled.
-- [`xlsx-artifacts.md`](xlsx-artifacts.md): exact workbook originals, strict
-  isolated SheetJS projection, canonical typed manifests, an application-owned
-  opaque-origin grid, lifecycle/search/sharing/MCP behavior, and production gates.
-- [`docx-artifacts.md`](docx-artifacts.md): exact Word originals, strict isolated
-  LibreOffice-to-PDF conversion, independent PDFBox validation and text
-  extraction, derived-only sharing, and the dual-processor production boundary.
-
-> Diagrams reflect the *actual* current code. Yes, the implementation is AI-assisted; the rigor behind it (repeated security audits, PHPStan-max, a documented threat model, a broad test suite including browser-level sandbox proofs) is the point.
-
-## The 30-second model
-
-**Layered, modular, two-origin Laravel app.**
-
-- **HTTP** (`app/Http`): thin controllers (parse → authorize → delegate → respond), a middleware pipeline that enforces the runtime-role split + security headers + password/admin-2FA sudo step-up, and FormRequests for validation.
-- **Application** (`app/Application`): where the logic lives, as `command → handler` use-cases:
-  - `Identity/`: users, workspaces (Personal/Shared), memberships (Admin/Editor/Reader), invitations.
-  - `PageCatalog/` ★ (the core): pages (Markdown | HtmlArtifact | Image | Pdf | Xlsx | Docx), immutable versions and derivatives, access grants, categories/tags, search, rendering, and artifact-preview/original signing and serving.
-  - `Provenance/`: observed version ingests, declared producers, external origin references, and restore lineage.
-  - `Administration/`: installation-wide limit settings (newest, cleanest code).
-  - `Events/` (transactional outbox) + `Audit/` (append-only trail): cross-cutting.
-  - `PageAccess`: the central authorization service: `canView` / `canEdit` (content) / `canManageAccess` + `canChangeAccessMode` + `canArchive` + `canHardDelete` + `canTransferOwnership` (admin-class). Thin Laravel Policies (`app/Policies`) delegate to it so routes can use `can:` middleware as a defense-in-depth backstop (see `docs/ARCHITECTURE.md`).
-- **Domain** (`app/Domain`): backed enums + exceptions (anemic; rules live in Application).
-- **Persistence**: Eloquent models (ULID PKs, `$fillable`-guarded under strict mass-assignment) → PostgreSQL (incl. a `search_vector` GIN index, `domain_events`, `audit_entries`) + an `artifacts` filesystem disk (`pages/{uid}/versions/{n}-{version_uid}/…`).
-- **Cross-cutting / boot**: `Infrastructure/Security/ProductionSecurityConfiguration` (fail-closed prod boot) and `Providers/AppServiceProvider` (strict mass-assign, rate limiters, the outbox listener).
-
-## The crown jewel: the two-origin "cage"
-
-Untrusted AI-generated HTML is contained by **isolation, not sanitisation**:
-
-- **App origin** (`APP_RUNTIME_ROLE=app`): cookie/session, CSRF, nonce-CSP, `RejectArtifactHostRuntime`. The user's trust boundary; nothing untrusted executes here.
-- **Artifact-host origin** (`APP_RUNTIME_ROLE=artifact-host`): cookieless, `RequireArtifactHostRuntime`, serves untrusted artifact bytes with `sandbox allow-scripts; connect-src 'none'; default-src 'none'`. The artifact's JS *runs* here: in an opaque origin with no cookies, no network, and no reach back to the app origin.
-- They're the **same codebase**; `runtime_role` (config) flips the behaviour. Saved versions cross the boundary through short-lived **HMAC-signed URLs**; unsaved drafts use short-lived HMAC capabilities bound to the exact content. Both load into an `<iframe sandbox="allow-scripts">` (no `allow-same-origin`).
-
-See `workflows.svg` for the full create-page write pipeline, the cross-origin preview flow, the admin 2FA step-up, and the outbox.
-
-## Current cleanup state
-
-- The page write pipeline is factored through explicit collaborators such as `PageVersionWriter`, `WorkspaceStorageQuota`, `TagSynchronizer`, `ActorId`, and `SlugGenerator`.
-- Authorization is enforced by the shared `PageAccess` application service and handler-level checks, with route-level `can:` middleware backed by thin Policies as a second layer.
-- **MCP ships today**: `POST /mcp` uses the official Laravel MCP transport (`app/Mcp/`) over scoped ArtifactFlow bearer-token and tool behavior (`app/Application/Mcp/`). Reverb-backed realtime presence/locking (`pages.presence.update`, broadcast auth via `PageAccess`) is also part of the runtime surface.
-- **AI provenance ships today**: optional MCP declarations retain exact or partial safe provider/model claims without inventing missing precision, while unverified MCP-reported client metadata and observed ingest facts remain separate. The implemented public contract is summarized here and in the artifact-lifecycle guide; detailed product and decision records remain internal.
-
-## Genuinely future surfaces
-
-- Public (non-MCP) APIs.
-- Collaborative editing.
+The [threat model](../../THREAT-MODEL.md) explains controls and residual risks.
+[Operations](../OPERATIONS.md) explains how to run and verify them.

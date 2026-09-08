@@ -1,434 +1,180 @@
-# External Artifact Sharing Architecture Decision
+# External artifact sharing
 
-Status: Accepted
-Date: 2026-07-29
-Scope: Anonymous expiring and one-time page-share capabilities
+Implemented narrow anonymous page capabilities. First released in v0.0.7.
+This is not public browsing, recipient identity, or a general publishing system.
 
-## Context
+## Scope
 
-ArtifactFlow needs a deliberately narrow way to share the latest artifact with
-a person who has no installation account. A human page access manager may
-create a share in the application. An explicitly scoped MCP principal may
-create one only for an in-scope page it owns and can still edit while that
-workspace allows Editors and page owners to share pages. This is not public
-publishing: a recipient receives a high-entropy bearer capability for one page
-and no catalog, workspace, identity, search, source, history, editing, MCP, or
-separate ArtifactFlow download authority. A native PDF view necessarily
-transfers either retained PDF bytes or a derived DOCX-preview PDF to the
-recipient's browser and is explicitly treated as download-equivalent.
+| Mode | Contract |
+| --- | --- |
+| Expiring | Required expiry; may start multiple viewing sessions before it |
+| One-time | No expiry; exactly one successful explicit redemption |
 
-The product contract defines exactly two mutually exclusive modes:
+Both follow the latest current version of one page and are manually revocable.
+No workspace, taxonomy, identity, search, source, history, provenance, editing,
+MCP, realtime, or authenticated navigation is exposed. Original Office files
+are never shared. Native PDF/DOCX-PDF viewing is download-equivalent even
+though no separate anonymous download endpoint exists.
 
-- an expiring link may start multiple viewing sessions until its required
-  expiry;
-- a one-time link has no expiry and may start exactly one viewing session.
-
-Every share follows the page's latest current version. It is manually
-revocable, fails closed after page archival, deletion, workspace movement, or a
-relevant access-boundary change, and uses the existing safe presentation
-boundary for each page type. Exact XLSX and DOCX originals are never shared;
-their external presentations use only validated derivatives.
-
-## Decision
-
-Use four distinct capabilities:
+## Capability flow
 
 ```text
-raw share secret
-    fragment-only, presented once, exchanged once per browser bootstrap
-        ↓
-pending-open session
-    server-stored, short-lived, no artifact authority
-        ↓ explicit same-origin open
-external-view session
-    HttpOnly browser-session cookie, server-stored without an arbitrary timeout
-        + per-window proof
-    sessionStorage only, issued to the redeeming top-level browser context
-        ↓
-short-lived artifact-preview URL
-    existing artifact-origin sandbox, additionally bound to the share
+fragment share secret
+  -> same-origin POST exchange
+  -> pending-open credential when confirmation is required
+  -> explicit open POST for every one-time link
+  -> separate anonymous view cookie + per-window proof
+  -> live-authorized content and short-lived artifact URL
 ```
 
-The raw share secret is never an authenticated application session and never
-appears in an HTTP request target. The pending-open and external-view
-credentials are independent, opaque, narrowly scoped cookies whose hashes are
-stored server-side. Artifact content requires both the external-view cookie and
-the separate per-window proof. This prevents an independently opened anonymous
-window that shares only the browser's cookie jar from reusing the winning
-one-time viewing session. It does not stop an authorized recipient from
-deliberately cloning client-held state.
+The raw secret, pending credential, view credential, and signed preview are
+distinct. None is the authenticated Laravel session.
 
-## Capability URL and bootstrap
+The creator receives `https://app.example/external-shares/{share_uid}#secret=...`
+once. The selector is a non-secret ULID; the secret is 256 random bits in
+unpadded base64url. Store only a domain-separated SHA-256 hash and compare
+with `hash_equals`.
 
-The sender receives this shape exactly once:
+Bootstrap GET never looks up or consumes the share. First-party script validates
+the fragment, removes it immediately with `history.replaceState`, and sends
+it only in a same-origin POST body. There is no path/query or no-JavaScript
+fallback. Without JavaScript, show generic guidance without artifact metadata.
 
-```text
-https://app.example/external-shares/{share_uid}#secret={base64url-secret}
-```
-
-The selector is a non-secret ULID. The secret contains 256 cryptographically
-random bits encoded as unpadded base64url. Persistence stores only a
-domain-separated SHA-256 hash of the decoded secret. Hash comparison uses
-`hash_equals`.
-
-`GET /external-shares/{share_uid}` returns the same minimal, first-party
-bootstrap document without looking up or disclosing share state. A small
-nonce-authorized first-party script:
-
-1. reads and validates the fragment grammar;
-2. immediately removes the fragment with `history.replaceState`;
-3. sends the selector and secret in the body of a same-origin `POST` exchange;
-4. replaces the bootstrap with the interstitial, neutral confirmation, viewer,
-   or uniform unavailable state returned after validation.
-
-JavaScript is required for the external share flow. There is no query-string,
-path-token, form fallback, or server-side fragment workaround because each
-would put the reusable bearer secret into request URLs, proxy logs, referrers,
-or HTML. With JavaScript unavailable, the bootstrap shows a generic message
-without artifact metadata.
-
-The bootstrap, exchange, open, viewer, and unavailable responses use:
-
-- `Cache-Control: no-store, private`;
-- `Referrer-Policy: no-referrer`;
-- `X-Robots-Tag: noindex, nofollow, noarchive`;
-- a restrictive nonce-based application CSP with no third-party resources;
-- no private artifact metadata before successful capability exchange.
-
-`GET /external-shares/{share_uid}/sessions/{view_session_uid}/viewer` is a
-metadata-free application shell. The non-secret view-session UID scopes the
-HttpOnly cookie path so separate permitted windows for one expiring share keep
-independent credentials; the credential and per-window proof remain required.
-After redemption, the bootstrap stores a keyed, domain-separated proof of the
-external-view credential in that top-level browsing context's
-`sessionStorage`, then navigates to the shell. The proof is never put in a URL,
-cookie, server-side persistence, or rendered HTML. The shell retrieves artifact
-content through a same-origin `POST` that requires both the HttpOnly view
-cookie and the per-window proof. A reload in the winning context retains the
-proof; an independently opened anonymous window receives only the uniform
-unavailable surface even when its browser profile shares the view cookie.
-Browsers can copy `sessionStorage` into an opener-created auxiliary context,
-and an authorized recipient can copy the proof deliberately; this mechanism is
-window-lifecycle friction, not recipient identity or DRM.
-
-The complete URL is not emitted by ArtifactFlow email, analytics, events,
-audits, exceptions, metrics, or logs. Operators must still configure edge and
-application logging not to record request bodies.
-
-## Persistence
-
-### `external_shares`
-
-- `uid` ULID primary key and non-secret selector;
-- `page_uid` foreign key with cascade on hard deletion;
-- `secret_hash` fixed lowercase SHA-256;
-- `mode` (`expires_at` or `one_time`);
-- required `expires_at` only for expiring mode;
-- copied `page_workspace_uid` and `page_access_revision` at creation;
-- creator UID and creation timestamp;
-- nullable redemption timestamp;
-- nullable revocation timestamp and revoker UID;
-- bounded first-view/session-count facts plus a coarsely refreshed last successful viewer-activity timestamp.
-
-Database checks enforce the exclusive mode/expiry combinations. A one-time row
-can move from active to redeemed once and can never be reset. An expiring row
-can move from active to expired only through time. Revocation is terminal.
-
-### `external_share_sessions`
-
-- `uid` ULID primary key;
-- share foreign key with cascade;
-- `credential_hash` fixed lowercase SHA-256;
-- `kind` (`pending_open` or `view`);
-- hard `expires_at` for pending-open sessions and no independent expiry for
-  window-lived view sessions;
-- nullable consumed timestamp for a pending credential;
-- creation timestamp.
-
-Raw session credentials are never persisted. Terminal or expired pending-open
-session rows are short-lived operational records and are pruned after 24
-hours. Each share retains at most 100 window-lived view sessions by default;
-issuing another evicts the oldest session under the already-locked share, and
-operators may lower or raise that positive ceiling. The viewer cookie uses a
-dedicated name, `HttpOnly`, `Secure` in HTTPS
-deployments, `SameSite=Strict`, no persistent expiry, and a path limited to the
-selected share surface. It is not read by the normal Laravel authentication
-guard.
-
-## Installation policy and limits
-
-The installation settings record gains:
-
-- `external_sharing_enabled`, default `false` on existing and new
-  installations;
-- `external_share_acknowledgement_required`, default `true`;
-- `external_share_max_expiry_hours`, stored internally as 168 hours (7 days) by
-  default, with a hard ceiling of 720 hours (30 days). The System Admin form
-  exposes this as whole days from 1 through 30 and converts it to hours at the
-  request boundary.
-
-Enabling or changing the policy requires System Admin authority and recent
-live two-factor confirmation, and records non-secret events and audit entries. The
-global disable switch blocks creation and new sessions without deleting
-inventory.
-
-Operator configuration bounds active shares to 20 per page and 10,000 per
-installation. These are hard ceilings rather than recipient-visible product
-settings. Creation locks the page before both counts are rechecked. Rate limits
-apply per actor/page for creation, per source/selector/operation for exchange
-and open, and per source across every selector and public operation. Limit
-responses remain indistinguishable from other unavailable states on the public
-surface. When the limiter uses the database cache store, the scheduler prunes
-expired counter rows nightly so attacker-chosen selectors cannot leave
-unbounded stale cache rows.
-
-The creation form mirrors the configured expiry ceiling through the native
-date-time control's maximum so recipients cannot select a known-invalid
-expiry. The server independently validates the same limit.
+All public responses use private no-store, no-referrer, noindex/nofollow/noarchive,
+nonce CSP, and no third-party resources. Never log request bodies or copy raw
+URLs into email automation, analytics, events, audits, metrics, or exceptions.
 
 ## Creation and revocation
 
-Creation and revocation are application handlers, not controller or model
-workflows.
+Creation validates mode/UTC expiry, locks the page then its workspace in the
+established order, and rechecks creator authority, page state, live sharing
+policy, format enablement, and active-share ceilings before persisting a hash.
 
-Creation:
+| Caller | Required authority |
+| --- | --- |
+| Browser | Human with live `PageAccess::canManageAccess` |
+| MCP | `mcp:share`, exact workspace scope, page ownership, live edit access, and effective `allow_editor_page_sharing` |
 
-1. validates typed mode and normalized UTC expiry at the HTTP or MCP boundary;
-2. starts a transaction, locks the page, then locks and reads its workspace
-   sharing policy in the established page-to-workspace order so disabling
-   editor sharing cannot commit between creator authorization and share
-   creation;
-3. rechecks the creator contract and page state: the browser path requires a
-   human actor with live `PageAccess::canManageAccess`, while the MCP path
-   requires `mcp:share`, token-workspace reach, live edit authority, and page
-   ownership by the MCP principal, plus the workspace's live
-   `allow_editor_page_sharing` policy;
-4. for PDF, XLSX, or DOCX, rechecks that every processor required by that
-   format is enabled;
-5. rechecks installation policy and active-share bounds;
-6. generates the share secret and persists only its hash;
-7. records `page.external_share.created` in both the durable event journal and
-   user-facing audit trail, including non-secret MCP token/session attribution
-   when applicable;
-8. commits before returning the raw URL once.
+MCP is Editor-capped even for an underlying Admin and grants no list, revoke,
+or access-management capability. Human/service-account principals follow the
+same owner rule. The returned bearer URL must not enter artifacts, metadata,
+prompts, traces, or logs.
 
-Revocation locks the page and share in that order, rechecks manage-access
-authority, marks the row terminal, deletes its pending/view sessions, and
-records `page.external_share.revoked`. Repeated revocation is idempotent.
+Creation records `page.external_share.created` with non-secret actor/token/session
+attribution, commits, then returns the URL once. Revocation locks page then
+share, reauthorizes access management, terminally revokes, deletes its sessions,
+and records `page.external_share.revoked`. Repeated revocation is idempotent.
 
-MCP share creation is deliberately narrower than browser share management.
-`mcp:share` grants no list, revoke, access-management, or administrator
-capability. Human and service-account principals may use it only for a page
-they own, can still edit, and can reach through the token's workspace ceiling,
-and only while the workspace allows Editors and page owners to share pages.
-Because MCP authority is always de-elevated to Editor, even an underlying
-workspace administrator cannot bypass that switch through the tool. The
-`create_external_share` result returns the bearer URL once alongside non-secret
-share metadata. MCP clients must treat that URL as a secret and must not copy
-it into artifacts, metadata, prompts, traces, or logs.
+## Policy and storage
 
-## Exchange, acknowledgement, and open
+| Setting/limit | Default and boundary |
+| --- | --- |
+| Sharing enabled | False on new and existing installations |
+| Acknowledgement required | True |
+| Maximum expiring lifetime | 7 days; UI permits 1..30 whole days, stored as hours with ceiling 720 |
+| Active shares | At most 20 per page and 10,000 per installation |
+| Retained view sessions | 100 per share by default; new issuance evicts oldest under lock |
+| Pending-open lifetime | Five minutes |
+| Last-viewed refresh | At most once per five minutes |
 
-Exchange validates installation policy, selector/secret, page state, copied
-workspace UID, copied access revision, mode state, and expiry. Every invalid
-case returns the same unavailable representation.
+System Admin changes installation policy only after recent live 2FA, with
+audit/events. Global disable blocks creation, sessions, viewer loads, and
+renewal while retaining inventory.
 
-After successful exchange:
+`external_shares` stores page, copied workspace/access revision, mode/expiry,
+creator, terminal state, hash, and bounded activity facts. Database checks
+enforce exclusive mode/expiry combinations. Redemption cannot be reset.
+`external_share_sessions` stores kind, share, credential hash, timestamps, and
+pending expiry/consumption. View sessions have no independent countdown.
+Hard page deletion cascades both tables.
 
-- acknowledgement-required installations issue a five-minute pending-open
-  session and show the fixed warning;
-- acknowledgement-disabled one-time shares issue the same pending-open session
-  and show a neutral **Open artifact** confirmation;
-- acknowledgement-disabled expiring shares immediately create a view session
-  and enter the viewer.
+Cookies are opaque, dedicated, HttpOnly, SameSite Strict, secure on HTTPS,
+non-persistent, and narrowly path-scoped. The non-secret viewer session UID
+separates permitted expiring-share windows' cookie paths.
 
-The title and live/latest label appear only after successful exchange, escaped
-as untrusted text. The sharer's display name is never exposed.
+## Exchange and explicit open
 
-The open `POST` requires the pending cookie, a matching same-origin CSRF token,
-and Origin/Sec-Fetch-Site validation. It consumes the pending session.
+Exchange rechecks secret, policy, page, copied workspace/access revision,
+share mode/state, and expiry. After successful exchange:
 
-For a one-time share, the transaction locks the page and share in the standard
-order, rechecks all state, writes `redeemed_at`, and creates the winning view
-session before commit. Exactly one concurrent transaction can win. For an
-expiring share, the same transaction creates a view session only if expiry is
-still in the future.
+- acknowledgement enabled: issue a pending session and fixed safety warning;
+- acknowledgement disabled, one-time: issue pending session and neutral open confirmation;
+- acknowledgement disabled, expiring: issue a view session immediately.
 
-View sessions have no independent countdown. Viewer content and external
-preview-URL renewal require the per-window proof retained by the redeeming
-top-level browser context. Reloading that context continues to work for as long
-as it remains open and the live share/page checks pass. Closing it normally
-removes the practical viewing authority because an independently opened window
-does not have its `sessionStorage` proof. This assumes the recipient did not
-deliberately clone or copy that client-held proof. A still-active expiring link
-may start a new session through a fresh secret exchange, but every such session
-remains bounded by the share's own expiry.
+Only then expose escaped title/live labels, never the sharer's identity.
+Open POST requires pending cookie, matching CSRF, and same-origin Origin/
+Sec-Fetch-Site checks. Under page/share locks it rechecks live state, consumes
+pending authority, and creates the view session. A one-time winner also sets
+`redeemed_at`; exactly one concurrent redemption wins.
 
-The first successful session records `page.external_share.opened`. A one-time
-winner also records `page.external_share.consumed`. Session issuance updates the
-bounded first-view and count fields. Successful viewer-content and preview-URL
-resolutions refresh the last-viewed field at most once per five minutes, without
-creating an unbounded event or audit row per request. Redeemed one-time inventory
-rows show when a retained window-lived view session is still open and can be closed
-through the existing revoke action.
+Record first `page.external_share.opened` and one-time
+`page.external_share.consumed`. Later successful loads refresh coarse
+activity without generating an audit row per request. Inventory keeps
+redeemed one-time sessions visible and revocable.
 
-## Live revalidation and lifecycle
+## Window proof and live validation
 
-Every viewer load and artifact-preview URL issuance rechecks:
+The redeeming top-level context receives a keyed domain-separated proof of
+its view credential in `sessionStorage`. Never place it in URLs, cookies,
+server persistence, or rendered HTML. Viewer GET is metadata-free; content
+POST requires both the HttpOnly cookie and this proof.
 
-- installation sharing is enabled;
-- the view session is live;
-- the share is not revoked;
-- an expiring share is not expired;
-- the page exists and is not archived;
-- the page still belongs to the copied workspace;
-- the page access revision still equals the copied revision.
+Reloading that window works while live checks pass. An independently opened
+window with only the shared cookie jar fails. Browser duplication/opener
+behavior or deliberate copying can clone client-held state: this is lifecycle
+friction, not DRM or proof of recipient identity.
 
-PDF, XLSX, and DOCX viewer content and artifact delivery additionally recheck
-their live feature switches; DOCX also rechecks PDF support because the stored
-preview passed that processor. Disabling a required processor makes retained
-shares of that type uniformly unavailable without deleting their revocable
-inventory rows.
+Every content load/preview issuance checks global policy, live session, share
+revocation/expiry, page existence/archival, copied workspace, and copied access
+revision. PDF/XLSX/DOCX also check live format flags; DOCX requires PDF.
+Moves and relevant access changes invalidate shares. New versions stay visible;
+Deprecated remains viewable with a fixed warning. Historical versions do not.
 
-A new current version does not increment this sharing boundary and is resolved
-when the viewing session starts or the viewer refreshes. Historical versions
-are unavailable. A workspace move or relevant access change invalidates the
-share. Deprecation does not invalidate it; the viewer shows a fixed
-application-owned deprecated warning. Hard page deletion cascades share and
-session rows.
+Expired/revoked shares remain in authorized inventory for 90 days before
+scheduled pruning. Terminal pending sessions are pruned after 24 hours.
+A redeemed one-time share with a retained view session is not pruned out from
+under a long-open viewer. Page deletion and explicit revoke remain effective.
 
-Revocation or global disable prevents new loads and short-lived preview URL
-renewal. It cannot erase bytes already delivered to a browser.
+## Presentation and failure
 
-Expired and revoked share rows remain in the authorized inventory for 90 days,
-then a scheduled handler prunes them. A redeemed one-time share that still owns
-its window-lived view-session row is retained so background cleanup cannot
-silently break a long-open viewer. It remains manually revocable and is
-removed by page deletion. Domain-event and audit retention remain governed by
-their own operator policy.
+`ExternalPagePresentationRegistry` exhaustively maps every page type to a safe
+presenter. A future type has no raw-byte fallback.
 
-## Presentation registry
+| Type | External presentation |
+| --- | --- |
+| Markdown | Sanitized rendering; private wiki links inert |
+| HTML | Opaque scripts-only artifact-origin iframe with restrictive header CSP |
+| Image | Normalized pixels in the scriptless artifact-origin viewer |
+| XLSX | Validated typed manifest in the application-owned sandboxed grid; external links require a destination-visible second click on the app origin |
+| PDF | Native PDF on the cookieless artifact origin under the PDF-only sandbox exception |
+| DOCX | Independently validated PDF derivative under that same exception; external link actions stripped/rejected |
 
-External sharing targets `Page`, not a content type. The application uses an
-exhaustive `ExternalPagePresentationRegistry` keyed by `PageType`. An
-architecture test enumerates every page type and fails unless it has an
-explicit safe presenter.
+PDF responses use application-owned content type/disposition/filename,
+no-store, nosniff, no CORS/cookies, app-only frame ancestors, and restrictive
+PDF CSP. Native viewing permits save/print/copy and cannot be made revocable
+after delivery. No original XLSX/DOCX bytes are transmitted anonymously.
 
-- Markdown uses the existing sanitized renderer with wiki links rendered as
-  inert text; it does not run an authorization-sensitive relative-page lookup
-  on the public surface.
-- HTML uses the isolated artifact origin in an opaque
-  `sandbox="allow-scripts"` iframe under the existing restrictive header CSP.
-- Normalized raster images use the fixed scriptless artifact-origin viewer and
-  `sandbox=""`.
-- PDFs use the browser's native viewer on the isolated artifact origin. The
-  iframe deliberately has no `sandbox` attribute because tested native viewers
-  render blank under iframe or response sandboxing; it retains `allow=""` and
-  `referrerpolicy="no-referrer"`. The response is fixed to `application/pdf`,
-  `nosniff`, `private, no-store`, no CORS or cookies, restrictive PDF CSP with
-  app-only `frame-ancestors`, and an inline application-generated filename.
-  This exception is registered only for `PageType::Pdf` and does not weaken
-  HTML or image presentation.
-- XLSX uses the application-owned Tabulator viewer over the canonical typed
-  manifest on the opaque artifact origin. The iframe allows scripts but no
-  popup, same-origin, form, navigation, or network authority. An external target
-  requires a second, destination-visible confirmation on the app origin, whose
-  anchor sends no opener or referrer. Formula code is display-only and is never evaluated. The
-  exact original workbook is not transmitted.
-- DOCX uses only its independently PDFBox-validated passive-PDF derivative in
-  the browser-native PDF viewer. The iframe follows the same unsandboxed native
-  viewer exception as PDF, but external hyperlink actions are stripped before
-  conversion and independently rejected after it. The exact original DOCX has no anonymous
-  download or delivery path.
-- A future type cannot become shareable until its normal safe preview strategy
-  is explicitly registered. There is no raw-byte fallback.
+Share-purpose preview URLs bind share/session, current page/version, copied
+access revision, artifact origin, and expiry no later than preview TTL or the
+expiring share. They contain no raw share secret and are not interchangeable
+with authenticated preview purposes.
 
-The viewer may mint only share-purpose artifact-preview URLs. Those URLs bind
-the share UID, view-session UID, current page/version UID, expiry, copied
-access revision, and configured artifact origin. They are not interchangeable
-with authenticated preview URLs, contain no raw share secret, and expire no
-later than their short preview TTL or the expiring share.
+Invalid, missing, expired, redeemed, revoked, moved, archived, access-invalidated,
+disabled, and rate-limited requests share one unavailable status/presentation,
+without title/type/workspace/reason disclosure. Creation has actor/page rate
+limits; public operations have source/selector/operation and source-wide limits.
+The source-wide budget defeats selector rotation; scheduled database-counter
+pruning bounds expired state.
 
-## Uniform failure and disclosure boundary
+## Residuals and required evidence
 
-Invalid selector, malformed or wrong secret, disabled policy, expired,
-redeemed, revoked, archived, deleted, moved, access-invalidated, missing
-session, and rate-limited requests use the same public unavailable page and
-status behavior. They disclose no title, page type, workspace, lifecycle
-reason, or whether a share existed.
+Bearer possession is not identity. Recipients can retain delivered bytes or
+copy viewer proof. HTML keeps its self-navigation and browser-dependent WebRTC
+residuals. A safety acknowledgement is not a browser boundary.
 
-The external surface exposes only:
-
-- escaped page title after successful capability exchange;
-- live/latest and deprecated application-owned labels;
-- expiry for an expiring share;
-- the safely presented current artifact.
-
-The viewer uses the application's visual language and supports local
-light/dark/system theme preference without contacting a third party. Absolute
-timestamps are transported as ISO instants and formatted in the recipient's
-browser time zone; the server time zone is never presented as if it were local.
-
-It never exposes workspace membership, owner or sharer identity, hierarchy,
-taxonomy, search, source, history, provenance, internal links, realtime
-presence, MCP, a separate ArtifactFlow download endpoint, original XLSX or
-DOCX bytes, or authenticated navigation. PDF and derived-DOCX-preview
-recipients can still save, print, copy, or forward PDF bytes that their browser
-received; revocation cannot erase those bytes and the UI states that native
-PDF viewing is download-equivalent.
-
-## Rejected alternatives
-
-- **Secret in a path or query string:** leaks into request logs, browser
-  history, referrers, and common analytics.
-- **Server-rendered no-JavaScript fragment flow:** URL fragments are not sent
-  to servers; every workaround reintroduces URL leakage.
-- **Reuse Laravel's authenticated session:** couples anonymous capability
-  authority to installation login state and risks confused-deputy behavior.
-- **Signed stateless view cookie:** cannot atomically revoke sessions or
-  distinguish a consumed one-time winner without additional state.
-- **Consume one-time links on GET:** mail scanners, unfurlers, prefetchers, and
-  accessibility tooling would spend the capability.
-- **Combined one-time plus expiry mode:** contradicts the deliberately simple,
-  exclusive product contract.
-- **Reusable link without an expiry:** creates a durable public capability and
-  contradicts the bounded external-sharing product and threat model. Use a
-  one-time link when no calendar expiry is wanted; it remains usable until
-  redeemed or revoked but cannot start multiple viewing sessions.
-- **Pinned-version shares:** turns a live page share into a historical-content
-  distribution feature and complicates revocation and inventory semantics.
-- **Direct artifact-origin bearer links:** bypass the app-owned interstitial
-  and cannot safely coordinate one-time redemption or a multi-request viewer.
-- **Generic raw-content presenter:** would eventually serve a future parser or
-  active format through an undefined trust boundary.
-
-## Required proof before release
-
-Implementation remains disabled until focused PHP and cross-browser
-`@artifact-security` tests prove:
-
-- secret one-time display, hash-only persistence, fragment removal, and absence
-  from logs, referrers, DOM, cookies, events, audits, and artifact URLs;
-- transaction-time creator authority, page-to-workspace policy locking,
-  concurrent editor-sharing disablement, and active-share limit enforcement;
-- dedicated `mcp:share` enforcement, token-workspace narrowing, owned-editable
-  page and live workspace editor-sharing restrictions for human and
-  service-account principals, and one-time-only return of the bearer URL
-  without event/audit leakage;
-- explicit-open one-time consumption with exactly one concurrent winner;
-- denial of content and preview renewal in an independently opened second
-  window that has the shared browser cookie but not the redeeming window's
-  proof, without claiming protection from deliberate proof copying;
-- expiry, revocation, archive, deletion, move, and access-revision failure;
-- same-window reload after a long elapsed interval, with no arbitrary viewing
-  countdown and no ability to redeem the original one-time link again;
-- latest-version resolution with no history/source/catalog disclosure;
-- Markdown link non-disclosure, HTML opaque sandboxing, image scriptless
-  sandboxing, XLSX typed-viewer/link isolation, and native PDF plus derived
-  DOCX PDF origin/cookie/header isolation without generic frame-policy
-  relaxation in Chromium, Firefox, and WebKit;
-- identical behavior whether or not the browser also has an authenticated
-  ArtifactFlow session.
-
-The release also requires the manual Safari/iOS artifact-security pass
-documented in the operations guide.
+Maintain tests for secret leakage, unfurl safety, concurrent redemption,
+cookie/window separation, uniform failures, live revocation and feature flags,
+every presenter, exact MCP ownership/scope, event redaction, limits, and cleanup.
+Browser evidence covers Chromium, Firefox, WebKit, and the released Safari/iOS
+pass. No URL-secret fallback, reusable unlimited link, authenticated-session
+reuse, or generic public presenter is supported.

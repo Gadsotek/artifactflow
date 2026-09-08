@@ -149,7 +149,7 @@ final class ProjectConventionTest extends TestCase
             $this->assertStringContainsString('header ' . $matcher . ' -Set-Cookie', $source);
         }
 
-        $operations = $this->source(base_path('docs/OPERATIONS.md'));
+        $operations = $this->source(base_path('docs/operations/production.md'));
 
         $this->assertStringContainsString(
             'use only plain `php artisan down` for an artifact-host HTTP role',
