@@ -3,34 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Safely Run Untrusted AI-Generated HTML | ArtifactFlow</title>
-<meta name="description" content="How ArtifactFlow safely previews untrusted AI-generated HTML with two origins, sandboxed iframes, strict CSP, signed URLs, and content-bound draft capabilities.">
+<title>Security for untrusted AI-generated artifacts | ArtifactFlow</title>
+<meta name="description" content="Explore ArtifactFlow’s isolated HTML previews, document processors, live permissions, and scoped MCP access, with explicit security limits and operator requirements.">
 <link rel="canonical" href="https://artifactflow.app/security/">
-<meta property="og:title" content="Safely Run Untrusted AI-Generated HTML | ArtifactFlow">
-<meta property="og:description" content="A technical explanation of ArtifactFlow's two-origin HTML sandbox and its honest security boundaries.">
+<meta property="og:title" content="Security for untrusted AI-generated artifacts | ArtifactFlow">
+<meta property="og:description" content="Explore ArtifactFlow’s isolated HTML previews, document processors, live permissions, and scoped MCP access, with explicit security limits and operator requirements.">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://artifactflow.app/security/">
 <meta property="og:site_name" content="ArtifactFlow">
 <meta property="og:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Safely Run Untrusted AI-Generated HTML | ArtifactFlow">
-<meta name="twitter:description" content="Why origin isolation, not sanitization, is the security boundary for generated HTML.">
+<meta name="twitter:title" content="Security for untrusted AI-generated artifacts | ArtifactFlow">
+<meta name="twitter:description" content="Explore ArtifactFlow’s isolated HTML previews, document processors, live permissions, and scoped MCP access, with explicit security limits and operator requirements.">
 <meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
-<meta name="theme-color" content="#f4f0e7" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#f8f9fc" media="(prefers-color-scheme: light)" data-theme-color="light">
 <meta name="theme-color" content="#0d0f13" media="(prefers-color-scheme: dark)" data-theme-color="dark">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<script src="/assets/theme.js?v=20260722-2" data-theme-bootstrap></script>
-    <link rel="stylesheet" href="/assets/site.css?v=20260723-3">
+<script src="/assets/theme.js?v=20260907-3" data-theme-bootstrap></script>
+    <link rel="stylesheet" href="/assets/site.css?v=20260908-1">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "WebPage",
-  "name": "Safely Run Untrusted AI-Generated HTML",
-  "description": "ArtifactFlow's two-origin security model for generated HTML.",
+  "name": "Security for untrusted AI-generated artifacts | ArtifactFlow",
+  "description": "Explore ArtifactFlow’s isolated HTML previews, document processors, live permissions, and scoped MCP access, with explicit security limits and operator requirements.",
   "url": "https://artifactflow.app/security/",
-  "isPartOf": { "@id": "https://artifactflow.app/#website" }
+  "isPartOf": {
+    "@id": "https://artifactflow.app/#website"
+  }
 }
 </script>
 </head>
@@ -41,16 +43,14 @@
   <div class="shell nav">
     <a class="brand" href="/" aria-label="ArtifactFlow home"><img class="brand-mark brand-mark-on-light" src="/assets/artifactflow-mark.svg" alt="" aria-hidden="true" width="512" height="512"><img class="brand-mark brand-mark-on-dark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512">Artifact<span class="brand-flow">Flow</span></a>
     <nav class="nav-links" aria-label="Main navigation">
-      <a href="/#product">Product</a>
-      <a href="/workflow/">Workflow</a>
-      <a href="/engineering-harness/">Harness</a>
-      <a href="/security/" aria-current="page">Safety</a>
+<div class="primary-links"><a href="/#product">Product</a>
+      <a href="/workflow/">How it works</a>
       <a href="/mcp/">MCP</a>
-      <a href="/self-hosting/">Self-host</a>
-      <a href="/roadmap/">Roadmap</a>
-      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="3.5"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path></svg></span><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><path d="M20.4 15.3A8.5 8.5 0 0 1 8.7 3.6a8.5 8.5 0 1 0 11.7 11.7Z"></path></svg></span></button>
-      <a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a>
-    </nav>
+      <a href="/security/" aria-current="page">Security</a>
+      <a href="/self-hosting/">Self-host</a></div>
+<div class="nav-actions"><button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme" aria-pressed="false"><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="3.5"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path></svg></span><span aria-hidden="true"><svg class="theme-icon" viewBox="0 0 24 24" focusable="false"><path d="M20.4 15.3A8.5 8.5 0 0 1 8.7 3.6a8.5 8.5 0 1 0 11.7 11.7Z"></path></svg></span></button>
+<a class="button" href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a></div>
+</nav>
   </div>
 </header>
 
@@ -58,8 +58,8 @@
   <header class="detail-hero">
     <div class="shell">
       <p class="eyebrow">Security architecture</p>
-      <h1>Run generated HTML without trusting it.</h1>
-      <p class="lede">AI-generated HTML is executable code. ArtifactFlow lets useful single-file tools run, but keeps them away from the origin that carries your login, authorization state, and application data.</p>
+      <h1>Treat AI-generated content as untrusted.</h1>
+      <p class="lede">HTML can execute code. Documents cross complex parser boundaries. AI clients can read sensitive work. ArtifactFlow separates previews from your login, isolates document processing, and checks artifact access for people and AI.</p>
       <div class="detail-actions">
         <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md">Read the threat model ↗</a>
         <a class="button" href="https://github.com/Gadsotek/artifactflow/blob/main/SECURITY.md">Security policy ↗</a>
@@ -72,7 +72,7 @@
       <div class="article-content">
         <section id="why-untrusted">
           <p class="kicker">Start with the code</p>
-          <h2>A generated artifact is a program, not a document.</h2>
+          <h2>An HTML artifact can be a program.</h2>
           <p>A one-file dashboard, calculator, architecture map, or runbook can contain JavaScript. If that code executes on the same origin as an authenticated application, the browser may make the application's cookies, storage, DOM, and same-origin endpoints available to it. The source may look harmless and still contain accidental or deliberately hostile behavior.</p>
           <p>ArtifactFlow therefore treats every pasted or uploaded HTML artifact as untrusted executable content. It does not declare arbitrary HTML safe after removing a few tags. Advisory scanning can identify obvious credentials and suspicious patterns, but isolation must still hold when scanning misses something.</p>
           <div class="callout">
@@ -147,6 +147,7 @@
             <strong>Antivirus is not the security boundary</strong>
             <p>Pattern scanning can block obvious secrets and flag suspicious content, but isolation, strict format admission, bounded derived outputs, authorization, and artifact-origin delivery are the controls that must hold when a document is intentionally hostile.</p>
           </div>
+          <p>Native PDF and validated DOCX-PDF previews are download-equivalent. They may omit iframe sandboxing under their format-specific contracts while retaining the separate cookieless origin, restrictive PDF policy, and signed authorization. HTML, images, and typed XLSX previews retain their normal sandbox boundaries.</p>
           <p>These processors reduce blast radius; they do not eliminate container-runtime or kernel escape risk. Keep SheetJS, LibreOffice, PDFBox, base images, and the container runtime patched, pin released image digests, and complete the documented browser and deployment checks before enabling a format.</p>
         </section>
 
@@ -164,8 +165,8 @@
         <section id="residuals">
           <p class="kicker">Honest residuals</p>
           <h2>Isolation narrows risk; it does not make hostile code benevolent.</h2>
-          <p>A sandboxed iframe can still navigate itself to another site. Browser CSP does not provide a shipped directive that fully prevents that self-navigation. The isolated frame has no app cookies or other tenants' data to steal, but data a viewer is persuaded to type into an artifact, the viewer's IP address, and a view confirmation may still be exposed through navigation.</p>
-          <p>Browser behavior is not perfectly uniform. Chromium regression tests exercise the maintained attack corpus; Safari on macOS and iOS remains a documented manual release check. A legacy browser without modern sandbox protections is outside the intended trust envelope.</p>
+          <p>A sandboxed iframe can still navigate itself to another site. Browser CSP does not provide a shipped directive that fully prevents that self-navigation. The isolated frame cannot access the app's cookies or DOM. Its own content, data a viewer types into it, the viewer's IP address, and a view confirmation may still be exposed through navigation.</p>
+          <p>Browser behavior is not perfectly uniform. Chromium, Firefox, and WebKit regression tests exercise the maintained security corpus; released Safari on macOS and iOS remains a documented manual release check. A legacy browser without modern sandbox protections is outside the intended trust envelope.</p>
           <div class="callout">
             <strong>Alpha disclosure</strong>
             <p>ArtifactFlow is a young 0.x internal-team tool. It has broad automated coverage and repeated AI-assisted adversarial review, but it has not received an independent third-party security audit. Pin a revision and read the full threat model before using it for important work.</p>
@@ -199,16 +200,11 @@
   </article>
 </main>
 
-<footer class="site-footer">
-  <div class="shell">
-    <div class="footer-grid">
-      <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">A self-hosted, versioned artifact vault for tools and documents created with AI.</p></div>
-      <div class="footer-column"><strong>Explore</strong><a href="/">Home</a><a href="/workflow/">Artifact workflow</a><a href="/security/" aria-current="page">Safety</a><a href="/mcp/">MCP server</a><a href="/self-hosting/">Self-hosting</a><a href="/engineering-harness/">Engineering harness</a><a href="/roadmap/">Roadmap</a></div>
-      <div class="footer-column"><strong>Repository</strong><a href="https://github.com/Gadsotek/artifactflow">Source</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md">Threat model</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/SECURITY.md">Security policy</a></div>
-      <div class="footer-column"><strong>License</strong><span>AGPL-3.0-or-later</span><a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a><a href="mailto:gadsotek@gmail.com">Contact</a></div>
-    </div>
-    <div class="footer-end"><span>© 2026 Gadsotek</span><span>Preserves the output, not the conversation.</span></div>
-  </div>
-</footer>
+<footer class="site-footer"><div class="shell"><div class="footer-grid">
+  <div><div class="footer-brand"><img class="footer-brand-mark" src="/assets/artifactflow-mark-light.svg" alt="" aria-hidden="true" width="512" height="512"><span>Artifact<span class="brand-flow">Flow</span></span></div><p class="footer-summary">The open-source, self-hosted workspace for AI-generated artifacts.</p></div>
+  <div class="footer-column"><strong>Product</strong><a href="/#product">Overview</a><a href="/workflow/">How it works</a><a href="/mcp/">MCP</a><a href="/security/">Security</a><a href="/self-hosting/">Self-hosting</a></div>
+  <div class="footer-column"><strong>Explore</strong><a href="/guides/ai-artifact-vault/">What is an artifact vault?</a><a href="/guides/ai-artifact-storage/">Where should AI work live?</a><a href="/guides/safe-ai-generated-html/">Running generated HTML</a><a href="/roadmap/">Roadmap</a><a href="/engineering-harness/">Engineering harness</a><a href="/llms.txt">For AI readers</a></div>
+  <div class="footer-column"><strong>Open source</strong><a href="https://github.com/Gadsotek/artifactflow">GitHub ↗</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md">Threat model</a><a href="https://github.com/Gadsotek/artifactflow/blob/main/SECURITY.md">Security policy</a><span>AGPL-3.0-or-later</span><a href="https://github.com/Gadsotek/artifactflow/blob/main/COMMERCIAL.md">Commercial licensing</a><a href="mailto:gadsotek@gmail.com">Contact</a></div>
+  </div><div class="footer-end"><span>© 2026 Gadsotek</span><span>Preserves the output, not the conversation.</span></div></div></footer>
 </body>
 </html>

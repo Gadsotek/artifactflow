@@ -457,7 +457,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $makefile = $this->readProjectFile('Makefile');
         $compose = $this->readProjectFile('docker-compose.yml');
         $script = $this->readProjectFile('scripts/verify-reverb-origin-handshake.mjs');
-        $operations = $this->readProjectFile('docs/OPERATIONS.md');
+        $operations = $this->readProjectFile('docs/operations/production.md');
 
         $this->assertStringContainsString('verify-reverb-origin:', $makefile);
         $this->assertStringContainsString('$(COMPOSE) build app', $makefile);

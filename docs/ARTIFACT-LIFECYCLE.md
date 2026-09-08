@@ -1,183 +1,106 @@
-# Artifact identity, drafts, and versions
+# Artifact identity and versions
 
-ArtifactFlow preserves deliberate outputs as managed artifacts. This document explains when an artifact keeps its identity, what a saved version means, how drafts behave, and how the model applies to the default-off PDF, XLSX, and DOCX formats.
+A page is one managed artifact. It keeps its stable artifact UID as the work
+changes. Each saved content version has its own UID, number, and immutable
+payload. Links and permissions stay attached to the page.
 
-It separates three kinds of statements:
+## New version or new artifact?
 
-- **Current invariant:** behavior enforced by the application today.
-- **Product guidance:** the choice ArtifactFlow recommends to people and agents, but cannot infer from content alone.
-- **Roadmap direction:** a design constraint for future work, not implemented alpha behavior.
+**Product guidance:** keep the identity when the output still does the same job.
+Create another artifact when both results should live independently.
 
-## Artifact identity
-
-**Current invariant:** a page is the managed artifact. It has a stable artifact UID that remains the same while its content changes. Each stored content revision has its own version UID and version number. The page points to its current version.
-
-Creating an artifact stores its initial immutable version. Updating its content appends another immutable version and advances the current-version pointer. Retained versions remain available through version history. When the configured per-artifact limit is exceeded, ArtifactFlow prunes the oldest whole versions and records that pruning.
-
-This gives links, permissions, ownership, hierarchy, taxonomy, and audit history a stable record while the retained payload evolves.
-
-## New artifact or new version?
-
-**Product guidance:** append a version when the work still represents the same durable thing.
-
-Keep the same artifact when:
-
-- it serves the same purpose or job;
-- existing links should continue to identify it;
-- readers should normally see the replacement as the latest form of earlier work;
-- ownership, audience, and access remain conceptually continuous;
-- the change is a substantial rewrite, but not a separate asset.
-
-Create a new artifact when:
-
-- both results should coexist as independently useful assets;
-- the work has forked into a different purpose, audience, owner, or access boundary;
-- retaining the old identity would make links or history misleading;
-- the new result should have an independent lifecycle.
-
-**Guidance, not an enforced invariant:** ArtifactFlow cannot determine semantic identity from how many bytes changed. A radically rewritten calculator may remain one artifact if it still fills the same role. A lightly edited copy may be a new artifact if it serves a different team or purpose. The person or agent performing the write makes that choice.
-
-## Drafts
-
-**Current invariant:** Draft is a lifecycle status, not mutable content.
-
-A newly created artifact starts in Draft with an immutable first version. Every saved content update appends an immutable version, including while the artifact remains in Draft. Editing content on an Approved or Deprecated artifact returns it to Draft because the revised content has not retained the previous status.
-
-A status transition changes lifecycle state. It does not, by itself, create a content version.
-
-ArtifactFlow also supports an unsaved draft preview for single-file HTML. That preview is an ephemeral rendering of the editor input on the isolated artifact origin. It creates no version and does not alter the stored artifact. The term “draft” therefore appears in two related but distinct contexts:
-
-- **Draft status:** saved artifact state backed by immutable content versions.
-- **Unsaved draft preview:** temporary editor content that has not been persisted.
-
-## Content versions and metadata
-
-**Current invariant:** a content version retains the authoritative payload. For current HTML artifacts, that payload is also the executable single-file result. For Markdown, the payload is Markdown source and the rendered view is derived from it. For PNG/JPEG uploads, the retained authoritative payload is ArtifactFlow's normalized raster derivative; the untrusted original upload is intentionally discarded after pixel decoding and re-encoding. For default-off PDF, XLSX, and DOCX artifacts, the authoritative payload is the exact validated private original; extracted text, typed manifests, passive preview PDFs, and processing facts are derived projections.
-
-Catalog metadata such as title, description, category, parent, owner, and tags belongs to the stable artifact record. Metadata writes use a separate optimistic metadata revision and produce domain events and audit entries. A metadata revision is not a content-version snapshot, and content version history does not currently promise to restore historical catalog metadata.
-
-This distinction keeps content concurrency and metadata concurrency explicit without claiming a complete snapshot of the whole artifact record for every content version.
-
-## Version provenance and lineage
-
-**Current invariant:** every stored content version has one ArtifactFlow-observed ingest record. It
-copies the version UID/number, exact retained-byte SHA-256, operation, ingest method, ArtifactFlow
-actor, timestamp, and MCP submitter metadata when present. These are observed facts, not claims
-about who generated the content.
-
-A version may additionally have declared AI, human, or software producer assertions. MCP AI
-assertions may be exact or partial: every safe supplied provider/model fact is retained independently,
-and `partial` describes missing exact identity rather than rejecting a claim. The reported provider
-is preserved beside its normalized search key; a model family/label does not require a fabricated
-provider-defined model ID, and a typed external reference may stand alone as the only known producer
-fact. Bounded extension pairs retain forward-compatible identity metadata while
-prompt/reasoning, credential, authorization, URL, and content-payload classes remain forbidden.
-Assertions are labelled self-reported and remain distinct from unverified MCP-reported client
-name/version metadata. Missing provenance creates no invented “unknown model” row.
-
-An MCP full read defines every visible producer assertion once in a deterministic `producers`
-catalog. Page-origin, direct-version, and effective-content-origin lineage use ordered producer UID
-references into that catalog. This changes only the response representation: evidence, precision,
-authorization, search, and retention semantics are unchanged. Present untrusted strings retain their
-complete field-level envelope, while absent optional description, change-summary, producer/client,
-and external-reference values are omitted instead of represented by empty envelopes.
-
-A restore creates a new version and records the selected source as derivation lineage. When the
-retained bytes match, the write also resolves and stores the root content-origin version so reads
-remain constant-cost even after a long equivalence chain. The user who restored content is
-therefore not mislabeled as its producer.
-Ordinary retention pruning may delete an old `page_versions` row and artifact blob, but keeps its
-ingest/provenance record; page hard deletion removes both.
-
-External artifact, conversation, session, and source references are optional sensitive metadata.
-They inherit page authorization, are never fetched by ArtifactFlow, and are excluded from audit
-payloads, logs, and full-text search.
-
-## Current format behavior
-
-### Single-file HTML
-
-The retained payload is the HTML source and executable result. Saved and unsaved previews run on the separate artifact origin under the documented iframe, CSP, signed-capability, and no-app-cookie boundary.
-
-### Markdown and Mermaid
-
-The retained payload is Markdown source. The application derives the rendered view and processes Mermaid under the documented strict rendering boundary. Raw user HTML and JavaScript do not execute in the authenticated application DOM.
-
-### Images and screenshots
-
-The retained payload is a normalized PNG or JPEG containing decoded pixels, not the original file container. ArtifactFlow validates the format envelope, extension, compressed byte size, dimensions, and pixel count, then sends the original bytes to its isolated parser service. That service decodes and re-encodes the image; the app verifies its signed response before retaining it. This intentionally removes EXIF/GPS data, comments, color profiles, and bytes appended after the image.
-
-Current image artifacts have no OCR or extracted text. Their searchable content is catalog metadata: title, editable description, category, tags, owner, status, and type. Replacing an image appends an immutable version, and restoring a historical image copies the selected normalized bytes exactly without another lossy JPEG generation.
-
-Previews use a fixed scriptless viewer on the separate artifact origin. An MCP content read returns normalized rasters up to the configured `ARTIFACT_MAX_BYTES` read limit (10 MiB by default, hard-capped at 64 MiB; base64 framing expands the response by roughly a third) as image content (`content_too_large` is returned before reading a derivative above that limit). A metadata-only read performs the same authorization but skips the raster read and makes no content-availability claim. An authorized `update_description` call can revise only the page description when both the observed content-version UID and metadata revision remain current: the first binds the description to the inspected pixels, and the second protects concurrent catalog edits. MCP `create_image` and `replace_image` accept only canonical Base64 PNG/JPEG bytes under the combined page-operation and `mcp:upload` scopes, then use this same isolated normalization path; they do not fetch URLs or retain the submitted container. MCP image revert copies a retained normalized derivative exactly and therefore needs `mcp:update`, not `mcp:upload`.
-
-## PDF, XLSX, and DOCX artifacts
-
-**Current opt-in implementation:** PDF, XLSX, and DOCX support are independent default-off production opt-ins. DOCX also requires the PDF processor because its LibreOffice output must pass the separate PDFBox DOCX-preview profile. Production enablement requires each dedicated isolated processor and the deployment evidence in the corresponding public architecture decision.
-
-Each PDF replacement appends an immutable artifact version that retains its private original. The first PDF slice derives bounded embedded text through an isolated processor; OCR remains a later milestone. Authorized users view the exact original with their browser's native PDF viewer on the existing cookieless artifact origin. Embedded text is untrusted and is not proof that a string is visible or that the document was visually redacted. Preview is download-equivalent and may expose the browser's normal save, print, copy, and link controls.
-
-The implemented default-off PDF model is:
-
-- one stable artifact identity;
-- one private original for each document version;
-- bounded current-version extracted text, regenerated from a retained original
-  when an old version is restored or reprocessed;
-- visible extraction status and safe failure behavior;
-- consistent authorization across search, native viewing, download, history, MCP, and deletion;
-- actual storage ownership that moves atomically with the complete
-  retained version graph.
-
-Standalone reprocessing verifies the retained original's hash and size, reruns
-the current processor/scanner outside the database transaction, and updates
-only the current version's text projection, scan state, PDF facts, and search
-projection. It does not create a new version or modify the retained original.
-
-Each XLSX version retains its exact original and one canonical typed-manifest
-derivative. The manifest contains only bounded visible-sheet values, cached
-formula results, formula text for display, links, simple merges, and the facts
-needed by the read-only viewer. It never recalculates formulas. Hidden content,
-objects, comments, charts, and unsupported formatting are omitted rather than
-implicitly trusted. Search indexes normalized visible cell content. The
-original remains available only through an explicit authorized attachment
-download and is not used for browser preview.
-
-Each DOCX version retains its exact original and one independently validated
-passive-PDF derivative. LibreOffice conversion occurs in the networkless DOCX
-processor; the application then submits those exact bytes to the PDF processor
-before persisting either version state or search text. The derived PDF, never
-converted HTML or the DOCX package, is the browser preview. Bounded PDFBox text
-extraction supplies search. This is a searchable text PDF when the source has
-embedded text; it is not OCR and is not proof of visual redaction.
-
-XLSX and DOCX reprocessing replace only the current version's derivative,
-processing facts, extracted-text projection, scan state, and search projection
-inside the same optimistic-concurrency boundary. The exact original is never
-rewritten. Version retention, hard deletion, integrity verification, orphan
-cleanup, and workspace quota accounting treat an original and all its
-derivatives as one version graph. Under the page and workspace locks, any
-positive derivative-size delta is charged against the complete retained page
-graph. Reprocessing does not use the append path's projected pruning credit,
-because it appends no version and therefore reclaims no retained history.
-
-Per-version catalog metadata is not promised. Whether future document versions snapshot title, tags, ownership, or other catalog fields needs a separate product and data-model decision.
-
-For generated DOCX, preserving an optional generator source such as Markdown or Python beside the binary original remains an open design question. ArtifactFlow must not pretend every uploaded document has such a source.
-
-## Examples
-
-| Change | Recommended identity |
+| Change | Usually choose |
 | --- | --- |
-| The team replaces a capacity calculator with a redesigned implementation for the same job | Append a version |
-| A runbook receives a corrected procedure while existing links should stay valid | Append a version |
-| A calculator is adapted for a different business unit with independent access and ownership | Create a new artifact |
-| One dashboard forks into two independently maintained operational views | Create a new artifact |
-| A PDF, XLSX, or DOCX report is replaced by its next retained revision | Append a version |
+| Correct a runbook or redesign the same calculator | New version |
+| Replace a report with its next revision | New version |
+| Adapt a tool for another team with separate ownership | New artifact |
+| Fork one dashboard into two maintained views | New artifact |
 
-## Related boundaries
+**Guidance, not an enforced invariant:** the writer decides whether the purpose
+is still the same. ArtifactFlow cannot infer that from the number of changed bytes.
 
-- [Architecture](ARCHITECTURE.md) documents application handlers, storage, preview flows, and runtime roles.
-- AI provenance records observed ingestion separately from declared producers, unverified MCP-reported client metadata, evidence, lineage, sensitive references, search, and retention. Detailed product and decision records remain internal.
-- The public [PDF](architecture/pdf-artifacts.md), [XLSX](architecture/xlsx-artifacts.md), and [DOCX](architecture/docx-artifacts.md) decisions define the implemented default-off processing, presentation, and production-enablement boundaries; supporting product, delivery, and spike records remain private working material.
-- [Roadmap](../ROADMAP.md) is authoritative for format direction and required proof.
-- [Threat model](../THREAT-MODEL.md) documents executable HTML isolation and residual risks.
+## What each action changes
+
+**Current invariant:** content, catalog metadata, and lifecycle are separate.
+
+| Action | Result |
+| --- | --- |
+| Create | Stable page and immutable first version, initially Draft |
+| Save content | Append a version and advance the current pointer; Approved or Deprecated returns to Draft |
+| Restore | Append a new version derived from retained content |
+| Edit title, description, placement, category, tags, or owner | Update catalog metadata under its separate metadata revision |
+| Change status | Update lifecycle without appending content |
+| Preview unsaved HTML | Render temporarily on the artifact origin; creates no version |
+| Reprocess a document | Refresh current derived data under concurrency checks; keep the original and version identity |
+| Archive | Hide from default discovery; remain recoverable |
+| Hard-delete | Irreversibly remove the page and its retained graph; Admin-only |
+
+Draft is a lifecycle status, not mutable content. Saving a Draft still appends
+an immutable version. Unsaved preview is a separate, temporary operation.
+
+A metadata revision is not a content-version snapshot. Restoring content does
+not restore historical titles, tags, ownership, or other catalog fields.
+
+## What is retained
+
+| Format | Authoritative payload | Derived presentation and search |
+| --- | --- | --- |
+| HTML | Single-file source | Isolated executable preview and extracted text |
+| Markdown | Markdown source | Sanitized rendering, strict Mermaid, extracted text |
+| PNG/JPEG | Re-encoded pixels | Scriptless preview; metadata search, no OCR |
+| PDF | Exact validated private original | Bounded embedded text and native PDF viewing |
+| XLSX | Exact validated private original | Typed visible-cell manifest; no formula calculation |
+| DOCX | Exact validated private original | Independently validated passive PDF and its bounded native text |
+
+Original image containers are discarded, including EXIF/GPS, profiles, comments,
+and appended payloads. Restoring an image copies retained normalized bytes
+without another lossy JPEG generation.
+
+PDF, XLSX, and DOCX support are independent default-off production opt-ins.
+DOCX additionally requires PDF processing. PDFs use the browser's native PDF viewer on the existing cookieless artifact origin.
+DOCX uses that viewer only for its validated derivative. Both are
+download-equivalent. Extracted text is untrusted and does not prove visibility
+or visual redaction. XLSX and DOCX originals require a separate authenticated
+attachment download; they are never the browser preview.
+
+Reprocessing verifies the original, runs current processing/scanning, and
+updates current facts, search text, and derivatives. It appends no version.
+Any increased derivative size consumes quota without borrowing pruning credit.
+
+## Concurrency and retention
+
+Content writes require a fresh base-version UID. Metadata writes require a
+fresh metadata revision. Description writes require both, so observations about
+old content cannot overwrite a description for new content.
+
+Appending past the configured version cap prunes the oldest retained content
+and records each pruning. The default is 200 versions; history is not unlimited.
+Originals and derivatives count together toward page and workspace quotas.
+Moves transfer the complete retained graph atomically. Hard deletion and
+retention remove the corresponding files; interrupted cleanup is handled by
+the age-gated orphan reaper.
+
+## Provenance
+
+Every version has an observed ingest record: actor, time, method, exact retained
+hash, and lineage. Optional producer claims are separate and self-reported.
+Known provider/model facts may be partial. The server never invents a model
+from an MCP client name or upgrades a declaration into verified authorship.
+
+A restore records who restored it and where the bytes came from. Ordinary
+content pruning preserves ingest/provenance records; hard page deletion removes
+them. Optional external references inherit page authorization, are never
+fetched, and stay out of search, logs, and audit payloads.
+
+[MCP setup](operations/mcp.md) covers reads and writes;
+[provenance reference](operations/provenance.md) covers declarations and wire fields.
+
+## Not promised
+
+**Roadmap direction:** browser provenance entry, assertion amendment, audited
+reference redaction/retention, and provider attestations remain future work.
+Per-version catalog metadata is not promised. Preserving an optional generator source
+beside a document original needs a separate decision.
+
+Read the [format decisions](architecture/README.md), [threat model](../THREAT-MODEL.md),
+and [roadmap](../ROADMAP.md) for the remaining boundaries.

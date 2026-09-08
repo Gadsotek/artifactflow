@@ -3,6 +3,9 @@
 Run browser tests only through `make e2e`; the wrapper supplies an isolated database, application
 stack, and artifact origin.
 
+Set `PLAYWRIGHT_OUTPUT_DIR` and `PLAYWRIGHT_HTML_OUTPUT_DIR` to fresh temporary directories when
+you need to preserve an earlier run's traces and report.
+
 - A second Laravel server inside the e2e app container uses Cloudflare's published always-pass
   credentials. The browser loads the real login and password-recovery pages and verifies their
   emitted CSP, nonce, action, challenge frame, and generated token. The normal e2e server receives
@@ -15,8 +18,8 @@ stack, and artifact origin.
   `/up` before the suite starts.
 - Every Playwright test runs on Chromium.
 - A test whose title includes `@artifact-security` also runs on Firefox and WebKit.
-- Playwright WebKit is not released Safari or iOS. Keep the manual Safari/iOS pass in
-  `docs/OPERATIONS.md`.
+- Playwright WebKit is not released Safari or iOS. Keep the
+  [manual Safari/iOS pass](../../docs/operations/browser-checks.md).
 
 Add `@artifact-security` when the result depends on browser enforcement or engine-specific behavior
 at the artifact boundary, including:
