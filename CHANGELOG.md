@@ -6,6 +6,13 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+### Security
+
+- Updated the gRPC-Go dependency embedded in the application and DOCX processor
+  FrankenPHP binaries from 1.83.1 to 1.83.2 for
+  [CVE-2026-84445](https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj).
+  Both builds verify the patched version in the compiled binary.
+
 ## v0.2.1 — 2026-09-07
 
 Release-pipeline correction and the first complete publication of the v0.2

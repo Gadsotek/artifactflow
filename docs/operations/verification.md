@@ -76,6 +76,11 @@ CI runs:
 - Trivy vulnerability, secret, and misconfiguration scans of every built image.
 - Trivy filesystem scan combining repository secret and misconfiguration checks.
 
+The repository scan excludes dependencies, generated build/cache output, Git
+metadata, and the separate local checkouts under `.codex-*` and
+`.tmp/podman-documents`. Those checkouts need their own security checks. Other
+files under `.tmp` remain in scope.
+
 Nightly automation repeats dependency audits, production builds, and Trivy to
 surface newly reported vulnerabilities. Protected branches must require both
 `ci-required` (including DCO) and the separate `cla` check. The CLA workflow runs

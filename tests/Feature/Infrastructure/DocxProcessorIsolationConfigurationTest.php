@@ -18,8 +18,11 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:', $dockerfile);
         $this->assertStringContainsString('FROM dunglas/frankenphp:1-php8.5-alpine@sha256:', $dockerfile);
         $this->assertStringContainsString("go1\\.26\\.7[[:space:]]", $dockerfile);
-        $this->assertStringContainsString('go get google.golang.org/grpc@v1.83.1', $dockerfile);
-        $this->assertStringContainsString("grep -E 'google\\.golang\\.org/grpc", $dockerfile);
+        $this->assertStringContainsString('go get google.golang.org/grpc@v1.83.2', $dockerfile);
+        $this->assertStringContainsString(
+            "grep -E 'google\\.golang\\.org/grpc[[:space:]]+v1\\.83\\.2'",
+            $dockerfile,
+        );
         $this->assertStringContainsString("RUN install-php-extensions \\\n    pcntl \\\n    zip", $dockerfile);
         $this->assertStringNotContainsString('docker-php-ext-install', $dockerfile);
         $this->assertStringContainsString('libreoffice-writer=25.8.7.3-r0', $dockerfile);

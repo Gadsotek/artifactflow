@@ -52,7 +52,8 @@ XLSX_PROCESSOR_TEST_IMAGE ?= artifactflow-xlsx-processor-tests:local
 DOCX_PROCESSOR_IMAGE ?= artifactflow-docx-processor:production
 TRIVY_IMAGE ?= aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
 TRIVY_CACHE_DIR ?= $(HOME)/.cache/trivy
-TRIVY_REPO_SCAN_SKIP_DIRS ?= --skip-dirs /src/vendor --skip-dirs /src/node_modules --skip-dirs /src/public/build --skip-dirs /src/storage --skip-dirs /src/bootstrap/cache --skip-dirs /src/.git --skip-dirs '/src/.codex-*'
+# Local sibling checkouts have their own security gates; keep other scratch files in scope.
+TRIVY_REPO_SCAN_SKIP_DIRS ?= --skip-dirs /src/vendor --skip-dirs /src/node_modules --skip-dirs /src/public/build --skip-dirs /src/storage --skip-dirs /src/bootstrap/cache --skip-dirs /src/.git --skip-dirs '/src/.codex-*' --skip-dirs /src/.tmp/podman-documents
 SEMGREP ?= semgrep
 TYPE_COVERAGE_MIN ?= 100
 TYPE_COVERAGE_REPORT ?= storage/framework/testing/type-coverage.json
