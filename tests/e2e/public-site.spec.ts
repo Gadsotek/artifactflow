@@ -73,11 +73,23 @@ async function expectCenteredThumb(toggle: Locator, dark: boolean): Promise<void
 for (const width of [1280, 390]) {
   for (const colorScheme of ['light', 'dark'] as const) {
     test.describe(`public website at ${width}px with system ${colorScheme}`, () => {
-      test.use({ viewport: { width, height: 844 }, colorScheme, reducedMotion: 'reduce' });
+      test.use({
+        viewport: { width, height: 844 },
+        colorScheme,
+        contextOptions: { reducedMotion: 'reduce' },
+      });
 
       test('theme switch stays centered when toggled and reloaded', async ({ page }) => {
         await page.goto('http://public-site.test/');
+        expect(
+          await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches),
+          'Geometry checks require reduced motion to be active in the browser context',
+        ).toBe(true);
         const toggle = page.getByRole('button', { name: /Switch to .* theme/ });
+        expect(
+          await toggle.evaluate((button) => getComputedStyle(button, '::after').transitionDuration),
+          'The thumb should move immediately when reduced motion is requested',
+        ).toBe('0s');
         const initiallyDark = colorScheme === 'dark';
         await expect(toggle).toHaveAttribute('aria-pressed', String(initiallyDark));
         await expectCenteredThumb(toggle, initiallyDark);

@@ -33,6 +33,10 @@ Ordinary editor, layout, and application-flow tests remain Chromium-only unless 
 specific cross-engine compatibility requirement. Use explicit DOM or application readiness
 assertions; do not use `networkidle`, which is unreliable in WebKit.
 
+Public-site geometry tests set `contextOptions.reducedMotion` and verify the browser media query
+and disabled thumb transition before measuring the theme switch. `reducedMotion` is not a
+top-level Playwright Test option; putting it there leaves the animation enabled.
+
 The artifact parser differential fuzzer is part of the tagged security corpus. Its PHP generator
 feeds seeded tokenizer/tree-builder mutations through the exact server-side response rewriter, and
 Playwright parses both the raw and rewritten bytes without the runtime JavaScript guard. Every

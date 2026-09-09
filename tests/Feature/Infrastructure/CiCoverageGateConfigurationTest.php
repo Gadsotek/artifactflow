@@ -249,6 +249,8 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('$(TRIVY_IMAGE) image --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 $(DOCX_PROCESSOR_IMAGE)', $makefile);
         $this->assertStringContainsString('fs $(TRIVY_REPO_SCAN_SKIP_DIRS) --scanners secret,misconfig --severity MEDIUM,HIGH,CRITICAL --exit-code 1 /src', $makefile);
         $this->assertStringContainsString("--skip-dirs '/src/.codex-*'", $makefile);
+        $this->assertStringContainsString('--skip-dirs /src/.tmp/podman-documents', $makefile);
+        $this->assertStringNotContainsString('--skip-dirs /src/.tmp ', $makefile);
         $this->assertStringNotContainsString('trivy" config $(TRIVY_REPO_SCAN_SKIP_DIRS)', $makefile);
         $this->assertStringContainsString('--skip-dirs /src/vendor', $makefile);
         $this->assertStringContainsString('--skip-dirs /src/node_modules', $makefile);
@@ -317,9 +319,9 @@ final class CiCoverageGateConfigurationTest extends TestCase
             "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.55\\.0'",
             $dockerfile,
         );
-        $this->assertStringContainsString('go get google.golang.org/grpc@v1.83.1', $dockerfile);
+        $this->assertStringContainsString('go get google.golang.org/grpc@v1.83.2', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E 'google\\.golang\\.org/grpc[[:space:]]+v1\\.83\\.1'",
+            "grep -E 'google\\.golang\\.org/grpc[[:space:]]+v1\\.83\\.2'",
             $dockerfile,
         );
         $this->assertStringContainsString('go get github.com/getkin/kin-openapi@v0.144.0', $dockerfile);
