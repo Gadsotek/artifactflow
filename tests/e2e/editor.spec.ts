@@ -1342,6 +1342,7 @@ test('catalog live updates refetch and replace only the matching workspace proje
       <body>
         <div data-live-page-catalog data-live-page-catalog-user-uid="user-1" data-live-page-catalog-workspace-uid="workspace-1">
           <span data-live-original>Original catalog</span>
+          <nav aria-label="Library pagination"><span>Page 1</span></nav>
         </div>
         <script nonce="${cspNonce}" type="module">
           window.__artifactflowLiveFetchCount = 0;
@@ -1361,7 +1362,7 @@ test('catalog live updates refetch and replace only the matching workspace proje
             window.__artifactflowLiveFetchCount += 1;
 
             return new Response(
-              '<div data-live-page-catalog data-live-page-catalog-user-uid="user-1" data-live-page-catalog-workspace-uid="workspace-1"><span data-live-refreshed>Refreshed catalog</span></div>',
+              '<div data-live-page-catalog data-live-page-catalog-user-uid="user-1" data-live-page-catalog-workspace-uid="workspace-1"><span data-live-refreshed>Refreshed catalog</span><nav aria-label="Library pagination"><span>Page 1</span><a href="?page=2">Next pages</a></nav></div>',
               { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } },
             );
           };
@@ -1389,6 +1390,8 @@ test('catalog live updates refetch and replace only the matching workspace proje
   });
 
   await expect(page.locator('[data-live-refreshed]')).toHaveText('Refreshed catalog');
+  await expect(page.getByRole('navigation', { name: 'Library pagination' })).toHaveCount(1);
+  await expect(page.getByRole('link', { name: 'Next pages' })).toHaveAttribute('href', '?page=2');
   await expect.poll(() => page.evaluate(() => window.__artifactflowLiveFetchCount)).toBe(1);
 
   await page.evaluate(() => {

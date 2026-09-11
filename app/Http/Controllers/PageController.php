@@ -80,7 +80,7 @@ final class PageController
         $window = $this->pageSearch->window($user, $filters, $pageNumber);
         $pages = $filters->hasQuery()
             ? array_map(static fn (PageSearchResult $result): PageTreeItem => new PageTreeItem($result, 0, null), $window->results)
-            : $this->hierarchyPresenter->arrange($user, $window->results);
+            : $this->hierarchyPresenter->arrange($user, $window->results, includeAncestorContext: true);
         $taxonomy = $this->filterTaxonomy->forUser($user, $filters->workspaceUid);
         $provenance = $this->filterProvenance->forUser($user, $filters->workspaceUid);
 

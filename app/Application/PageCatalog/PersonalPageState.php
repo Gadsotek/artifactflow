@@ -16,7 +16,7 @@ final readonly class PersonalPageState
     public const int RECENT_LIMIT = 100;
     public const int FAVORITE_LIMIT = 200;
 
-    public function __construct(private PageAccess $access)
+    public function __construct(private PageAccess $access, private PageFinder $pages)
     {
     }
 
@@ -52,9 +52,17 @@ final readonly class PersonalPageState
     private function update(User $actor, Page $page, ?bool $favorite): void
     {
         DB::transaction(function () use ($actor, $page, $favorite): void {
-            $this->access->lockAndReauthorize($page->uid, function (Page $locked) use ($actor): void {
-                abort_unless($this->access->canView($actor, $locked), 404);
-            });
+            if ($favorite === null) {
+                // Visits change only private navigation state. Recheck current
+                // authority without serializing readers on the shared page row.
+                $current = $this->pages->requireByUid($page->uid);
+                $this->access->flushCache();
+                abort_unless($this->access->canView($actor, $current), 404);
+            } else {
+                $this->access->lockAndReauthorize($page->uid, function (Page $locked) use ($actor): void {
+                    abort_unless($this->access->canView($actor, $locked), 404);
+                });
+            }
             $this->lockActor($actor);
             $state = $this->states($actor)->where('page_uid', $page->uid);
 

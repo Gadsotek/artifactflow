@@ -214,12 +214,12 @@
                         @endforeach
                         </div>
                     @endif
+                    <nav class="af-pagination" aria-label="Library pagination">
+                        @if ($previousPageUrl !== null)<a class="af-secondary-button" href="{{ $previousPageUrl }}">← Previous pages</a>@endif
+                        <span>Page {{ $pageNumber }}</span>
+                        @if ($nextPageUrl !== null)<a class="af-secondary-button" href="{{ $nextPageUrl }}">Next pages →</a>@endif
+                    </nav>
                 </div>
-                <nav class="af-pagination" aria-label="Library pagination">
-                    @if ($previousPageUrl !== null)<a class="af-secondary-button" href="{{ $previousPageUrl }}">← Previous pages</a>@endif
-                    <span>Page {{ $pageNumber }}</span>
-                    @if ($nextPageUrl !== null)<a class="af-secondary-button" href="{{ $nextPageUrl }}">Next pages →</a>@endif
-                </nav>
             </section>
         </div>
 

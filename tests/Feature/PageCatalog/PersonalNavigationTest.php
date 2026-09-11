@@ -9,6 +9,7 @@ use App\Application\PageCatalog\CreatePage;
 use App\Application\PageCatalog\CreatePageCommand;
 use App\Application\PageCatalog\GrantPageAccess;
 use App\Application\PageCatalog\GrantPageAccessCommand;
+use App\Application\PageCatalog\PageAccess;
 use App\Application\PageCatalog\PersonalPageState;
 use App\Domain\Identity\WorkspaceRole;
 use App\Domain\PageCatalog\PageAccessMode;
@@ -22,6 +23,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 final class PersonalNavigationTest extends TestCase
@@ -105,6 +107,26 @@ final class PersonalNavigationTest extends TestCase
         $this->get('/recent')->assertOk()->assertSee('No recently opened pages');
         $this->get('/favorites')->assertOk()->assertSee($page->title);
         $this->actingAs($other)->get('/recent')->assertOk()->assertSee($otherPage->title);
+    }
+
+    public function test_visit_tracking_rechecks_access_instead_of_trusting_a_previously_loaded_page(): void
+    {
+        $owner = User::factory()->create();
+        $reader = User::factory()->create();
+        $page = $this->pageFor($owner, 'Revoked before visit tracking');
+        WorkspaceMembership::query()->forceCreate([
+            'workspace_uid' => $page->workspace_uid, 'user_uid' => $reader->uid, 'role' => WorkspaceRole::Reader,
+        ]);
+        $this->assertTrue(app(PageAccess::class)->canView($reader, $page));
+        Page::query()->whereKey($page->uid)->update(['access_mode' => PageAccessMode::Restricted]);
+
+        try {
+            app(PersonalPageState::class)->recordVisit($reader, $page);
+            $this->fail('A stale page must not authorize visit tracking after access is revoked.');
+        } catch (HttpException $exception) {
+            $this->assertSame(404, $exception->getStatusCode());
+        }
+        $this->assertDatabaseCount('personal_page_states', 0);
     }
 
     public function test_quick_search_is_bounded_and_workspace_selection_is_exact(): void
