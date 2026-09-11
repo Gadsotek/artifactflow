@@ -20,7 +20,9 @@ use App\Application\PageCatalog\PageLibraryWorkspaceOptions;
 use App\Application\PageCatalog\PagePickerOptions;
 use App\Application\PageCatalog\PageSearch;
 use App\Application\PageCatalog\PageSearchFilters;
+use App\Application\PageCatalog\PageSearchResult;
 use App\Application\PageCatalog\PageSearchSort;
+use App\Application\PageCatalog\PageTreeItem;
 use App\Application\PageCatalog\PdfProcessorConfiguration;
 use App\Application\PageCatalog\XlsxProcessorConfiguration;
 use App\Domain\DomainRuleViolation;
@@ -31,6 +33,7 @@ use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PdfProcessingRejected;
 use App\Domain\PageCatalog\XlsxProcessingRejected;
 use App\Domain\Provenance\ProvenanceSearchScope;
+use App\Http\Requests\PageCatalog\PageIndexRequest;
 use App\Http\Requests\PageCatalog\StorePageRequest;
 use App\Http\Support\ImageNormalizationRejectionResponse;
 use App\Http\Support\PdfProcessingRejectionResponse;
@@ -65,7 +68,7 @@ final class PageController
     ) {
     }
 
-    public function index(Request $request): View
+    public function index(PageIndexRequest $request): View
     {
         $user = $this->authenticatedUser($request);
         $membershipItems = $this->workspaceContext->itemsFor($user);
@@ -73,7 +76,11 @@ final class PageController
         $currentWorkspaceUid = $this->workspaceContext->resolveCurrentWorkspaceUid($request, $workspaceItems, true);
         $filters = $this->pageSearchFiltersFrom($request, $currentWorkspaceUid);
         $filterWorkspaceUids = $this->filterOptionWorkspaceUidsFor($currentWorkspaceUid, $membershipItems);
-        $pages = $this->hierarchyPresenter->arrange($user, $this->pageSearch->search($user, $filters));
+        $pageNumber = $request->integer('page', 1);
+        $window = $this->pageSearch->window($user, $filters, $pageNumber);
+        $pages = $filters->hasQuery()
+            ? array_map(static fn (PageSearchResult $result): PageTreeItem => new PageTreeItem($result, 0, null), $window->results)
+            : $this->hierarchyPresenter->arrange($user, $window->results);
         $taxonomy = $this->filterTaxonomy->forUser($user, $filters->workspaceUid);
         $provenance = $this->filterProvenance->forUser($user, $filters->workspaceUid);
 
@@ -88,6 +95,12 @@ final class PageController
             'filters' => $filters,
             'owners' => $this->pickerOptions->ownersFor($filterWorkspaceUids),
             'pages' => $pages,
+            'pageNumber' => $pageNumber,
+            'nextPageUrl' => $window->hasNext ? $request->fullUrlWithQuery(['page' => $pageNumber + 1]) : null,
+            'previousPageUrl' => $pageNumber > 1 ? $request->fullUrlWithQuery(['page' => $pageNumber - 1]) : null,
+            'hasAdvancedFilters' => $filters->statuses !== PageSearchFilters::activeStatuses()
+                || $filters->categoryUids !== [] || $filters->tagUids !== [] || $filters->ownerUserUid !== null
+                || $filters->aiProviders !== [] || $filters->aiModelIds !== [] || $filters->aiModelQuery !== null,
             'provenanceModels' => $provenance->models,
             'provenanceProviders' => $provenance->providers,
             'pageStatuses' => PageStatus::cases(),
@@ -207,12 +220,16 @@ final class PageController
         return redirect()->route('pages.show', $page);
     }
 
-    public function show(Request $request, Page $page): View
+    public function show(Request $request, Page $page, \App\Application\PageCatalog\PersonalPageState $personalState): View
     {
         $user = $this->authenticatedUser($request);
         $this->access->ensureCanView($user, $page);
+        $personalState->recordVisit($user, $page);
 
-        return view('pages.show', $this->pageDetailViewData->forPage($user, $page));
+        return view('pages.show', [
+            ...$this->pageDetailViewData->forPage($user, $page),
+            'isFavorite' => $personalState->isFavorite($user, $page),
+        ]);
     }
 
     private function pageSearchFiltersFrom(Request $request, ?string $currentWorkspaceUid): PageSearchFilters

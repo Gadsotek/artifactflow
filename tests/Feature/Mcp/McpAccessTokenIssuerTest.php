@@ -35,7 +35,7 @@ final class McpAccessTokenIssuerTest extends TestCase
                 principal: $this->serviceAccount(),
                 name: 'over-ttl',
                 scopes: [McpAccessTokenIssuer::SCOPE_CREATE],
-                expiresAt: Carbon::now()->addDays(McpAccessTokenIssuer::MAX_WRITE_SCOPE_TTL_DAYS + 1),
+                expiresAt: Carbon::now()->addDays(McpAccessTokenIssuer::DEFAULT_WRITE_SCOPE_TTL_DAYS + 1),
             );
         } finally {
             // The invariant must fail before any token row is written.
@@ -49,7 +49,7 @@ final class McpAccessTokenIssuerTest extends TestCase
             principal: $this->serviceAccount(),
             name: 'at-ttl',
             scopes: [McpAccessTokenIssuer::SCOPE_CREATE],
-            expiresAt: Carbon::now()->addDays(McpAccessTokenIssuer::MAX_WRITE_SCOPE_TTL_DAYS),
+            expiresAt: Carbon::now()->addDays(McpAccessTokenIssuer::DEFAULT_WRITE_SCOPE_TTL_DAYS),
         );
 
         $this->assertNotSame('', $issued->plainTextToken);

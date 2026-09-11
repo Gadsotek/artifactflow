@@ -106,9 +106,160 @@
                     </label>
                 </section>
 
-                <section class="space-y-5" data-create-page-optional-fields>
+
+
+                <section class="space-y-5" data-create-page-upload-fields hidden>
                     <div class="af-create-section-heading">
                         <span>02</span>
+                        <div>
+                            <h2>Upload artifact</h2>
+                            <p>The HTML file supplies the page content.</p>
+                        </div>
+                    </div>
+
+                    <label class="af-file-drop block">
+                        <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Single-file HTML artifact</span>
+                        <span class="mt-1 block text-xs text-zinc-500">Choose one self-contained <code>.html</code> file. It remains untrusted and will run only inside the isolated artifact sandbox.</span>
+                        <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="html_file" type="file" accept=".html,text/html">
+                    </label>
+                    @include('pages.partials.artifact-self-contained-hint')
+                </section>
+
+                <section class="space-y-5" data-create-page-image-upload-fields hidden>
+                    <div class="af-create-section-heading">
+                        <span>02</span>
+                        <div>
+                            <h2>Upload image</h2>
+                            <p>The upload is decoded and re-encoded before it becomes the authoritative artifact.</p>
+                        </div>
+                    </div>
+
+                    <label class="af-file-drop block">
+                        <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">PNG or JPEG image</span>
+                        <span class="mt-1 block text-xs text-zinc-500">Metadata and non-pixel payloads are discarded. The normalized image is previewed only on the isolated artifact origin.</span>
+                        <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="image_file" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg">
+                    </label>
+                </section>
+
+                @if ($pdfArtifactsEnabled)
+                    <section class="space-y-5" data-create-page-pdf-upload-fields hidden>
+                        <div class="af-create-section-heading">
+                            <span>02</span>
+                            <div>
+                                <h2>Upload PDF</h2>
+                                <p>The original is validated and its existing text layer is indexed before storage.</p>
+                            </div>
+                        </div>
+
+                        <label class="af-file-drop block">
+                            <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">PDF document</span>
+                            <span class="mt-1 block text-xs text-zinc-500">Encrypted, malformed, active, or over-limit PDFs are rejected. Image-only PDFs are accepted without OCR.</span>
+                            <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="pdf_file" type="file" accept=".pdf,application/pdf" @error('pdf_file') aria-invalid="true" aria-describedby="create-pdf-file-error" autofocus @enderror>
+                            @error('pdf_file')
+                                <span class="mt-3 block text-sm font-medium text-red-700 dark:text-red-300" data-pdf-upload-error id="create-pdf-file-error" role="alert">{{ $message }} Select the PDF again after correcting the issue.</span>
+                            @enderror
+                        </label>
+                    </section>
+                @endif
+
+                @if ($xlsxArtifactsEnabled)
+                    <section class="space-y-5" data-create-page-xlsx-upload-fields hidden>
+                        <div class="af-create-section-heading">
+                            <span>02</span>
+                            <div>
+                                <h2>Upload Excel workbook</h2>
+                                <p>The workbook is validated in isolation and projected into a read-only typed preview.</p>
+                            </div>
+                        </div>
+
+                        <label class="af-file-drop block">
+                            <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">XLSX workbook</span>
+                            <span class="mt-1 block text-xs text-zinc-500">Formulas are not recalculated. Hidden content and unsupported active features do not enter the preview or search index.</span>
+                            <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="xlsx_file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @error('xlsx_file') aria-invalid="true" aria-describedby="create-xlsx-file-error" autofocus @enderror>
+                            @error('xlsx_file')
+                                <span class="mt-3 block text-sm font-medium text-red-700 dark:text-red-300" id="create-xlsx-file-error" role="alert">{{ $message }} Select the workbook again after correcting the issue.</span>
+                            @enderror
+                        </label>
+                    </section>
+                @endif
+
+                @if ($docxArtifactsEnabled)
+                    <section class="space-y-5" data-create-page-docx-upload-fields hidden>
+                        <div class="af-create-section-heading">
+                            <span>02</span>
+                            <div>
+                                <h2>Upload Word document</h2>
+                                <p>The DOCX package is validated and converted in isolation to a searchable PDF preview.</p>
+                            </div>
+                        </div>
+
+                        <label class="af-file-drop block">
+                            <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">DOCX document</span>
+                            <span class="mt-1 block text-xs text-zinc-500">Macros, embedded packages, external content, and unsupported active features are rejected. External links remain in the exact original but become inert visible text in the PDF preview.</span>
+                            <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="docx_file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @error('docx_file') aria-invalid="true" aria-describedby="create-docx-file-error" autofocus @enderror>
+                            @error('docx_file')
+                                <span class="mt-3 block text-sm font-medium text-red-700 dark:text-red-300" id="create-docx-file-error" role="alert">{{ $message }} Select the document again after correcting the issue.</span>
+                            @enderror
+                        </label>
+                    </section>
+                @endif
+
+                <section class="space-y-5" data-create-page-content-fields>
+                    <div class="af-create-section-heading">
+                        <span>02</span>
+                        <div>
+                            <h2>Add content</h2>
+                            <p>Use the rich editor for Markdown or switch to HTML source when pasting an artifact.</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <label class="text-sm font-medium text-zinc-800 dark:text-zinc-200" for="create-page-content-editor">Content</label>
+                            <div class="artifactflow-editor-view-switch" data-editor-view-switch role="tablist" aria-label="Editor view">
+                                <button data-active="true" data-editor-view-button data-editor-view="rich" role="tab" type="button">Rich editor</button>
+                                <button data-editor-view-button data-editor-view="source" role="tab" type="button">Markdown source</button>
+                            </div>
+                            <span class="text-xs text-zinc-500" data-editor-language-label>Rich Markdown</span>
+                        </div>
+                        @include('pages.partials.markdown-toolbar')
+                        <div
+                            class="artifactflow-markdown artifactflow-rich-editor"
+                            contenteditable="true"
+                            data-rich-markdown-editor
+                            aria-label="Page content"
+                        >{!! $renderedEditorMarkdown !!}</div>
+                        <div class="artifactflow-editor-shell" data-source-editor-mount></div>
+                        <textarea
+                            class="mt-2 min-h-72 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-sm text-zinc-950"
+                            id="create-page-content-editor"
+                            name="content"
+                            data-editor-textarea
+                        >{{ old('content') }}</textarea>
+                        <div class="mt-2 flex items-center justify-between text-xs text-zinc-500">
+                            <span data-editor-status>Rich Markdown editor ready</span>
+                            <span data-editor-count></span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="space-y-3 rounded-md border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900" data-html-draft-preview hidden>
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h2 class="text-sm font-semibold text-zinc-950 dark:text-zinc-50">HTML draft preview</h2>
+                            <p class="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">Runs only in an opaque sandbox with scripts allowed and network, forms, same-origin access, and top navigation blocked.</p>
+                        </div>
+                        <button class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 disabled:cursor-wait disabled:opacity-60" data-html-draft-preview-button type="button">Preview HTML before saving</button>
+                    </div>
+                    <p class="text-xs text-zinc-500 dark:text-zinc-400" data-html-draft-preview-status aria-live="polite"></p>
+                    @include('pages.partials.artifact-self-contained-hint')
+                    @include('pages.partials.artifact-sensitive-data-warning')
+                    <iframe class="h-[32rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700" data-html-draft-preview-frame name="artifactflow-html-draft-preview" sandbox="allow-scripts" allow="" referrerpolicy="no-referrer" title="Unsaved HTML draft preview"></iframe>
+                </section>
+
+                <section class="space-y-5" data-create-page-optional-fields>
+                    <div class="af-create-section-heading">
+                        <span>03</span>
                         <div>
                             <h2>Organize the page</h2>
                             <p>Add context for discovery. These details remain editable, and apply to uploaded artifacts too.</p>
@@ -186,155 +337,6 @@
                         <span class="text-sm font-medium text-zinc-800 dark:text-zinc-200">Description</span>
                         <textarea class="mt-2 min-h-24 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950" name="description">{{ old('description') }}</textarea>
                     </label>
-                </section>
-
-                <section class="space-y-5" data-create-page-upload-fields hidden>
-                    <div class="af-create-section-heading">
-                        <span>03</span>
-                        <div>
-                            <h2>Upload artifact</h2>
-                            <p>The HTML file supplies the page content.</p>
-                        </div>
-                    </div>
-
-                    <label class="af-file-drop block">
-                        <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Single-file HTML artifact</span>
-                        <span class="mt-1 block text-xs text-zinc-500">Choose one self-contained <code>.html</code> file. It remains untrusted and will run only inside the isolated artifact sandbox.</span>
-                        <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="html_file" type="file" accept=".html,text/html">
-                    </label>
-                    @include('pages.partials.artifact-self-contained-hint')
-                </section>
-
-                <section class="space-y-5" data-create-page-image-upload-fields hidden>
-                    <div class="af-create-section-heading">
-                        <span>03</span>
-                        <div>
-                            <h2>Upload image</h2>
-                            <p>The upload is decoded and re-encoded before it becomes the authoritative artifact.</p>
-                        </div>
-                    </div>
-
-                    <label class="af-file-drop block">
-                        <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">PNG or JPEG image</span>
-                        <span class="mt-1 block text-xs text-zinc-500">Metadata and non-pixel payloads are discarded. The normalized image is previewed only on the isolated artifact origin.</span>
-                        <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="image_file" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg">
-                    </label>
-                </section>
-
-                @if ($pdfArtifactsEnabled)
-                    <section class="space-y-5" data-create-page-pdf-upload-fields hidden>
-                        <div class="af-create-section-heading">
-                            <span>03</span>
-                            <div>
-                                <h2>Upload PDF</h2>
-                                <p>The original is validated and its existing text layer is indexed before storage.</p>
-                            </div>
-                        </div>
-
-                        <label class="af-file-drop block">
-                            <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">PDF document</span>
-                            <span class="mt-1 block text-xs text-zinc-500">Encrypted, malformed, active, or over-limit PDFs are rejected. Image-only PDFs are accepted without OCR.</span>
-                            <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="pdf_file" type="file" accept=".pdf,application/pdf" @error('pdf_file') aria-invalid="true" aria-describedby="create-pdf-file-error" autofocus @enderror>
-                            @error('pdf_file')
-                                <span class="mt-3 block text-sm font-medium text-red-700 dark:text-red-300" data-pdf-upload-error id="create-pdf-file-error" role="alert">{{ $message }} Select the PDF again after correcting the issue.</span>
-                            @enderror
-                        </label>
-                    </section>
-                @endif
-
-                @if ($xlsxArtifactsEnabled)
-                    <section class="space-y-5" data-create-page-xlsx-upload-fields hidden>
-                        <div class="af-create-section-heading">
-                            <span>03</span>
-                            <div>
-                                <h2>Upload Excel workbook</h2>
-                                <p>The workbook is validated in isolation and projected into a read-only typed preview.</p>
-                            </div>
-                        </div>
-
-                        <label class="af-file-drop block">
-                            <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">XLSX workbook</span>
-                            <span class="mt-1 block text-xs text-zinc-500">Formulas are not recalculated. Hidden content and unsupported active features do not enter the preview or search index.</span>
-                            <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="xlsx_file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @error('xlsx_file') aria-invalid="true" aria-describedby="create-xlsx-file-error" autofocus @enderror>
-                            @error('xlsx_file')
-                                <span class="mt-3 block text-sm font-medium text-red-700 dark:text-red-300" id="create-xlsx-file-error" role="alert">{{ $message }} Select the workbook again after correcting the issue.</span>
-                            @enderror
-                        </label>
-                    </section>
-                @endif
-
-                @if ($docxArtifactsEnabled)
-                    <section class="space-y-5" data-create-page-docx-upload-fields hidden>
-                        <div class="af-create-section-heading">
-                            <span>03</span>
-                            <div>
-                                <h2>Upload Word document</h2>
-                                <p>The DOCX package is validated and converted in isolation to a searchable PDF preview.</p>
-                            </div>
-                        </div>
-
-                        <label class="af-file-drop block">
-                            <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">DOCX document</span>
-                            <span class="mt-1 block text-xs text-zinc-500">Macros, embedded packages, external content, and unsupported active features are rejected. External links remain in the exact original but become inert visible text in the PDF preview.</span>
-                            <input class="mt-4 block w-full text-sm text-zinc-700 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-100 dark:file:text-zinc-950" name="docx_file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @error('docx_file') aria-invalid="true" aria-describedby="create-docx-file-error" autofocus @enderror>
-                            @error('docx_file')
-                                <span class="mt-3 block text-sm font-medium text-red-700 dark:text-red-300" id="create-docx-file-error" role="alert">{{ $message }} Select the document again after correcting the issue.</span>
-                            @enderror
-                        </label>
-                    </section>
-                @endif
-
-                <section class="space-y-5" data-create-page-content-fields>
-                    <div class="af-create-section-heading">
-                        <span>03</span>
-                        <div>
-                            <h2>Add content</h2>
-                            <p>Use the rich editor for Markdown or switch to HTML source when pasting an artifact.</p>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div class="flex flex-wrap items-center justify-between gap-3">
-                            <label class="text-sm font-medium text-zinc-800 dark:text-zinc-200" for="create-page-content-editor">Content</label>
-                            <div class="artifactflow-editor-view-switch" data-editor-view-switch role="tablist" aria-label="Editor view">
-                                <button data-active="true" data-editor-view-button data-editor-view="rich" role="tab" type="button">Rich editor</button>
-                                <button data-editor-view-button data-editor-view="source" role="tab" type="button">Markdown source</button>
-                            </div>
-                            <span class="text-xs text-zinc-500" data-editor-language-label>Rich Markdown</span>
-                        </div>
-                        @include('pages.partials.markdown-toolbar')
-                        <div
-                            class="artifactflow-markdown artifactflow-rich-editor"
-                            contenteditable="true"
-                            data-rich-markdown-editor
-                            aria-label="Page content"
-                        >{!! $renderedEditorMarkdown !!}</div>
-                        <div class="artifactflow-editor-shell" data-source-editor-mount></div>
-                        <textarea
-                            class="mt-2 min-h-72 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-sm text-zinc-950"
-                            id="create-page-content-editor"
-                            name="content"
-                            data-editor-textarea
-                        >{{ old('content') }}</textarea>
-                        <div class="mt-2 flex items-center justify-between text-xs text-zinc-500">
-                            <span data-editor-status>Rich Markdown editor ready</span>
-                            <span data-editor-count></span>
-                        </div>
-                    </div>
-                </section>
-
-                <section class="space-y-3 rounded-md border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900" data-html-draft-preview hidden>
-                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <h2 class="text-sm font-semibold text-zinc-950 dark:text-zinc-50">HTML draft preview</h2>
-                            <p class="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">Runs only in an opaque sandbox with scripts allowed and network, forms, same-origin access, and top navigation blocked.</p>
-                        </div>
-                        <button class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 disabled:cursor-wait disabled:opacity-60" data-html-draft-preview-button type="button">Preview HTML before saving</button>
-                    </div>
-                    <p class="text-xs text-zinc-500 dark:text-zinc-400" data-html-draft-preview-status aria-live="polite"></p>
-                    @include('pages.partials.artifact-self-contained-hint')
-                    @include('pages.partials.artifact-sensitive-data-warning')
-                    <iframe class="h-[32rem] w-full rounded-md border border-zinc-300 bg-white dark:border-zinc-700" data-html-draft-preview-frame name="artifactflow-html-draft-preview" sandbox="allow-scripts" allow="" referrerpolicy="no-referrer" title="Unsaved HTML draft preview"></iframe>
                 </section>
 
                 <div class="af-create-submit">

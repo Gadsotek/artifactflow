@@ -6,6 +6,10 @@ stack, and artifact origin.
 Set `PLAYWRIGHT_OUTPUT_DIR` and `PLAYWRIGHT_HTML_OUTPUT_DIR` to fresh temporary directories when
 you need to preserve an earlier run's traces and report.
 
+HTML reports are saved without automatically opening a server, including after failures, so the
+wrapper can stop its dedicated services and drop its temporary database. After the wrapper exits,
+inspect a report with `npx playwright show-report` (or pass your custom HTML report directory).
+
 - A second Laravel server inside the e2e app container uses Cloudflare's published always-pass
   credentials. The browser loads the real login and password-recovery pages and verifies their
   emitted CSP, nonce, action, challenge frame, and generated token. The normal e2e server receives

@@ -36,11 +36,11 @@ async function createMarkdownPage(
   if (parentTitle === null) {
     await page.goto(`${baseUrl}/pages/create`, { waitUntil: 'domcontentloaded' });
   } else {
-    await expect(page.getByRole('link', { name: 'New page', exact: true })).toHaveAttribute(
+    await expect(page.getByRole('link', { name: 'New page', exact: true })).not.toHaveAttribute(
       'href',
       /parent_page_uid=[0-9a-hjkmnp-tv-z]{26}/u,
     );
-    await page.getByRole('link', { name: 'Create page', exact: true }).click();
+    await page.getByRole('link', { name: 'Add child page', exact: true }).click();
     await expect(page.locator('select[name="parent_page_uid"] option:checked')).toHaveText(
       parentTitle,
     );

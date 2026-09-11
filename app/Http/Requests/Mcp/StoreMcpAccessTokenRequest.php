@@ -23,7 +23,7 @@ final class StoreMcpAccessTokenRequest extends AppFormRequest
             'workspace_uids' => ['nullable', 'array'],
             'workspace_uids.*' => ['required', 'string'],
             'all_workspaces' => ['nullable', 'boolean'],
-            'expires_in_days' => ['required', 'integer', 'min:1', 'max:365'],
+            'expires_in_days' => ['required', 'integer', 'min:1', 'max:' . McpAccessTokenIssuer::MAX_TOKEN_TTL_DAYS],
             'password' => ['required', 'string'],
             'code' => ['required', 'string'],
         ];

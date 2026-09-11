@@ -19,16 +19,18 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
     <body class="antialiased">
+        <a class="af-skip-link" href="#main-content">Skip to content</a>
         @if ($authenticatedUser instanceof \App\Models\User)
             <div
                 class="af-shell"
                 data-app-shell
+                data-navigation-user="{{ $navigationStorageKey }}"
                 @if ($realtimeConfigJson !== null)
                     data-realtime-enabled="true"
                     data-realtime-config="{{ $realtimeConfigJson }}"
                 @endif
             >
-                <aside class="af-sidebar">
+                <aside class="af-sidebar" data-navigation-sidebar>
                     <a class="af-brand" href="{{ route('dashboard') }}" aria-label="artifactflow dashboard">
                         <x-brand-mark />
                         <span>
@@ -37,25 +39,42 @@
                         </span>
                     </a>
 
-                    <nav class="af-primary-nav" data-primary-navigation aria-label="Primary navigation">
-                        <a class="af-nav-item {{ request()->routeIs('dashboard') ? 'is-active' : '' }}" href="{{ route('dashboard') }}">
+                    <button class="af-mobile-menu" type="button" data-toggle-navigation aria-expanded="false" aria-controls="primary-navigation" aria-label="Open navigation">Menu</button>
+                    <button class="af-quick-trigger" type="button" data-open-quick-navigation aria-label="Search or jump to">
+                        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+                        <span>Search or jump to…</span><kbd>⌘ K</kbd>
+                    </button>
+                    <nav class="af-primary-nav" id="primary-navigation" data-primary-navigation aria-label="Primary navigation">
+                        <a class="af-nav-item {{ request()->routeIs('dashboard') ? 'is-active' : '' }}" @if (request()->routeIs('dashboard')) aria-current="page" @endif href="{{ route('dashboard') }}">
                             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/></svg>
-                            <span>Overview</span>
+                            <span>Home</span>
                         </a>
-                        <a class="af-nav-item {{ request()->routeIs('pages.index', 'pages.show') ? 'is-active' : '' }}" href="{{ route('pages.index') }}">
+                        <a class="af-nav-item {{ request()->routeIs('navigation.recent') ? 'is-active' : '' }}" @if (request()->routeIs('navigation.recent')) aria-current="page" @endif href="{{ route('navigation.recent') }}">
+                            <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>
+                            <span>Recently opened</span>
+                        </a>
+                        <a class="af-nav-item {{ request()->routeIs('navigation.favorites') ? 'is-active' : '' }}" @if (request()->routeIs('navigation.favorites')) aria-current="page" @endif href="{{ route('navigation.favorites') }}">
+                            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1Z"/></svg>
+                            <span>Favorites</span>
+                        </a>
+                        <a class="af-nav-item {{ request()->routeIs('pages.index', 'pages.show') ? 'is-active' : '' }}" @if (request()->routeIs('pages.index', 'pages.show')) aria-current="page" @endif href="{{ route('pages.index') }}">
                             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6a2 2 0 0 1-2-2V4c0-1.1.9-2 2-2Zm8 2v5h5M8 13h8M8 17h8"/></svg>
                             <span>Library</span>
                         </a>
-                        <a class="af-nav-item {{ request()->routeIs('pages.create') ? 'is-active' : '' }}" href="{{ $newPageUrl }}">
+                        <a class="af-nav-item {{ request()->routeIs('pages.create') ? 'is-active' : '' }}" @if (request()->routeIs('pages.create')) aria-current="page" @endif href="{{ $newPageUrl }}">
                             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
                             <span>New page</span>
                         </a>
-                        <a class="af-nav-item {{ request()->routeIs('settings.two-factor.*', 'settings.password.*', 'settings.mcp-tokens.*') ? 'is-active' : '' }}" href="{{ route('settings.two-factor.index') }}">
+                        <a class="af-nav-item {{ request()->routeIs('settings.mcp-tokens.*') ? 'is-active' : '' }}" @if (request()->routeIs('settings.mcp-tokens.*')) aria-current="page" @endif href="{{ route('settings.mcp-tokens.index') }}">
+                            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 4-5 8 5 8m8-16 5 8-5 8M14 4l-4 16"/></svg>
+                            <span>AI connections</span>
+                        </a>
+                        <a class="af-nav-item {{ request()->routeIs('settings.two-factor.*', 'settings.password.*') ? 'is-active' : '' }}" @if (request()->routeIs('settings.two-factor.*', 'settings.password.*')) aria-current="page" @endif href="{{ route('settings.two-factor.index') }}">
                             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 5 6v6c0 4 2.8 7.4 7 9 4.2-1.6 7-5 7-9V6l-7-3Zm-1 11 5-5-1.4-1.4L11 11.2 9.4 9.6 8 11l3 3Z"/></svg>
                             <span>Security</span>
                         </a>
                         @if ($authenticatedUser->is_system_admin)
-                            <a class="af-nav-item {{ request()->routeIs('admin.users.*', 'admin.two-factor.*') ? 'is-active' : '' }}" href="{{ route('admin.users.index') }}">
+                            <a class="af-nav-item {{ request()->routeIs('admin.users.*', 'admin.two-factor.*') ? 'is-active' : '' }}" @if (request()->routeIs('admin.users.*', 'admin.two-factor.*')) aria-current="page" @endif href="{{ route('admin.users.index') }}">
                                 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V7l-8-4Zm0 5v4m0 4h.01"/></svg>
                                 <span>Administration</span>
                             </a>
@@ -106,10 +125,11 @@
                     </div>
                 </aside>
 
-                <main class="af-main">
+                <main class="af-main" id="main-content" tabindex="-1">
                     {{ $slot }}
                 </main>
             </div>
+            <x-quick-navigation :workspaces="$navigationWorkspaces" />
 
             @if ($passwordResetTokenReviewCount !== null)
                 <dialog
@@ -139,7 +159,7 @@
                 </dialog>
             @endif
         @else
-            <main class="min-h-screen">
+            <main class="min-h-screen" id="main-content">
                 {{ $slot }}
             </main>
         @endif

@@ -17,4 +17,5 @@ final class InstallationLimitCeilings
     public const int TAGS_PER_PAGE = 1000000;
     public const int EXTERNAL_SHARE_EXPIRY_DAYS = 30;
     public const int EXTERNAL_SHARE_EXPIRY_HOURS = 720;
+    public const int MCP_TOKEN_TTL_DAYS = 365;
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Administration;
 
 use App\Application\Administration\InstallationLimitCeilings;
+use App\Application\Administration\InstallationLimitSettings;
 use App\Application\Administration\InstallationLimitValues;
 use App\Http\Requests\AppFormRequest;
 use LogicException;
@@ -64,6 +65,12 @@ final class UpdateInstallationLimitsRequest extends AppFormRequest
             'two_factor_required_for_system_admins' => ['nullable', 'boolean'],
             'two_factor_required_for_all_users' => ['nullable', 'boolean'],
             'realtime_enabled' => ['nullable', 'boolean'],
+            'mcp_read_token_max_ttl_days' => [
+                'sometimes', 'required', 'integer', 'min:1', 'max:' . InstallationLimitCeilings::MCP_TOKEN_TTL_DAYS,
+            ],
+            'mcp_write_token_max_ttl_days' => [
+                'sometimes', 'required', 'integer', 'min:1', 'max:' . InstallationLimitCeilings::MCP_TOKEN_TTL_DAYS,
+            ],
             'external_sharing_enabled' => ['nullable', 'boolean'],
             'external_share_acknowledgement_required' => ['nullable', 'boolean'],
             'external_share_max_expiry_days' => [
@@ -100,6 +107,8 @@ final class UpdateInstallationLimitsRequest extends AppFormRequest
 
     public function values(): InstallationLimitValues
     {
+        $current = app(InstallationLimitSettings::class)->current();
+
         return new InstallationLimitValues(
             maxMarkdownBytes: $this->positiveInt('max_markdown_bytes'),
             maxHtmlBytes: $this->positiveInt('max_html_bytes'),
@@ -117,6 +126,14 @@ final class UpdateInstallationLimitsRequest extends AppFormRequest
                 true,
             ),
             externalShareMaxExpiryHours: $this->externalShareMaxExpiryHours(),
+            mcpReadTokenMaxTtlDays: $this->positiveIntOrDefault(
+                'mcp_read_token_max_ttl_days',
+                $current->mcpReadTokenMaxTtlDays,
+            ),
+            mcpWriteTokenMaxTtlDays: $this->positiveIntOrDefault(
+                'mcp_write_token_max_ttl_days',
+                $current->mcpWriteTokenMaxTtlDays,
+            ),
         );
     }
 

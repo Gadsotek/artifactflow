@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Mcp;
 
+use App\Application\Administration\InstallationLimitCeilings;
+use App\Application\Administration\InstallationLimitSettings;
 use App\Application\Audit\AuditLogger;
 use App\Application\Events\DomainEventRecorder;
 use App\Domain\DomainRuleViolation;
@@ -53,20 +55,15 @@ final readonly class McpAccessTokenIssuer
     ];
 
     /**
-     * Maximum lifetime, in days, for a token that carries any write scope. A
-     * standing read/write credential for an autonomous agent should have a much
-     * shorter exposure window than a read-only one.
+     * Default write-token limit. System admins may change it up to the absolute
+     * ceiling; issuance always uses the current installation settings.
      */
-    public const int MAX_WRITE_SCOPE_TTL_DAYS = 90;
+    public const int DEFAULT_WRITE_SCOPE_TTL_DAYS = 90;
 
     /**
-     * Absolute maximum lifetime, in days, for any MCP token regardless of scope.
-     * Even a read-only token grants standing, cross-workspace-scoped read access
-     * to artifact content, so it must rotate rather than live indefinitely; a
-     * CLI-minted `mcp:read`/`mcp:search` token was previously unbounded. Write
-     * tokens are held to the much tighter MAX_WRITE_SCOPE_TTL_DAYS above.
+     * Absolute ceiling for admin-configured limits, regardless of scope.
      */
-    public const int MAX_TOKEN_TTL_DAYS = 365;
+    public const int MAX_TOKEN_TTL_DAYS = InstallationLimitCeilings::MCP_TOKEN_TTL_DAYS;
 
     /**
      * @param list<string> $scopes
@@ -79,6 +76,7 @@ final readonly class McpAccessTokenIssuer
     public function __construct(
         private DomainEventRecorder $events,
         private AuditLogger $audit,
+        private InstallationLimitSettings $settings,
     ) {
     }
 
@@ -107,27 +105,15 @@ final readonly class McpAccessTokenIssuer
             throw new DomainRuleViolation('MCP token expiry must be in the future.');
         }
 
-        // A write-capable token is a standing agent credential; cap its lifetime here,
-        // in the one issuance chokepoint every entrypoint calls, so the CLI and any
-        // future caller inherit the same limit the self-service UI enforces. Keeping
-        // this only in the HTTP controller let `artifactflow:mcp-token-create` mint
-        // effectively unbounded write tokens.
-        if (
-            self::includesWriteScope($normalizedScopes)
-            && $expiresAt->greaterThan(Carbon::now()->addDays(self::MAX_WRITE_SCOPE_TTL_DAYS))
-        ) {
+        // Enforce the installation policy at the shared issuance boundary so
+        // CLI and application callers cannot bypass the self-service limits.
+        $maximumDays = $this->maximumTtlDays($normalizedScopes);
+        if ($expiresAt->greaterThan(Carbon::now()->addDays($maximumDays))) {
             throw new DomainRuleViolation(sprintf(
-                'Write-capable MCP tokens must expire within %d days.',
-                self::MAX_WRITE_SCOPE_TTL_DAYS,
-            ));
-        }
-
-        // Absolute ceiling for every token, so a read-only CLI token cannot be
-        // minted with an effectively unbounded lifetime.
-        if ($expiresAt->greaterThan(Carbon::now()->addDays(self::MAX_TOKEN_TTL_DAYS))) {
-            throw new DomainRuleViolation(sprintf(
-                'MCP tokens must expire within %d days.',
-                self::MAX_TOKEN_TTL_DAYS,
+                self::includesWriteScope($normalizedScopes)
+                    ? 'Write-capable MCP tokens must expire within %d days.'
+                    : 'MCP tokens must expire within %d days.',
+                $maximumDays,
             ));
         }
 
@@ -193,6 +179,16 @@ final readonly class McpAccessTokenIssuer
     public static function hashToken(string $plainTextToken): string
     {
         return hash('sha256', $plainTextToken);
+    }
+
+    /** @param list<string> $scopes */
+    public function maximumTtlDays(array $scopes): int
+    {
+        $settings = $this->settings->current();
+
+        return self::includesWriteScope($scopes)
+            ? $settings->mcpWriteTokenMaxTtlDays
+            : $settings->mcpReadTokenMaxTtlDays;
     }
 
     /**

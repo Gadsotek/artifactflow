@@ -32,6 +32,7 @@
                 method="POST"
                 action="{{ route('pages.versions.store', $page) }}"
                 data-content-editor
+                data-editor-unsaved-guard
                 data-editor-capabilities="{{ $page->type === PageType::Markdown ? 'rich-markdown' : 'line-numbers syntax-highlighting' }}"
                 data-editor-language="{{ $page->type === PageType::Markdown ? 'markdown' : 'html' }}"
                 data-editor-layout="{{ $page->type === PageType::Markdown ? 'rich' : 'source' }}"
@@ -76,10 +77,15 @@
 
                 @include('pages.partials.change-summary-field')
 
-                <div class="flex flex-col gap-3 border-t border-zinc-200 pt-4 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
+                <div class="af-editor-save-bar flex flex-col gap-3 border-t border-zinc-200 pt-4 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
                     <div class="flex items-center gap-4">
                         <span class="text-xs font-medium uppercase tracking-wide text-zinc-500">Cmd/Ctrl + S to save</span>
                         <button class="af-primary-button" type="submit">Save new version</button>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button class="af-secondary-button" type="button" data-copy-draft>Copy draft</button>
+                        <a class="af-secondary-button" href="{{ route('pages.show', $page) }}" target="_blank" rel="noopener noreferrer">Open current version</a>
+                        <span data-draft-copy-status role="status" class="text-xs"></span>
                     </div>
                 </div>
             </form>
