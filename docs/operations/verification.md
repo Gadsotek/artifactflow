@@ -16,6 +16,25 @@ Full local pre-push gate:
 make quality-full
 ```
 
+The production-image phase uses a fresh `artifactflow-quality-<random>` Buildx
+builder and six temporary image tags. It runs the existing production builds,
+processor runtime checks, and Trivy scans against those same tags, then removes
+the tags and the temporary builder's cache. It does not select a different
+default builder, prune Docker globally, or delete existing container resources.
+Shared development/E2E images, database volumes, and dependency caches remain.
+Each subsequent full production build starts with a fresh cache, so it may take
+longer. Standalone `make build-prod` and `make scan-image` retain their existing
+image names and support the existing build/cache overrides.
+
+Cleanup runs after success, command failure, and handled INT/TERM/HUP signals.
+It reports failures and fails an otherwise successful gate if cleanup fails;
+it preserves the original failure status when a build or scan already failed.
+Power loss, SIGKILL, or an unavailable Docker engine can prevent cleanup. In
+that case, use the exact temporary builder/image names printed by the run to
+inspect leftovers before removing them; do not use a global prune command.
+The command-level lifecycle tests run in CI and with `make quality`, and can also run
+without Docker via `node --test scripts/quality-images.test.mjs`.
+
 `make e2e` creates a temporary database, starts dedicated app/artifact services,
 and drops the database on exit. Defaults are `http://localhost:18180` and
 `http://127.0.0.1:18181`; override occupied ports with `E2E_APP_PORT` and

@@ -13,6 +13,30 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   [CVE-2026-84445](https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj).
   Both builds verify the patched version in the compiled binary.
 
+### Added
+
+- Administrator-configurable MCP token lifetimes for read-only and write-capable
+  connections, from 1 to 365 days, enforced for web and CLI issuance.
+- Private favorites and recently opened pages, Home continuation sections,
+  keyboard quick navigation, and permission-filtered Library pagination.
+
+### Changed
+
+- Website and README screenshots now show the refreshed navigation and real
+  sample artifacts in a fictional Northstar Labs workspace.
+- Consistent searchable workspace navigation, labeled mobile navigation and
+  theme controls, clearer page actions and sharing choices, content-first
+  creation, editor draft recovery, and simpler history and AI connection setup.
+
+### Fixed
+
+- Browser test reports no longer keep failed quality runs open and delay cleanup
+  of their isolated services and temporary database.
+- Full local quality runs now build and scan production/processor images under
+  temporary tags using a separate Buildx builder, then clean up those images
+  and that builder's cache. Cleanup also runs on failures and handled interrupts
+  without pruning other projects' images, containers, networks, or data volumes.
+
 ## v0.2.1 — 2026-09-07
 
 Release-pipeline correction and the first complete publication of the v0.2

@@ -51,6 +51,7 @@ test('page access autocomplete finds and grants a registered coworker', async ({
   await page.getByRole('button', { name: 'Save page' }).click();
   await expect(page).toHaveURL(/\/pages\/[0-9a-hjkmnp-tv-z]{26}$/u);
 
+  await page.locator('.af-more-tools > summary').click();
   const accessButton = page.getByRole('button', { name: 'Access', exact: true });
   await expect(accessButton).toHaveAttribute('data-editor-dialog-trigger-ready', '');
   await expect(page.locator('[data-known-user-picker]')).toHaveAttribute(
@@ -88,6 +89,7 @@ test('page access autocomplete finds and grants a registered coworker', async ({
     ),
   ).toBeVisible();
 
+  await page.locator('.af-more-tools > summary').click();
   await expect(accessButton).toHaveAttribute('data-editor-dialog-trigger-ready', '');
   await accessButton.click();
   await expect(page.getByRole('dialog', { name: 'Access overrides' })).toContainText(coworkerEmail);

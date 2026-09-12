@@ -7,7 +7,7 @@ No AI API key or model subscription is required by ArtifactFlow itself.
 
 ## Human tokens
 
-Open **Security > MCP tokens**. Enable TOTP first, then confirm your password
+Open **AI connections**. Enable TOTP first, then confirm your password
 and a fresh authenticator code to create a token. Its plaintext value appears
 once. Store it in the client secret store.
 
@@ -15,6 +15,29 @@ Choose explicit operations and workspaces. **All workspaces** includes future
 workspaces your account can reach. An empty selection does not silently grant
 all-workspaces access. Token list/revoke operate only on your own account;
 revocation does not repeat the strong creation step-up.
+
+### Token expiration policy
+
+System Admins can set **Administration > Storage and limits > MCP token
+lifetimes** after confirming two-factor authentication. Read-only and
+write-capable tokens have separate maximum lifetimes, each configurable from
+1 to 365 days. The defaults remain 365 days for read-only tokens and 90 days
+for tokens with any create, update, organize, upload, or share scope. A token
+with both read and write scopes follows the write-capable limit.
+
+To allow year-long integrations, set the write-capable maximum to **365** and
+save settings, then choose **365** in **AI connections > Expires in days** (or
+pass `--ttl-days=365` when issuing a service-account token). The web form starts
+at 30 days, or the read-only maximum if lower; users choose an explicit expiry.
+The same policy is enforced by the web flow, CLI, and central issuer. No token
+can be issued without expiration or for more than 365 days.
+
+Changes are audited and apply to new tokens. Raising a limit does not extend
+existing tokens, and lowering it does not shorten or revoke them. Use explicit
+revocation when an existing connection should lose access. Password/TOTP
+confirmation, operation scopes, and live workspace permissions still apply.
+Existing installations need `make migrate` for the new settings columns; the
+migration preserves current tokens and backfills the original limits.
 
 For supported local clients:
 

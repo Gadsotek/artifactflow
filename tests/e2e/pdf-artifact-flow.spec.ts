@@ -224,8 +224,12 @@ test('PDF upload, replacement, and restore are processed, searchable, isolated, 
     mimeType: 'application/pdf',
     buffer: replacementPdf,
   });
+  const baseVersion = replacementDialog.locator('input[name="base_version_uid"]');
+  const versionBeforeReplacement = await baseVersion.inputValue();
   await replacementDialog.getByRole('button', { name: 'Replace PDF' }).click();
-  await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 30_000 });
+  // The heading already exists before submission. Wait for the redirected
+  // document to carry the new revision before starting another navigation.
+  await expect(baseVersion).not.toHaveValue(versionBeforeReplacement, { timeout: 30_000 });
 
   await page.goto(`${baseUrl}/pages?q=${encodeURIComponent(replacementMarker)}`, {
     waitUntil: 'domcontentloaded',
@@ -246,8 +250,9 @@ test('PDF upload, replacement, and restore are processed, searchable, isolated, 
   const historyDialog = page.locator('#page-versions-dialog');
   await expect(historyDialog).toBeVisible();
   const versionOne = historyDialog.locator('article').filter({ hasText: 'Version 1' });
+  const versionBeforeRestore = await baseVersion.inputValue();
   await versionOne.getByRole('button', { name: 'Restore' }).click();
-  await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 30_000 });
+  await expect(baseVersion).not.toHaveValue(versionBeforeRestore, { timeout: 30_000 });
 
   await page.goto(`${baseUrl}/pages?q=${encodeURIComponent(searchMarker)}`, {
     waitUntil: 'domcontentloaded',
@@ -313,5 +318,12 @@ test('PDF upload, replacement, and restore are processed, searchable, isolated, 
   await page.goto(`${baseUrl}/pages?q=${encodeURIComponent(hostileTitle)}`, {
     waitUntil: 'domcontentloaded',
   });
-  await expect(page.getByRole('link', { name: hostileTitle })).toHaveCount(0);
+  // The active filter repeats the query in its removal link; only a result card
+  // would mean the rejected upload created a page.
+  await expect(
+    page.getByRole('link').filter({
+      has: page.getByRole('heading', { name: hostileTitle, exact: true }),
+    }),
+  ).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'No pages found', exact: true })).toBeVisible();
 });

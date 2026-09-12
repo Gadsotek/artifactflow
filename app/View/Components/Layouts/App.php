@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace App\View\Components\Layouts;
 
 use App\Application\Administration\RealtimeConfiguration;
+use App\Application\Identity\WorkspaceContext;
+use App\Application\Identity\WorkspaceNavigationItem;
 use App\Http\Support\PasswordResetTokenReviewNotice;
-use App\Models\Page;
 use App\Models\User;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Routing\UrlGenerator;
@@ -39,6 +40,11 @@ final class App extends Component
 
     public ?int $passwordResetTokenReviewCount;
 
+    /** @var list<WorkspaceNavigationItem> */
+    public array $navigationWorkspaces;
+
+    public ?string $navigationStorageKey;
+
     /**
      * @throws JsonException
      */
@@ -48,6 +54,7 @@ final class App extends Component
         Request $request,
         UrlGenerator $url,
         Vite $vite,
+        WorkspaceContext $workspaceContext,
         public ?string $title = null,
         public ?string $turnstileScriptUrl = null,
     ) {
@@ -63,13 +70,12 @@ final class App extends Component
         $this->cspNonce = $vite->cspNonce();
         $sourceUrl = config('app.source_url');
         $this->sourceUrl = is_string($sourceUrl) ? $sourceUrl : '';
-        $routePage = $request->route('page');
-        $this->newPageUrl = $routePage instanceof Page
-            ? $url->route('pages.create', [
-                'workspace_uid' => $routePage->workspace_uid,
-                'parent_page_uid' => $routePage->uid,
-            ])
-            : $url->route('pages.create');
+        $this->newPageUrl = $url->route('pages.create');
+        $this->navigationStorageKey = $this->authenticatedUser instanceof User
+            ? hash('sha256', $this->authenticatedUser->uid) : null;
+        $this->navigationWorkspaces = $this->authenticatedUser instanceof User
+            ? $workspaceContext->itemsFor($this->authenticatedUser)
+            : [];
         $realtimeConfig = $this->authenticatedUser instanceof User
             ? $realtime->clientConfig()
             : null;

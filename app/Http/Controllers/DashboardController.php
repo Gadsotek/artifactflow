@@ -15,6 +15,7 @@ use App\Application\PageCatalog\PageSearch;
 use App\Application\PageCatalog\PageSearchFilters;
 use App\Application\PageCatalog\PageSearchResult;
 use App\Application\PageCatalog\PageSearchSort;
+use App\Application\PageCatalog\PersonalNavigation;
 use App\Application\PageCatalog\SummarizeDashboardDiscovery;
 use App\Domain\Identity\WorkspaceRole;
 use App\Models\Category;
@@ -41,7 +42,7 @@ final class DashboardController
     ) {
     }
 
-    public function __invoke(Request $request): View
+    public function __invoke(Request $request, PersonalNavigation $navigation): View
     {
         $user = $this->authenticatedUser($request);
 
@@ -72,6 +73,8 @@ final class DashboardController
         );
 
         return view('dashboard', [
+            'recentPages' => array_slice($navigation->pages($user, 'recent'), 0, 5),
+            'favoritePages' => array_slice($navigation->pages($user, 'favorites'), 0, 5),
             'activeWorkspaceTab' => $this->activeWorkspaceTab($request),
             'user' => $user,
             'workspaces' => $workspaceItems,

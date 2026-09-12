@@ -5,6 +5,7 @@ import { tags } from '@lezer/highlight';
 import { basicSetup } from 'codemirror';
 import { appCspNonce } from './csp-nonce';
 import { initialiseRichMarkdownEditor } from './rich-markdown-editor';
+import { initialiseUnsavedGuard } from './editor-unsaved-guard';
 
 const editorTheme = EditorView.theme({
   '&': {
@@ -172,6 +173,7 @@ async function submitContentForm(form, status, concurrencyError) {
   }
 
   if (response.ok) {
+    form.dispatchEvent(new Event('artifactflow:editor-saved'));
     await showSavedPage(response);
 
     return;
@@ -425,6 +427,7 @@ async function initialiseContentEditor(form) {
   });
 
   await updatePresentation(initialLanguage, activeView);
+  initialiseUnsavedGuard(form);
 }
 
 for (const form of document.querySelectorAll('[data-content-editor]')) {

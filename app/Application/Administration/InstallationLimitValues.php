@@ -22,6 +22,8 @@ final readonly class InstallationLimitValues
         public bool $externalSharingEnabled = false,
         public bool $externalShareAcknowledgementRequired = true,
         public int $externalShareMaxExpiryHours = 168,
+        public int $mcpReadTokenMaxTtlDays = 365,
+        public int $mcpWriteTokenMaxTtlDays = 90,
     ) {
         if ($this->maxMarkdownBytes > InstallationLimitCeilings::CONTENT_BYTES) {
             throw new DomainRuleViolation('Markdown write limit must not exceed the HTTP request envelope.');
@@ -42,6 +44,12 @@ final readonly class InstallationLimitValues
             || $this->externalShareMaxExpiryHours > InstallationLimitCeilings::EXTERNAL_SHARE_EXPIRY_HOURS
         ) {
             throw new DomainRuleViolation('External share expiry limit must be between 1 and 720 hours.');
+        }
+
+        foreach ([$this->mcpReadTokenMaxTtlDays, $this->mcpWriteTokenMaxTtlDays] as $days) {
+            if ($days < 1 || $days > InstallationLimitCeilings::MCP_TOKEN_TTL_DAYS) {
+                throw new DomainRuleViolation('MCP token lifetime limits must be between 1 and 365 days.');
+            }
         }
     }
 
@@ -64,6 +72,8 @@ final readonly class InstallationLimitValues
             'external_sharing_enabled' => $this->externalSharingEnabled,
             'external_share_acknowledgement_required' => $this->externalShareAcknowledgementRequired,
             'external_share_max_expiry_hours' => $this->externalShareMaxExpiryHours,
+            'mcp_read_token_max_ttl_days' => $this->mcpReadTokenMaxTtlDays,
+            'mcp_write_token_max_ttl_days' => $this->mcpWriteTokenMaxTtlDays,
         ];
     }
 

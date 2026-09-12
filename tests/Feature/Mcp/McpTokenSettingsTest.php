@@ -258,8 +258,7 @@ final class McpTokenSettingsTest extends TestCase
 
     public function test_all_workspaces_write_tokens_still_obey_the_shorter_write_ttl(): void
     {
-        // Dropping the read-only restriction must not loosen the write-token TTL cap:
-        // an org-wide write credential is still held to the shorter lifetime.
+        // Broad workspace selection still obeys the default write-token lifetime.
         $user = $this->enableTwoFactor($this->createUser('Broad Long Writer', 'broad-long-writer@example.test'));
         app(CreateSharedWorkspace::class)->handle($user, 'Broad Long Team');
 
@@ -279,8 +278,7 @@ final class McpTokenSettingsTest extends TestCase
 
     public function test_write_scoped_tokens_cannot_exceed_the_shorter_ttl(): void
     {
-        // A year-long standing write credential for an autonomous agent is too long
-        // an exposure window; write-capable tokens are capped to a shorter lifetime.
+        // One-year write tokens require an explicit installation policy change.
         $user = $this->enableTwoFactor($this->createUser('Long Writer', 'long-writer@example.test'));
         $workspace = app(CreateSharedWorkspace::class)->handle($user, 'Writer Team');
 

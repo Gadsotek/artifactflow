@@ -18,19 +18,47 @@ Useful AI work gets scattered across chats, downloads, repositories, and people.
 ArtifactFlow gives your team and authorized AI clients one shared place to keep,
 find, share, and continue working on the outputs worth retaining.
 
-![ArtifactFlow workspace with search, tags, and team artifacts](site/assets/app-dashboard.jpg)
+![ArtifactFlow Home with workspace search, recently opened pages, and favorites](site/assets/app-dashboard.jpg)
+
+Screenshots show the fictional Northstar Labs team and sample content.
 
 ## What you can do
 
 - **Keep and organize:** save artifacts in personal or shared workspaces with owners, categories, tags, and page hierarchy.
 - **Find and share:** search content and metadata, apply workspace roles and page permissions, or create narrow revocable expiring or one-time page links.
+- **Get back to work:** use private favorites and recently opened pages, jump to a page with Cmd/Ctrl+K, or browse the paginated Library.
 - **Continue the work:** append versions, compare source, and restore retained content. History follows configurable retention limits; stale writes are rejected.
 - **Reuse with AI:** MCP-compatible clients can search, read, create, update, and organize the same library. Tokens have explicit operation and workspace scopes, capped at Editor authority.
+
+System Admins can configure MCP token lifetime limits up to 365 days in
+**Administration > Storage and limits**. See [MCP setup](docs/operations/mcp.md)
+for defaults, issuance, and revocation.
 
 Choose your AI tools independently. ArtifactFlow requires no model subscription
 or AI API key. Bring work in by paste, upload, or authorized MCP calls; it does
 not automatically capture chats, run agents, generate content, or provide vector
 search or simultaneous document editing.
+
+<details>
+<summary>Explore four more product screenshots</summary>
+
+Browse a workspace’s pages, filter by type, or search their content.
+
+![ArtifactFlow Library with nested workspaces and sample team pages](site/assets/app-library.jpg)
+
+Press Cmd/Ctrl+K to find a page by title and jump back to it.
+
+![ArtifactFlow quick search finding the fictional team's release checklist](site/assets/app-quick-navigation.jpg)
+
+Use saved interactive HTML tools in an isolated preview.
+
+![Northstar Labs sprint capacity planner running in ArtifactFlow](site/assets/app-artifact-live.jpg)
+
+Keep shared Markdown guides with rendered Mermaid diagrams.
+
+![Northstar Labs incident response guide and Mermaid flowchart](site/assets/app-markdown.jpg)
+
+</details>
 
 ## Artifacts stay artifacts
 

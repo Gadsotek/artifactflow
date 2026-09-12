@@ -51,9 +51,26 @@ final class PageSearch
         PageSearchFilters $filters,
         bool $includeSnippets = true,
     ): array {
+        return $this->results($actor, $filters, $includeSnippets, 0, self::RESULT_LIMIT);
+    }
+
+    public function window(User $actor, PageSearchFilters $filters, int $pageNumber): PageSearchWindow
+    {
+        $results = $this->results($actor, $filters, true, (max(1, $pageNumber) - 1) * 25, 26);
+
+        return new PageSearchWindow(array_slice($results, 0, 25), count($results) > 25);
+    }
+
+    /** @return list<PageSearchResult> */
+    private function results(
+        User $actor,
+        PageSearchFilters $filters,
+        bool $includeSnippets,
+        int $offset,
+        int $limit,
+    ): array {
         $query = Page::query()
-            ->with(['accessGrants', 'category', 'currentVersion', 'owner', 'tags', 'workspace'])
-            ->limit(self::RESULT_LIMIT);
+            ->with(['accessGrants', 'category', 'currentVersion', 'owner', 'tags', 'workspace']);
 
         $visibilityScope = $this->visibility->apply($query, $actor);
         $this->applyFilters($query, $filters);
@@ -63,18 +80,20 @@ final class PageSearch
         }
 
         $this->applySort($query, $filters);
-        // The SQL visibility clause over-approximates in rare cases (grant-role
-        // lowering, membership-removal rules), so canView() re-filters after the
-        // LIMIT; a full result page can therefore come back slightly thinner
-        // than RESULT_LIMIT rather than leak a page the actor cannot view.
-        $pages = $query->get()
-            ->filter(fn (Page $page): bool => $this->access->canView($actor, $page))
-            ->values();
-
         $results = [];
         $now = CarbonImmutable::now();
+        $visibleCount = 0;
 
-        foreach ($pages as $page) {
+        // Count only exact-authorized rows for boundaries and continuation.
+        foreach ($query->orderBy('pages.uid')->lazy(100) as $page) {
+            if (!$this->access->canView($actor, $page)) {
+                continue;
+            }
+
+            if ($visibleCount++ < $offset) {
+                continue;
+            }
+
             $searchRank = $page->getAttribute('search_rank');
             $results[] = new PageSearchResult(
                 page: $page,
@@ -88,6 +107,10 @@ final class PageSearch
                     : null,
                 isNew: $this->pageNewness->isNew($page, $now),
             );
+
+            if (count($results) === $limit) {
+                break;
+            }
         }
 
         return $results;

@@ -810,6 +810,7 @@ gitleaks:
 	gitleaks git --no-banner --redact -c .gitleaks.toml .
 
 quality:
+	node --test scripts/quality-images.test.mjs scripts/publish-guard.test.mjs scripts/playwright-config.test.mjs
 	$(MAKE) publish-guard
 	$(MAKE) ai-hooks-test
 	$(MAKE) ecs
@@ -827,8 +828,7 @@ quality-full:
 	$(MAKE) build-assets
 	$(MAKE) verify-reverb-origin
 	$(MAKE) e2e
-	$(MAKE) build-prod
-	$(MAKE) scan-image
+	+@bash scripts/quality-images.sh "$(MAKE)"
 
 config-refresh:
 	$(MAKE) deps

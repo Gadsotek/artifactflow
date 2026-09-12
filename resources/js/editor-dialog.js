@@ -1,5 +1,7 @@
 function closeDialog(dialog) {
   if (dialog instanceof HTMLDialogElement && dialog.open) {
+    if (!dialog.dispatchEvent(new Event('artifactflow:before-editor-close', { cancelable: true })))
+      return;
     dialog.close();
   }
 }
@@ -28,6 +30,10 @@ for (const trigger of document.querySelectorAll('[data-open-editor-dialog]')) {
 }
 
 for (const dialog of document.querySelectorAll('[data-editor-dialog]')) {
+  dialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closeDialog(dialog);
+  });
   if (dialog instanceof HTMLDialogElement && dialog.hasAttribute('data-auto-open-editor-dialog')) {
     dialog.showModal();
   }

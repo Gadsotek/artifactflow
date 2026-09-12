@@ -1,5 +1,14 @@
 import './theme';
 
+if (document.querySelector('[data-copy-text]')) {
+  void import('./copy-text');
+}
+
+if (document.querySelector('[data-quick-navigation]')) {
+  void import('./quick-navigation');
+  void import('./library-navigation');
+}
+
 if (document.querySelector('[data-content-editor]')) {
   void import('./content-editor');
 }

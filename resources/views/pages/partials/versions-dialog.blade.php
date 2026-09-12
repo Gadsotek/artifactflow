@@ -4,7 +4,7 @@
             <div>
                 <p class="af-eyebrow">Immutable history</p>
                 <h2 id="page-versions-dialog-title">Version history</h2>
-                <p>Inspect hashes, scan status, authorship, and restore an older version as a new current version.</p>
+                <p>See what changed, compare versions, or restore an earlier version.</p>
             </div>
             <button class="artifactflow-editor-dialog-close" data-close-editor-dialog type="button" aria-label="Close version history">Close</button>
         </div>
@@ -18,11 +18,15 @@
                                 <span class="af-role-badge">Current</span>
                             @endif
                         </div>
-                        <p>Changed by {{ $historyVersion->creator->name }} · {{ $historyVersion->created_at->toDateString() }} · {{ $historyVersion->scan_status->value }} · {{ $historyVersion->byte_size }} bytes</p>
+                        <p>Changed by {{ $historyVersion->creator->name }} · {{ $historyVersion->created_at->format('M j, Y · H:i') }}</p>
                         @if ($historyVersion->change_summary !== null)
                             <p class="mt-2 font-medium text-zinc-800 dark:text-zinc-200">{{ $historyVersion->change_summary }}</p>
                         @endif
-                        <code>SHA-256 {{ $historyVersion->content_hash }}</code>
+                        <details class="af-version-technical">
+                            <summary>Technical details</summary>
+                            <p>Scan: {{ $historyVersion->scan_status->value }} · {{ $historyVersion->byte_size }} bytes</p>
+                            <code>SHA-256 {{ $historyVersion->content_hash }}</code>
+                        </details>
                         <div class="mt-3 flex flex-wrap justify-end gap-2">
                             <a class="af-secondary-button" href="{{ route('pages.versions.show', [$page, $historyVersion]) }}">Inspect</a>
                             @if ($canRestoreVersions && $historyVersion->uid !== $page->current_version_uid)

@@ -657,11 +657,10 @@ final class PageCreationHttpTest extends TestCase
         Storage::disk('artifacts')->assertExists($version->content_storage_path);
         $this->assertStringContainsString('Prototype', (string) $version->extracted_text);
 
-        $this->actingAs($editor)
-            ->get("/pages/{$page->uid}")
-            ->assertOk()
+        $detailResponse = $this->actingAs($editor)->get("/pages/{$page->uid}");
+        $detailResponse->assertOk()
             ->assertDontSee('Open full-screen')
-            ->assertDontSee('target="_blank"', false)
+            ->assertSee('href="' . route('pages.show', $page) . '" target="_blank" rel="noopener noreferrer"', false)
             ->assertSee('h-[calc(100vh-13rem)] min-h-[38rem]', false)
             ->assertSee('data-artifact-preview', false)
             ->assertSee('data-artifact-fullscreen-toggle', false)
@@ -672,6 +671,10 @@ final class PageCreationHttpTest extends TestCase
             ->assertSee("src=\"http://artifacts.example.test/artifact-previews/{$page->uid}/versions/{$version->uid}", false)
             ->assertDontSee("href=\"http://artifacts.example.test/artifact-previews/{$page->uid}/versions/{$version->uid}", false)
             ->assertDontSee('<h1>Prototype</h1>', false);
+
+        // The only new-tab link is recovery through the authenticated app page.
+        // Raw artifact links remain forbidden by the assertions above.
+        $this->assertSame(1, substr_count((string) $detailResponse->getContent(), 'target="_blank"'));
     }
 
     public function test_uploaded_html_artifact_persists_category_tags_and_status(): void

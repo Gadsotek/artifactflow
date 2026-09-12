@@ -43,6 +43,14 @@ Run `make compose-config` when Docker/environment configuration changes.
 The complete gate policy and documentation-only exception remain in
 [AGENTS.md](AGENTS.md#required-gates). Do not weaken a test or gate to pass it.
 
+`make quality-full` builds and scans its six production/processor images using
+temporary tags and a separate Buildx builder. On success, failure, or a handled
+interrupt, it removes those tags and that builder's cache. Existing containers,
+images used by other workloads, data volumes, and shared builders are preserved.
+Production builds start with a fresh cache on the next full run. To retain
+images or use custom build-cache options, run `make build-prod` followed by
+`make scan-image` explicitly. See the [verification guide](docs/operations/verification.md).
+
 Office changes also need the processor contracts and real conversion chain
 wired into `make build-prod`; useful focused commands are:
 
