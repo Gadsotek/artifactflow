@@ -810,6 +810,7 @@ gitleaks:
 	gitleaks git --no-banner --redact -c .gitleaks.toml .
 
 quality:
+	node --test scripts/publish-guard.test.mjs
 	$(MAKE) publish-guard
 	$(MAKE) ai-hooks-test
 	$(MAKE) ecs

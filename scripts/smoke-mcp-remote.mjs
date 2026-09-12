@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-const BRIDGE_VERSION = '0.8.3';
+const BRIDGE_VERSION = '0.8.5';
 const BEARER_TOKEN = 'artifactflow-nightly-bridge-token';
 const AUTHORIZATION = `Bearer ${BEARER_TOKEN}`;
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -121,7 +121,9 @@ const lines = createInterface({ input: child.stdout });
 const completion = new Promise((resolveCompletion, rejectCompletion) => {
   let completed = false;
   const timer = setTimeout(() => {
-    rejectCompletion(new Error(`Timed out waiting for direct MCP bridge output. stderr: ${stderr}`));
+    rejectCompletion(
+      new Error(`Timed out waiting for direct MCP bridge output. stderr: ${stderr}`),
+    );
   }, 20_000);
 
   child.once('exit', (code, signal) => {

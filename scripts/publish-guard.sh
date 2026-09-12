@@ -89,7 +89,9 @@ if [[ -n "$(git ls-files -- docs/internal/)" ]]; then
 fi
 
 for path in "${public_paths[@]}"; do
-    if git check-ignore --no-index -q -- "$path"; then
+    # Some Git versions report a matching negation as ignored with check-ignore -q.
+    # ls-files --ignored applies the final ignore result, including ! allowlists.
+    if [[ -n "$(git ls-files --cached --others --ignored --exclude-standard -- "$path")" ]]; then
         printf 'publish-guard: expected public path to be visible to git: %s\n' "$path" >&2
         exit 1
     fi

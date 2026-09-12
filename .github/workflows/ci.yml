@@ -51,6 +51,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Publication guard regression tests
+        run: node --test scripts/publish-guard.test.mjs
+
       - name: Publish guard
         run: make publish-guard
 
