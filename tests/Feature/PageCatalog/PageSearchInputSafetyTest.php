@@ -40,12 +40,12 @@ final class PageSearchInputSafetyTest extends TestCase
         $this->actingAs($editor)
             ->get('/pages?workspace_uid=' . $workspace->uid . '&q=%27%29%20OR%201%3D1--&sort=__bogus__')
             ->assertOk()
-            ->assertSee('Pages');
+            ->assertSee('Library');
 
         $this->actingAs($editor)
             ->get('/pages?workspace_uid=' . $workspace->uid . '&q=' . urlencode(str_repeat('search ', 2000)))
             ->assertOk()
-            ->assertSee('Pages');
+            ->assertSee('Library');
     }
 
     public function test_search_vector_refresh_caps_large_extracted_text(): void

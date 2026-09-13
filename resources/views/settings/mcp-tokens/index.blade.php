@@ -1,17 +1,26 @@
-<x-layouts.app title="MCP tokens">
+<x-layouts.app title="AI connections">
     <div class="af-app-surface min-h-screen bg-zinc-50 dark:bg-zinc-950">
         <header class="af-page-header border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
             <div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-4">
                 <div>
                     <p class="af-eyebrow">Account security</p>
-                    <h1 class="text-xl font-semibold text-zinc-950 dark:text-zinc-50">MCP tokens</h1>
-                    <p class="af-page-intro">Create and revoke tokens that let MCP clients act as your account with admin authority stripped.</p>
+                    <h1 class="text-xl font-semibold text-zinc-950 dark:text-zinc-50">AI connections</h1>
+                    <p class="af-page-intro">Give your AI client access to the pages you choose. Review or revoke its access here.</p>
                 </div>
                 <a class="af-secondary-button" href="{{ route('settings.two-factor.index') }}">Two-factor settings</a>
             </div>
         </header>
 
         <main class="mx-auto max-w-5xl space-y-6 px-6 py-8">
+            <section class="af-connect-guide">
+                <h2>Connect an AI client</h2>
+                <ol>
+                    <li><strong>Choose permissions.</strong> Start with search and read, then select the workspaces your client needs.</li>
+                    <li><strong>Create a token.</strong> Confirm with your password and authenticator. Copy the token when it appears; it is shown once.</li>
+                    <li><strong>Add the connection.</strong> Use the endpoint and configuration below in your client's MCP settings.</li>
+                </ol>
+                <p>Your client acts with your permissions, capped at Editor access. Creating a token does not grant new access to pages.</p>
+            </section>
             @if (session('status'))
                 <div class="af-callout">
                     {{ session('status') }}
@@ -30,7 +39,11 @@
                 <section class="af-accent-band px-4 py-5">
                     <h2 class="font-semibold">Token created</h2>
                     <p class="mt-1 text-sm">This value is shown once and is not stored in retrievable form.</p>
-                    <code class="af-reveal mt-4 block break-all rounded-md px-3 py-2 text-sm">{{ $plainTextToken }}</code>
+                    <div data-copy-text-control>
+                        <code class="af-reveal mt-4 block break-all rounded-md px-3 py-2 text-sm" id="issued-mcp-token">{{ $plainTextToken }}</code>
+                        <button class="af-secondary-button mt-3" type="button" data-copy-text="issued-mcp-token">Copy access token</button>
+                        <span data-copy-text-status role="status" class="text-sm"></span>
+                    </div>
                 </section>
             @endif
 
@@ -41,9 +54,9 @@
                 </div>
 
                 <div class="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-                    <div class="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
+                    <div class="space-y-3 text-sm text-zinc-700 dark:text-zinc-300" data-copy-text-control>
                         <p>After creating a token, add a remote MCP server in your AI client with this endpoint and bearer header.</p>
-                        <pre class="overflow-x-auto rounded-md border border-zinc-200 bg-white p-3 text-xs text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100"><code>{
+                        <pre class="overflow-x-auto rounded-md border border-zinc-200 bg-white p-3 text-xs text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100"><code id="mcp-client-config">{
   "mcpServers": {
     "artifactflow": {
       "url": "{{ route('mcp') }}",
@@ -53,10 +66,13 @@
     }
   }
 }</code></pre>
+                        <button class="af-secondary-button" type="button" data-copy-text="mcp-client-config">Copy configuration</button>
+                        <span data-copy-text-status role="status"></span>
                         <p>If your client uses a form instead of JSON, set the server URL to <code class="rounded bg-zinc-100 px-1 py-0.5 text-xs text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">{{ route('mcp') }}</code> and add the same <code class="rounded bg-zinc-100 px-1 py-0.5 text-xs text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">Authorization</code> header.</p>
                     </div>
 
-                    <div class="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
+                    <details class="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
+                        <summary class="cursor-pointer font-medium">Technical details and safe usage</summary>
                         <div>
                             <h3 class="font-medium text-zinc-950 dark:text-zinc-50">Working pattern</h3>
                             <ol class="mt-2 list-decimal space-y-1 pl-5">
@@ -72,7 +88,7 @@
                             </ol>
                         </div>
                         <p>Laravel MCP negotiates the protocol during initialization. Compliant clients automatically return the server-issued <code class="rounded bg-zinc-100 px-1 py-0.5 text-xs text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">MCP-Session-Id</code>, which is recorded as a non-secret session identifier in audit metadata.</p>
-                    </div>
+                    </details>
                 </div>
             </section>
 
@@ -102,7 +118,7 @@
                             @foreach ($availableScopes as $scope)
                                 <label class="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100">
                                     <input class="af-checkbox rounded border-zinc-300" name="scopes[]" type="checkbox" value="{{ $scope }}" @checked(in_array($scope, old('scopes', $defaultScopes), true))>
-                                    <span>{{ $scope }}</span>
+                                    <span><strong class="block font-medium">{{ $scopeLabels[$scope] }}</strong><code class="text-xs text-zinc-500">{{ $scope }}</code></span>
                                 </label>
                             @endforeach
                         </div>
@@ -131,7 +147,7 @@
                     <div class="grid gap-4 sm:grid-cols-3">
                         <label class="block">
                             <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Expires in days</span>
-                            <input class="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" name="expires_in_days" type="number" min="1" max="365" value="{{ old('expires_in_days', 30) }}" required>
+                            <input class="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" name="expires_in_days" type="number" min="1" max="{{ $tokenMaximumDays }}" value="{{ old('expires_in_days', $defaultTokenDays) }}" aria-describedby="mcp-token-expiry-help" required>
                         </label>
                         <label class="block">
                             <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Current password</span>
@@ -142,6 +158,8 @@
                             <input class="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" required>
                         </label>
                     </div>
+
+                    <p id="mcp-token-expiry-help" class="text-sm text-zinc-600 dark:text-zinc-400">Your administrator sets the maximum lifetime. Read-only: up to {{ $readTokenMaximumDays }} {{ Str::plural('day', $readTokenMaximumDays) }}. Write-capable: up to {{ $writeTokenMaximumDays }} {{ Str::plural('day', $writeTokenMaximumDays) }}.</p>
 
                     <div>
                         <button class="af-primary-button disabled:cursor-not-allowed disabled:opacity-60" type="submit" @disabled(!$user->hasEnabledTwoFactor())>Create MCP token</button>

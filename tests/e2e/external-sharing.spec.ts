@@ -150,6 +150,7 @@ async function createPdfPage(page: Page, title: string): Promise<void> {
 
 async function createOneTimeLink(page: Page): Promise<string> {
   const shareButton = page.getByRole('button', { name: /Share externally/u });
+  if (!(await shareButton.isVisible())) await page.locator('.af-more-tools > summary').click();
   await expect(shareButton).toHaveAttribute('data-editor-dialog-trigger-ready', '');
   await shareButton.click();
   const dialog = page.locator('#page-external-share-dialog');
@@ -170,6 +171,7 @@ async function createOneTimeLink(page: Page): Promise<string> {
 
 async function createExpiringLink(page: Page): Promise<string> {
   const shareButton = page.getByRole('button', { name: /Share externally/u });
+  if (!(await shareButton.isVisible())) await page.locator('.af-more-tools > summary').click();
   await expect(shareButton).toHaveAttribute('data-editor-dialog-trigger-ready', '');
   await shareButton.click();
   const dialog = page.locator('#page-external-share-dialog');
@@ -206,6 +208,7 @@ test('expiring link picker enforces the installation maximum and renders local v
   await createMarkdownPage(page, `External expiry ${suffix}`);
 
   const shareButton = page.getByRole('button', { name: /Share externally/u });
+  if (!(await shareButton.isVisible())) await page.locator('.af-more-tools > summary').click();
   await expect(shareButton).toHaveAttribute('data-editor-dialog-trigger-ready', '');
   await shareButton.click();
   const dialog = page.locator('#page-external-share-dialog');

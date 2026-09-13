@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sprint capacity planner</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 32px;
+        background: #f5f7fb;
+        color: #192235;
+        font:
+          15px/1.5 system-ui,
+          sans-serif;
+      }
+      .wrap {
+        max-width: 1050px;
+        margin: auto;
+      }
+      .eyebrow {
+        font-size: 11px;
+        font-weight: 750;
+        letter-spacing: 0.15em;
+        color: #6255bd;
+        text-transform: uppercase;
+      }
+      h1 {
+        font-size: 30px;
+        letter-spacing: -0.04em;
+        margin: 5px 0;
+      }
+      p {
+        color: #657086;
+        margin: 4px 0 22px;
+      }
+      .top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .pill {
+        padding: 7px 12px;
+        border-radius: 99px;
+        background: #e4f3ed;
+        color: #286653;
+        font-size: 12px;
+        font-weight: 650;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1.15fr 1fr;
+        gap: 22px;
+      }
+      .card {
+        background: white;
+        border: 1px solid #dfe4ee;
+        border-radius: 14px;
+        padding: 24px;
+        box-shadow: 0 3px 12px #1c294005;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 0 0 20px;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        margin-top: 20px;
+      }
+      label span {
+        float: right;
+        color: #6255bd;
+      }
+      input {
+        width: 100%;
+        accent-color: #7b6ee5;
+        margin: 14px 0 0;
+      }
+      .hint {
+        font-size: 12px;
+        margin: 5px 0 0;
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin: 20px 0;
+      }
+      .metric {
+        border: 1px solid #e6e9f0;
+        border-radius: 11px;
+        padding: 18px;
+        background: #fafbfe;
+      }
+      .metric strong {
+        display: block;
+        font-size: 32px;
+        line-height: 1.2;
+        letter-spacing: -0.04em;
+      }
+      .metric span {
+        font-size: 12px;
+        color: #657086;
+      }
+      .chart {
+        display: flex;
+        gap: 16px;
+        align-items: end;
+        height: 140px;
+        border-bottom: 1px solid #e5e8ee;
+        padding: 0 12px;
+      }
+      .column {
+        flex: 1;
+        text-align: center;
+        font-size: 11px;
+        color: #657086;
+      }
+      .bar {
+        border-radius: 7px 7px 0 0;
+        background: #b7aef6;
+        margin-top: 8px;
+      }
+      .bar.current {
+        background: #7b6ee5;
+      }
+      .labels {
+        display: flex;
+        justify-content: space-around;
+        font-size: 11px;
+        color: #657086;
+        margin: 7px 0 20px;
+      }
+      .recommendation {
+        background: #eef7f2;
+        border: 1px solid #d7ebdf;
+        border-radius: 10px;
+        padding: 12px 14px;
+        color: #32694a;
+        font-size: 13px;
+      }
+      .footer {
+        font-size: 11px;
+        color: #7c8494;
+        text-align: center;
+        margin-top: 20px;
+      }
+      @media (max-width: 650px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        body {
+          padding: 20px;
+        }
+        .top {
+          align-items: start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <div class="top">
+        <div>
+          <div class="eyebrow">Northstar Labs / Planning toolkit</div>
+          <h1>Sprint capacity planner</h1>
+          <p>Make room for focused work before committing to the next sprint.</p>
+        </div>
+        <span class="pill">Interactive tool</span>
+      </div>
+      <div class="grid">
+        <section class="card">
+          <h2>Plan the next two weeks</h2>
+          <label for="engineers">Engineers <span id="engineers-value">6 people</span></label
+          ><input id="engineers" type="range" min="2" max="12" value="6" />
+          <label for="focus">Focus time <span id="focus-value">70%</span></label
+          ><input id="focus" type="range" min="40" max="90" value="70" step="5" />
+          <p class="hint">Reserve time for reviews, support, and team rituals.</p>
+          <label for="leave">Planned leave <span id="leave-value">4 days</span></label
+          ><input id="leave" type="range" min="0" max="15" value="4" />
+          <div class="metrics">
+            <div class="metric">
+              <strong id="capacity">39</strong><span>focused engineering days</span>
+            </div>
+            <div class="metric">
+              <strong id="buffer">8</strong><span>days held in reserve</span>
+            </div>
+          </div>
+        </section>
+        <section class="card">
+          <h2>Capacity across recent sprints</h2>
+          <p class="hint">Compare the next commitment with your team's recent rhythm.</p>
+          <div class="chart">
+            <div class="column">
+              32
+              <div class="bar" style="height: 78px"></div>
+            </div>
+            <div class="column">
+              36
+              <div class="bar" style="height: 89px"></div>
+            </div>
+            <div class="column">
+              34
+              <div class="bar" style="height: 84px"></div>
+            </div>
+            <div class="column">
+              <span id="chart-value">39</span>
+              <div id="current-bar" class="bar current" style="height: 99px"></div>
+            </div>
+          </div>
+          <div class="labels">
+            <span>Sprint 21</span><span>Sprint 22</span><span>Sprint 23</span
+            ><span>Next sprint</span>
+          </div>
+          <div class="recommendation">
+            <strong>A sustainable commitment</strong><br />Plan around
+            <span id="commitment">31</span> engineering days and keep the rest available for
+            surprises.
+          </div>
+        </section>
+      </div>
+      <div class="footer">Fictional planning data · Self-contained HTML · No external services</div>
+    </main>
+    <script>
+      function calculate() {
+        const engineers = Number(document.getElementById('engineers').value),
+          focus = Number(document.getElementById('focus').value),
+          leave = Number(document.getElementById('leave').value),
+          capacity = Math.round(((engineers * 10 - leave) * focus) / 100),
+          buffer = Math.round(capacity * 0.2);
+        document.getElementById('engineers-value').textContent = engineers + ' people';
+        document.getElementById('focus-value').textContent = focus + '%';
+        document.getElementById('leave-value').textContent = leave + ' days';
+        document.getElementById('capacity').textContent = capacity;
+        document.getElementById('buffer').textContent = buffer;
+        document.getElementById('commitment').textContent = capacity - buffer;
+        document.getElementById('chart-value').textContent = capacity;
+        document.getElementById('current-bar').style.height = Math.min(110, capacity * 2.5) + 'px';
+      }
+      document.querySelectorAll('input').forEach(function (input) {
+        input.addEventListener('input', calculate);
+      });
+      calculate();
+    </script>
+  </body>
+</html>

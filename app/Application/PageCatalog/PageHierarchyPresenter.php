@@ -23,7 +23,7 @@ final class PageHierarchyPresenter
      * @param list<PageSearchResult> $results
      * @return list<PageTreeItem>
      */
-    public function arrange(User $actor, array $results): array
+    public function arrange(User $actor, array $results, bool $includeAncestorContext = false): array
     {
         $resultsByPageUid = [];
 
@@ -55,7 +55,15 @@ final class PageHierarchyPresenter
         $visitedPageUids = [];
 
         foreach ($roots as $root) {
-            $this->appendBranch($root, 0, null, $childrenByParentUid, $visitedPageUids, $items);
+            $ancestors = $includeAncestorContext ? $this->visibleAncestors->ancestorsOf($actor, $root->page) : [];
+            $this->appendBranch(
+                $root,
+                count($ancestors),
+                $ancestors[0]->title ?? null,
+                $childrenByParentUid,
+                $visitedPageUids,
+                $items,
+            );
         }
 
         // Application rules prevent cycles, but keep the read model complete if

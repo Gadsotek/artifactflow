@@ -1,53 +1,20 @@
-<x-layouts.app title="Dashboard">
+<x-layouts.app title="Home">
     <div class="af-app-surface min-h-screen bg-zinc-50 dark:bg-zinc-950">
         <header class="af-page-header border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
             <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
                 <div>
                     <p class="af-eyebrow">Knowledge workspace</p>
-                    <h1 class="text-xl font-semibold text-zinc-950 dark:text-zinc-50">Dashboard</h1>
-                    <p class="af-page-intro">Move between knowledge, people, and workspace administration without losing context.</p>
+                    <h1 class="text-xl font-semibold text-zinc-950 dark:text-zinc-50">Home</h1>
+                    <p class="af-page-intro">Your pages, ready when you need them.</p>
                 </div>
                 <a class="af-primary-button" href="{{ route('pages.create', $currentWorkspaceUid === null ? [] : ['workspace_uid' => $currentWorkspaceUid]) }}">Create page</a>
             </div>
         </header>
 
-        <div class="af-page-grid mx-auto grid max-w-7xl gap-8 px-6 py-8 lg:grid-cols-[18rem_1fr]">
-            <aside class="af-context-panel">
-                <div class="flex items-center justify-between gap-3">
-                    <h2 class="text-sm font-semibold uppercase tracking-wide text-zinc-500">Workspaces</h2>
-                    <button
-                        class="af-icon-button"
-                        data-open-editor-dialog="workspace-create-dialog"
-                        type="button"
-                        aria-label="Create workspace"
-                        title="Create workspace"
-                    >
-                        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-                    </button>
-                </div>
-                <div class="mt-3 space-y-2">
-                    @foreach ($workspaces as $workspace)
-                        <form method="POST" action="{{ route('workspaces.switch', $workspace->uid) }}">
-                            @csrf
-                            <button
-                                class="flex w-full items-center justify-between rounded-md border py-2 pr-3 text-left text-sm transition {{ $workspace->depth === 0 ? 'pl-3' : ($workspace->depth === 1 ? 'pl-7' : 'pl-11') }} {{ $workspace->uid === $currentWorkspaceUid ? 'af-option-active' : 'border-zinc-200 bg-white text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100' }}"
-                                data-workspace-depth="{{ $workspace->depth }}"
-                                type="submit"
-                            >
-                                <span class="flex min-w-0 items-center gap-2 font-medium">
-                                    @if ($workspace->depth > 0)
-                                        <span aria-hidden="true" class="text-zinc-400">↳</span>
-                                    @endif
-                                    <span class="truncate">{{ $workspace->name }}</span>
-                                </span>
-                                <span class="text-xs uppercase tracking-wide">{{ $workspace->role->value }}</span>
-                            </button>
-                        </form>
-                    @endforeach
-                </div>
-            </aside>
+        <div class="af-page-grid af-workspace-layout mx-auto grid max-w-7xl gap-8 px-6 py-8">
+            <x-workspace-navigation :workspaces="$workspaces" :current-workspace-uid="$currentWorkspaceUid" create-dialog="workspace-create-dialog" :dashboard="true" />
 
-            <section class="space-y-6">
+            <section class="af-workspace-content space-y-6">
                 @if (session('status'))
                     <div class="af-callout">
                         {{ session('status') }}
@@ -122,17 +89,22 @@
                                         @endif
                                     @endforeach
                                 </h2>
-                                <p>Search what your team already knows before starting something new.</p>
+                                <p>Find something useful or pick up where you left off.</p>
                             </div>
-                            <form method="GET" action="{{ route('pages.index') }}">
+                            <form class="af-home-search" data-home-search method="GET" action="{{ route('pages.index') }}">
                                 <input name="workspace_uid" type="hidden" value="{{ $currentWorkspaceUid ?? 'all' }}">
-                                <label>
-                                    <span class="sr-only">Search pages</span>
-                                    <input name="q" type="search" placeholder="Search pages, artifacts, tags…">
-                                </label>
-                                <button class="af-primary-button" type="submit">Search pages</button>
+                                <label for="home-workspace-query">Search this workspace</label>
+                                <div class="af-home-search-row">
+                                    <div class="af-search-field">
+                                        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+                                        <input id="home-workspace-query" class="af-search-input" name="q" type="search" aria-label="Search pages" placeholder="Search titles, content, and tags…">
+                                    </div>
+                                    <button class="af-primary-button" type="submit">Search pages</button>
+                                </div>
                             </form>
                         </div>
+
+                        <x-home-personal-navigation :recent-pages="$recentPages" :favorite-pages="$favoritePages" />
 
                         <section class="af-metric-grid">
                             <div>

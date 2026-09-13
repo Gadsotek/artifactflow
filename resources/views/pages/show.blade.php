@@ -6,11 +6,20 @@
         <header class="af-page-header border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
             <div class="mx-auto flex max-w-[100rem] items-center justify-between px-6 py-4">
                 <div>
-                    <p class="af-eyebrow">{{ $workspace?->name }}</p>
+                    <nav class="af-breadcrumbs" aria-label="Page location">
+                        <a href="{{ route('pages.index') }}">Library</a>
+                        @if ($workspace !== null)<span aria-hidden="true">/</span><span>{{ $workspace->name }}</span>@endif
+                        @if ($pageHierarchy->parent !== null)<span aria-hidden="true">/</span><a href="{{ route('pages.show', $pageHierarchy->parent->pageUid) }}">{{ $pageHierarchy->parent->title }}</a>@endif
+                    </nav>
                     <h1 class="text-xl font-semibold text-zinc-950 dark:text-zinc-50">{{ $page->title }}</h1>
                     <p class="af-page-intro">{{ ucfirst(str_replace('_', ' ', $page->type->value)) }} · {{ ucfirst($page->status->value) }}</p>
                 </div>
                 <div class="af-page-actions flex items-center gap-3">
+                    <form method="POST" action="{{ route('pages.favorite', $page) }}">
+                        @csrf
+                        @method($isFavorite ? 'DELETE' : 'PUT')
+                        <button class="af-secondary-button" type="submit" aria-pressed="{{ $isFavorite ? 'true' : 'false' }}">{{ $isFavorite ? 'Remove favorite' : 'Favorite' }}</button>
+                    </form>
                     @if ($pagePresenceEnabled)
                         <div
                             class="af-page-presence"
@@ -35,8 +44,8 @@
                         </button>
                         <span class="text-xs text-zinc-500 dark:text-zinc-400" data-copy-page-link-status aria-live="polite"></span>
                     </div>
-                    <a class="af-secondary-button" href="{{ route('pages.index') }}">Library</a>
-                    <a class="af-primary-button" href="{{ route('pages.create', ['workspace_uid' => $page->workspace_uid, 'parent_page_uid' => $page->uid]) }}">Create page</a>
+                    <a class="af-secondary-button" href="{{ route('pages.index') }}" data-back-to-library>← Library</a>
+                    <a class="af-secondary-button" href="{{ route('pages.create', ['workspace_uid' => $page->workspace_uid, 'parent_page_uid' => $page->uid]) }}">Add child page</a>
                 </div>
             </div>
         </header>
@@ -81,6 +90,14 @@
                         <span>{{ $contentEditorLabel }}</span>
                     </button>
                 @endif
+                <button data-open-editor-dialog="page-share-dialog" type="button" title="Share page"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 12 8-6m-8 6 8 6"/><circle cx="5" cy="12" r="3"/><circle cx="19" cy="4" r="3"/><circle cx="19" cy="20" r="3"/></svg><span>Share page</span></button>
+                <button data-open-editor-dialog="page-versions-dialog" type="button" title="Version history">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.5M4 4v4.5h4.5M12 7v5l3 2"/></svg>
+                    <span>Versions</span>
+                </button>
+                <details class="af-more-tools">
+                    <summary>More</summary>
+                    <div>
                 <button data-open-editor-dialog="page-metadata-dialog" type="button" title="Metadata">
                     <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16M8 3v4m8 3v4M10 17v4"/></svg>
                     <span>Metadata</span>
@@ -95,10 +112,7 @@
                     <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v5m0 0H6v4m6-4h6v4M4 14h4v4H4v-4Zm8 0h4v4h-4v-4Zm8 0v4h-4v-4h4Z"/></svg>
                     <span>Structure</span>
                 </button>
-                <button data-open-editor-dialog="page-versions-dialog" type="button" title="Version history">
-                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.5M4 4v4.5h4.5M12 7v5l3 2"/></svg>
-                    <span>Versions</span>
-                </button>
+
                 <button data-open-editor-dialog="page-provenance-dialog" type="button" title="Provenance">
                     <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 12h8M12 8v8M5 5h14v14H5z"/></svg>
                     <span>Provenance</span>
@@ -154,8 +168,20 @@
                         <span>Lifecycle</span>
                     </button>
                 @endif
+                    </div>
+                </details>
             </div>
 
+            @if ($pageHierarchy->children !== [])
+                <nav class="af-child-pages" aria-label="Child pages">
+                    <span>In this page</span>
+                    @foreach ($pageHierarchy->children as $childPage)
+                        <a href="{{ route('pages.show', $childPage->pageUid) }}">{{ $childPage->title }} →</a>
+                    @endforeach
+                </nav>
+            @endif
+
+            <x-page-share-dialog :page="$page" :can-manage-access="$canManageAccess" />
             <article class="af-document-canvas">
                 @if ($page->description !== null)
                     <p class="mb-6 max-w-3xl text-sm leading-6 text-zinc-600 dark:text-zinc-400">{{ $page->description }}</p>

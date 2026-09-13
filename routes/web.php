@@ -41,6 +41,7 @@ use App\Http\Controllers\PasswordConfirmationController;
 use App\Http\Controllers\PdfArtifactController;
 use App\Http\Controllers\PdfDownloadController;
 use App\Http\Controllers\PdfReprocessController;
+use App\Http\Controllers\PersonalNavigationController;
 use App\Http\Controllers\SwitchWorkspaceController;
 use App\Http\Controllers\SystemAdminTwoFactorConfirmationController;
 use App\Http\Controllers\SystemUserController;
@@ -305,6 +306,12 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
         'throttle:artifactflow-authenticated',
     ])->group(function (): void {
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
+        Route::get('/recent', [PersonalNavigationController::class, 'recent'])->name('navigation.recent');
+        Route::delete('/recent', [PersonalNavigationController::class, 'clearRecent'])->name('navigation.recent.clear');
+        Route::get('/favorites', [PersonalNavigationController::class, 'favorites'])->name('navigation.favorites');
+        Route::get('/navigation/pages', [PersonalNavigationController::class, 'search'])->name('navigation.search');
+        Route::match(['PUT', 'DELETE'], '/pages/{page}/favorite', [PersonalNavigationController::class, 'favorite'])
+            ->middleware('throttle:artifactflow-page-writes')->name('pages.favorite');
         Route::post('/demo-content', DemoContentController::class)
             ->middleware('throttle:artifactflow-page-writes')
             ->name('demo-content.store');

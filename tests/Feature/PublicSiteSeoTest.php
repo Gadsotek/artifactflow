@@ -441,7 +441,9 @@ final class PublicSiteSeoTest extends TestCase
 
     public function test_homepage_publishes_responsive_modern_screenshot_sources(): void
     {
-        foreach (['app-dashboard', 'app-artifact-live', 'app-markdown'] as $screenshot) {
+        $xpath = $this->htmlXPath(base_path('site/index.html'));
+
+        foreach (['app-dashboard', 'app-library', 'app-quick-navigation', 'app-artifact-live', 'app-markdown'] as $screenshot) {
             foreach ([800, 1200, 1600] as $width) {
                 $this->assertFileExists(base_path(sprintf('site/assets/%s-%d.avif', $screenshot, $width)));
             }
@@ -451,9 +453,12 @@ final class PublicSiteSeoTest extends TestCase
             }
 
             $this->assertFileExists(base_path(sprintf('site/assets/%s.jpg', $screenshot)));
+
+            $preview = $xpath->query(sprintf('//a[@href="/assets/%s.jpg"]//img', $screenshot));
+            $this->assertNotFalse($preview);
+            $this->assertSame(1, $preview->length, sprintf('%s must be available as a product preview.', $screenshot));
         }
 
-        $xpath = $this->htmlXPath(base_path('site/index.html'));
         $modernSources = $xpath->query('//picture/source[@type="image/avif"]');
         $prioritizedImages = $xpath->query('//img[@fetchpriority="high"]');
         $lazyImages = $xpath->query('//img[@loading="lazy"]');

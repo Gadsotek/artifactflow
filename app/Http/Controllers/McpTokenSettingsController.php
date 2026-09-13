@@ -46,13 +46,10 @@ final readonly class McpTokenSettingsController
         $scopes = $request->scopes();
         $expiresInDays = $request->expiresInDays();
 
-        if (
-            McpAccessTokenIssuer::includesWriteScope($scopes)
-            && $expiresInDays > McpAccessTokenIssuer::MAX_WRITE_SCOPE_TTL_DAYS
-        ) {
+        $maximumDays = $this->issuer->maximumTtlDays($scopes);
+        if ($expiresInDays > $maximumDays) {
             throw ValidationException::withMessages([
-                'expires_in_days' => 'Write-capable tokens must expire within '
-                    . McpAccessTokenIssuer::MAX_WRITE_SCOPE_TTL_DAYS . ' days.',
+                'expires_in_days' => 'MCP tokens with these permissions must expire within ' . $maximumDays . ' days.',
             ]);
         }
 
@@ -81,7 +78,7 @@ final readonly class McpTokenSettingsController
         // Write scopes are permitted at this breadth: every write still runs
         // through the same per-workspace policies as a human (the token is capped at
         // Editor authority), so it can only write where the account already may, and
-        // the shorter write-token TTL enforced above keeps the exposure window tight.
+        // the admin-configured lifetime applies at every scope breadth.
         $workspaceUids = $request->allWorkspaces()
             ? null
             : $this->validatedWorkspaceUids($user, $request->workspaceUids());
@@ -140,6 +137,9 @@ final readonly class McpTokenSettingsController
      */
     private function viewData(User $user, ?string $plainTextToken = null): array
     {
+        $readMaximumDays = $this->issuer->maximumTtlDays([McpAccessTokenIssuer::SCOPE_READ]);
+        $writeMaximumDays = $this->issuer->maximumTtlDays([McpAccessTokenIssuer::SCOPE_CREATE]);
+
         return [
             'user' => $user,
             'tokens' => McpAccessToken::query()
@@ -147,7 +147,20 @@ final readonly class McpTokenSettingsController
                 ->orderByDesc('created_at')
                 ->get(),
             'availableScopes' => McpAccessTokenIssuer::allowedScopes(),
+            'scopeLabels' => [
+                McpAccessTokenIssuer::SCOPE_SEARCH => 'Find pages',
+                McpAccessTokenIssuer::SCOPE_READ => 'Read content and versions',
+                McpAccessTokenIssuer::SCOPE_CREATE => 'Create pages',
+                McpAccessTokenIssuer::SCOPE_UPDATE => 'Save new versions',
+                McpAccessTokenIssuer::SCOPE_ORGANIZE => 'Organize pages and tags',
+                McpAccessTokenIssuer::SCOPE_UPLOAD => 'Upload artifacts',
+                McpAccessTokenIssuer::SCOPE_SHARE => 'Create external links',
+            ],
             'defaultScopes' => [McpAccessTokenIssuer::SCOPE_SEARCH, McpAccessTokenIssuer::SCOPE_READ],
+            'readTokenMaximumDays' => $readMaximumDays,
+            'writeTokenMaximumDays' => $writeMaximumDays,
+            'tokenMaximumDays' => max($readMaximumDays, $writeMaximumDays),
+            'defaultTokenDays' => min(30, $readMaximumDays),
             'plainTextToken' => $plainTextToken,
             'workspaceItems' => $this->workspaceContext->itemsFor($user),
         ];

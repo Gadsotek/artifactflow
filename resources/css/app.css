@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./navigation.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
@@ -15,6 +16,8 @@
   --af-text-faint: #8c8b94;
   --af-border: rgb(24 24 31 / 0.1);
   --af-border-strong: rgb(24 24 31 / 0.18);
+  --af-search-border: #8d8b9b;
+  --af-search-bg: #fff;
   --af-accent: #675df6;
   --af-accent-strong: #5146e5;
   --af-accent-soft: #eeecff;
@@ -41,6 +44,8 @@
   --af-text-faint: #7e808c;
   --af-border: rgb(255 255 255 / 0.09);
   --af-border-strong: rgb(255 255 255 / 0.16);
+  --af-search-border: #696d83;
+  --af-search-bg: #10131b;
   --af-accent: #8b83ff;
   --af-accent-strong: #a39dff;
   --af-accent-soft: #282546;
@@ -599,9 +604,10 @@ a {
 }
 
 .af-context-panel h2 {
-  color: var(--af-text-faint) !important;
-  font-size: 0.66rem !important;
-  letter-spacing: 0.12em !important;
+  color: var(--af-text);
+  font-size: 0.9rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
 }
 
 .af-context-panel .rounded-md {
@@ -1043,31 +1049,25 @@ a {
 
 .af-workspace-hero {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(20rem, 1.2fr);
-  align-items: end;
-  gap: 2rem;
-  overflow: hidden;
+  gap: 1.5rem;
   border: 1px solid var(--af-border);
-  border-radius: 1.1rem;
-  padding: clamp(1.3rem, 3vw, 2rem);
-  background:
-    radial-gradient(circle at 92% 18%, color-mix(in srgb, var(--af-accent) 19%, transparent), transparent 13rem),
-    linear-gradient(135deg, color-mix(in srgb, var(--af-accent-soft) 62%, var(--af-surface-solid)), var(--af-surface-solid));
-  box-shadow: var(--af-shadow-sm);
+  border-radius: 1rem;
+  padding: clamp(1.2rem, 2.4vw, 1.75rem);
+  background: var(--af-surface-solid);
 }
 
 .af-workspace-hero h2 {
   margin-top: 0.45rem;
   color: var(--af-text);
-  font-size: clamp(1.8rem, 4vw, 3.2rem);
-  font-weight: 730;
-  letter-spacing: -0.055em;
-  line-height: 1;
+  font-size: clamp(1.6rem, 2.8vw, 2.2rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .af-workspace-hero > div > p:last-child {
-  max-width: 28rem;
-  margin-top: 0.8rem;
+  margin-top: 0.5rem;
   color: var(--af-text-soft);
   font-size: 0.85rem;
   line-height: 1.6;
@@ -1075,7 +1075,6 @@ a {
 
 .af-workspace-hero form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.65rem;
 }
 

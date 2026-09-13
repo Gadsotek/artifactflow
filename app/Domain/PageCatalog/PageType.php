@@ -13,6 +13,18 @@ enum PageType: string
     case Xlsx = 'xlsx';
     case Docx = 'docx';
 
+    public function label(): string
+    {
+        return match ($this) {
+            self::Markdown => 'Markdown',
+            self::HtmlArtifact => 'HTML artifact',
+            self::Image => 'Image',
+            self::Pdf => 'PDF',
+            self::Xlsx => 'XLSX spreadsheet',
+            self::Docx => 'DOCX document',
+        };
+    }
+
     public function usesArtifactHostPreview(): bool
     {
         return match ($this) {

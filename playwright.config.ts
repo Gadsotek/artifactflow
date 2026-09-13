@@ -16,7 +16,10 @@ export default defineConfig({
   // services. Serial execution keeps those security probes deterministic and
   // matches the CI contract instead of letting local CPU count set concurrency.
   workers: 1,
-  reporter: process.env.CI ? [['html'], ['github']] : [['list'], ['html']],
+  // Serving a failed report keeps the process alive and prevents make e2e cleanup.
+  reporter: process.env.CI
+    ? [['html', { open: 'never' }], ['github']]
+    : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:18180',
     trace: 'retain-on-failure',

@@ -43,6 +43,8 @@ final class InstallationLimitSettings
                 externalSharingEnabled: $settings->external_sharing_enabled,
                 externalShareAcknowledgementRequired: $settings->external_share_acknowledgement_required,
                 externalShareMaxExpiryHours: $settings->external_share_max_expiry_hours,
+                mcpReadTokenMaxTtlDays: $settings->mcp_read_token_max_ttl_days,
+                mcpWriteTokenMaxTtlDays: $settings->mcp_write_token_max_ttl_days,
             );
             $this->cachedFromDatabase = true;
             $this->cachedConfigSignature = null;

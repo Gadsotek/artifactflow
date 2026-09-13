@@ -64,6 +64,37 @@ final readonly class PageVisibleAncestorResolver
     }
 
     /**
+     * Authorized context for a window root, ordered from its direct parent up.
+     * These ancestors describe the result; they do not consume pagination slots.
+     *
+     * @return list<Page>
+     */
+    public function ancestorsOf(User $actor, Page $page): array
+    {
+        $ancestors = [];
+        $ancestorsByUid = [];
+        $visitedPageUids = [$page->uid => true];
+        $currentUid = $page->parent_page_uid;
+
+        while ($currentUid !== null) {
+            if (array_key_exists($currentUid, $visitedPageUids)) {
+                return [];
+            }
+            $visitedPageUids[$currentUid] = true;
+            $ancestor = $this->ancestor($ancestorsByUid, $currentUid, $page->workspace_uid);
+
+            if (!$ancestor instanceof Page || !$this->access->canView($actor, $ancestor)) {
+                break;
+            }
+
+            $ancestors[] = $ancestor;
+            $currentUid = $ancestor->parent_page_uid;
+        }
+
+        return $ancestors;
+    }
+
+    /**
      * @param array<string, true> $presentPageUids
      * @param array<string, Page|null> $ancestorsByUid
      */

@@ -23,6 +23,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property bool $external_sharing_enabled
  * @property bool $external_share_acknowledgement_required
  * @property int $external_share_max_expiry_hours
+ * @property int $mcp_read_token_max_ttl_days
+ * @property int $mcp_write_token_max_ttl_days
  * @property string|null $updated_by_user_uid
  */
 final class InstallationSettings extends Model
@@ -60,6 +62,8 @@ final class InstallationSettings extends Model
             'external_sharing_enabled' => 'boolean',
             'external_share_acknowledgement_required' => 'boolean',
             'external_share_max_expiry_hours' => 'integer',
+            'mcp_read_token_max_ttl_days' => 'integer',
+            'mcp_write_token_max_ttl_days' => 'integer',
         ];
     }
 }

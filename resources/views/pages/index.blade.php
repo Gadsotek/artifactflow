@@ -1,14 +1,14 @@
 @use('App\Application\PageCatalog\PageSearchFilters')
 @use('App\Application\PageCatalog\PageSearchSort')
 @use('App\Domain\Provenance\ProvenanceSearchScope')
-<x-layouts.app title="Pages">
+<x-layouts.app title="Library">
     <div class="af-app-surface min-h-screen bg-zinc-50 dark:bg-zinc-950">
         <header class="af-page-header border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
             <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
                 <div>
                     <p class="af-eyebrow">Knowledge library</p>
-                    <h1 class="text-xl font-semibold text-zinc-950 dark:text-zinc-50">Pages</h1>
-                    <p class="af-page-intro">Search across trusted documentation and isolated interactive artifacts.</p>
+                    <h1 class="text-xl font-semibold text-zinc-950 dark:text-zinc-50">Library</h1>
+                    <p class="af-page-intro">Find a page, explore your workspaces, or pick up something new.</p>
                 </div>
                 <div class="flex flex-wrap items-center justify-end gap-2">
                     @if ($canInviteToCurrentWorkspace)
@@ -19,45 +19,22 @@
             </div>
         </header>
 
-        <main class="af-page-grid mx-auto grid max-w-7xl gap-8 px-6 py-8 lg:grid-cols-[18rem_1fr]">
-            <aside class="af-context-panel">
-                <div class="flex items-center justify-between gap-3">
-                    <h2 class="text-sm font-semibold uppercase tracking-wide text-zinc-500">Workspaces</h2>
-                    <button
-                        class="af-icon-button"
-                        data-open-editor-dialog="library-workspace-create-dialog"
-                        type="button"
-                        aria-label="Create workspace"
-                        title="Create workspace"
-                    >+</button>
-                </div>
-                <div class="mt-3 space-y-2">
-                    <a class="block rounded-md border px-3 py-2 text-sm {{ $currentWorkspaceUid === 'all' ? 'af-option-active' : 'border-zinc-200 bg-white text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100' }}" href="{{ route('pages.index', ['workspace_uid' => 'all']) }}">
-                        <span class="font-medium">All visible</span>
-                    </a>
-                    @foreach ($workspaces as $workspace)
-                        <a class="block rounded-md border px-3 py-2 text-sm {{ $workspace->uid === $currentWorkspaceUid ? 'af-option-active' : 'border-zinc-200 bg-white text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100' }}" href="{{ route('pages.index', ['workspace_uid' => $workspace->uid]) }}">
-                            <span class="flex items-center justify-between gap-2">
-                                <span class="font-medium">{{ $workspace->name }}</span>
-                                @if (!$workspace->isMembership && $workspace->accessLabel !== null)
-                                    <span class="text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{{ $workspace->accessLabel }}</span>
-                                @endif
-                            </span>
-                        </a>
-                    @endforeach
-                </div>
-            </aside>
+        <div class="af-page-grid af-workspace-layout mx-auto grid max-w-7xl gap-8 px-6 py-8">
+            <x-workspace-navigation :workspaces="$workspaces" :current-workspace-uid="$currentWorkspaceUid" create-dialog="library-workspace-create-dialog" />
 
-            <section class="space-y-6">
+            <section class="af-workspace-content space-y-6">
                 <form class="space-y-3" method="GET" action="{{ route('pages.index') }}">
-                    <div class="af-filter-panel grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        <label class="space-y-1 text-sm xl:col-span-2">
+                    <div class="af-filter-panel af-library-search-bar">
+                        <label class="af-library-query text-sm">
                             <span class="font-medium text-zinc-700 dark:text-zinc-300">Search</span>
-                            <input class="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" name="q" value="{{ $filters->query }}" type="search">
+                            <span class="af-search-field">
+                                <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+                                <input class="af-search-input" name="q" value="{{ $filters->query }}" type="search" placeholder="Search titles, content, and tags…">
+                            </span>
                         </label>
 
                         @if ($currentWorkspaceUid === PageSearchFilters::ALL_WORKSPACES)
-                            <label class="space-y-1 text-sm">
+                            <label class="text-sm">
                                 <span class="font-medium text-zinc-700 dark:text-zinc-300">Workspace</span>
                                 <select class="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" data-library-workspace-filter name="workspace_uid">
                                     <option value="all" @selected($filters->workspaceUid === PageSearchFilters::ALL_WORKSPACES)>All visible</option>
@@ -70,16 +47,21 @@
                             <input name="workspace_uid" type="hidden" value="{{ $currentWorkspaceUid }}">
                         @endif
 
-                        <label class="space-y-1 text-sm">
+                        <label class="text-sm">
                             <span class="font-medium text-zinc-700 dark:text-zinc-300">Type</span>
                             <select class="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" name="type">
                                 <option value="">Any type</option>
                                 @foreach ($pageTypes as $pageType)
-                                    <option value="{{ $pageType->value }}" @selected($filters->type === $pageType)>{{ str_replace('_', ' ', $pageType->value) }}</option>
+                                    <option value="{{ $pageType->value }}" @selected($filters->type === $pageType)>{{ $pageType->label() }}</option>
                                 @endforeach
                             </select>
                         </label>
 
+                        <div class="af-library-apply"><button class="af-primary-button" name="sort" type="submit" value="{{ $filters->sort->value }}">Search pages</button></div>
+                    </div>
+                    <details class="af-advanced-filters" @if ($hasAdvancedFilters) open @endif>
+                        <summary>More filters{{ $hasAdvancedFilters ? ' · Active' : '' }}</summary>
+                        <div class="af-filter-panel grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                         <div class="space-y-1 text-sm">
                             <label class="block font-medium text-zinc-700 dark:text-zinc-300" for="library-statuses">Statuses</label>
                             <select class="w-full" data-multi-select data-placeholder="Select statuses" id="library-statuses" name="statuses[]" multiple size="4">
@@ -150,6 +132,7 @@
                         </div>
                     </div>
 
+                    </details>
                     <div class="af-library-sort-switches" data-library-sort-switches>
                         <span>Sort by</span>
                         <div>
@@ -162,8 +145,11 @@
                     </div>
                 </form>
 
+                <x-page-filter-chips :filters="$filters" />
+
                 <div
                     data-live-page-catalog
+                    data-library-results
                     data-live-page-catalog-user-uid="{{ $user->uid }}"
                     data-live-page-catalog-workspace-uid="{{ $currentWorkspaceUid }}"
                 >
@@ -201,7 +187,7 @@
                                                 @if ($result->isNew)
                                                     <span class="af-new-page-badge" data-page-new-indicator>NEW</span>
                                                 @endif
-                                                <span class="text-xs font-semibold uppercase tracking-wide text-zinc-500">{{ $page->type->value }}</span>
+                                                <span class="text-xs font-semibold tracking-wide text-zinc-500">{{ $page->type->label() }}</span>
                                             </span>
                                         </div>
                                         @if ($result->snippet !== null)
@@ -228,9 +214,14 @@
                         @endforeach
                         </div>
                     @endif
+                    <nav class="af-pagination" aria-label="Library pagination">
+                        @if ($previousPageUrl !== null)<a class="af-secondary-button" href="{{ $previousPageUrl }}">← Previous pages</a>@endif
+                        <span>Page {{ $pageNumber }}</span>
+                        @if ($nextPageUrl !== null)<a class="af-secondary-button" href="{{ $nextPageUrl }}">Next pages →</a>@endif
+                    </nav>
                 </div>
             </section>
-        </main>
+        </div>
 
         @if ($canInviteToCurrentWorkspace)
             <x-workspace-invite-dialog

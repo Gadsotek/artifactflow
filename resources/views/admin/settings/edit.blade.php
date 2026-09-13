@@ -166,6 +166,19 @@
                                 <span>Require two-factor authentication for all users</span>
                             </label>
                         </div>
+                        <fieldset class="border-b border-zinc-200 pb-4 dark:border-zinc-800" aria-describedby="mcp-lifetime-help">
+                            <legend class="text-sm font-medium text-zinc-700 dark:text-zinc-300">MCP token lifetimes</legend>
+                            <p id="mcp-lifetime-help" class="mt-1 text-xs text-zinc-500">Set the maximum lifetime for new AI connections, from 1 to 365 days. Existing tokens keep their expiry dates; revoke them individually if needed.</p>
+                            <label class="mt-3 block">
+                                <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Read-only tokens (days)</span>
+                                <input class="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" name="mcp_read_token_max_ttl_days" type="number" min="1" max="365" step="1" value="{{ old('mcp_read_token_max_ttl_days', $limitValues->mcpReadTokenMaxTtlDays) }}" required>
+                            </label>
+                            <label class="mt-3 block">
+                                <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Write-capable tokens (days)</span>
+                                <input class="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" name="mcp_write_token_max_ttl_days" type="number" min="1" max="365" step="1" value="{{ old('mcp_write_token_max_ttl_days', $limitValues->mcpWriteTokenMaxTtlDays) }}" required>
+                                <span class="mt-1 block text-xs text-zinc-500">Applies when any create, update, organize, upload, or share permission is selected, including tokens that also read pages.</span>
+                            </label>
+                        </fieldset>
                         <div class="border-b border-zinc-200 pb-4 dark:border-zinc-800">
                             <p class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Realtime collaboration</p>
                             <label class="mt-3 flex items-start gap-3 text-sm text-zinc-700 dark:text-zinc-300">
