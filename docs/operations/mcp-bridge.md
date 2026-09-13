@@ -3,7 +3,7 @@
 [MCP setup](mcp.md)
 
 Claude's supported Desktop JSON path cannot supply ArtifactFlow's static
-bearer token directly. The connector therefore uses `mcp-remote@0.8.3` for
+bearer token directly. The connector therefore uses `mcp-remote@0.8.6` for
 Claude Desktop/Code. Codex connects directly over authenticated HTTP.
 
 The bridge is an experimental third-party process that receives the token.
