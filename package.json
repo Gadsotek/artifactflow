@@ -33,7 +33,7 @@
     "@codemirror/state": "^6.7.4",
     "@lezer/highlight": "^1.2.3",
     "codemirror": "^6.0.2",
-    "laravel-echo": "^2.4.0",
+    "laravel-echo": "^2.5.0",
     "mermaid": "11.17.2",
     "pusher-js": "^8.6.0",
     "tabulator-tables": "6.5.2"
