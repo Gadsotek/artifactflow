@@ -3,8 +3,8 @@
 [MCP setup](mcp.md)
 
 Claude's supported Desktop JSON path cannot supply ArtifactFlow's static
-bearer token directly. The connector therefore uses `mcp-remote@0.8.6` for
-Claude Desktop/Code. Codex connects directly over authenticated HTTP.
+bearer token directly. The connector therefore uses `mcp-remote@0.9.0` for
+all supported local clients, including Codex releases that need the stdio bridge.
 
 The bridge is an experimental third-party process that receives the token.
 Reproducible installation does not make it trusted first-party software. Use
@@ -12,13 +12,13 @@ narrow, short-lived tokens and review every bridge upgrade.
 
 ## Installation contract
 
-- Require Node.js 20.18.1 or newer, npm, and npx.
+- Require Node.js 20.18.1 or newer and npm.
 - Verify the committed lock's reviewed SHA-256 fingerprint.
 - Install the complete integrity lock with `npm ci --engine-strict --ignore-scripts`.
 - Use a separate user-data directory per fingerprint, so a failed upgrade
   cannot destroy the version referenced by existing client configs.
-- Fix that directory as the generated config's working directory and run the
-  exact version with `npx --offline --no-install` and a dedicated empty cache.
+- Run the installed entrypoint through an absolute Node.js path. Neither
+  client-specific working-directory support nor `npx` resolution is required.
 - A missing local package must fail closed, without searching project packages,
   mutable latest versions, or an independently cached dependency graph.
 - Store configs only in selected user-level targets, back them up before
@@ -32,7 +32,8 @@ silently.
 ## Upgrade and verification
 
 Review the exact version and package delta, regenerate the lock, and update
-the expected integrity in `scripts/verify-mcp-remote.mjs`. Every registry
+the version, lock fingerprint, tarball integrity, connector regression fixtures,
+and authenticated smoke version alongside `scripts/verify-mcp-remote.mjs`. Every registry
 package requires SHA-512 integrity. The nested graph participates in audit and
 dependency update coverage.
 
@@ -42,3 +43,9 @@ exchange, and prove the missing-package failure. Preserve all these checks.
 
 Remove the bridge when the supported client path can provide authorization
 natively or the project adopts a compatible first-party authorization flow.
+
+The 0.9.0 review covers upstream commit
+`79ea4b15204248d5c67b8dee1c88c5df83e065e0`: bundled MCP SDK v2, OAuth
+refresh-scope handling, and updated HTTP session/authentication error handling.
+The separately locked runtime dependencies and Node.js floor are unchanged;
+the static-bearer stdio-to-HTTP path remains covered by the installed smoke.
