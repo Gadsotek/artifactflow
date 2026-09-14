@@ -1,0 +1,44 @@
+ELK 0.12.0 (elkjs)
+Copyright (c) 2017 Kiel University and others.
+Copyright (c) 2019 TypeFox and others.
+Additional contributor notices are retained in the upstream source files.
+SPDX-License-Identifier: EPL-2.0 OR GPL-3.0-or-later
+
+This program and the accompanying materials are made available under the
+terms of the Eclipse Public License 2.0 (included in EPL-2.0.txt).
+This Source Code may also be made available under the following Secondary
+Licenses when the conditions for such availability set forth in the Eclipse
+Public License v. 2.0 are satisfied: GNU General Public License v3.0 or later
+(included in GPL-3.0.txt).
+
+ArtifactFlow bundles the unmodified elkjs 0.12.0 package through Mermaid 12.
+Vite bundles and minifies it; ArtifactFlow does not modify ELK source files.
+AGPL distributions use the GPL-3.0-or-later secondary license for ELK.
+Separately licensed commercial distributions use EPL-2.0 for ELK; the
+ArtifactFlow commercial license does not replace ELK's license or remove
+recipients' rights to ELK source code. Neither license is a general approval
+for other dependencies or ELK releases.
+
+Corresponding source and build instructions (available without charge):
+- elkjs JavaScript wrappers, Java adapters, typings, and build scripts:
+  https://github.com/kieler/elkjs/tree/ff5771d7165445c42c408bb8a090c8035272218c
+  https://github.com/kieler/elkjs/archive/ff5771d7165445c42c408bb8a090c8035272218c.tar.gz
+- Eclipse Layout Kernel Java/Xtend sources, version 0.12.0:
+  https://github.com/eclipse-elk/elk/tree/323312916048544e4e594eab3303cdb0d01e2929
+  https://github.com/eclipse-elk/elk/archive/323312916048544e4e594eab3303cdb0d01e2929.tar.gz
+- Follow elkjs README.md's Building section, with the ELK checkout beside
+  elkjs; build.gradle identifies the source directories, compiler versions,
+  Maven dependencies and generation steps. The npm package also contains
+  the generated, unminified JavaScript:
+  https://registry.npmjs.org/elkjs/-/elkjs-0.12.0.tgz
+- ArtifactFlow's package-lock.json and vite.config.js, including the notice
+  plugin in resources/build/mermaid-licenses.js, specify the final bundle
+  inputs and transformation. They accompany ArtifactFlow source releases:
+  https://github.com/Gadsotek/artifactflow
+
+Distributors must preserve these notices and license texts, provide the
+source matching their distributed version and any modifications, and keep
+the referenced source available for as long as required by the applicable
+license. If upstream hosting ceases to provide it, supply an equivalent
+source mirror and update these directions before further distribution.
+ELK is provided without warranty; see the complete license texts.
