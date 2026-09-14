@@ -6,36 +6,87 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
-### Security
+## v0.3.0 — 2026-09-14
 
-- Updated the gRPC-Go dependency embedded in the application and DOCX processor
-  FrankenPHP binaries from 1.83.1 to 1.83.2 for
-  [CVE-2026-84445](https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj).
-  Both builds verify the patched version in the compiled binary.
+Navigation and usability release with all fixes merged since v0.2.1. It adds
+private favorites, recently opened pages, keyboard quick navigation, and
+configurable MCP token lifetimes; refreshes the application and public website;
+and updates the reviewed Mermaid and local MCP bridge dependencies.
 
 ### Added
 
+- Private favorites and recently opened pages, with Home sections for returning
+  to work and Cmd/Ctrl+K quick navigation. Page access and workspace permissions
+  filter results before they are shown or counted. ([#131](https://github.com/Gadsotek/artifactflow/pull/131))
 - Administrator-configurable MCP token lifetimes for read-only and write-capable
-  connections, from 1 to 365 days, enforced for web and CLI issuance.
-- Private favorites and recently opened pages, Home continuation sections,
-  keyboard quick navigation, and permission-filtered Library pagination.
+  connections, from 1 to 365 days, enforced by the shared issuer for web and CLI
+  callers. Defaults remain 365/90 days respectively; changing a limit does not
+  extend, shorten, or revoke existing tokens. ([#131](https://github.com/Gadsotek/artifactflow/pull/131))
 
 ### Changed
 
-- Website and README screenshots now show the refreshed navigation and real
-  sample artifacts in a fictional Northstar Labs workspace.
-- Consistent searchable workspace navigation, labeled mobile navigation and
-  theme controls, clearer page actions and sharing choices, content-first
-  creation, editor draft recovery, and simpler history and AI connection setup.
+- Refreshed workspace navigation, permission-filtered Library pagination,
+  clearer page actions and sharing choices, labeled mobile and theme controls,
+  content-first creation, editor draft recovery, and simpler history and AI
+  connection setup. ([#131](https://github.com/Gadsotek/artifactflow/pull/131))
+- Redesigned the public website and simplified the documentation into focused
+  workflow, operations, and security guides. Website and README screenshots show
+  the new navigation and real sample artifacts in a fictional Northstar Labs
+  workspace. ([#126](https://github.com/Gadsotek/artifactflow/pull/126), [#131](https://github.com/Gadsotek/artifactflow/pull/131))
+- Upgraded to the full Mermaid 12.0.0 renderer while explicitly retaining the
+  Dagre/classic defaults and strict sanitization. Added compatibility coverage
+  for seven diagram types in light and dark themes across Chromium, Firefox,
+  and WebKit, and bundled the reviewed ELK license and source notices.
+  ([#140](https://github.com/Gadsotek/artifactflow/pull/140))
+- Upgraded the reviewed local MCP bridge to mcp-remote 0.9.0, aligning the
+  connector, integrity checks, authenticated smoke test, and regression pins.
+  The bridge still requires Node.js 20.18.1 or newer; the ArtifactFlow MCP server
+  contract remains 0.9.0. ([#137](https://github.com/Gadsotek/artifactflow/pull/137), [#141](https://github.com/Gadsotek/artifactflow/pull/141))
+- Updated frontend and PHP dependencies, including Laravel 13.31.0, Laravel
+  Echo 2.5.0, Vite 8.3.0, Playwright 1.63.0, Larastan 3.12.0, and ECS 13.3.2.
+
+### Security
+
+- Updated gRPC-Go embedded in the application and DOCX processor FrankenPHP
+  binaries from 1.83.1 to 1.83.2 for
+  [CVE-2026-84445](https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj).
+  Both builds verify the patched version in the compiled binary.
+  ([#128](https://github.com/Gadsotek/artifactflow/pull/128))
+- Forced Mermaid's nested lodash-es copies to the reviewed 4.18.1 version and
+  pinned ELK to 0.12.0 under a package-specific license approval. DOMPurify stays
+  pinned to 3.4.13 and the general license allowlist remains unchanged.
+  ([#140](https://github.com/Gadsotek/artifactflow/pull/140))
 
 ### Fixed
 
-- Browser test reports no longer keep failed quality runs open and delay cleanup
-  of their isolated services and temporary database.
-- Full local quality runs now build and scan production/processor images under
-  temporary tags using a separate Buildx builder, then clean up those images
-  and that builder's cache. Cleanup also runs on failures and handled interrupts
-  without pruning other projects' images, containers, networks, or data volumes.
+- Preserved readable page paths across paginated Library windows and serialized
+  concurrent first visits to personal page state. Browser navigation tests wait
+  for handlers and destination pages before interacting.
+  ([#131](https://github.com/Gadsotek/artifactflow/pull/131))
+- Browser reports no longer start a server that holds failed quality runs open
+  and delays cleanup of isolated services and temporary databases.
+- Full local quality runs build and scan production/processor images under
+  temporary tags with a dedicated Buildx builder, then clean up only those
+  resources after success, failure, or handled interruption.
+- Fixed the publication guard's false rejection of explicitly unignored public
+  documentation on older Git versions.
+
+### Upgrade from v0.2.1
+
+- Apply the two additive migrations with `make migrate`, or the documented
+  production migration command, before serving the new application image. They
+  create `personal_page_states` and add the two MCP lifetime settings; existing
+  pages, versions, and tokens are retained. Review token limits under
+  **Administration > Storage and limits > MCP token lifetimes**.
+- Re-run `./scripts/connect-mcp.sh` for local clients using the bundled bridge
+  to select the reviewed 0.9.0 installation. Existing token expiry and scope
+  still apply.
+- PDF, XLSX, and DOCX remain default-off. Existing approved opt-ins still require
+  their documented processor containment and browser evidence; DOCX requires
+  the independent PDF processor. Keep the separate app and artifact origins.
+- Pin published image digests and verify their SBOMs and provenance before use.
+  See [production operations](docs/operations/production.md) and the
+  [release checklist](RELEASE-CHECKLIST.md).
 
 ## v0.2.1 — 2026-09-07
 
