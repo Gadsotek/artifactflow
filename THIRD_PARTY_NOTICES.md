@@ -6,6 +6,30 @@ replaces, the dependency manifests and generated software bills of materials.
 
 ## Browser application support
 
+### ELK 0.12.0 (elkjs)
+
+Mermaid 12 bundles the full ELK layout engine. ArtifactFlow pins elkjs to
+0.12.0, whose upstream source includes the GPL secondary-license grant.
+The exact package, version, registry URL, integrity and license expression
+are reviewed in [the dependency policy](security/dependency-license-policy.json);
+this does not approve EPL or GPL dependencies generally.
+
+AGPL distributions use ELK's GPL-3.0-or-later secondary license. Separately
+licensed commercial distributions use EPL-2.0 for ELK and must preserve
+its separate license and source availability. ArtifactFlow's commercial
+license does not replace third-party terms.
+
+The complete [ELK notice and source directions](resources/licenses/elkjs-0.12.0/NOTICE.txt),
+[EPL 2.0](resources/licenses/elkjs-0.12.0/EPL-2.0.txt) and
+[GPL 3.0](resources/licenses/elkjs-0.12.0/GPL-3.0.txt) accompany the source tree.
+Every Vite build emits them beside the browser assets under
+public/build/licenses/elkjs-0.12.0/; every chunk containing ELK retains a
+notice pointing to them. The production image copies that complete build.
+Distributors must keep the corresponding source available as described
+in the notice, including any modifications they make.
+
+Upstream release: <https://github.com/kieler/elkjs/releases/tag/0.12.0>
+
 ### Khrôma 2.1.0
 
 Mermaid transitively bundles Khrôma 2.1.0 for CSS color and theme

@@ -1,6 +1,7 @@
 import tailwindcss from '@tailwindcss/vite';
 import laravel from 'laravel-vite-plugin';
 import { defineConfig, loadEnv } from 'vite';
+import { retainMermaidLicenses } from './resources/build/mermaid-licenses.js';
 
 const TABULATOR_LICENSE_BANNER = `/*! Tabulator 6.5.0 | Copyright (c) 2015-2026 Oli Folkerd | MIT License
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -101,6 +102,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       enforceStandaloneXlsxViewer(),
       retainTabulatorLicense(),
+      retainMermaidLicenses(),
     ],
   };
 });

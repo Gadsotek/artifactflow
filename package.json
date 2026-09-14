@@ -24,7 +24,9 @@
   },
   "overrides": {
     "dompurify": "3.4.13",
-    "shell-quote": "1.10.0"
+    "shell-quote": "1.10.0",
+    "elkjs": "0.12.0",
+    "lodash-es": "4.18.1"
   },
   "dependencies": {
     "@codemirror/lang-html": "^6.4.12",

@@ -184,3 +184,77 @@ test('hostile Mermaid source neither executes nor escapes the strict renderer @a
   expect(consoleErrors).toEqual([]);
   expect(canaryRequests).toBe(0);
 });
+
+const supportedDiagrams = [
+  { source: 'flowchart TD\n  Start --> Finished', labels: ['Start', 'Finished'] },
+  { source: 'sequenceDiagram\n  Alice->>Bob: Message', labels: ['Alice', 'Message'] },
+  { source: 'classDiagram\n  Animal <|-- Duck', labels: ['Animal', 'Duck'] },
+  { source: 'stateDiagram-v2\n  Waiting --> Running', labels: ['Waiting', 'Running'] },
+  {
+    source: 'mindmap\n  root((Project))\n    Planning\n    Delivery',
+    labels: ['Project', 'Delivery'],
+  },
+  {
+    source:
+      'architecture-beta\n  service api(server)[Gateway]\n  service db(database)[Storage]\n  api:R -- L:db',
+    labels: ['Gateway', 'Storage'],
+  },
+  {
+    source: '---\nconfig:\n  layout: elk\n---\nflowchart TD\n  Input --> Output',
+    labels: ['Input', 'Output'],
+  },
+];
+
+for (const dark of [false, true]) {
+  test(
+    'Mermaid 12 retains full diagram rendering in ' +
+      (dark ? 'dark' : 'light') +
+      ' mode @artifact-security',
+    async ({ page }) => {
+      const externalRequests: string[] = [];
+      await page.route(
+        () => true,
+        async (route) => {
+          if (new URL(route.request().url()).origin !== new URL(baseUrl).origin) {
+            externalRequests.push(route.request().url());
+            await route.abort();
+            return;
+          }
+          await route.continue();
+        },
+      );
+      await page.goto(baseUrl + '/up', { waitUntil: 'domcontentloaded' });
+      await page.setContent(
+        '<!doctype html><html class="' +
+          (dark ? 'dark' : '') +
+          '"><body>' +
+          supportedDiagrams.map((diagram) => diagramBlock(diagram.source)).join('') +
+          '<script type="module" src="' +
+          appAsset +
+          '"></script></body></html>',
+      );
+
+      const diagrams = page.locator('[data-mermaid-diagram]');
+      await expect(diagrams).toHaveCount(supportedDiagrams.length);
+      for (let index = 0; index < supportedDiagrams.length; index += 1) {
+        const diagram = diagrams.nth(index);
+        await expect(diagram, supportedDiagrams[index].source).toHaveAttribute(
+          'data-mermaid-rendered',
+          'true',
+          { timeout: 20_000 },
+        );
+        // Architecture icons contain nested SVGs; count only the diagram root.
+        await expect(diagram.locator('[data-mermaid-canvas] > svg')).toHaveCount(1);
+        for (const label of supportedDiagrams[index].labels) {
+          await expect(diagram.locator('[data-mermaid-canvas]')).toContainText(label);
+        }
+        await expect(
+          diagram.locator(
+            '[data-mermaid-canvas] script, [data-mermaid-canvas] foreignObject, [data-mermaid-canvas] image',
+          ),
+        ).toHaveCount(0);
+      }
+      expect(externalRequests).toEqual([]);
+    },
+  );
+}

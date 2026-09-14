@@ -268,7 +268,7 @@ audit-php:
 	$(MAKE) run-app-cmd APP_CMD='if [ -f composer.lock ]; then composer audit --locked; else composer audit; fi'
 
 audit-js:
-	$(COMPOSE) --profile frontend run --rm --no-deps vite sh -lc '/var/www/html/docker/ensure-node-modules.sh && node scripts/verify-dompurify.mjs && npm audit --audit-level=moderate'
+	$(COMPOSE) --profile frontend run --rm --no-deps vite sh -lc '/var/www/html/docker/ensure-node-modules.sh && node --test scripts/license-audit/verify-dependency-licenses.test.mjs scripts/mermaid-dependencies.test.mjs && node scripts/verify-dompurify.mjs && npm audit --audit-level=moderate'
 
 audit: audit-php audit-js
 

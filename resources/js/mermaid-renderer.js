@@ -65,6 +65,9 @@ async function configuredMermaid() {
   if (!mermaidConfigured) {
     mermaid.initialize({
       startOnLoad: false,
+      // Preserve pre-v12 layout and appearance for existing diagrams.
+      layout: 'dagre',
+      look: 'classic',
       securityLevel: 'strict',
       secure: ['htmlLabels', 'flowchart'],
       suppressErrorRendering: true,

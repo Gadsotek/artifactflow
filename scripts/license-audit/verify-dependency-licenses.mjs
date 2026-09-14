@@ -5,13 +5,14 @@ import process from 'node:process';
 import { URL, fileURLToPath } from 'node:url';
 
 export class DependencyLicenseAudit {
-  constructor({ approvedLicenses, npmMetadataOverrides }) {
+  constructor({ approvedLicenses, npmMetadataOverrides, npmPackageApprovals = {} }) {
     if (!Array.isArray(approvedLicenses) || npmMetadataOverrides === null) {
       throw new Error('Dependency license policy has an invalid shape.');
     }
 
     this.approvedLicenses = new Set(approvedLicenses);
     this.npmMetadataOverrides = npmMetadataOverrides;
+    this.npmPackageApprovals = npmPackageApprovals;
   }
 
   auditComposerPackages(packages, source) {
@@ -38,13 +39,17 @@ export class DependencyLicenseAudit {
     const issues = [];
 
     for (const [packagePath, dependency] of Object.entries(packages)) {
-      if (packagePath === '' || dependency === null || typeof dependency.version !== 'string') {
+      if (packagePath === '') {
         continue;
       }
 
       const name = this.npmPackageName(packagePath);
-      const version = dependency.version;
-      let license = typeof dependency.license === 'string' ? dependency.license.trim() : '';
+      const approval = this.npmPackageApprovals[name];
+      if (approval === undefined && typeof dependency?.version !== 'string') {
+        continue;
+      }
+      const version = dependency?.version ?? '<missing>';
+      let license = typeof dependency?.license === 'string' ? dependency.license.trim() : '';
 
       if (license === '') {
         const override = this.npmMetadataOverrides[`${name}@${version}`];
@@ -59,7 +64,12 @@ export class DependencyLicenseAudit {
         }
       }
 
-      if (!this.isCompatible(license)) {
+      const compatible =
+        approval === undefined
+          ? this.isCompatible(license)
+          : this.matchesNpmApproval(approval, dependency, name, packagePath, source);
+
+      if (!compatible) {
         issues.push(
           `${source}: npm package ${name}@${version} has missing or unapproved license ${license || '<missing>'}.`,
         );
@@ -67,6 +77,28 @@ export class DependencyLicenseAudit {
     }
 
     return issues;
+  }
+
+  matchesNpmApproval(approval, dependency, name, packagePath, source) {
+    if (approval === null || typeof approval !== 'object' || dependency === null) {
+      return false;
+    }
+
+    // Bind the actual artifact and its original metadata. Neither metadata
+    // fallbacks nor the general allowlist may widen a package approval.
+    const fields = ['version', 'license', 'integrity', 'resolved', 'source', 'packagePath'];
+    if (!fields.every((field) => typeof approval[field] === 'string' && approval[field] !== '')) {
+      return false;
+    }
+
+    return (
+      approval.source === source &&
+      approval.packagePath === packagePath &&
+      (dependency.name === undefined || dependency.name === name) &&
+      ['version', 'license', 'integrity', 'resolved'].every(
+        (field) => dependency[field] === approval[field],
+      )
+    );
   }
 
   isCompatible(expression) {

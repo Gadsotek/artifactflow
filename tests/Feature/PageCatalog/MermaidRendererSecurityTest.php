@@ -62,10 +62,17 @@ final class MermaidRendererSecurityTest extends TestCase
         $this->assertIsArray($package);
         $dependencies = $package['dependencies'] ?? null;
         $this->assertIsArray($dependencies);
-        $this->assertSame('11.17.2', $dependencies['mermaid'] ?? null);
+        $this->assertSame('12.0.0', $dependencies['mermaid'] ?? null);
+
+        $overrides = $package['overrides'] ?? null;
+        $this->assertIsArray($overrides);
+        $this->assertSame('0.12.0', $overrides['elkjs'] ?? null);
+        $this->assertSame('4.18.1', $overrides['lodash-es'] ?? null);
 
         $renderer = (string) file_get_contents(base_path('resources/js/mermaid-renderer.js'));
 
+        $this->assertStringContainsString("layout: 'dagre'", $renderer);
+        $this->assertStringContainsString("look: 'classic'", $renderer);
         $this->assertStringContainsString("securityLevel: 'strict'", $renderer);
         $this->assertStringContainsString("secure: ['htmlLabels', 'flowchart']", $renderer);
         $this->assertStringContainsString('htmlLabels: false', $renderer);
