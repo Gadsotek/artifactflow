@@ -8,8 +8,8 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## v0.3.1 — 2026-09-15
 
-Restores DOCX processor image builds and updates the reviewed local MCP bridge
-and Resend mail dependency.
+Restores DOCX processor image builds, rejects ambiguous HTML preview markup,
+and updates the reviewed local MCP bridge and Resend mail dependency.
 
 ### Changed
 
@@ -24,12 +24,19 @@ and Resend mail dependency.
 
 ### Fixed
 
+- Fail closed when an HTML preview contains a style element inside a select.
+  Browser and server parsing can disagree in this context and leave a nested
+  iframe active. Such previews now receive the fixed HTTP 422 unavailable
+  response; ordinary styles outside selects remain supported. The exact
+  release-gate failure is retained in the permanent browser regression corpus.
 - Restored DOCX processor builds with the exact Alpine timezone-data pin
   `2026d-r0`, replacing the unavailable `2026c-r0` package. This resolves the
   build failure in Nightly audit and CI.
 
 ### Upgrade from v0.3.0
 
+- Move style elements outside select elements if an HTML artifact receives the
+  preview-unavailable response. Stored artifact source remains unchanged.
 - No new database migrations or required configuration changes.
 - Re-run `./scripts/connect-mcp.sh` for local clients using the bundled bridge
   to select the reviewed 0.13.5 installation. Existing token expiry and scope

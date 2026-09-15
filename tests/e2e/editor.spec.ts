@@ -2340,6 +2340,44 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
   }
 });
 
+test('HTML draft preview rejects ambiguous style inside select @artifact-security', async ({
+  page,
+}) => {
+  const payloads = [
+    '<!doctype html><p><select><style></script><desc><![CDATA[x><script><!--</style>' +
+      '<iframe data-decoy=">" id=af-parser-fuzz-084></iframe><style></select></select>',
+    '<!doctype html><select><style></select>' +
+      '<iframe id="select-style-breakout" srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>',
+  ];
+
+  for (const payload of payloads) {
+    const fixture = await prepareAuthenticatedDraftPreviewFixture(page);
+    const marker = `rejected-source-${randomUUID()}`;
+    await page.setContent(authenticatedDraftPreviewDocument(fixture, payload + marker));
+    const form = page.locator('[data-html-draft-preview-form]');
+    await expect(form).toHaveAttribute('data-editor-ready', 'true');
+    await expect(form).toHaveAttribute('data-html-draft-preview-ready', 'true');
+
+    const responsePromise = page.waitForResponse(
+      (response) => response.url() === draftPreviewEndpoint,
+    );
+    await page.getByRole('button', { name: 'Preview HTML before saving' }).click();
+    const response = await responsePromise;
+
+    expect(response.status()).toBe(422);
+    expect(response.headers()['content-security-policy']).toContain('sandbox allow-scripts');
+    expect(response.headers()['content-security-policy']).toContain("frame-src 'none'");
+    const body = await response.text();
+    expect(body).not.toContain(marker);
+    expect(body).not.toContain('<iframe');
+    expect(body).not.toContain('<script');
+
+    const preview = page.frameLocator('[data-html-draft-preview-frame]');
+    await expect(preview.locator('body')).toContainText('could not be rendered safely');
+    expect(await preview.locator('body').evaluate(() => window.frames.length)).toBe(0);
+  }
+});
+
 test('HTML draft preview neutralizes parser differentials and shadow roots before WebRTC can escape @artifact-security', async ({
   page,
 }) => {
@@ -2428,9 +2466,6 @@ test('HTML draft preview neutralizes parser differentials and shadow roots befor
       '<select/><plaintext></select>' +
       '<iframe id="self-closing-select-plaintext-breakout" ' +
       'srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>';
-    const selectStyleBreakout =
-      '<select><style></select>' +
-      `<iframe id="select-style-breakout" srcdoc="${escapeHtmlAttribute(rtcLeaf)}"></iframe>`;
     const framesetNoframesBreakout =
       '<frameset><noframes></frameset></noframes><plaintext>' +
       `<frame id="frameset-noframes-plaintext-breakout" ` +
@@ -2523,7 +2558,7 @@ test('HTML draft preview neutralizes parser differentials and shadow roots befor
         `<!doctype html>${parserDifferentialFrames}${conditionalFontBreakout}` +
           `${nestedAnnotationTransition}${synthesizedTemplates}` +
           `${scriptDoubleEscapedFrames}<p id="parser-control">safe</p>` +
-          `${selfClosingPlaintextBreakout}${selectStyleBreakout}` +
+          `${selfClosingPlaintextBreakout}` +
           `${framesetNoframesBreakout}${selectScriptBreakout}` +
           `${foreignCdataSuffixBreakout}` +
           `${foreignCdataInlineBreakout}${foreignCdataLiteral}`,
@@ -2555,10 +2590,6 @@ test('HTML draft preview neutralizes parser differentials and shadow roots befor
     expect(servedBody).toContain(
       '<template data-artifactflow-blocked-browsing-context ' +
         'id="self-closing-select-plaintext-breakout"',
-    );
-    expect(servedBody).not.toContain('<iframe id="select-style-breakout"');
-    expect(servedBody).toContain(
-      '<template data-artifactflow-blocked-browsing-context id="select-style-breakout"',
     );
     expect(servedBody).not.toContain('<frame id="frameset-noframes-plaintext-breakout"');
     expect(servedBody).toContain(

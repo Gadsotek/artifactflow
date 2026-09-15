@@ -680,7 +680,6 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
     public function test_raw_text_is_not_entered_when_the_tree_builder_ignores_the_start_tag(): void
     {
         $cases = [
-            'select-style-breakout' => '<select><style></select>',
             'frameset-style-breakout' => '<frameset><style></frameset>',
         ];
 
@@ -743,6 +742,41 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
             . $iframeId . '"',
             $hardened,
         );
+    }
+
+    public function test_select_style_parser_ambiguity_fails_closed_without_reflecting_source(): void
+    {
+        $marker = 'select-style-parser-marker';
+        $payloads = [
+            '<!doctype html><select><style></select><iframe id="select-style-breakout"></iframe>',
+            '<!doctype html><p><select><style></script><desc><![CDATA[x><script><!--</style>'
+                . '<iframe data-decoy=">" id=af-parser-fuzz-084></iframe><style></select></select>',
+            '<!doctype html><select><style><!--</style><iframe></iframe></select>',
+            '<!doctype html><select><style><script></style><iframe></iframe></select>',
+        ];
+
+        foreach ($payloads as $payload) {
+            $response = app(ArtifactSandboxResponder::class)->document($payload . $marker);
+
+            $this->assertSame(422, $response->getStatusCode());
+            $this->assertSame('no-store, private', $response->headers->get('Cache-Control'));
+            $this->assertStringContainsString('could not be rendered safely', (string) $response->getContent());
+            $this->assertStringNotContainsString($marker, (string) $response->getContent());
+            $this->assertStringNotContainsString('<iframe', (string) $response->getContent());
+        }
+    }
+
+    public function test_select_parser_rejection_preserves_ordinary_styles_and_script_text(): void
+    {
+        $html = '<!doctype html><style>select { color: red; }</style>'
+            . '<select><option>Safe option</option></select>'
+            . '<style>p { color: blue; }</style>'
+            . '<script>window.example = "<select><style>literal</style></select>";</script>';
+
+        $response = app(ArtifactSandboxResponder::class)->document($html);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString(substr($html, strlen('<!doctype html>')), (string) $response->getContent());
     }
 
     public function test_select_noframes_engine_differential_cannot_hide_a_later_context(): void

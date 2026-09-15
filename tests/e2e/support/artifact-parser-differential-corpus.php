@@ -6,12 +6,14 @@ namespace Tests\E2E\Support;
 
 use App\Application\PageCatalog\ArtifactPreviewComplexityExceeded;
 use App\Application\PageCatalog\ArtifactPreviewDocumentGuard;
+use App\Application\PageCatalog\ArtifactPreviewParserAmbiguity;
 use ReflectionMethod;
 use RuntimeException;
 
 $repositoryRoot = dirname(__DIR__, 3);
 
 require $repositoryRoot . '/app/Application/PageCatalog/ArtifactPreviewComplexityExceeded.php';
+require $repositoryRoot . '/app/Application/PageCatalog/ArtifactPreviewParserAmbiguity.php';
 require $repositoryRoot . '/app/Application/PageCatalog/ArtifactPreviewRewriteBudget.php';
 require $repositoryRoot . '/app/Application/PageCatalog/ArtifactPreviewForeignContentState.php';
 require $repositoryRoot . '/app/Application/PageCatalog/ArtifactPreviewDocumentGuard.php';
@@ -110,7 +112,7 @@ $appendCase = static function (string $id, string $payload) use (&$cases, $guard
 
         $outcome = 'rewritten';
         $hardened = $rewritten;
-    } catch (ArtifactPreviewComplexityExceeded) {
+    } catch (ArtifactPreviewComplexityExceeded | ArtifactPreviewParserAmbiguity) {
         // Production converts this deliberate fail-closed outcome into a fixed
         // 422 response. The differential corpus calls the private rewriter
         // directly, so preserve the rejection without inventing hardened HTML.
@@ -188,6 +190,9 @@ $mandatoryCases = [
     'regression/select-ignored-frameset-noframes' =>
         '<!doctype html><select><option><frameset>--><noframes></select>'
         . '<iframe data-decoy=">" id="af-parser-ignored-frameset"></iframe>',
+    'regression/select-style-script-comment' =>
+        '<!doctype html><p><select><style></script><desc><![CDATA[x><script><!--</style>'
+        . '<iframe data-decoy=">" id=af-parser-fuzz-084></iframe><style></select></select>',
 ];
 
 foreach ($mandatoryCases as $id => $payload) {

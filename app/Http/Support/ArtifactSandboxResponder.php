@@ -6,6 +6,7 @@ namespace App\Http\Support;
 
 use App\Application\PageCatalog\ArtifactPreviewComplexityExceeded;
 use App\Application\PageCatalog\ArtifactPreviewDocumentGuard;
+use App\Application\PageCatalog\ArtifactPreviewParserAmbiguity;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use InvalidArgumentException;
@@ -37,12 +38,12 @@ final readonly class ArtifactSandboxResponder
     {
         try {
             $hardened = $this->documentGuard->harden($html, $recoveryEnabled);
-        } catch (ArtifactPreviewComplexityExceeded) {
+        } catch (ArtifactPreviewComplexityExceeded | ArtifactPreviewParserAmbiguity) {
             return response(
                 '<!doctype html><html lang="en"><head><meta charset="utf-8">'
                 . '<meta name="viewport" content="width=device-width, initial-scale=1">'
                 . '<title>Artifact preview unavailable</title></head><body>'
-                . '<p>This artifact could not be rendered safely because its document structure is too complex.</p>'
+                . '<p>This artifact could not be rendered safely.</p>'
                 . '</body></html>',
                 422,
                 $this->securityHeaders($this->contentSecurityPolicy()),

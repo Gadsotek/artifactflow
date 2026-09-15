@@ -307,6 +307,18 @@ final class ArtifactPreviewDocumentGuard
                 $tagText = $this->neutralizeDeclarativeShadowRoot($tagText);
             }
 
+            if ($tag['name'] === 'style' && $openSelects > 0) {
+                // Select parsing differs across browser generations. Treating
+                // style as ignored markup can enter a false script/comment
+                // state; treating it as RAWTEXT can hide markup in engines
+                // that ignore it. Refuse this ambiguous context rather than
+                // risk preserving a live nested browsing context in either
+                // interpretation. Styles outside select remain byte-exact.
+                throw new ArtifactPreviewParserAmbiguity(
+                    'Artifact preview cannot safely interpret style inside select.',
+                );
+            }
+
             if (in_array($tag['name'], self::NESTED_BROWSING_CONTEXT_TAGS, true)) {
                 $usesHtmlTokenizer = $foreignContent->startTagUsesHtmlTokenizer($tag['name'], $tagText);
 
