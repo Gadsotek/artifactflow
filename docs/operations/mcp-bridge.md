@@ -3,7 +3,7 @@
 [MCP setup](mcp.md)
 
 Claude's supported Desktop JSON path cannot supply ArtifactFlow's static
-bearer token directly. The connector therefore uses `mcp-remote@0.9.0` for
+bearer token directly. The connector therefore uses `mcp-remote@0.13.5` for
 all supported local clients, including Codex releases that need the stdio bridge.
 
 The bridge is an experimental third-party process that receives the token.
@@ -44,8 +44,16 @@ exchange, and prove the missing-package failure. Preserve all these checks.
 Remove the bridge when the supported client path can provide authorization
 natively or the project adopts a compatible first-party authorization flow.
 
-The 0.9.0 review covers upstream commit
-`79ea4b15204248d5c67b8dee1c88c5df83e065e0`: bundled MCP SDK v2, OAuth
-refresh-scope handling, and updated HTTP session/authentication error handling.
-The separately locked runtime dependencies and Node.js floor are unchanged;
-the static-bearer stdio-to-HTTP path remains covered by the installed smoke.
+The 0.13.5 review covers upstream commit
+1dd81a1b7068a1771ea0edc577194722a84b09d6: optional protocol-era translation,
+subscription/request correlation fixes, and OAuth retry and non-interactive
+authentication changes. ArtifactFlow keeps the default legacy protocol mode
+and static bearer-header path; it does not enable auto-discovery or the new
+OAuth grant. Header environment substitution remains compatible with the
+connector's explicit AUTH_HEADER configuration.
+
+The published tarball's SHA-512 integrity matches the lock. The separately
+locked runtime dependencies and Node.js floor are unchanged. The installed
+smoke verifies the bridge version observed by the server, authenticated legacy
+initialize/tools-list traffic without auto-discovery, and absence of the token
+from stdout/stderr.
