@@ -3,13 +3,13 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const EXPECTED_VERSION = '0.9.0';
+const EXPECTED_VERSION = '0.13.5';
 const EXPECTED_NODE_RANGE = '>=20.18.1';
-const EXPECTED_LOCK_SHA256 = 'e88561f7474d6becf565cec12244c190940a2659006e00d537bdcd055292279b';
+const EXPECTED_LOCK_SHA256 = '74305c35d192b5db0cc540e9767997400ed621a6e7a9e5334804bde984595ffd';
 const EXPECTED_QS_VERSION = '6.16.0';
 const MINIMUM_NODE_VERSION = [20, 18, 1];
 const EXPECTED_INTEGRITY =
-  'sha512-SvkJY52fNQasqNerYLbi44NN6EWN82vpX2DwXlnoZ5sIXWJOWX/fZyO5+x2ru/w4NR3zRKgC9zdHqYNLpY6T2A==';
+  'sha512-ccJwP9qZwoljZy4frknPY6CQUwKZ00ExjvASd6hNMnjdIeWPQ2e7kwIg7BT38CsOUt4l00GNvwUX/IvZq5930g==';
 const EXPECTED_QS_INTEGRITY =
   'sha512-h6fhOIaRrID2CbEY2fqs+7t+UXZo+MLAnU5gRIq85uFtdiUPCdsApMlHhXogKVM4HM2DVbIjGNTTYH2OcmP1vA==';
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');

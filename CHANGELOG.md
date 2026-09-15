@@ -6,6 +6,14 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+### Fixed
+
+- Align the connector, integrity verifier, and regression fixtures with the
+  reviewed mcp-remote 0.13.5 upgrade.
+
+- Restore DOCX processor builds with the exact Alpine timezone-data pin
+  `2026d-r0`, replacing the unavailable `2026c-r0` package.
+
 ## v0.3.0 — 2026-09-14
 
 Navigation and usability release with all fixes merged since v0.2.1. It adds

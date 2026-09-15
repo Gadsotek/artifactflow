@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-const BRIDGE_VERSION = '0.9.0';
+const BRIDGE_VERSION = '0.13.5';
 const BEARER_TOKEN = 'artifactflow-nightly-bridge-token';
 const AUTHORIZATION = `Bearer ${BEARER_TOKEN}`;
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -12,6 +12,8 @@ const bridgeDirectory = resolve(repositoryRoot, 'scripts/mcp-remote-bridge');
 const bridgeEntrypoint = resolve(bridgeDirectory, 'node_modules/mcp-remote/dist/proxy.js');
 const smokeWorkingDirectory = process.env.MCP_BRIDGE_SMOKE_CWD;
 let authorizedRequests = 0;
+const forwardedMethods = [];
+let forwardedClientName;
 
 if (!smokeWorkingDirectory) {
   throw new Error('MCP_BRIDGE_SMOKE_CWD must point at a dedicated empty working directory.');
@@ -38,6 +40,11 @@ const server = createServer((request, response) => {
     } catch {
       response.writeHead(400).end();
       return;
+    }
+
+    forwardedMethods.push(message.method);
+    if (message.method === 'initialize') {
+      forwardedClientName = message.params?.clientInfo?.name;
     }
 
     if (message.id === undefined) {
@@ -174,6 +181,13 @@ child.stdin.write(
 
 try {
   await completion;
+  if (forwardedClientName !== 'artifactflow-nightly (via mcp-remote ' + BRIDGE_VERSION + ')') {
+    throw new Error('The server did not observe the reviewed MCP bridge version.');
+  }
+  const allowedMethods = ['initialize', 'notifications/initialized', 'tools/list'];
+  if (forwardedMethods.some((method) => !allowedMethods.includes(method))) {
+    throw new Error('The default MCP bridge path sent unexpected protocol-discovery traffic.');
+  }
   if (authorizedRequests < 2) {
     throw new Error(
       `Expected authenticated initialize and tools/list requests, saw ${authorizedRequests}.`,
