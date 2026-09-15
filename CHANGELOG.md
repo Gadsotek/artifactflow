@@ -6,10 +6,40 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.3.1 — 2026-09-15
+
+Restores DOCX processor image builds and updates the reviewed local MCP bridge
+and Resend mail dependency.
+
+### Changed
+
+- Upgraded the reviewed local MCP bridge from mcp-remote 0.9.0 to 0.13.5,
+  aligning the connector, integrity verification, authenticated smoke test,
+  and regression pins. The bridge keeps the legacy protocol mode and static
+  bearer-header path. Node.js 20.18.1 or newer is still required; the
+  ArtifactFlow MCP server contract remains 0.9.0.
+  ([#144](https://github.com/Gadsotek/artifactflow/pull/144))
+- Updated `resend/resend-php` from 1.14.0 to 1.15.0.
+  ([#143](https://github.com/Gadsotek/artifactflow/pull/143))
+
 ### Fixed
 
-- Restore DOCX processor builds with the exact Alpine timezone-data pin
-  `2026d-r0`, replacing the unavailable `2026c-r0` package.
+- Restored DOCX processor builds with the exact Alpine timezone-data pin
+  `2026d-r0`, replacing the unavailable `2026c-r0` package. This resolves the
+  build failure in Nightly audit and CI.
+
+### Upgrade from v0.3.0
+
+- No new database migrations or required configuration changes.
+- Re-run `./scripts/connect-mcp.sh` for local clients using the bundled bridge
+  to select the reviewed 0.13.5 installation. Existing token expiry and scope
+  still apply.
+- PDF, XLSX, and DOCX remain default-off. Existing approved opt-ins retain
+  their documented processor requirements; DOCX requires the independent PDF
+  processor. Keep the separate app and artifact origins.
+- Pin published image digests and verify their SBOMs and provenance before use.
+  See [production operations](docs/operations/production.md)
+  and the [release checklist](RELEASE-CHECKLIST.md).
 
 ## v0.3.0 — 2026-09-14
 
