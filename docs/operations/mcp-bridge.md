@@ -3,7 +3,7 @@
 [MCP setup](mcp.md)
 
 Claude's supported Desktop JSON path cannot supply ArtifactFlow's static
-bearer token directly. The connector therefore uses `mcp-remote@0.13.5` for
+bearer token directly. The connector therefore uses `mcp-remote@0.14.2` for
 all supported local clients, including Codex releases that need the stdio bridge.
 
 The bridge is an experimental third-party process that receives the token.
@@ -31,26 +31,58 @@ silently.
 
 ## Upgrade and verification
 
-Review the exact version and package delta, regenerate the lock, and update
-the version, lock fingerprint, tarball integrity, connector regression fixtures,
-and authenticated smoke version alongside `scripts/verify-mcp-remote.mjs`. Every registry
-package requires SHA-512 integrity. The nested graph participates in audit and
-dependency update coverage.
+Dependabot updates the package and lock but cannot approve the new executable
+that receives bearer tokens. Its PR will intentionally fail the integrity gate
+until the upstream delta and published tarball have been reviewed. Do not
+remove the fingerprint check or automatically approve whatever the lock contains.
 
-Nightly checks perform a clean locked install, verify registry integrity,
-audit dependencies, make a real authenticated loopback initialize/tools-list
-exchange, and prove the missing-package failure. Preserve all these checks.
+After reviewing the exact version, full lock delta, and published SHA-512 tarball
+integrity, synchronize the connector, verifier, smoke, and regression fixture pins
+in one command, substituting the values from that review:
+
+```sh
+node scripts/update-mcp-remote-pins.mjs \
+  --reviewed-version VERSION \
+  --reviewed-lock-sha256 LOCK_SHA256 \
+  --reviewed-integrity TARBALL_SHA512_INTEGRITY
+node --test scripts/update-mcp-remote-pins.test.mjs
+node scripts/verify-mcp-remote.mjs
+make test TEST_FILTER=ConnectMcp
+```
+
+The helper checks the explicit values against the exact candidate bytes and
+validates every target before writing. It refuses unexpected source drift,
+changes to the Node.js floor or qs override, and non-registry or unhashed packages.
+It does not fetch, install, commit, push, or replace the human review. Record the
+review here, run a clean locked install and the authenticated smoke below, then
+run the repository's full required gates before committing.
+
+```sh
+npm ci --engine-strict --ignore-scripts --prefix scripts/mcp-remote-bridge
+node scripts/verify-mcp-remote.mjs --installed
+npm audit --package-lock-only --prefix scripts/mcp-remote-bridge --audit-level=moderate
+MCP_BRIDGE_SMOKE_CWD="$(mktemp -d)" node scripts/smoke-mcp-remote.mjs
+```
+
+Every registry package requires SHA-512 integrity. Nightly checks also make a
+real authenticated loopback initialize/tools-list exchange and prove the
+missing-package failure. Preserve all these checks. Keep dependency PRs current
+with main so they include shared test fixes; retrying an old failed run still
+checks its old commit.
 
 Remove the bridge when the supported client path can provide authorization
 natively or the project adopts a compatible first-party authorization flow.
 
-The 0.13.5 review covers upstream commit
-1dd81a1b7068a1771ea0edc577194722a84b09d6: optional protocol-era translation,
-subscription/request correlation fixes, and OAuth retry and non-interactive
-authentication changes. ArtifactFlow keeps the default legacy protocol mode
-and static bearer-header path; it does not enable auto-discovery or the new
-OAuth grant. Header environment substitution remains compatible with the
-connector's explicit AUTH_HEADER configuration.
+## Reviewed version
+
+The 0.14.2 review covers upstream commit
+`8ba22bdb4e73b818abf22b5e0c8fb5d96e90203b` and the
+[0.13.5 to 0.14.2 delta](https://github.com/punkpeye/mcp-remote/compare/v0.13.5...v0.14.2):
+OAuth callback issuer forwarding, optional explicit client-credentials token
+endpoints, and renewal through the configured transport fetch with stored-token
+fallback. ArtifactFlow supplies a static bearer header and enables neither
+client credentials nor an explicit token endpoint. It keeps the default legacy
+protocol mode and does not enable protocol auto-discovery.
 
 The published tarball's SHA-512 integrity matches the lock. The separately
 locked runtime dependencies and Node.js floor are unchanged. The installed

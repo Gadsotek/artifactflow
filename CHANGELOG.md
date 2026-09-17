@@ -6,6 +6,13 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+### Changed
+
+- Updated the reviewed local MCP bridge from mcp-remote 0.13.5 to 0.14.2,
+  preserving the static bearer-header path and Node.js 20.18.1 minimum.
+  Added an explicit maintenance command to synchronize reviewed integrity
+  pins and regression fixtures together after each upstream review.
+
 ## v0.3.1 — 2026-09-15
 
 Restores DOCX processor image builds, rejects ambiguous HTML preview markup,
