@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-const BRIDGE_VERSION = '0.13.5';
+const BRIDGE_VERSION = '0.14.2';
 const BEARER_TOKEN = 'artifactflow-nightly-bridge-token';
 const AUTHORIZATION = `Bearer ${BEARER_TOKEN}`;
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
