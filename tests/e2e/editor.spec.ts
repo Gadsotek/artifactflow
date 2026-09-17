@@ -2340,17 +2340,23 @@ test('HTML draft preview blocks recursively nested browsing contexts before WebR
   }
 });
 
-test('HTML draft preview rejects ambiguous style inside select @artifact-security', async ({
-  page,
-}) => {
-  const payloads = [
-    '<!doctype html><p><select><style></script><desc><![CDATA[x><script><!--</style>' +
+for (const { name, payload } of [
+  {
+    name: 'script-comment parser regression',
+    payload:
+      '<!doctype html><p><select><style></script><desc><![CDATA[x><script><!--</style>' +
       '<iframe data-decoy=">" id=af-parser-fuzz-084></iframe><style></select></select>',
-    '<!doctype html><select><style></select>' +
+  },
+  {
+    name: 'select-style breakout',
+    payload:
+      '<!doctype html><select><style></select>' +
       '<iframe id="select-style-breakout" srcdoc="&lt;script&gt;new RTCPeerConnection()&lt;/script&gt;"></iframe>',
-  ];
-
-  for (const payload of payloads) {
+  },
+]) {
+  test(`HTML draft preview rejects ambiguous style inside select (${name}) @artifact-security`, async ({
+    page,
+  }) => {
     const fixture = await prepareAuthenticatedDraftPreviewFixture(page);
     const marker = `rejected-source-${randomUUID()}`;
     await page.setContent(authenticatedDraftPreviewDocument(fixture, payload + marker));
@@ -2375,8 +2381,8 @@ test('HTML draft preview rejects ambiguous style inside select @artifact-securit
     const preview = page.frameLocator('[data-html-draft-preview-frame]');
     await expect(preview.locator('body')).toContainText('could not be rendered safely');
     expect(await preview.locator('body').evaluate(() => window.frames.length)).toBe(0);
-  }
-});
+  });
+}
 
 test('HTML draft preview neutralizes parser differentials and shadow roots before WebRTC can escape @artifact-security', async ({
   page,
