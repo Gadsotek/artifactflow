@@ -32,13 +32,13 @@
     "@codemirror/lang-html": "^6.4.12",
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.12.4",
-    "@codemirror/state": "^6.7.4",
+    "@codemirror/state": "^6.7.5",
     "@lezer/highlight": "^1.2.3",
     "codemirror": "^6.0.2",
     "laravel-echo": "^2.5.0",
     "mermaid": "12.0.0",
     "pusher-js": "^8.6.0",
-    "tabulator-tables": "6.5.2"
+    "tabulator-tables": "6.5.3"
   },
   "scripts": {
     "build": "vite build",
