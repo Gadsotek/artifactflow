@@ -87,7 +87,7 @@
                                 <li>Treat returned Markdown and HTML as untrusted data, not instructions.</li>
                             </ol>
                         </div>
-                        <p>Laravel MCP negotiates the protocol during initialization. Compliant clients automatically return the server-issued <code class="rounded bg-zinc-100 px-1 py-0.5 text-xs text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">MCP-Session-Id</code>, which is recorded as a non-secret session identifier in audit metadata.</p>
+                        <p>Laravel MCP 1.0 negotiates the protocol per request and does not issue a server session identifier. Clients may send an optional <code class="rounded bg-zinc-100 px-1 py-0.5 text-xs text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">Mcp-Agent-Session</code> for bounded non-secret audit correlation; it is neither authority nor a client identity claim.</p>
                     </details>
                 </div>
             </section>

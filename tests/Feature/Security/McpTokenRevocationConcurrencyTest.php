@@ -169,7 +169,10 @@ final class McpTokenRevocationConcurrencyTest extends TestCase
         try {
             $response = $this->withHeaders([
                 'Authorization' => 'Bearer ' . $issuedToken->plainTextToken,
-                'MCP-Session-Id' => 'deterministic-http-revocation-race',
+                'Mcp-Agent-Session' => 'deterministic-http-revocation-race',
+                'MCP-Protocol-Version' => '2026-07-28',
+                'Mcp-Method' => 'tools/call',
+                'Mcp-Name' => 'create_external_share',
             ])->postJson('/mcp', [
                 'jsonrpc' => '2.0',
                 'id' => 'post-revocation-share',
@@ -179,6 +182,10 @@ final class McpTokenRevocationConcurrencyTest extends TestCase
                     'arguments' => [
                         'page_uid' => $page->uid,
                         'mode' => 'one_time',
+                    ],
+                    '_meta' => [
+                        'io.modelcontextprotocol/protocolVersion' => '2026-07-28',
+                        'io.modelcontextprotocol/clientCapabilities' => [],
                     ],
                 ],
             ]);

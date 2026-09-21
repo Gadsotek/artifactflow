@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature\Mcp;
 
 use App\Application\Mcp\McpAccessTokenIssuer;
-use App\Models\McpAccessToken;
-use App\Models\McpClientSession;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Response;
@@ -176,12 +174,14 @@ final class McpProtocolContractTest extends McpTestCase
         $postResponse = $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.93'])
             ->withHeaders([
                 'Authorization' => 'Bearer ' . $token,
-                'MCP-Session-Id' => 'stateless-session',
+                'MCP-Protocol-Version' => '2026-07-28',
+                'Mcp-Method' => 'tools/list',
             ])
             ->postJson('/mcp', [
                 'jsonrpc' => '2.0',
                 'id' => 'stateless-tools-list',
                 'method' => 'tools/list',
+                'params' => ['_meta' => $this->modernMcpMetadata()],
             ])
             ->assertOk();
 
@@ -216,7 +216,22 @@ final class McpProtocolContractTest extends McpTestCase
         $this->postJsonRpc($token, 'tools/list')->assertOk();
     }
 
-    public function test_initialize_negotiates_the_current_protocol_and_starts_a_standard_session(): void
+    public function test_server_discover_advertises_the_current_protocol_without_an_mcp_session(): void
+    {
+        $service = $this->createServiceAccount('Discovery Agent', 'discovery-agent@example.test');
+        $token = $this->issueToken($service, ['mcp:search'])->plainTextToken;
+
+        $discover = $this->postJsonRpc($token, 'server/discover', 'discover')->assertOk();
+        $protocolVersions = $discover->json('result.supportedVersions');
+        $this->assertIsArray($protocolVersions);
+        $this->assertContains('2026-07-28', $protocolVersions);
+        $this->assertIsArray($discover->json('result.capabilities'));
+        $this->assertIsString($discover->json('result.instructions'));
+        $discover->assertHeaderMissing('MCP-Session-Id');
+        $this->assertDatabaseCount('mcp_client_sessions', 0);
+    }
+
+    public function test_legacy_initialize_remains_compatible_without_creating_mcp_session_state(): void
     {
         $service = $this->createServiceAccount('Negotiation Agent', 'negotiation-agent@example.test');
         $token = $this->issueToken($service, ['mcp:search'])->plainTextToken;
@@ -238,7 +253,7 @@ final class McpProtocolContractTest extends McpTestCase
         $initialize->assertOk();
         $this->assertSame('2025-11-25', $initialize->json('result.protocolVersion'));
         $this->assertSame('artifactflow', $initialize->json('result.serverInfo.name'));
-        $this->assertSame('0.9.0', $initialize->json('result.serverInfo.version'));
+        $this->assertSame('1.0.0', $initialize->json('result.serverInfo.version'));
         $instructions = $initialize->json('result.instructions');
         $this->assertIsString($instructions);
         $this->assertStringContainsString(
@@ -268,9 +283,10 @@ final class McpProtocolContractTest extends McpTestCase
             'fetch',
             $instructions,
         );
-        $this->assertNotSame('', (string) $initialize->headers->get('MCP-Session-Id'));
+        $initialize->assertHeaderMissing('MCP-Session-Id');
+        $this->assertDatabaseCount('mcp_client_sessions', 0);
 
-        $unsupported = $this->jsonRpcErrorPayload($this->postMcp($token, [
+        $unsupported = $this->postMcp($token, [
             'jsonrpc' => '2.0',
             'id' => 'unsupported-init',
             'method' => 'initialize',
@@ -282,84 +298,8 @@ final class McpProtocolContractTest extends McpTestCase
                     'version' => '1.0.0',
                 ],
             ],
-        ]));
+        ])->assertOk();
 
-        $this->assertSame(-32602, $unsupported['code']);
-        $unsupportedData = $unsupported['data'] ?? null;
-        $this->assertIsArray($unsupportedData);
-        $this->assertSame('2099-01-01', $unsupportedData['requested'] ?? null);
-    }
-
-    public function test_initialize_rejects_malformed_nested_client_metadata_without_recording_a_session(): void
-    {
-        $service = $this->createServiceAccount('Malformed Client Agent', 'malformed-client-agent@example.test');
-        $token = $this->issueToken($service, ['mcp:search'])->plainTextToken;
-
-        foreach ([
-            ['name' => ['not-a-string'], 'version' => '1.0.0'],
-            ['name' => 'artifactflow-tests', 'version' => 100],
-            ['name' => 'artifactflow-tests', 'version' => '1.0.0', 'title' => false],
-            ['not-an-object'],
-        ] as $index => $clientInfo) {
-            $error = $this->jsonRpcErrorPayload($this->postMcp($token, [
-                'jsonrpc' => '2.0',
-                'id' => 'malformed-client-' . $index,
-                'method' => 'initialize',
-                'params' => [
-                    'protocolVersion' => '2025-11-25',
-                    'capabilities' => [],
-                    'clientInfo' => $clientInfo,
-                ],
-            ]));
-
-            $this->assertSame(-32602, $error['code']);
-            $this->assertSame('Invalid client information', $error['message']);
-        }
-
-        $this->assertDatabaseCount('mcp_client_sessions', 0);
-    }
-
-    public function test_initialize_caps_client_report_sessions_per_access_token(): void
-    {
-        config([
-            'rate_limits.mcp_pre_auth_per_minute' => 1_000,
-            'rate_limits.mcp_per_minute' => 1_000,
-        ]);
-
-        $service = $this->createServiceAccount('Session Retention Agent', 'session-retention-agent@example.test');
-        $token = $this->issueToken($service, ['mcp:search'])->plainTextToken;
-        $sessionIds = [];
-
-        foreach (range(1, 65) as $index) {
-            $response = $this->postMcp($token, [
-                'jsonrpc' => '2.0',
-                'id' => 'retention-init-' . $index,
-                'method' => 'initialize',
-                'params' => [
-                    'protocolVersion' => '2025-11-25',
-                    'capabilities' => [],
-                    'clientInfo' => [
-                        'name' => 'retention-client-' . $index,
-                        'version' => '1.0.0',
-                    ],
-                ],
-            ])->assertOk();
-            $sessionId = $response->headers->get('MCP-Session-Id');
-            $this->assertIsString($sessionId);
-            $sessionIds[] = $sessionId;
-        }
-
-        $accessToken = McpAccessToken::query()->where('principal_user_uid', $service->uid)->sole();
-        $this->assertSame(
-            64,
-            McpClientSession::query()->where('mcp_access_token_uid', $accessToken->uid)->count(),
-        );
-        $this->assertDatabaseMissing('mcp_client_sessions', [
-            'session_id_hash' => hash('sha256', $sessionIds[0]),
-        ]);
-        $this->assertDatabaseHas('mcp_client_sessions', [
-            'session_id_hash' => hash('sha256', $sessionIds[64]),
-            'client_reported_name' => 'retention-client-65',
-        ]);
+        $this->assertSame('2025-11-25', $unsupported->json('result.protocolVersion'));
     }
 }

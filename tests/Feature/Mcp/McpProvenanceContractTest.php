@@ -81,7 +81,7 @@ final class McpProvenanceContractTest extends McpTestCase
         $this->assertArrayNotHasKey('direct_version_producers', $provenance);
     }
 
-    public function test_mcp_create_records_declared_producers_reported_client_and_safe_external_references(): void
+    public function test_mcp_create_records_declared_producers_and_safe_external_references(): void
     {
         Storage::fake('artifacts');
 
@@ -95,22 +95,7 @@ final class McpProvenanceContractTest extends McpTestCase
             McpAccessTokenIssuer::SCOPE_SEARCH,
         ])->plainTextToken;
 
-        $initialize = $this->postMcp($token, [
-            'jsonrpc' => '2.0',
-            'id' => 'provenance-init',
-            'method' => 'initialize',
-            'params' => [
-                'protocolVersion' => '2025-11-25',
-                'capabilities' => [],
-                'clientInfo' => [
-                    'name' => 'claude-code',
-                    'version' => '3.1.0',
-                ],
-            ],
-        ])->assertOk();
-        $sessionId = $initialize->headers->get('MCP-Session-Id');
-        $this->assertIsString($sessionId);
-        $this->assertNotSame('', $sessionId);
+        $agentSessionId = 'claude-code-session';
 
         $created = $this->successfulToolPayload($this->callTool($token, 'create', [
             'workspace_uid' => $workspace->uid,
@@ -133,7 +118,7 @@ final class McpProvenanceContractTest extends McpTestCase
                     ]],
                 ]],
             ],
-        ], $sessionId));
+        ], $agentSessionId));
         $pageUid = $this->payloadString($created, 'uid');
         $versionUid = $this->payloadString($created, 'current_version_uid');
         $storedProvenance = $this->payloadArray($created, 'stored_provenance');
@@ -149,8 +134,9 @@ final class McpProvenanceContractTest extends McpTestCase
             'operation' => 'create',
             'ingest_method' => 'mcp',
             'actor_user_uid' => $service->uid,
-            'mcp_client_reported_name' => 'claude-code',
-            'mcp_client_reported_version' => '3.1.0',
+            'mcp_transport_session_id' => $agentSessionId,
+            'mcp_client_reported_name' => null,
+            'mcp_client_reported_version' => null,
             'provenance_supplied_at_ingest' => true,
         ]);
         $this->assertDatabaseHas('producer_assertions', [
@@ -178,7 +164,7 @@ final class McpProvenanceContractTest extends McpTestCase
 
         $read = $this->successfulToolPayload($this->callTool($token, 'read', [
             'page_uid' => $pageUid,
-        ], $sessionId));
+        ], $agentSessionId));
         $provenance = $this->payloadArray($read, 'provenance');
         $ingest = $this->payloadArray($provenance, 'version_ingest');
         $producers = $this->payloadList($provenance, 'producers');
@@ -198,10 +184,8 @@ final class McpProvenanceContractTest extends McpTestCase
         $this->assertArrayNotHasKey('page_origin_producers', $provenance);
         $this->assertArrayNotHasKey('direct_version_producers', $provenance);
         $this->assertSame('mcp', $ingest['ingest_method']);
-        $this->assertSame('claude-code', $this->payloadString(
-            $this->payloadArray($ingest, 'mcp_reported_client_name'),
-            'data',
-        ));
+        $this->assertSame($agentSessionId, $ingest['mcp_transport_session_id']);
+        $this->assertArrayNotHasKey('mcp_reported_client_name', $ingest);
         $this->assertSame('anthropic', $this->payloadString($provider, 'data'));
         $this->assertSame('claude-opus-5-2-20260715', $this->payloadString($model, 'data'));
         $this->assertSame('abc123', $this->payloadString(
@@ -217,7 +201,7 @@ final class McpProvenanceContractTest extends McpTestCase
             'ai_provider' => 'anthropic',
             'ai_model_query' => 'opus',
             'provenance_scope' => 'any_version',
-        ], $sessionId));
+        ], $agentSessionId));
         $this->assertSame([$pageUid], array_column($this->payloadList($search, 'results'), 'uid'));
 
         $event = DomainEvent::query()->where('event_type', 'page.version.producer_asserted')->sole();
@@ -233,7 +217,7 @@ final class McpProvenanceContractTest extends McpTestCase
         $this->actingAs($owner)
             ->get("/pages/{$pageUid}")
             ->assertOk()
-            ->assertSee('MCP-reported client')
+            ->assertDontSee('MCP-reported client')
             ->assertDontSee('Observed MCP client');
     }
 

@@ -64,12 +64,8 @@ abstract class ArtifactFlowTool extends Tool
             )));
         }
 
-        $sessionId = $request->sessionId();
-
-        if ($sessionId === null || $sessionId === '') {
-            $legacySessionId = $this->httpRequest->header('Mcp-Agent-Session');
-            $sessionId = is_string($legacySessionId) ? $legacySessionId : null;
-        }
+        $agentSessionId = $this->httpRequest->header('Mcp-Agent-Session');
+        $sessionId = is_string($agentSessionId) ? $agentSessionId : null;
 
         try {
             $result = $this->guard->run(

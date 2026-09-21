@@ -395,18 +395,18 @@ final class McpAuthorizationAndErrorContractTest extends McpTestCase
         $this->assertIsArray($requiredUpdateDescriptionArguments);
         $this->assertContains('expected_current_version_uid', $requiredUpdateDescriptionArguments);
 
-        $this->assertSame(-32600, $this->jsonRpcErrorPayload($this->postMcp($token, [
+        $this->postMcp($token, [
             'jsonrpc' => '2.0',
             'id' => 'missing-method',
-        ]))['code']);
-        $this->assertSame(-32601, $this->jsonRpcErrorPayload($this->postJsonRpc($token, 'unknown/method'))['code']);
-        $this->assertSame(-32602, $this->jsonRpcErrorPayload($this->postMcp($token, [
+        ])->assertBadRequest();
+        $this->postJsonRpc($token, 'unknown/method')->assertNotFound();
+        $this->postMcp($token, [
             'jsonrpc' => '2.0',
             'id' => 'bad-params',
             'method' => 'tools/call',
             'params' => 'not-an-object',
-        ]))['code']);
-        $this->assertSame(-32602, $this->jsonRpcErrorPayload($this->postMcp($token, [
+        ])->assertBadRequest();
+        $this->postMcp($token, [
             'jsonrpc' => '2.0',
             'id' => 'scalar-arguments',
             'method' => 'tools/call',
@@ -414,9 +414,9 @@ final class McpAuthorizationAndErrorContractTest extends McpTestCase
                 'name' => 'search',
                 'arguments' => 'not-an-object',
             ],
-        ]))['code']);
+        ])->assertBadRequest();
 
-        $unknownTool = $this->jsonRpcErrorPayload($this->postMcp($token, [
+        $this->postMcp($token, [
             'jsonrpc' => '2.0',
             'id' => 'unknown-tool',
             'method' => 'tools/call',
@@ -424,10 +424,8 @@ final class McpAuthorizationAndErrorContractTest extends McpTestCase
                 'name' => 'missing-tool',
                 'arguments' => [],
             ],
-        ]));
-        // laravel/mcp 0.9.1 rejects list-shaped arguments at the protocol layer
-        // (-32602) instead of letting them reach tool-level validation.
-        $badArguments = $this->jsonRpcErrorPayload($this->postMcp($token, [
+        ])->assertBadRequest();
+        $this->postMcp($token, [
             'jsonrpc' => '2.0',
             'id' => 'bad-arguments',
             'method' => 'tools/call',
@@ -435,19 +433,15 @@ final class McpAuthorizationAndErrorContractTest extends McpTestCase
                 'name' => 'search',
                 'arguments' => ['not-an-object'],
             ],
-        ]));
-        $missingToolName = $this->jsonRpcErrorPayload($this->postMcp($token, [
+        ])->assertBadRequest();
+        $this->postMcp($token, [
             'jsonrpc' => '2.0',
             'id' => 'missing-tool-name',
             'method' => 'tools/call',
             'params' => [
                 'arguments' => [],
             ],
-        ]));
-
-        $this->assertSame(-32602, $unknownTool['code']);
-        $this->assertSame(-32602, $badArguments['code']);
-        $this->assertSame(-32602, $missingToolName['code']);
+        ])->assertBadRequest();
     }
 
     public function test_read_and_update_error_branches_preserve_boundaries(): void

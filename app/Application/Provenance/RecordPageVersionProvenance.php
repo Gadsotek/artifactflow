@@ -56,8 +56,10 @@ final readonly class RecordPageVersionProvenance
             'actor_user_uid' => $actorUid,
             'mcp_access_token_uid' => $this->mcpContext->accessTokenUid(),
             'mcp_transport_session_id' => $this->mcpContext->agentSessionId(),
-            'mcp_client_reported_name' => $this->mcpContext->clientReportedName(),
-            'mcp_client_reported_version' => $this->mcpContext->clientReportedVersion(),
+            // MCP 1.0 has no client identity handshake. Preserve historical
+            // values, but do not manufacture a client identity for new ingests.
+            'mcp_client_reported_name' => null,
+            'mcp_client_reported_version' => null,
             'provenance_supplied_at_ingest' => $declared?->wasSupplied() ?? false,
             'derived_from_version_uid' => $lineage?->sourceVersionUid,
             'content_equivalent_to_version_uid' => $contentEquivalentToVersionUid,

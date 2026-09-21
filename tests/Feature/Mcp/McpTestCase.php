@@ -271,11 +271,14 @@ abstract class McpTestCase extends TestCase
         string $token,
         string $name,
         array $arguments = [],
-        string $sessionId = 'test-session',
+        string $agentSessionId = 'test-session',
     ): TestResponse {
         return $this->withHeaders([
             'Authorization' => 'Bearer ' . $token,
-            'MCP-Session-Id' => $sessionId,
+            'Mcp-Agent-Session' => $agentSessionId,
+            'MCP-Protocol-Version' => '2026-07-28',
+            'Mcp-Method' => 'tools/call',
+            'Mcp-Name' => $name,
         ])->postJson('/mcp', [
             'jsonrpc' => '2.0',
             'id' => 'call-' . $name,
@@ -283,6 +286,7 @@ abstract class McpTestCase extends TestCase
             'params' => [
                 'name' => $name,
                 'arguments' => $arguments,
+                '_meta' => $this->modernMcpMetadata(),
             ],
         ]);
     }
@@ -296,7 +300,6 @@ abstract class McpTestCase extends TestCase
     {
         return $this->withHeaders([
             'Authorization' => 'Bearer ' . $token,
-            'MCP-Session-Id' => 'test-session',
         ])->postJson('/mcp', $body);
     }
 
@@ -310,12 +313,25 @@ abstract class McpTestCase extends TestCase
     ): TestResponse {
         return $this->withHeaders([
             'Authorization' => 'Bearer ' . $token,
-            'MCP-Session-Id' => 'test-session',
+            'MCP-Protocol-Version' => '2026-07-28',
+            'Mcp-Method' => $method,
         ])->postJson('/mcp', [
             'jsonrpc' => '2.0',
             'id' => $id,
             'method' => $method,
+            'params' => ['_meta' => $this->modernMcpMetadata()],
         ]);
+    }
+
+    /**
+     * @return array<string, array<int, never>|string>
+     */
+    protected function modernMcpMetadata(): array
+    {
+        return [
+            'io.modelcontextprotocol/protocolVersion' => '2026-07-28',
+            'io.modelcontextprotocol/clientCapabilities' => [],
+        ];
     }
 
     /**
