@@ -182,7 +182,7 @@ services:
     healthcheck:
       test: ["CMD", "php", "/srv/docx-processor/healthcheck.php"]
       interval: 30s
-      timeout: 8s
+      timeout: 15s
       retries: 6
       start_period: 15s
 
@@ -532,7 +532,7 @@ services:
       test: ["CMD", "php", "/srv/docx-processor/healthcheck.php"]
       interval: 1m
       start_interval: 5s
-      timeout: 8s
+      timeout: 15s
       retries: 6
       start_period: 10s
 

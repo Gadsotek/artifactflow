@@ -2409,6 +2409,11 @@ final readonly class LibreOfficeConverter
 
     private const int TIMEOUT_SECONDS = 30;
 
+    // The /health check runs a lightweight `soffice --version`, not a full
+    // conversion, so bound it well under the conversion timeout and under the
+    // probe and outer health deadlines (engine 12s < probe 14s < outer 15s).
+    private const int HEALTH_TIMEOUT_SECONDS = 12;
+
     public function convert(string $docx): ConversionResult
     {
         $root = '/tmp/artifactflow-docx-' . bin2hex(random_bytes(12));
@@ -2470,7 +2475,7 @@ final readonly class LibreOfficeConverter
 
     public function verifyHealth(): void
     {
-        $output = $this->run(['/usr/bin/soffice', '--headless', '--version']);
+        $output = $this->run(['/usr/bin/soffice', '--headless', '--version'], self::HEALTH_TIMEOUT_SECONDS);
         if (!str_contains($output, self::ENGINE_VERSION)) {
             throw new ProcessorUnavailable('DOCX converter version is unexpected.');
         }

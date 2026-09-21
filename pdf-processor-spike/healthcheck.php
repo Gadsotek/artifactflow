@@ -16,7 +16,11 @@ try {
         exit(1);
     }
 
-    stream_set_timeout($socket, 1);
+    // The /health handler runs a real PDFBox decode whose production engine is
+    // allowed up to 12s (PdfProcessor::production timeoutSeconds). Keep this
+    // read timeout above that engine deadline and below the 15s outer health
+    // timeout, matching the private-network probe's 14s.
+    stream_set_timeout($socket, 14);
     $request = "GET /health HTTP/1.1\r\nHost: localhost\r\n";
     $headers = ProcessorHealthRequest::signedHeaders($configuration);
     $nonce = $headers['X-ArtifactFlow-Processor-Nonce'];
