@@ -41,6 +41,8 @@
     "tabulator-tables": "6.5.3"
   },
   "scripts": {
+    "build:mcp-desktop": "node scripts/build-mcp-desktop.mjs",
+    "test:mcp-desktop": "node --test scripts/mcp-desktop.test.mjs",
     "build": "vite build",
     "dev": "vite",
     "lint:js": "eslint resources/js \"site/assets/*.js\" eslint.config.js vite.config.js",

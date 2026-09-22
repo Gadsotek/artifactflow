@@ -1,0 +1,59 @@
+{
+  "manifest_version": "0.3",
+  "name": "artifactflow",
+  "display_name": "ArtifactFlow",
+  "version": "1.0.2",
+  "description": "Connect Claude to your team's ArtifactFlow library.",
+  "long_description": "Search, read, and work with artifacts using your personal ArtifactFlow MCP token. Your token's selected operations, workspaces, and live permissions control access. Connects from this computer to your ArtifactFlow server. Uses Claude Desktop's built-in Node.js; no separate runtime installation is needed.",
+  "author": {
+    "name": "Gadsotek",
+    "email": "gadsotek@gmail.com",
+    "url": "https://github.com/Gadsotek"
+  },
+  "icon": "assets/icon.png",
+  "icons": [
+    { "src": "assets/icon.png", "size": "512x512", "theme": "light" },
+    { "src": "assets/icon-dark.png", "size": "512x512", "theme": "dark" }
+  ],
+  "keywords": ["artifactflow", "artifacts", "knowledge", "documents", "self-hosted", "team"],
+  "homepage": "https://artifactflow.app",
+  "documentation": "https://github.com/Gadsotek/artifactflow/blob/main/docs/operations/mcp-desktop.md",
+  "repository": { "type": "git", "url": "https://github.com/Gadsotek/artifactflow.git" },
+  "support": "https://github.com/Gadsotek/artifactflow/issues",
+  "privacy_policies": [
+    "https://github.com/Gadsotek/artifactflow/blob/main/docs/operations/mcp-desktop-privacy.md"
+  ],
+  "license": "AGPL-3.0-or-later",
+  "server": {
+    "type": "node",
+    "entry_point": "server.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server.mjs"],
+      "env": {
+        "ARTIFACTFLOW_MCP_URL": "${user_config.server_url}",
+        "ARTIFACTFLOW_MCP_TOKEN": "${user_config.token}"
+      }
+    }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32"],
+    "runtimes": { "node": ">=20.18.1" }
+  },
+  "user_config": {
+    "server_url": {
+      "type": "string",
+      "title": "ArtifactFlow app URL",
+      "description": "Your team's HTTPS app address, for example https://app.example.com. Use the app host, not the artifact preview host. You can also paste its /mcp endpoint.",
+      "required": true
+    },
+    "token": {
+      "type": "string",
+      "title": "Personal MCP token",
+      "description": "Create a token in ArtifactFlow > AI connections. Paste the complete af_mcp_ token without adding Bearer.",
+      "sensitive": true,
+      "required": true
+    }
+  }
+}

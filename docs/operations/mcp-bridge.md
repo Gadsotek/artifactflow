@@ -6,6 +6,10 @@ Claude's supported Desktop JSON path cannot supply ArtifactFlow's static
 bearer token directly. The connector therefore uses `mcp-remote@0.14.2` for
 all supported local clients, including Codex releases that need the stdio bridge.
 
+The [Claude Desktop extension](mcp-desktop.md) packages the same reviewed lock
+for use with Claude Desktop's built-in Node.js. Its end users do not install
+Node.js or npm. The shell connector below remains a separate compatibility path.
+
 The bridge is an experimental third-party process that receives the token.
 Reproducible installation does not make it trusted first-party software. Use
 narrow, short-lived tokens and review every bridge upgrade.
@@ -72,6 +76,33 @@ checks its old commit.
 
 Remove the bridge when the supported client path can provide authorization
 natively or the project adopts a compatible first-party authorization flow.
+
+## Desktop bundle verification
+
+```sh
+node scripts/build-mcp-desktop.mjs --output /tmp/artifactflow-desktop-review.mcpb
+```
+
+The builder runs launcher regressions and this document's independent bridge
+fingerprint verifier before installing the lock in fresh staging. Lifecycle
+scripts and binary links are disabled. It preserves dependency licenses,
+records the lock and launcher hashes in `BUILD.json`, and uses a fixed file
+timestamp plus sorted ZIP entries. Existing packages are never overwritten.
+No new dependency graph or automatically accepted integrity pin is introduced.
+
+The extracted-archive smoke exercises authenticated initialization, tool
+listing and reading, 401/403 failures, and diagnostic privacy from a different
+working directory with no external runtimes on `PATH`. To repeat it separately:
+
+```sh
+node scripts/smoke-mcp-desktop.mjs /tmp/artifactflow-desktop-review.mcpb
+```
+
+Repeat the macOS and Windows Claude Desktop installation/connection checks
+when releasing the extension, including its sensitive token setting and the
+built-in runtime. Update the extension version when its distributed contents
+change, including a reviewed bridge upgrade. The bundle does not install
+updates itself. Preserve the original bridge smoke and all existing gates.
 
 ## Reviewed version
 

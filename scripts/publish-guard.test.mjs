@@ -15,7 +15,11 @@ import { tmpdir } from 'node:os';
 import test from 'node:test';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const publicDocs = execFileSync('git', ['ls-files', '--', 'docs'], { cwd: root, encoding: 'utf8' })
+const publicDocs = execFileSync(
+  'git',
+  ['ls-files', '--cached', '--others', '--exclude-standard', '--', 'docs'],
+  { cwd: root, encoding: 'utf8' },
+)
   .trim()
   .split('\n');
 

@@ -6,6 +6,16 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+### Added
+
+- An administrator-built Claude Desktop `.mcpb` extension that collects the
+  ArtifactFlow URL and personal MCP token and runs the reviewed bridge using
+  Claude's built-in Node.js. The package includes its locked dependencies,
+  validates connection settings, suppresses private bridge diagnostics, and
+  ships with launcher regressions and an extracted-archive authentication smoke.
+  Includes ArtifactFlow logo variants, publisher/support metadata, a bundled
+  privacy notice, and installation instructions.
+
 ## v0.3.2 — 2026-09-22
 
 ### Changed

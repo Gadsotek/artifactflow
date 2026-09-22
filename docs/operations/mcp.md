@@ -39,7 +39,16 @@ confirmation, operation scopes, and live workspace permissions still apply.
 Existing installations need `make migrate` for the new settings columns; the
 migration preserves current tokens and backfills the original limits.
 
-For supported local clients:
+### Claude Desktop without runtime installation
+
+Use the [Claude Desktop extension](mcp-desktop.md). An administrator builds the
+`.mcpb` package once; users install it in Claude Desktop and enter their server
+URL and personal token. It uses Claude's built-in Node.js, with all bridge
+dependencies included. Users do not need Node.js, npm, Python, or this repository.
+
+### Command-line setup helper
+
+For supported local clients with Node.js 20.18.1 or newer and npm installed:
 
 ```sh
 ./scripts/connect-mcp.sh
@@ -51,8 +60,12 @@ and restricts results to mode `0600`. It does not write repository configs
 containing tokens. Automation uses `MCP_URL`, `MCP_TOKEN`, and `MCP_TARGETS`.
 Keep these values out of logs and shell history.
 
-Codex uses authenticated HTTP directly. Claude uses the pinned third-party
-`mcp-remote` bridge. See [bridge maintenance](mcp-bridge.md) before upgrading it.
+The current helper configures every selected target through the pinned
+third-party `mcp-remote` bridge. It installs the locked bridge dependencies,
+but does not install Node.js or npm. Current Codex and Claude Code clients also
+support configuring authenticated HTTP directly without a bridge; that is
+separate from this helper's compatibility path. See
+[bridge maintenance](mcp-bridge.md) before upgrading the packaged runtime.
 
 ## Service accounts
 

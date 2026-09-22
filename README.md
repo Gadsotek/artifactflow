@@ -34,6 +34,10 @@ System Admins can configure MCP token lifetime limits up to 365 days in
 **Administration > Storage and limits**. See [MCP setup](docs/operations/mcp.md)
 for defaults, issuance, and revocation.
 
+Claude Desktop users can install the [ArtifactFlow desktop extension](docs/operations/mcp-desktop.md)
+provided by their administrator, then enter their server URL and personal MCP
+token. No separate Node.js or Python installation is required.
+
 Choose your AI tools independently. ArtifactFlow requires no model subscription
 or AI API key. Bring work in by paste, upload, or authorized MCP calls; it does
 not automatically capture chats, run agents, generate content, or provide vector
