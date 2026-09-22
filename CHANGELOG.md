@@ -6,6 +6,8 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.3.3 — 2026-09-22
+
 ### Added
 
 - An administrator-built Claude Desktop `.mcpb` extension that collects the
