@@ -6,12 +6,23 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.3.2 — 2026-09-22
+
 ### Changed
 
 - Updated the reviewed local MCP bridge from mcp-remote 0.13.5 to 0.14.2,
   preserving the static bearer-header path and Node.js 20.18.1 minimum.
   Added an explicit maintenance command to synchronize reviewed integrity
   pins and regression fixtures together after each upstream review.
+
+### Fixed
+
+- Widened the PDF and DOCX processor health-probe timeouts so a cold engine
+  fits under the socket read timeout and the outer HEALTHCHECK deadline. The
+  DOCX health check now bounds its `soffice --version` operation to an explicit
+  12s (matching the PDF engine window), so the stack stays engine 12s, probe
+  14s, outer 15s. Constrained single-core hosts no longer report the PDF and
+  DOCX processors as perpetually unhealthy.
 
 ## v0.3.1 — 2026-09-15
 
