@@ -16,6 +16,16 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   Includes ArtifactFlow logo variants, publisher/support metadata, a bundled
   privacy notice, and installation instructions.
 
+### Fixed
+
+- The app and artifact-host container health probes now send the configured
+  host parsed from `APP_URL` instead of a loopback Host. In production,
+  TrustHosts trusts only the `APP_URL` and `ARTIFACT_URL` hosts, so the previous
+  `127.0.0.1` probe was rejected as a suspicious operation before `/up` (or the
+  artifact-host `/login` check) could respond, leaving both containers
+  perpetually unhealthy on an otherwise-working deployment. Local and CI stacks
+  are unaffected, since trusted-host enforcement stays off outside production.
+
 ## v0.3.2 — 2026-09-22
 
 ### Changed
