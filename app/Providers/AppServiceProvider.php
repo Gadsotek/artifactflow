@@ -13,7 +13,6 @@ use App\Application\Installation\InstallationReadiness;
 use App\Application\Mcp\McpAccessTokenAuthenticator;
 use App\Application\Mcp\McpEffectiveAuthority;
 use App\Application\Mcp\McpRequestContext;
-use App\Application\Mcp\RecordMcpClientSession;
 use App\Application\PageCatalog\DocxPageContentStrategy;
 use App\Application\PageCatalog\PageAccess;
 use App\Application\PageCatalog\PageContentStrategy;
@@ -44,7 +43,6 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
-use Laravel\Mcp\Events\SessionInitialized;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
@@ -103,7 +101,6 @@ final class AppServiceProvider extends ServiceProvider
         $this->configureMcpGuard();
         $this->configureRateLimits();
         Event::listen(StoredDomainEvent::class, LogStoredDomainEventDispatch::class);
-        Event::listen(SessionInitialized::class, RecordMcpClientSession::class);
 
         if ($this->shouldRunProductionSafetyChecks()) {
             $this->app->make(ProductionSecurityConfiguration::class)->ensureSafe();

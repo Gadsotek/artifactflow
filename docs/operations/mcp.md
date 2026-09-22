@@ -130,10 +130,13 @@ principal across all tokens. Additional tokens do not multiply allowances.
 Parser saturation returns retryable errors with `retry_after`. Shared NATs
 may need a larger pre-auth budget. See [configuration](configuration.md).
 
-The transport negotiates protocol and supplies `MCP-Session-Id`; it is client
-attribution metadata, not authority. Token revocation serializes with in-flight
-tools. Never log bearer headers, binary payloads, or returned capability URLs.
+MCP 1.0 negotiates per request and does not issue a server session identifier.
+Clients send the current protocol metadata and matching request headers. An
+optional `Mcp-Agent-Session` is bounded non-secret audit correlation only: it
+is neither authority nor a claim about client identity. Token revocation
+serializes with in-flight tools. Never log bearer headers, binary payloads, or
+returned capability URLs.
 
-Server `0.9.0` uses a shared `producers` catalog and UID lineage references.
+Server `1.0.0` uses a shared `producers` catalog and UID lineage references.
 Older repeated producer fields are not emitted. The
 [provenance reference](provenance.md) contains current fields and examples.
