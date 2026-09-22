@@ -4,6 +4,16 @@ This file records direct third-party components whose binaries or bundled
 browser code are distributed by ArtifactFlow. It complements, rather than
 replaces, the dependency manifests and generated software bills of materials.
 
+## Claude Desktop connector
+
+The optional `.mcpb` package distributes the reviewed `mcp-remote` bridge and
+the dependencies in `scripts/mcp-remote-bridge/package-lock.json`. Their upstream
+license and notice files remain in the package's `node_modules` tree. The bundle
+also includes ArtifactFlow's AGPL license, the exact dependency lock, and a
+`BUILD.json` receipt with the lock and launcher hashes. Preserve these files
+when distributing the package. Review and upgrade instructions are in
+[MCP bridge maintenance](docs/operations/mcp-bridge.md).
+
 ## Browser application support
 
 ### ELK 0.12.0 (elkjs)
