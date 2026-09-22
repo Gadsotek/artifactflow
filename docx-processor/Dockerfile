@@ -62,7 +62,7 @@ RUN chmod 0444 /srv/docx-processor/src/DocxProcessor.php /srv/docx-processor/pub
 
 USER docx-processor
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=15s --start-period=10s --retries=3 \
     CMD ["php", "/srv/docx-processor/healthcheck.php"]
 
 CMD ["/srv/docx-processor/start.sh"]

@@ -33,7 +33,11 @@ try {
         exit(1);
     }
 
-    stream_set_timeout($socket, 2);
+    // The /health handler runs a real LibreOffice conversion that can take
+    // several seconds on a cold engine. Keep this read timeout above the engine
+    // window and below the 15s outer health timeout, matching the PDF probe's
+    // 14s. The outer HEALTHCHECK/compose/Makefile deadlines are raised to match.
+    stream_set_timeout($socket, 14);
 
     $request = "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n";
     foreach ($headers as $name => $value) {

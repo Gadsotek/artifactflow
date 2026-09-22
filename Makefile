@@ -718,7 +718,7 @@ docx-processor-runtime-test:
 			--security-opt no-new-privileges --pids-limit 128 --memory 768m --cpus 1 \
 			--tmpfs /tmp:rw,noexec,nosuid,nodev,size=192m,mode=1777 \
 			--tmpfs /run/artifactflow/docx-processor:rw,noexec,nosuid,size=1m,uid=10004,gid=10004,mode=0755 \
-			--health-interval 1s --health-timeout 8s --health-start-period 1s --health-retries 45 \
+			--health-interval 1s --health-timeout 15s --health-start-period 1s --health-retries 45 \
 			--env DOCX_PROCESSOR_SHARED_SECRET=artifactflow-docx-runtime-test-secret \
 			--env DOCX_PROCESSOR_SOCKET_PATH=/run/artifactflow/docx-processor/processor.sock \
 			$(DOCX_PROCESSOR_IMAGE) >/dev/null; \
