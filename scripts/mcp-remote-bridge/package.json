@@ -9,7 +9,7 @@
     "node": ">=20.18.1"
   },
   "dependencies": {
-    "mcp-remote": "0.14.2"
+    "mcp-remote": "0.14.3"
   },
   "overrides": {
     "qs": "6.16.0"
