@@ -9,7 +9,7 @@ npm, Python, or a command-line connector.
 
 ## Install and connect
 
-1. Get the `artifactflow-1.0.3.mcpb` file from your installation administrator.
+1. Get the `artifactflow-1.0.4.mcpb` file from your installation administrator.
 2. In ArtifactFlow, open **AI connections** and create a personal token with the
    operations and workspaces you need. Token creation requires two-factor
    authentication. Copy the token when it is shown.
@@ -86,7 +86,7 @@ Linux. The build machine requires Node.js 20.18.1 or newer, npm, `zip`, and
 node scripts/build-mcp-desktop.mjs
 ```
 
-The output is `storage/app/mcp-desktop/artifactflow-1.0.3.mcpb`; the build prints
+The output is `storage/app/mcp-desktop/artifactflow-1.0.4.mcpb`; the build prints
 its SHA-256 checksum. Distribute that file through your approved internal
 software channel. Generated bundles and dependency directories stay out of Git.
 The package is unsigned; it is not an Anthropic directory listing.
