@@ -150,6 +150,13 @@ for (const [label, change, message] of [
     /qs override/,
   ],
   [
+    'a changed undici lock',
+    (lock) => {
+      lock.packages['node_modules/undici'].version = '7.29.0';
+    },
+    /undici override/,
+  ],
+  [
     'a changed Node floor',
     (lock) => {
       lock.packages[''].engines.node = '>=99.0.0';
@@ -172,3 +179,17 @@ for (const [label, change, message] of [
     assert.deepEqual(snapshot(), before);
   });
 }
+
+
+test('refuses a changed undici override even with an explicit lock fingerprint', () => {
+  const { directory, run, snapshot } = fixture();
+  const path = join(directory, 'scripts/mcp-remote-bridge/package.json');
+  const manifest = JSON.parse(readFileSync(path));
+  manifest.overrides.undici = '7.29.0';
+  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+  const before = snapshot();
+  const result = run();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /undici override/);
+  assert.deepEqual(snapshot(), before);
+});

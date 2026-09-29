@@ -81,6 +81,16 @@ function update() {
     /^const EXPECTED_INTEGRITY =\s*'([^']+)';$/gmu,
     'EXPECTED_INTEGRITY',
   );
+  const undiciVersion = capture(
+    verifier,
+    /^const EXPECTED_UNDICI_VERSION = '([^']+)';$/gmu,
+    'EXPECTED_UNDICI_VERSION',
+  );
+  const undiciIntegrity = capture(
+    verifier,
+    /^const EXPECTED_UNDICI_INTEGRITY =\s*'([^']+)';$/gmu,
+    'EXPECTED_UNDICI_INTEGRITY',
+  );
   const nodeRange = capture(
     verifier,
     /^const EXPECTED_NODE_RANGE = '([^']+)';$/gmu,
@@ -105,6 +115,12 @@ function update() {
       lock.packages?.['node_modules/qs']?.version === qsVersion &&
       lock.packages?.['node_modules/qs']?.integrity === qsIntegrity,
     'The qs override changed; review it separately.',
+  );
+  requireCondition(
+    manifest.overrides?.undici === undiciVersion &&
+      lock.packages?.['node_modules/undici']?.version === undiciVersion &&
+      lock.packages?.['node_modules/undici']?.integrity === undiciIntegrity,
+    'The undici override changed; review it separately.',
   );
   requireCondition(lock.lockfileVersion === 3, 'The reviewed lock must use lockfileVersion 3.');
   for (const [name, entry] of Object.entries(lock.packages ?? {})) {

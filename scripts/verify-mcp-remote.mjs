@@ -5,13 +5,16 @@ import { fileURLToPath } from 'node:url';
 
 const EXPECTED_VERSION = '0.14.2';
 const EXPECTED_NODE_RANGE = '>=20.18.1';
-const EXPECTED_LOCK_SHA256 = '22f5dca76de2dab23a43d610136dbad056b365b94110ddd438b71bcea60fe212';
+const EXPECTED_LOCK_SHA256 = '6462bb90641912e930708640ff0a14ea3d7d7fdd5413177a878aaefaff0f357c';
 const EXPECTED_QS_VERSION = '6.16.0';
+const EXPECTED_UNDICI_VERSION = '7.30.0';
 const MINIMUM_NODE_VERSION = [20, 18, 1];
 const EXPECTED_INTEGRITY =
   'sha512-AowvnFGBSa8ewOgjUZzkLMTNPNnnyVOj6HrzLbfUVn38MR0JjSAGSM4r/rzNYOyXjdJAR8CUbkwhJoCWGcYxgg==';
 const EXPECTED_QS_INTEGRITY =
   'sha512-h6fhOIaRrID2CbEY2fqs+7t+UXZo+MLAnU5gRIq85uFtdiUPCdsApMlHhXogKVM4HM2DVbIjGNTTYH2OcmP1vA==';
+const EXPECTED_UNDICI_INTEGRITY =
+  'sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==';
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const bridgeDirectory = resolve(repositoryRoot, 'scripts/mcp-remote-bridge');
 const lockPath = resolve(bridgeDirectory, 'package-lock.json');
@@ -39,6 +42,7 @@ const connectorSource = readFileSync(resolve(repositoryRoot, 'scripts/connect-mc
 const lockedRoot = lock.packages?.[''];
 const lockedBridge = lock.packages?.['node_modules/mcp-remote'];
 const lockedQs = lock.packages?.['node_modules/qs'];
+const lockedUndici = lock.packages?.['node_modules/undici'];
 
 const nodeVersion = process.versions.node.split('.').map((part) => Number.parseInt(part, 10));
 let nodeIsSupported = true;
@@ -87,6 +91,10 @@ requireCondition(
   `qs must remain overridden to the reviewed ${EXPECTED_QS_VERSION} security release.`,
 );
 requireCondition(
+  manifest.overrides?.undici === EXPECTED_UNDICI_VERSION,
+  `undici must remain overridden to the reviewed ${EXPECTED_UNDICI_VERSION} security release.`,
+);
+requireCondition(
   lock.lockfileVersion === 3,
   'The mcp-remote bridge requires npm lockfileVersion 3.',
 );
@@ -109,6 +117,15 @@ requireCondition(
 requireCondition(
   lockedQs?.integrity === EXPECTED_QS_INTEGRITY,
   'The reviewed qs tarball integrity changed; re-review it before updating the override.',
+);
+
+requireCondition(
+  lockedUndici?.version === EXPECTED_UNDICI_VERSION,
+  `The lock resolved undici to ${lockedUndici?.version ?? 'nothing'}, expected ${EXPECTED_UNDICI_VERSION}.`,
+);
+requireCondition(
+  lockedUndici?.integrity === EXPECTED_UNDICI_INTEGRITY,
+  'The reviewed undici tarball integrity changed; re-review it before updating the override.',
 );
 
 let registryPackages = 0;

@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "artifactflow",
   "display_name": "ArtifactFlow",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Connect Claude to your team's ArtifactFlow library.",
   "long_description": "Search, read, and work with artifacts using your personal ArtifactFlow MCP token. Your token's selected operations, workspaces, and live permissions control access. Connects from this computer to your ArtifactFlow server. Uses Claude Desktop's built-in Node.js; no separate runtime installation is needed.",
   "author": {
