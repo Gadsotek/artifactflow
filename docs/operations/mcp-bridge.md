@@ -3,7 +3,7 @@
 [MCP setup](mcp.md)
 
 Claude's supported Desktop JSON path cannot supply ArtifactFlow's static
-bearer token directly. The connector therefore uses `mcp-remote@0.14.2` for
+bearer token directly. The connector therefore uses `mcp-remote@0.14.3` for
 all supported local clients, including Codex releases that need the stdio bridge.
 
 The [Claude Desktop extension](mcp-desktop.md) packages the same reviewed lock
@@ -106,19 +106,29 @@ updates itself. Preserve the original bridge smoke and all existing gates.
 
 ## Reviewed version
 
-The 0.14.2 review covers upstream commit
-`8ba22bdb4e73b818abf22b5e0c8fb5d96e90203b` and the
-[0.13.5 to 0.14.2 delta](https://github.com/punkpeye/mcp-remote/compare/v0.13.5...v0.14.2):
-OAuth callback issuer forwarding, optional explicit client-credentials token
-endpoints, and renewal through the configured transport fetch with stored-token
-fallback. ArtifactFlow supplies a static bearer header and enables neither
-client credentials nor an explicit token endpoint. It keeps the default legacy
-protocol mode and does not enable protocol auto-discovery.
+The 0.14.3 review covers upstream commit
+`6a06aca546a8fd3b7beb040f39761b364893198d` and the
+[0.14.2 to 0.14.3 delta](https://github.com/punkpeye/mcp-remote/compare/v0.14.2...v0.14.3):
+OAuth token persistence now preserves an existing absolute expiry and issuer
+when the SDK saves a stored token again. This prevents a previously expired
+token from receiving a new lifetime during that save. ArtifactFlow supplies
+a static bearer header and enables neither client credentials nor an explicit
+token endpoint. It keeps the default legacy protocol mode and does not enable
+protocol auto-discovery.
 
-The published tarball's SHA-512 integrity matches the lock. The separately
-locked runtime dependencies and Node.js floor are unchanged. The installed
-smoke verifies the bridge version observed by the server, authenticated legacy
-initialize/tools-list traffic without auto-discovery, and absence of the token
-from stdout/stderr.
-
-The [undici WebSocket decompression advisory](https://github.com/nodejs/undici/security/advisories/GHSA-3wwx-pv8p-q78v) affects the previously locked 7.29.0 release. The bridge overrides this transitive dependency to the patched 7.30.0 release while retaining `mcp-remote@0.14.2`; the reviewed undici tarball SHA-512 is `sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==`. The reviewed lock SHA-256 is `6462bb90641912e930708640ff0a14ea3d7d7fdd5413177a878aaefaff0f357c`.
+The published tarball's SHA-512 integrity matches the lock; comparison of the
+published JavaScript confirms only the reviewed token-persistence changes,
+version, and generated chunk references changed. The
+[undici WebSocket decompression advisory](https://github.com/nodejs/undici/security/advisories/GHSA-3wwx-pv8p-q78v)
+affects the previously locked 7.29.0 release. The bridge overrides this
+transitive dependency to 7.30.0, which includes the 7.29.1 security fixes.
+The [7.30.0 release](https://github.com/nodejs/undici/releases/tag/v7.30.0)
+adds focused diagnostics, decompression, and HTTP/2 WebSocket fixes. Its
+reviewed tarball SHA-512 is
+`sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==`.
+The new lock SHA-256 is
+`f4f05bb670f83cd0505a1b7304b91e2a30a755b670dc43ae3ecc19025971f1b0`.
+The Node.js floor is unchanged. The Desktop extension advances to 1.0.4 for
+the changed bundled dependencies. The installed smoke verifies the bridge
+version observed by the server, authenticated legacy initialize/tools-list
+traffic without auto-discovery, and absence of the token from stdout/stderr.
