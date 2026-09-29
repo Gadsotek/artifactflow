@@ -120,3 +120,5 @@ locked runtime dependencies and Node.js floor are unchanged. The installed
 smoke verifies the bridge version observed by the server, authenticated legacy
 initialize/tools-list traffic without auto-discovery, and absence of the token
 from stdout/stderr.
+
+The [undici WebSocket decompression advisory](https://github.com/nodejs/undici/security/advisories/GHSA-3wwx-pv8p-q78v) affects the previously locked 7.29.0 release. The bridge overrides this transitive dependency to the patched 7.30.0 release while retaining `mcp-remote@0.14.2`; the reviewed undici tarball SHA-512 is `sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==`. The reviewed lock SHA-256 is `6462bb90641912e930708640ff0a14ea3d7d7fdd5413177a878aaefaff0f357c`.

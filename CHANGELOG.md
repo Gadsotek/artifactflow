@@ -6,6 +6,12 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+### Security
+
+- The reviewed MCP bridge now pins patched `undici` 7.30.0 for the WebSocket
+  decompression denial-of-service advisory. The integrity lock and Desktop
+  extension version advance with the dependency.
+
 ## v0.3.3 — 2026-09-22
 
 ### Added
