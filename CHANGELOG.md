@@ -4,13 +4,31 @@ All notable changes to ArtifactFlow will be documented here.
 
 This project is pre-1.0; expect breaking changes between alpha revisions.
 
-## Unreleased
+## v0.3.4 — 2026-09-30
 
 ### Security
 
 - The reviewed MCP bridge now pins patched `undici` 7.30.0 for the WebSocket
   decompression denial-of-service advisory. The integrity lock and Desktop
   extension version advance with the dependency.
+
+- Updated the transitive development-tool dependency `brace-expansion` to
+  5.0.12 to address three denial-of-service advisories.
+
+### Changed
+
+- Updated the reviewed bridge from `mcp-remote` 0.14.2 to 0.14.3. The upstream
+  fix preserves stored OAuth token expiry and issuer when a token is saved
+  again. ArtifactFlow's static bearer-token path and Node.js 20.18.1 minimum
+  are unchanged. The Claude Desktop extension version is now 1.0.4.
+
+### Upgrade from v0.3.3
+
+- Re-run `./scripts/connect-mcp.sh` on clients using the local bridge to select
+  the new integrity-locked installation. Administrators distributing the Claude
+  Desktop extension should build and install version 1.0.4; the bundle does not
+  update itself. Existing personal MCP tokens remain valid.
+- No database migrations or required server configuration changes.
 
 ## v0.3.3 — 2026-09-22
 
