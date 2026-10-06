@@ -23,7 +23,7 @@
     "node": ">=26"
   },
   "overrides": {
-    "dompurify": "3.4.13",
+    "dompurify": "3.4.16",
     "shell-quote": "1.10.0",
     "elkjs": "0.12.0",
     "lodash-es": "4.18.1"

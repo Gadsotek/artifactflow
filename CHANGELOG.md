@@ -8,6 +8,11 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ### Security
 
+- Pinned Mermaid's DOMPurify dependency to 3.4.16 for
+  [GHSA-p98j-92pf-mc4p](https://github.com/advisories/GHSA-p98j-92pf-mc4p),
+  which fixes event handlers surviving on subtrees detached by sanitization
+  hooks in `IN_PLACE` mode. ArtifactFlow's current Mermaid renderer does not
+  configure that mode or node-removing hooks.
 - Updated the MCP bridge's locked `proxy-addr` to 2.0.8 for the IPv4-mapped
   IPv6 trust-subnet spoofing advisory, with matching integrity pins and
   regression coverage. The Desktop extension advances to 1.0.5.
