@@ -111,9 +111,9 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $licensePolicy = $this->readProjectFile('security/dependency-license-policy.json');
         $notices = $this->readProjectFile('THIRD_PARTY_NOTICES.md');
 
-        $this->assertStringContainsString('"dompurify": "3.4.13"', $packageJson);
-        $this->assertStringContainsString("\"node_modules/dompurify\": {\n      \"version\": \"3.4.13\"", $packageLock);
-        $this->assertStringContainsString("const EXPECTED = '3.4.13';", $verifier);
+        $this->assertStringContainsString('"dompurify": "3.4.16"', $packageJson);
+        $this->assertStringContainsString("\"node_modules/dompurify\": {\n      \"version\": \"3.4.16\"", $packageLock);
+        $this->assertStringContainsString("const EXPECTED = '3.4.16';", $verifier);
         $this->assertStringContainsString('auditRepositoryLicenses', $verifier);
         $this->assertStringContainsString('composer.lock', $licenseVerifier);
         $this->assertStringContainsString('xlsx-processor-spike/package-lock.json', $licenseVerifier);

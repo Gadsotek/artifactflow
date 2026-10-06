@@ -16,7 +16,7 @@ import process from 'node:process';
 import { URL, fileURLToPath } from 'node:url';
 import { auditRepositoryLicenses } from './license-audit/verify-dependency-licenses.mjs';
 
-const EXPECTED = '3.4.13';
+const EXPECTED = '3.4.16';
 
 auditRepositoryLicenses();
 

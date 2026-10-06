@@ -1,5 +1,66 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import type { DOMPurify } from 'dompurify';
+
+// GHSA-p98j-92pf-mc4p: verify the installed dependency itself, alongside the
+// application renderer tests below (which do not use IN_PLACE sanitization).
+const dompurifySource = readFileSync(
+  new URL('../../node_modules/dompurify/dist/purify.js', import.meta.url),
+  'utf8',
+);
+
+for (const hook of ['afterSanitizeElements', 'afterSanitizeAttributes'] as const) {
+  test(`DOMPurify neutralizes descendants detached by ${hook} @artifact-security`, async ({
+    page,
+  }) => {
+    await page.addScriptTag({ content: dompurifySource });
+
+    const result = await page.evaluate((hookName) => {
+      const purifier = (window as Window & { DOMPurify: DOMPurify }).DOMPurify;
+      const root = document.createElement('div');
+      const wrapper = document.createElement('section');
+      const image = document.createElement('img');
+      image.setAttribute('onerror', 'window.__dompurifyDetachedHandler = true');
+      wrapper.appendChild(image);
+      const safe = document.createElement('p');
+      safe.textContent = 'Safe sibling';
+      root.append(wrapper, safe);
+      document.body.appendChild(root);
+
+      purifier.addHook(hookName, (node) => {
+        if (node === wrapper) {
+          wrapper.remove();
+        }
+      });
+
+      try {
+        const sanitized = purifier.sanitize(root, { IN_PLACE: true });
+        // Dispatch on the retained detached descendant: inspecting only the
+        // returned tree would miss the armed handler described by the advisory.
+        image.dispatchEvent(new Event('error'));
+
+        return {
+          sameRoot: sanitized === root,
+          wrapperDetached: !wrapper.isConnected,
+          handler: image.getAttribute('onerror'),
+          executed: '__dompurifyDetachedHandler' in window,
+          safeText: root.textContent,
+        };
+      } finally {
+        purifier.removeAllHooks();
+        root.remove();
+      }
+    }, hook);
+
+    expect(result).toEqual({
+      sameRoot: true,
+      wrapperDetached: true,
+      handler: null,
+      executed: false,
+      safeText: 'Safe sibling',
+    });
+  });
+}
 
 type ManifestEntry = {
   file: string;
