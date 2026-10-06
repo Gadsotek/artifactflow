@@ -194,8 +194,8 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
         $healthcheck = $this->readProjectFile('pdf-processor-spike/healthcheck-private.php');
         $makefile = $this->readProjectFile('Makefile');
 
-        $this->assertStringContainsString('libseccomp-dev=2.6.0-r2', $dockerfile);
-        $this->assertStringContainsString('libseccomp=2.6.0-r2', $stage);
+        $this->assertStringContainsString('libseccomp-dev=2.6.1-r0', $dockerfile);
+        $this->assertStringContainsString('libseccomp=2.6.1-r0', $stage);
         $this->assertStringContainsString('COPY --from=pdf-processor-spike-builder /opt/artifactflow-network-deny', $stage);
         $this->assertStringContainsString('COPY start-private.sh healthcheck-private.php', $stage);
         $this->assertStringContainsString('USER pdf-spike', $stage);
@@ -273,7 +273,7 @@ final class PdfProcessorIsolationConfigurationTest extends TestCase
                     . '/usr/local/bin/artifactflow-process-deny',
             ),
         );
-        $this->assertGreaterThanOrEqual(2, substr_count($dockerfile, 'libseccomp=2.6.0-r2'));
+        $this->assertGreaterThanOrEqual(2, substr_count($dockerfile, 'libseccomp=2.6.1-r0'));
         $this->assertStringContainsString("'/usr/local/bin/artifactflow-process-deny'", $processor);
 
         $this->assertStringContainsString('PR_SET_NO_NEW_PRIVS', $launcher);

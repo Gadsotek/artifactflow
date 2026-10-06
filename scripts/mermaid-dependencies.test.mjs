@@ -4,14 +4,14 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import ELK from 'elkjs/lib/elk.bundled.js';
 
-const parserRequire = createRequire(import.meta.resolve('chevrotain'));
-const { template, unset } = await import(pathToFileURL(parserRequire.resolve('lodash-es')).href);
+const layoutRequire = createRequire(import.meta.resolve('dagre-d3-es'));
+const { template, unset } = await import(pathToFileURL(layoutRequire.resolve('lodash-es')).href);
 
-test('Mermaid parser dependency refuses executable template import names', () => {
+test('Mermaid layout dependency refuses executable template import names', () => {
   assert.throws(() => template('value', { imports: { 'x = 1': 1 } }), /Invalid/u);
 });
 
-test('Mermaid parser dependency cannot delete inherited prototype properties through array paths', () => {
+test('Mermaid layout dependency cannot delete inherited prototype properties through array paths', () => {
   const prototype = { marker: 'retained' };
   const object = Object.create(prototype);
   unset(object, ['__proto__', 'marker']);

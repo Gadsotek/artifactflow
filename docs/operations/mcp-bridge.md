@@ -127,8 +127,15 @@ adds focused diagnostics, decompression, and HTTP/2 WebSocket fixes. Its
 reviewed tarball SHA-512 is
 `sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==`.
 The new lock SHA-256 is
-`f4f05bb670f83cd0505a1b7304b91e2a30a755b670dc43ae3ecc19025971f1b0`.
-The Node.js floor is unchanged. The Desktop extension advances to 1.0.4 for
+`cfb1b4da0a64e070c4b3ed3a935d824c50320b1df62bf1465da85c1087eae713`.
+The bridge also locks `proxy-addr` 2.0.8 for
+[GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h).
+The reviewed patch rejects cross-family trust matches for native IPv6 and
+short-prefix IPv4-mapped subnets while retaining valid mapped subnet handling.
+Its runtime dependencies, Node.js floor, and MIT license are unchanged.
+The smoke exercises both single- and multiple-subnet trust paths with forged
+forwarded headers and valid-address controls before the authenticated MCP exchange.
+The Node.js floor is unchanged. The Desktop extension advances to 1.0.5 for
 the changed bundled dependencies. The installed smoke verifies the bridge
 version observed by the server, authenticated legacy initialize/tools-list
 traffic without auto-discovery, and absence of the token from stdout/stderr.
