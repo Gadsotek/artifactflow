@@ -4,6 +4,29 @@ All notable changes to ArtifactFlow will be documented here.
 
 This project is pre-1.0; expect breaking changes between alpha revisions.
 
+## Unreleased
+
+### Security
+
+- Updated the MCP bridge's locked `proxy-addr` to 2.0.8 for the IPv4-mapped
+  IPv6 trust-subnet spoofing advisory, with matching integrity pins and
+  regression coverage. The Desktop extension advances to 1.0.5.
+- Updated the transitive build-tool dependency `source-map-js` to 1.2.2 for
+  the indexed source-map section-offset denial-of-service advisory.
+
+### Changed
+
+- Updated Mermaid to 12.1.0 and ESLint to 10.12.0, retaining the strict diagram
+  rendering policy and reviewed security dependency overrides.
+- Refreshed the PDF processor's build and runtime libseccomp pins to 2.6.1-r0
+  after Alpine removed the previously pinned packages.
+
+### Upgrade
+
+- Re-run `./scripts/connect-mcp.sh` to select the new integrity-locked bridge.
+  Administrators distributing the Desktop extension should build and install
+  version 1.0.5; existing bundles do not update themselves.
+
 ## v0.3.4 — 2026-09-30
 
 ### Security

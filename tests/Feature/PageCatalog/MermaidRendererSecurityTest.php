@@ -62,7 +62,7 @@ final class MermaidRendererSecurityTest extends TestCase
         $this->assertIsArray($package);
         $dependencies = $package['dependencies'] ?? null;
         $this->assertIsArray($dependencies);
-        $this->assertSame('12.0.0', $dependencies['mermaid'] ?? null);
+        $this->assertSame('12.1.0', $dependencies['mermaid'] ?? null);
 
         $overrides = $package['overrides'] ?? null;
         $this->assertIsArray($overrides);

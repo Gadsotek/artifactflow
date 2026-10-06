@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
+import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +20,35 @@ let forwardedClientName;
 if (!smokeWorkingDirectory) {
   throw new Error('MCP_BRIDGE_SMOKE_CWD must point at a dedicated empty working directory.');
 }
+
+// GHSA-jqcg-44mw-7w3h: neither trust path may accept a forged forwarded address
+// from an IPv4 peer through a native IPv6 or short-prefix mapped trust subnet.
+const bridgeRequire = createRequire(resolve(bridgeDirectory, 'package.json'));
+const proxyaddr = bridgeRequire('proxy-addr');
+for (const subnet of ['::ffff:10.0.0.0/8', '::/1']) {
+  for (const trusted of [[subnet], [subnet, '2001:db8::/32']]) {
+    for (const remoteAddress of ['203.0.113.10', '::ffff:203.0.113.10']) {
+      assert.equal(
+        proxyaddr(
+          { connection: { remoteAddress }, headers: { 'x-forwarded-for': '127.0.0.1' } },
+          trusted,
+        ),
+        remoteAddress,
+        `Untrusted socket peer must not control the client address through ${subnet}.`,
+      );
+    }
+  }
+}
+for (const trusted of [['::ffff:10.0.0.0/104'], ['::ffff:10.0.0.0/104', '2001:db8::/32']]) {
+  const trust = proxyaddr.compile(trusted);
+  assert.equal(trust('10.1.2.3'), true);
+  assert.equal(trust('::ffff:10.1.2.3'), true);
+  assert.equal(trust('203.0.113.10'), false);
+  assert.equal(trust('::ffff:203.0.113.10'), false);
+  assert.equal(trust('::1'), false);
+}
+assert.equal(proxyaddr.compile(['2001:db8::/32'])('2001:db8::1'), true);
+console.log('Bridge proxy-address trust regression passed.');
 
 const server = createServer((request, response) => {
   if (request.url !== '/mcp' || request.method !== 'POST') {

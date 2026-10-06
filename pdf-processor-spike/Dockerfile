@@ -8,7 +8,7 @@ ARG PDFBOX_SHA512=768847238f683568507bf73570a2b6fedcbe58b25c7b4f97fba536ba110b29
 RUN apk add --no-cache \
         build-base=0.5-r4 \
         ca-certificates=20260611-r0 \
-        libseccomp-dev=2.6.0-r2 \
+        libseccomp-dev=2.6.1-r0 \
         openjdk21-jdk=21.0.12_p8-r0 \
     && wget -q "https://downloads.apache.org/pdfbox/${PDFBOX_VERSION}/pdfbox-app-${PDFBOX_VERSION}.jar" -O /opt/pdfbox-app.jar \
     && echo "${PDFBOX_SHA512}  /opt/pdfbox-app.jar" | sha512sum -c -
@@ -62,7 +62,7 @@ FROM pdf-processor-spike AS pdf-processor-service
 USER root
 
 RUN apk add --no-cache \
-        libseccomp=2.6.0-r2 \
+        libseccomp=2.6.1-r0 \
         socat=1.8.1.3-r0 \
     && mkdir -p /run/artifactflow/pdf-processor \
     && chown pdf-spike:pdf-spike /run/artifactflow/pdf-processor \
@@ -94,7 +94,7 @@ FROM pdf-processor-spike AS pdf-processor-private-service
 
 USER root
 
-RUN apk add --no-cache libseccomp=2.6.0-r2
+RUN apk add --no-cache libseccomp=2.6.1-r0
 
 COPY --from=pdf-processor-spike-builder /opt/artifactflow-network-deny /usr/local/bin/artifactflow-network-deny
 COPY --from=pdf-processor-spike-builder /opt/artifactflow-process-deny /usr/local/bin/artifactflow-process-deny
