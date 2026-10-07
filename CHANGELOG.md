@@ -8,6 +8,14 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ### Security
 
+- Updated the build-tool `shell-quote` override to 1.11.0 for
+  [GHSA-pqg4-j6r4-53mv](https://github.com/advisories/GHSA-pqg4-j6r4-53mv),
+  rejecting line terminators in arguments following shell comment tokens.
+- Pinned Mermaid's KaTeX dependency to 0.18.2 for
+  [GHSA-238p-pmpm-9mq7](https://github.com/advisories/GHSA-238p-pmpm-9mq7),
+  preventing inherited prototype properties from enabling trusted rendering
+  or altering renderer settings and macro lookup. The separate sanitization
+  boundary and strict Mermaid configuration remain unchanged.
 - Pinned Mermaid's DOMPurify dependency to 3.4.16 for
   [GHSA-p98j-92pf-mc4p](https://github.com/advisories/GHSA-p98j-92pf-mc4p),
   which fixes event handlers surviving on subtrees detached by sanitization
@@ -21,6 +29,8 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ### Changed
 
+- Refreshed the DOCX processor's timezone-data pin to 2026e-r0 after Alpine
+  removed the previously pinned 2026d-r0 package.
 - Updated Mermaid to 12.1.0 and ESLint to 10.12.0, retaining the strict diagram
   rendering policy and reviewed security dependency overrides.
 - Refreshed the PDF processor's build and runtime libseccomp pins to 2.6.1-r0
