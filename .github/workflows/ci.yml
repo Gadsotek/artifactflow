@@ -179,6 +179,7 @@ jobs:
 
       - name: npm audit
         run: |
+          node --test scripts/dependency-security.test.mjs
           node scripts/verify-dompurify.mjs
           node scripts/verify-mcp-remote.mjs
           npm audit --audit-level=moderate
