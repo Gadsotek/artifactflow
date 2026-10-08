@@ -6,6 +6,11 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.3.5 — 2026-10-08
+
+Security and maintenance update for the application, MCP clients, and isolated
+document processors.
+
 ### Security
 
 - Updated the build-tool `shell-quote` override to 1.11.0 for
@@ -29,6 +34,10 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ### Changed
 
+- Updated Laravel to 13.35.0, Tabulator to 6.6.1, Vite to 8.3.2, and the
+  supporting editor and development dependencies.
+- Updated Larastan to 3.12.3 and PHPStan to 2.3.0, aligning the regression
+  suite with stricter type analysis while preserving its behavioral checks.
 - Refreshed the DOCX processor's timezone-data pin to 2026e-r0 after Alpine
   removed the previously pinned 2026d-r0 package.
 - Updated Mermaid to 12.1.0 and ESLint to 10.12.0, retaining the strict diagram
@@ -36,11 +45,13 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 - Refreshed the PDF processor's build and runtime libseccomp pins to 2.6.1-r0
   after Alpine removed the previously pinned packages.
 
-### Upgrade
+### Upgrade from v0.3.4
 
 - Re-run `./scripts/connect-mcp.sh` to select the new integrity-locked bridge.
   Administrators distributing the Desktop extension should build and install
-  version 1.0.5; existing bundles do not update themselves.
+  version 1.0.5; existing bundles do not update themselves. Existing personal
+  MCP tokens remain valid.
+- No database migrations or required server configuration changes.
 
 ## v0.3.4 — 2026-09-30
 
