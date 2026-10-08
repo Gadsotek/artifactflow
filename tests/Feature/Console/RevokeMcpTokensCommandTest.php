@@ -11,7 +11,6 @@ use App\Models\McpAccessToken;
 use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Testing\PendingCommand;
 use Tests\TestCase;
@@ -55,16 +54,16 @@ final class RevokeMcpTokensCommandTest extends TestCase
     {
         $workspace = $this->createWorkspace();
 
-        $this->assertSame(0, Artisan::call('artifactflow:mcp-token-create', [
+        $this->runConsoleCommand('artifactflow:mcp-token-create', [
             '--email' => 'cli-agent@example.test',
             '--workspace' => [$workspace->uid],
             '--scope' => [McpAccessTokenIssuer::SCOPE_SEARCH],
-        ]));
-        $this->assertSame(0, Artisan::call('artifactflow:mcp-token-create', [
+        ])->assertExitCode(0);
+        $this->runConsoleCommand('artifactflow:mcp-token-create', [
             '--email' => 'cli-agent@example.test',
             '--workspace' => [$workspace->uid],
             '--scope' => [McpAccessTokenIssuer::SCOPE_SEARCH],
-        ]));
+        ])->assertExitCode(0);
 
         $tokens = McpAccessToken::query()->orderBy('created_at')->get();
         $this->assertCount(2, $tokens);

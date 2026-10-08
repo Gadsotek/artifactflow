@@ -299,6 +299,11 @@ final class WorkspaceStorageCounterTest extends TestCase
         ));
     }
 
+    /**
+     * Reads database state that can change between calls in the same test.
+     *
+     * @phpstan-impure
+     */
     private function usedStorageBytes(string $workspaceUid): int
     {
         $workspace = Workspace::query()->whereKey($workspaceUid)->sole();

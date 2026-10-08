@@ -393,6 +393,11 @@ final class PageVersionPruningTest extends TestCase
         return (int) Workspace::query()->whereKey($page->workspace_uid)->sole()->used_storage_bytes;
     }
 
+    /**
+     * Reads database state that can change between calls in the same test.
+     *
+     * @phpstan-impure
+     */
     private function versionCount(Page $page): int
     {
         return PageVersion::query()->where('page_uid', $page->uid)->count();

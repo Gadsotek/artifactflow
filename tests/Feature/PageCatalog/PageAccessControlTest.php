@@ -351,8 +351,11 @@ final class PageAccessControlTest extends TestCase
         DB::flushQueryLog();
         DB::enableQueryLog();
 
-        $this->assertSame(WorkspaceRole::Reader, $access->workspaceRole($target, $workspace->uid));
-        $this->assertSame(WorkspaceRole::Reader, $access->workspaceRole($target, $workspace->uid));
+        $workspaceRoles = [
+            $access->workspaceRole($target, $workspace->uid),
+            $access->workspaceRole($target, $workspace->uid),
+        ];
+        $this->assertSame([WorkspaceRole::Reader, WorkspaceRole::Reader], $workspaceRoles);
 
         $queries = DB::getQueryLog();
         DB::disableQueryLog();
