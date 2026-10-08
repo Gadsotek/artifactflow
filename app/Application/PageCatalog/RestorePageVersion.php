@@ -100,7 +100,6 @@ final readonly class RestorePageVersion
                 $actor,
                 $actorUid,
                 $command,
-                $page,
                 &$prunedStoragePaths,
                 &$restoredStoragePaths,
                 &$restoredVersion,

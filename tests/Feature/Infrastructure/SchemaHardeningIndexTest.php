@@ -85,15 +85,11 @@ final class SchemaHardeningIndexTest extends TestCase
     private function hasIndexOnColumns(string $table, array $columns, ?bool $unique = null): bool
     {
         foreach (Schema::getIndexes($table) as $index) {
-            if (!is_array($index)) {
+            if ($index['columns'] !== $columns) {
                 continue;
             }
 
-            if (($index['columns'] ?? null) !== $columns) {
-                continue;
-            }
-
-            if ($unique !== null && ($index['unique'] ?? null) !== $unique) {
+            if ($unique !== null && $index['unique'] !== $unique) {
                 continue;
             }
 
