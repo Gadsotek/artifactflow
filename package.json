@@ -32,11 +32,11 @@
   "dependencies": {
     "@codemirror/lang-html": "^6.4.12",
     "@codemirror/lang-markdown": "^6.5.2",
-    "@codemirror/language": "^6.12.4",
+    "@codemirror/language": "^6.13.1",
     "@codemirror/state": "^6.7.6",
     "@lezer/highlight": "^1.2.5",
     "codemirror": "^6.0.2",
-    "laravel-echo": "^2.5.0",
+    "laravel-echo": "^2.6.1",
     "mermaid": "12.1.0",
     "pusher-js": "^8.6.0",
     "tabulator-tables": "6.6.1"
@@ -55,7 +55,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/vite": "^4.3.3",
     "concurrently": "^10.0.5",
     "eslint": "^10.12.0",
@@ -64,6 +64,6 @@
     "laravel-vite-plugin": "^3.2.0",
     "prettier": "^3.9.9",
     "tailwindcss": "^4.3.2",
-    "vite": "^8.3.2"
+    "vite": "^8.3.3"
   }
 }
