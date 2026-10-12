@@ -1,12 +1,21 @@
+# Match the app's patched Go toolchain without changing the PHP/FrankenPHP base.
+FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS go-toolchain
+
 FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:862bce4c7efe77337d8f8170a262b639e1787141ffe70ae0edd9ec6ef96c6a99 AS frankenphp-security-builder
 
-ENV PATH="/usr/local/go/bin:${PATH}"
+COPY --from=go-toolchain /usr/local/go /opt/go
+
+ENV GOROOT=/opt/go \
+    GOTOOLCHAIN=local \
+    PATH="/opt/go/bin:${PATH}"
 
 WORKDIR /go/src/app/caddy
 
-# Keep gRPC-Go at the patched version for CVE-2026-84445 in the bundled binary.
-RUN go version | grep -E '^go version go1\.26\.7[[:space:]]' \
-    && go get golang.org/x/crypto@v0.55.0 \
+# Go 1.26.9 and x/net 0.60.0 fix CVE-2026-78667/CVE-2026-78669/CVE-2026-97031.
+# x/net requires x/crypto 0.57.0; retain the other reviewed module fixes.
+RUN go version | grep -E '^go version go1\.26\.9[[:space:]]' \
+    && go get golang.org/x/crypto@v0.57.0 \
+    && go get golang.org/x/net@v0.60.0 \
     && go get google.golang.org/grpc@v1.83.2 \
     && go get github.com/getkin/kin-openapi@v0.144.0 \
     && go mod tidy
@@ -17,11 +26,15 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
         -ldflags "-w -s -X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP v1.12.6 PHP $PHP_VERSION Caddy' -X 'github.com/caddyserver/caddy/v2.CustomBinaryName=frankenphp' -X 'github.com/caddyserver/caddy/v2/modules/caddyhttp.ServerHeader=FrankenPHP Caddy'" \
         -buildvcs=true \
     && go version -m /usr/local/bin/frankenphp \
+        | grep -E '^/usr/local/bin/frankenphp: go1\.26\.9$' \
+    && go version -m /usr/local/bin/frankenphp \
         | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.83\.2' \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.144\.0' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.55\.0'
+        | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.57\.0' \
+    && go version -m /usr/local/bin/frankenphp \
+        | grep -E 'golang\.org/x/net[[:space:]]+v0\.60\.0'
 
 FROM dunglas/frankenphp:1-php8.5-alpine@sha256:214b541fe30aeed2717d54f74149b71b2bdb0089718f1fbb8b43bc170ab00939
 

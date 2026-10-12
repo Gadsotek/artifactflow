@@ -311,12 +311,29 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $dockerfile = $this->readProjectFile('Dockerfile');
 
         $this->assertStringContainsString(
-            "go version | grep -E '^go version go1\\.26\\.6[[:space:]]'",
+            "go version | grep -E '^go version go1\\.26\\.9[[:space:]]'",
             $dockerfile,
         );
-        $this->assertStringContainsString('go get golang.org/x/crypto@v0.55.0', $dockerfile);
+        $this->assertMatchesRegularExpression(
+            '/FROM golang:1\\.26\\.9-alpine3\\.24@sha256:[a-f0-9]{64} AS go-toolchain/',
+            $dockerfile,
+        );
+        $this->assertStringContainsString('COPY --from=go-toolchain /usr/local/go /opt/go', $dockerfile);
+        $this->assertStringContainsString('GOROOT=/opt/go', $dockerfile);
+        $this->assertStringContainsString('GOTOOLCHAIN=local', $dockerfile);
+        $this->assertStringContainsString('PATH="/opt/go/bin:${PATH}"', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.55\\.0'",
+            "grep -E '^/usr/local/bin/frankenphp: go1\\.26\\.9$'",
+            $dockerfile,
+        );
+        $this->assertStringContainsString('go get golang.org/x/net@v0.60.0', $dockerfile);
+        $this->assertStringContainsString(
+            "grep -E 'golang\\.org/x/net[[:space:]]+v0\\.60\\.0'",
+            $dockerfile,
+        );
+        $this->assertStringContainsString('go get golang.org/x/crypto@v0.57.0', $dockerfile);
+        $this->assertStringContainsString(
+            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.57\\.0'",
             $dockerfile,
         );
         $this->assertStringContainsString('go get google.golang.org/grpc@v1.83.2', $dockerfile);
@@ -325,13 +342,13 @@ final class CiCoverageGateConfigurationTest extends TestCase
             $dockerfile,
         );
         $this->assertStringContainsString('go get github.com/getkin/kin-openapi@v0.144.0', $dockerfile);
-        $this->assertStringContainsString('go get golang.org/x/crypto@v0.55.0', $dockerfile);
+        $this->assertStringContainsString('go get golang.org/x/crypto@v0.57.0', $dockerfile);
         $this->assertStringContainsString(
             "grep -E 'github\\.com/getkin/kin-openapi[[:space:]]+v0\\.144\\.0'",
             $dockerfile,
         );
         $this->assertStringContainsString(
-            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.55\\.0'",
+            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.57\\.0'",
             $dockerfile,
         );
     }
