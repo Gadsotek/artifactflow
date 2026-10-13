@@ -6,6 +6,15 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+### Security
+
+- Rebuild the application and DOCX processor FrankenPHP binaries with pinned
+  Go 1.26.9 and golang.org/x/net 0.60.0 for the HTTP Range and HTTP/2 SETTINGS
+  CPU-exhaustion and TLS ECH memory-exhaustion fixes (CVE-2026-78667,
+  CVE-2026-78669, and CVE-2026-97031). Both builds verify the compiled
+  toolchain and module versions, update the required x/crypto dependency to
+  0.57.0, and retain the reviewed gRPC and kin-openapi patches.
+
 ## v0.3.5 — 2026-10-08
 
 Security and maintenance update for the application, MCP clients, and isolated
