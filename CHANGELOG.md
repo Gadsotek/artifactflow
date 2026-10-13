@@ -4,7 +4,10 @@ All notable changes to ArtifactFlow will be documented here.
 
 This project is pre-1.0; expect breaking changes between alpha revisions.
 
-## Unreleased
+## v0.3.6 — 2026-10-13
+
+Security and maintenance update for the application and DOCX processor,
+with refreshed frontend dependencies and PHP development tools.
 
 ### Security
 
@@ -14,6 +17,35 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   CVE-2026-78669, and CVE-2026-97031). Both builds verify the compiled
   toolchain and module versions, update the required x/crypto dependency to
   0.57.0, and retain the reviewed gRPC and kin-openapi patches.
+  ([#184](https://github.com/Gadsotek/artifactflow/pull/184))
+
+### Changed
+
+- Updated CodeMirror language support to 6.13.1 and Laravel Echo to 2.6.1,
+  with Vite 8.3.4, Playwright 1.64.0, and concurrently 10.0.6 for frontend
+  builds and browser testing.
+  ([#183](https://github.com/Gadsotek/artifactflow/pull/183))
+- Updated the PHP development tools to Larastan 3.13.0, PHPStan 2.3.1,
+  Rector 2.7.0, and Easy Coding Standard 13.3.3.
+  ([#181](https://github.com/Gadsotek/artifactflow/pull/181))
+
+### Fixed
+
+- Synchronized the cookie-isolation browser test with the HTML editor's
+  asynchronous language switch before filling the title, preventing a focus
+  race that could leave the title empty. All cookie-isolation assertions
+  remain in place across Chromium, Firefox, and WebKit.
+  ([#183](https://github.com/Gadsotek/artifactflow/pull/183))
+
+### Upgrade from v0.3.5
+
+- Deploy the new application image to every application, artifact-host,
+  worker, and scheduler role. Update the dedicated DOCX processor image on
+  installations where DOCX is enabled so both FrankenPHP binaries receive
+  the security fixes. Pin image digests and verify their SBOMs and provenance
+  using the [production operations guide](docs/operations/production.md).
+- No database migrations, required configuration changes, or MCP bridge and
+  Desktop extension updates.
 
 ## v0.3.5 — 2026-10-08
 
