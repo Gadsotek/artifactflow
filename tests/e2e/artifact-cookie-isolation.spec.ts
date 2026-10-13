@@ -117,12 +117,15 @@ test('artifact preview requests carry no application cookies @artifact-security'
 
   await page.locator('select[name="type"]').selectOption('html_artifact');
   await page.locator('select[name="mode"]').selectOption('html_paste');
-  await page.locator('input[name="title"]').fill(title);
 
-  // Wait for the async CodeMirror language switch to fully settle before typing,
-  // otherwise the trailing setValue() can clobber the inserted content on slow runs.
+  // The async language switch focuses CodeMirror when it finishes. Wait before
+  // filling any field so that it cannot steal focus during the title fill.
   await expect(editorForm).toHaveAttribute('data-editor-language', 'html');
   await expect(editorForm).toHaveAttribute('data-editor-ready', 'true');
+
+  const titleInput = page.locator('input[name="title"]');
+  await titleInput.fill(title);
+  await expect(titleInput).toHaveValue(title);
 
   const sourceEditor = page.locator('[data-source-editor-mount] .cm-content');
   await expect(sourceEditor).toBeVisible();
@@ -161,6 +164,7 @@ test('artifact preview requests carry no application cookies @artifact-security'
 
   // Flow 2: saved preview. Saving redirects to the page view, whose iframe
   // loads the signed preview URL from the artifact origin.
+  await expect(titleInput).toHaveValue(title);
   await page.getByRole('button', { name: 'Save page' }).click();
   await expect(page).toHaveURL(/\/pages\/[0-9a-hjkmnp-tv-z]{26}$/u, { timeout: 20_000 });
   await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 20_000 });

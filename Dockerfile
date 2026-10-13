@@ -171,16 +171,25 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
 
 CMD ["/srv/image-parser/start.sh"]
 
+# Keep the Go toolchain separate from the pinned PHP/FrankenPHP builder so
+# standard-library security updates do not require changing the PHP runtime.
+FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS go-toolchain
+
 # FrankenPHP v1.12.6 still resolves vulnerable Go dependencies. Rebuild the
 # bundled binary with patched versions until upstream ships them or newer.
 FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:764a5d89d0042aba4b652225e283f439f63d8505ded2c53158184bb758015640 AS frankenphp-security-builder
 
-ENV PATH="/usr/local/go/bin:${PATH}"
+COPY --from=go-toolchain /usr/local/go /opt/go
+
+ENV GOROOT=/opt/go \
+    GOTOOLCHAIN=local \
+    PATH="/opt/go/bin:${PATH}"
 
 WORKDIR /go/src/app/caddy
 
-RUN go version | grep -E '^go version go1\.26\.6[[:space:]]' \
-    && go get golang.org/x/crypto@v0.55.0 \
+RUN go version | grep -E '^go version go1\.26\.9[[:space:]]' \
+    && go get golang.org/x/crypto@v0.57.0 \
+    && go get golang.org/x/net@v0.60.0 \
     && go get google.golang.org/grpc@v1.83.2 \
     && go get github.com/getkin/kin-openapi@v0.144.0 \
     && go mod tidy
@@ -191,11 +200,15 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
         -ldflags "-w -s -X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP v1.12.6 PHP $PHP_VERSION Caddy' -X 'github.com/caddyserver/caddy/v2.CustomBinaryName=frankenphp' -X 'github.com/caddyserver/caddy/v2/modules/caddyhttp.ServerHeader=FrankenPHP Caddy'" \
         -buildvcs=true \
     && go version -m /usr/local/bin/frankenphp \
+        | grep -E '^/usr/local/bin/frankenphp: go1\.26\.9$' \
+    && go version -m /usr/local/bin/frankenphp \
         | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.83\.2' \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.144\.0' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.55\.0'
+        | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.57\.0' \
+    && go version -m /usr/local/bin/frankenphp \
+        | grep -E 'golang\.org/x/net[[:space:]]+v0\.60\.0'
 
 FROM dunglas/frankenphp:1-php8.5-alpine@sha256:def035e964f46253cb5e46a1f9a4633370f658b8e410305e0730ce7247d0ab6a AS production
 
@@ -206,8 +219,10 @@ COPY --from=frankenphp-security-builder /usr/local/bin/frankenphp /usr/local/bin
 # minimum-version constraint below intentionally permits a later patched Alpine
 # revision, so this layer is not byte-for-byte reproducible from the base digest
 # alone; the release image digest, SBOM, and provenance identify the exact output.
-# The source-rebuilt binary above uses Go 1.26.6 for CVE-2026-39821 and
-# CVE-2026-46600, upgrades grpc-go for GHSA-hrxh-6v49-42gf and
+# The source-rebuilt binary above uses Go 1.26.9 and x/net 0.60.0 for
+# CVE-2026-78667, CVE-2026-78669, and CVE-2026-97031 (also retaining the
+# CVE-2026-39821/CVE-2026-46600 fixes),
+# upgrades grpc-go for GHSA-hrxh-6v49-42gf and
 # CVE-2026-84445, kin-openapi for GHSA-r277-6w6q-xmqw, and x/crypto for
 # CVE-2026-56854.
 # Current apk minimums: c-ares CVE-2026-33630 is fixed in 1.34.8-r0;
