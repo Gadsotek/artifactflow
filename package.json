@@ -37,7 +37,7 @@
     "@lezer/highlight": "^1.2.5",
     "codemirror": "^6.0.2",
     "laravel-echo": "^2.6.1",
-    "mermaid": "12.1.0",
+    "mermaid": "12.2.0",
     "pusher-js": "^8.6.0",
     "tabulator-tables": "6.6.1"
   },
