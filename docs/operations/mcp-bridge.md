@@ -3,7 +3,7 @@
 [MCP setup](mcp.md)
 
 Claude's supported Desktop JSON path cannot supply ArtifactFlow's static
-bearer token directly. The connector therefore uses `mcp-remote@0.14.3` for
+bearer token directly. The connector therefore uses `mcp-remote@0.15.1` for
 all supported local clients, including Codex releases that need the stdio bridge.
 
 The [Claude Desktop extension](mcp-desktop.md) packages the same reviewed lock
@@ -106,19 +106,28 @@ updates itself. Preserve the original bridge smoke and all existing gates.
 
 ## Reviewed version
 
-The 0.14.3 review covers upstream commit
-`6a06aca546a8fd3b7beb040f39761b364893198d` and the
-[0.14.2 to 0.14.3 delta](https://github.com/punkpeye/mcp-remote/compare/v0.14.2...v0.14.3):
-OAuth token persistence now preserves an existing absolute expiry and issuer
-when the SDK saves a stored token again. This prevents a previously expired
-token from receiving a new lifetime during that save. ArtifactFlow supplies
-a static bearer header and enables neither client credentials nor an explicit
-token endpoint. It keeps the default legacy protocol mode and does not enable
-protocol auto-discovery.
+The 0.15.1 review covers upstream commit
+`b529ea1356aa348b250e77f626ca3347ebae3de5` and the
+[0.14.3 to 0.15.1 delta](https://github.com/punkpeye/mcp-remote/compare/v0.14.3...v0.15.1).
+The update serves OAuth callback errors as plain text, preserves discovery and
+issuer information within an authorization flow, releases completed callback
+listeners, and stops retries when another instance's sign-in times out. An
+optional completion redirect forwards no callback parameters. Static OAuth
+client secrets are no longer cached; clients using that option must supply
+their credentials on each invocation.
 
-The published tarball's SHA-512 integrity matches the lock; comparison of the
-published JavaScript confirms only the reviewed token-persistence changes,
-version, and generated chunk references changed. The
+ArtifactFlow supplies a static bearer header and does not enable those OAuth
+options. Default legacy protocol mode, environment-backed headers, CLI
+entrypoints, bundled SDK code, and runtime dependency declarations are
+unchanged. The shell connector retains the default HTTP-first transport;
+Desktop and the direct smoke explicitly use HTTP-only transport and silent
+logging. Protocol auto-discovery remains disabled.
+
+The [published tarball](https://registry.npmjs.org/mcp-remote/-/mcp-remote-0.15.1.tgz)
+was independently hashed; its SHA-512 integrity matches the lock:
+`sha512-znJhxnoQZTDx9AieHZrRYs8YqWKpyH1SKyFEFnMTMDUPpx6r9dSc/L4lKf18DdWMQqKpbwWbfIZfyiVg2RSXzg==`.
+Comparison of the published JavaScript confirms the reviewed source changes,
+version, and generated chunk references account for the executable delta. The
 [undici WebSocket decompression advisory](https://github.com/nodejs/undici/security/advisories/GHSA-3wwx-pv8p-q78v)
 affects the previously locked 7.29.0 release. The bridge overrides this
 transitive dependency to 7.30.0, which includes the 7.29.1 security fixes.
@@ -127,7 +136,7 @@ adds focused diagnostics, decompression, and HTTP/2 WebSocket fixes. Its
 reviewed tarball SHA-512 is
 `sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==`.
 The new lock SHA-256 is
-`cfb1b4da0a64e070c4b3ed3a935d824c50320b1df62bf1465da85c1087eae713`.
+`a37cbf102f51e41c6248efe7c9bd1b2c452f0a38e670b44d7cfa2a057106ba2b`.
 The bridge also locks `proxy-addr` 2.0.8 for
 [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h).
 The reviewed patch rejects cross-family trust matches for native IPv6 and
@@ -135,7 +144,7 @@ short-prefix IPv4-mapped subnets while retaining valid mapped subnet handling.
 Its runtime dependencies, Node.js floor, and MIT license are unchanged.
 The smoke exercises both single- and multiple-subnet trust paths with forged
 forwarded headers and valid-address controls before the authenticated MCP exchange.
-The Node.js floor is unchanged. The Desktop extension advances to 1.0.5 for
+The Node.js floor is unchanged. The Desktop extension advances to 1.0.6 for
 the changed bundled dependencies. The installed smoke verifies the bridge
 version observed by the server, authenticated legacy initialize/tools-list
 traffic without auto-discovery, and absence of the token from stdout/stderr.
