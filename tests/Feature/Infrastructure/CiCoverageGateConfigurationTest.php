@@ -189,7 +189,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
         );
         $this->assertStringContainsString('NIGHTLY_FAILED_TASK=Scan production images (Trivy)', $nightly);
         $this->assertStringContainsString('nightly-audit-results-', $nightly);
-        $this->assertStringContainsString('uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a', $nightly);
+        $this->assertStringContainsString('uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9', $nightly);
         $this->assertStringContainsString("    if: always()\n", $this->afterNeedle($nightly, "  notify:\n"));
     }
 
