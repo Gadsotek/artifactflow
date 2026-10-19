@@ -23,6 +23,8 @@
       "Edit(/tests/Feature/Infrastructure/HarnessPolicyConfigurationTest.php)"
     ],
     "deny": [
+      "Grep",
+      "Glob",
       "Edit(/.git/**)",
       "Read(/.env*)",
       "Read(/**/.env*)",

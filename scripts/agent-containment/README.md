@@ -47,6 +47,14 @@ a promise that no filesystem object outside the project is ever readable.
   restricts shell reads under the documented user-data roots. Shell descendants
   inherit the native boundary. Secret read/write and control-write restrictions
   apply inside the project. Hook failures block, and bypass mode is disabled.
+- Claude's native `Grep` and `Glob` tools are disabled with whole-tool deny
+  rules and an adapter denial. Use sandboxed Bash with `rg`, `grep`, or file
+  discovery commands for searches, including searches limited to source files.
+  Native file tools run outside the Bash sandbox, and Claude documents applying
+  `Read` denials to native searches as best effort. Selector inspection alone
+  cannot protect broad or omitted selectors. Scoped `Glob(path)` rules in settings files are not enforced. The existing per-file `Read` rules remain in place.
+  See the official [file-permission semantics](https://code.claude.com/docs/en/permissions#read-and-edit)
+  and [sandbox boundary](https://code.claude.com/docs/en/sandboxing#what-runs-outside-the-sandbox).
 - The small `guard_tool.py` adapter separates native reads from edits. Reading
   instructions and dependency source no longer requests write permission.
   Other tools still pass to the unchanged shared write guard.
@@ -163,6 +171,12 @@ The Claude check uses two bounded print-mode sessions and their Bash tools;
 it needs an existing Claude login and may consume subscription/API usage. It
 disables unrelated MCP connections and uses only synthetic fixture content.
 The checker accepts tool-result evidence, never the model's narrative verdict.
+The launch explicitly requests native Grep/Glob as well as Bash/Read and requires
+the native initialization event to advertise Bash/Read while excluding both
+search tools. This verifies that the effective session excludes both tools despite
+explicit requests, including on clients that omit search tools by default; an absent or malformed initialization event
+does not count as proof. Hook-only tests also reject native search events for
+explicit, broad, omitted and malformed selectors without opening target files.
 No command is automatically retried unsandboxed.
 Directly invoking `run_claude.py` without `--run` only prepares fixtures and
 returns an incomplete result; the explicit Make target supplies `--run`.

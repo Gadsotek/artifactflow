@@ -3,6 +3,7 @@
 
 Filesystem containment is enforced by the client, not by this adapter. The
 adapter preserves secret checks without treating a read as a control-file edit.
+Claude searches must use sandboxed Bash instead of native Grep or Glob.
 """
 from __future__ import annotations
 
@@ -51,11 +52,13 @@ def main() -> int:
             value for name in ("file_path", "path", "filePath")
             if isinstance(value := tool_input.get(name), str) and value
         ]
-    # Grep/Glob may omit the directory to search the current working directory.
-    # Native working-directory restrictions still apply to the traversal.
+    # Codex searches may omit the directory. Claude native search filtering is
+    # insufficient for this policy, regardless of the selector or input shape.
+    search_disabled = args.agent == "claude" and tool in {"grep", "glob"}
     missing = not paths and tool in {"read", "lsp"}
-    secret = any(is_secret_path(path) for path in paths)
-    code = "unknown_read_target" if missing else "secret_file_read" if secret else None
+    secret = not search_disabled and any(is_secret_path(path) for path in paths)
+    code = ("native_search_disabled" if search_disabled else
+            "unknown_read_target" if missing else "secret_file_read" if secret else None)
     emit_hook_trace(
         hook="guard_tool.py", agent=args.agent,
         event="PreToolUse", tool=tool,
@@ -63,6 +66,8 @@ def main() -> int:
     )
     if code:
         reason = (
+            "Native Grep and Glob are disabled. Use sandboxed Bash for searches."
+            if search_disabled else
             "Refusing a read tool whose target cannot be determined."
             if missing else "Refusing to read secret-bearing files."
         )

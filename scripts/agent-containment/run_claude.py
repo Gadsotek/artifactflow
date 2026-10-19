@@ -87,6 +87,17 @@ def validate_stream(
     if len(final) != 1 or final[0].get("is_error") is not False \
             or final[0].get("subtype") != "success":
         return {"passed": False, "category": "client_did_not_complete", "cases": []}
+    initializations = [event for event in events if event.get("type") == "system"
+                       and event.get("subtype") == "init"]
+    if len(initializations) != 1:
+        return {"passed": False, "category": "missing_or_extra_session_init", "cases": []}
+    tools = initializations[0].get("tools")
+    # The launch explicitly requests Grep/Glob, including through --allowedTools.
+    # Require the native initialization inventory to exclude both tools despite
+    # those requests; this proves effective availability, not rule provenance.
+    if not isinstance(tools, list) or not all(isinstance(tool, str) for tool in tools) \
+            or sorted(tools) != ["Bash", "Read"]:
+        return {"passed": False, "category": "unexpected_session_tools", "cases": []}
     calls: dict[str, dict[str, object]] = {}
     results: dict[str, dict[str, object]] = {}
     for event in events:
@@ -179,7 +190,9 @@ def validate_stream(
             category = "client_read_denied" if passed else "unverified_read_denial"
         cases.append({"name": f"Read tool {label}", "passed": passed, "category": category})
     return {"passed": bool(cases) and all(item["passed"] is True for item in cases),
-            "category": "tool_evidence_checked", "cases": cases}
+            "category": "tool_evidence_checked", "cases": cases,
+            "native_search_tools": {"source": "native system init", "available": ["Bash", "Read"],
+                                    "unavailable": ["Grep", "Glob"]}}
 
 
 def validate_candidate(candidate: object) -> dict[str, object]:
@@ -191,8 +204,12 @@ def validate_candidate(candidate: object) -> dict[str, object]:
     sandbox = candidate.get("sandbox", {})
     if not isinstance(permissions, dict) or not isinstance(sandbox, dict):
         raise ValueError("Candidate permissions and sandbox must be objects")
+    denied_tools = permissions.get("deny")
     if permissions.get("blockReadsOutsideWorkingDirectories") is not True \
             or permissions.get("disableBypassPermissionsMode") != "disable" \
+            or not isinstance(denied_tools, list) \
+            or not all(isinstance(rule, str) for rule in denied_tools) \
+            or not {"Grep", "Glob"}.issubset(denied_tools) \
             or "Bash(dangerouslyDisableSandbox:true)" not in permissions.get("ask", []) \
             or sandbox.get("enabled") is not True \
             or sandbox.get("failIfUnavailable") is not True \
@@ -300,7 +317,7 @@ def build_launch(
     launch = [claude, "--print", "--permission-mode", "dontAsk", "--permission-prompts", "none",
               "--setting-sources", "project", "--settings", str(runtime_options),
               "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
-              "--tools", "Bash,Read", "--allowedTools", f"Bash({shell_command})",
+              "--tools", "Bash,Read,Grep,Glob", "--allowedTools", f"Bash({shell_command})", "Grep", "Glob",
               "--disable-slash-commands", "--no-chrome", "--no-session-persistence",
               "--max-budget-usd", str(budget), "--include-hook-events",
               "--output-format", "stream-json", "--verbose"]

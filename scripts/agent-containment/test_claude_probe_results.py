@@ -60,6 +60,7 @@ class ClaudeProbeResultsTest(unittest.TestCase):
                 denials.append({"tool_name": "Read", "tool_use_id": identifier})
         return [{"type": "assistant", "message": {"content": calls}},
                 {"type": "user", "message": {"content": results}},
+                {"type": "system", "subtype": "init", "tools": ["Bash", "Read"]},
                 {"type": "result", "subtype": "success", "is_error": False, "permission_denials": denials}]
 
     def validate(self, events: list[dict]) -> dict:
@@ -70,6 +71,110 @@ class ClaudeProbeResultsTest(unittest.TestCase):
         result = self.validate(self.fixture())
         self.assertIs(result["passed"], True)
         self.assertEqual(4, len(result["cases"]))
+        self.assertEqual({"source": "native system init", "available": ["Bash", "Read"],
+                          "unavailable": ["Grep", "Glob"]}, result.get("native_search_tools"))
+
+    def test_missing_or_duplicate_native_initialization_does_not_pass(self) -> None:
+        for duplicate in (False, True):
+            with self.subTest(duplicate=duplicate):
+                events = self.fixture()
+                initialization = events.pop(-2)
+                if duplicate:
+                    events[-1:-1] = [initialization, copy.deepcopy(initialization)]
+                result = self.validate(events)
+                self.assertIs(result["passed"], False)
+                self.assertEqual("missing_or_extra_session_init", result["category"])
+
+    def test_only_top_level_native_system_init_supplies_tool_inventory(self) -> None:
+        for event_type in ("assistant", "user", "result", "tool_result"):
+            with self.subTest(event_type=event_type):
+                events = self.fixture()
+                events[-2]["type"] = event_type
+                self.assertIs(self.validate(events)["passed"], False)
+        events = self.fixture()
+        initialization = events.pop(-2)
+        events[0]["message"]["content"].append(initialization)
+        events[1]["message"]["content"].append({
+            "type": "text", "text": json.dumps(initialization),
+        })
+        events[-1]["result"] = initialization
+        self.assertIs(self.validate(events)["passed"], False)
+
+    def test_missing_malformed_or_duplicate_native_tool_inventory_does_not_pass(self) -> None:
+        for tools in (None, "Bash,Read", {}, ["Bash", {}], ["Bash", 1],
+                      ["Bash", "Read", "Read"], ["Bash", "Read", ""], []):
+            with self.subTest(tools=tools):
+                events = self.fixture()
+                events[-2]["tools"] = tools
+                result = self.validate(events)
+                self.assertIs(result["passed"], False)
+                self.assertEqual("unexpected_session_tools", result["category"])
+        events = self.fixture()
+        del events[-2]["tools"]
+        self.assertIs(self.validate(events)["passed"], False)
+
+    def test_native_search_tools_and_missing_positive_tools_do_not_pass(self) -> None:
+        for tools in (["Bash", "Read", "Grep"], ["Bash", "Read", "Glob"],
+                      ["Bash", "Read", "Grep", "Glob"], ["Bash"], ["Read"],
+                      ["Bash", "Read", "synthetic-private-value"]):
+            with self.subTest(tools=tools):
+                events = self.fixture()
+                events[-2]["tools"] = tools
+                result = self.validate(events)
+                self.assertIs(result["passed"], False)
+                self.assertEqual("unexpected_session_tools", result["category"])
+                self.assertNotIn("synthetic-private-value", json.dumps(result))
+
+    def test_native_tool_inventory_order_does_not_matter(self) -> None:
+        events = self.fixture()
+        events[-2]["tools"].reverse()
+        self.assertIs(self.validate(events)["passed"], True)
+
+    def test_launch_requests_native_search_tools_even_when_not_in_client_defaults(self) -> None:
+        launch, prompt, command = self.module.build_launch(
+            "synthetic-claude", Path("/fixture/workspace"), Path("/fixture/workspace/specs.json"),
+            Path("/fixture/workspace/options.json"), READ_TARGETS, 0.5,
+        )
+        self.assertEqual("Bash,Read,Grep,Glob", launch[launch.index("--tools") + 1])
+        allowed_start = launch.index("--allowedTools") + 1
+        allowed_end = next(index for index in range(allowed_start, len(launch))
+                           if launch[index].startswith("--"))
+        self.assertEqual([f"Bash({command})", "Grep", "Glob"], launch[allowed_start:allowed_end])
+        self.assertIn("Use Bash exactly once, in the normal sandbox", prompt)
+        for path in READ_TARGETS.values():
+            self.assertIn(str(path), prompt)
+
+    def candidate(self) -> dict:
+        return {"permissions": {"blockReadsOutsideWorkingDirectories": True,
+                                "disableBypassPermissionsMode": "disable",
+                                "ask": ["Bash(dangerouslyDisableSandbox:true)"],
+                                "deny": ["Grep", "Glob"]},
+                "sandbox": {"enabled": True, "failIfUnavailable": True}}
+
+    def test_candidate_requires_bare_native_search_tool_denials(self) -> None:
+        candidate = self.candidate()
+        self.assertIs(candidate, self.module.validate_candidate(candidate))
+        for tool in ("Grep", "Glob"):
+            for replacement in (None, f"{tool}(/**)", f"{tool}(path:*)", tool.lower()):
+                with self.subTest(tool=tool, replacement=replacement):
+                    candidate = self.candidate()
+                    candidate["permissions"]["deny"].remove(tool)
+                    if replacement is not None:
+                        candidate["permissions"]["deny"].append(replacement)
+                    with self.assertRaisesRegex(ValueError, "containment prerequisites"):
+                        self.module.validate_candidate(candidate)
+
+    def test_candidate_rejects_missing_or_malformed_denial_array(self) -> None:
+        for denials in (None, "Grep,Glob", {"Grep": True, "Glob": True}, ["Grep", "Glob", {}]):
+            with self.subTest(denials=denials):
+                candidate = self.candidate()
+                candidate["permissions"]["deny"] = denials
+                with self.assertRaisesRegex(ValueError, "containment prerequisites"):
+                    self.module.validate_candidate(candidate)
+        candidate = self.candidate()
+        del candidate["permissions"]["deny"]
+        with self.assertRaisesRegex(ValueError, "containment prerequisites"):
+            self.module.validate_candidate(candidate)
 
     def test_assistant_narrative_cannot_supply_a_shell_receipt(self) -> None:
         events = self.fixture()

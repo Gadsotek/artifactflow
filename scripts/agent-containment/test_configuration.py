@@ -176,6 +176,29 @@ class ContainmentConfigurationTest(unittest.TestCase):
                 for operation in ("Read", "Edit"):
                     self.assertIn(f"{operation}(/{recursive_path})", tool_denials)
 
+    def test_claude_searches_require_the_native_shell_sandbox(self) -> None:
+        denials = self.claude.get("permissions", {}).get("deny", [])
+        for tool in ("Grep", "Glob"):
+            self.assertIn(tool, denials, f"Native {tool} must be disabled; scoped file rules are insufficient.")
+
+    def test_claude_search_validator_rejects_missing_whole_tool_denials(self) -> None:
+        for tool in ("Grep", "Glob"):
+            with self.subTest(tool=tool):
+                candidate = copy.deepcopy(self.claude)
+                candidate["permissions"]["deny"] = [
+                    rule for rule in candidate["permissions"]["deny"] if rule != tool
+                ]
+                checker = ContainmentConfigurationTest(
+                    "test_claude_searches_require_the_native_shell_sandbox",
+                )
+                checker.claude = candidate
+                result = unittest.TestResult()
+                checker.run(result)
+                self.assertFalse(result.wasSuccessful())
+                self.assertEqual([], result.errors)
+                self.assertEqual(1, len(result.failures))
+                self.assertIn(f"Native {tool} must be disabled", result.failures[0][1])
+
     def test_claude_control_paths_require_approval_and_are_not_child_writable(self) -> None:
         asks = self.claude.get("permissions", {}).get("ask", [])
         filesystem = self.claude.get("sandbox", {}).get("filesystem", {})
