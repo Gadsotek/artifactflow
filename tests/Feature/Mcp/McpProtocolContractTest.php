@@ -216,6 +216,96 @@ final class McpProtocolContractTest extends McpTestCase
         $this->postJsonRpc($token, 'tools/list')->assertOk();
     }
 
+    public function test_mcp_rejects_an_explicit_null_request_id(): void
+    {
+        config(['session.driver' => 'database']);
+        $service = $this->createServiceAccount('Null Id Agent', 'null-id-agent@example.test');
+        $token = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_SEARCH])->plainTextToken;
+
+        $response = $this->postMcp($token, [
+            'jsonrpc' => '2.0',
+            'id' => null,
+            'method' => 'tools/list',
+            'params' => [],
+        ])
+            ->assertStatus(400)
+            ->assertJsonPath('jsonrpc', '2.0')
+            ->assertJsonPath('error.code', -32600)
+            ->assertJsonPath('error.message', 'Invalid Request: The [id] member must be a string, number.')
+            ->assertJsonMissingPath('result')
+            ->assertHeaderMissing('MCP-Session-Id');
+
+        $this->assertSame([], $response->headers->getCookies());
+        $this->assertDatabaseCount('sessions', 0);
+        $this->assertDatabaseCount('mcp_client_sessions', 0);
+    }
+
+    public function test_mcp_rejects_an_unsupported_legacy_protocol_header(): void
+    {
+        config(['session.driver' => 'database']);
+        $service = $this->createServiceAccount('Unsupported Legacy Agent', 'unsupported-legacy-agent@example.test');
+        $token = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_SEARCH])->plainTextToken;
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $token,
+            'MCP-Protocol-Version' => '1900-01-01',
+        ])->postJson('/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 'unsupported-legacy-tools-list',
+            'method' => 'tools/list',
+            'params' => [],
+        ])
+            ->assertStatus(400)
+            ->assertExactJson([
+                'jsonrpc' => '2.0',
+                'id' => 'unsupported-legacy-tools-list',
+                'error' => [
+                    'code' => -32022,
+                    'message' => 'Unsupported protocol version',
+                    'data' => [
+                        'supported' => ['2025-11-25', '2025-06-18'],
+                        'requested' => '1900-01-01',
+                    ],
+                ],
+            ])
+            ->assertHeaderMissing('MCP-Session-Id');
+
+        $this->assertSame([], $response->headers->getCookies());
+        $this->assertDatabaseCount('sessions', 0);
+        $this->assertDatabaseCount('mcp_client_sessions', 0);
+    }
+
+    public function test_mcp_accepts_supported_legacy_protocol_headers_without_session_state(): void
+    {
+        config(['session.driver' => 'database']);
+        $service = $this->createServiceAccount('Legacy Header Agent', 'legacy-header-agent@example.test');
+        $token = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_SEARCH])->plainTextToken;
+
+        foreach (['2025-11-25', '2025-06-18'] as $version) {
+            $id = 'legacy-tools-list-' . $version;
+            $response = $this->withHeaders([
+                'Authorization' => 'Bearer ' . $token,
+                'MCP-Protocol-Version' => $version,
+            ])->postJson('/mcp', [
+                'jsonrpc' => '2.0',
+                'id' => $id,
+                'method' => 'tools/list',
+                'params' => [],
+            ])
+                ->assertOk()
+                ->assertJsonPath('id', $id)
+                ->assertJsonMissingPath('error')
+                ->assertHeaderMissing('MCP-Session-Id');
+
+            $tools = $response->json('result.tools');
+            $this->assertIsArray($tools);
+            $this->assertNotEmpty($tools);
+            $this->assertSame([], $response->headers->getCookies());
+            $this->assertDatabaseCount('sessions', 0);
+            $this->assertDatabaseCount('mcp_client_sessions', 0);
+        }
+    }
+
     public function test_server_discover_advertises_the_current_protocol_without_an_mcp_session(): void
     {
         $service = $this->createServiceAccount('Discovery Agent', 'discovery-agent@example.test');
