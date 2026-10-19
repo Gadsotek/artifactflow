@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"$(git rev-parse --show-toplevel)/scripts/ai-hooks/guard_file_write.py\" --agent codex || exit 2",
+            "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"$(git rev-parse --show-toplevel)/scripts/agent-containment/guard_tool.py\" --agent codex --write-guard \"$(git rev-parse --show-toplevel)/scripts/ai-hooks/guard_file_write.py\" || exit 2",
             "timeout": 10,
             "statusMessage": "Checking tool and file safety"
           }

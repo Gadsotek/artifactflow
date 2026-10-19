@@ -152,3 +152,13 @@ Do not fix adjacent defects or implement nearby improvements during the current 
 If a requested change conflicts with the documented product direction, architecture, security model, or these instructions, stop and call out the conflict before implementing it.
 
 Small changes still need tests when they affect behavior. Documentation-only and ignore-file changes do not require the full gate suite, but they must not reduce or bypass any gate.
+
+## Native Agent Containment
+
+Launch from this repository with the native filesystem policy enabled. Unrelated
+user files and sibling checkouts are denied by default. Request an explicit,
+narrow human-approved access grant before reading outside the project; never
+change permissions, add directories, or switch tools to evade a denial. An
+unsandboxed command approval grants host authority for that invocation and must
+be reviewed accordingly. See `scripts/agent-containment/README.md` for supported
+clients, runtime/temp exceptions, read-only grants, and conformance checks.

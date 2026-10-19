@@ -45,6 +45,11 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
             "grep -E 'google\\.golang\\.org/grpc[[:space:]]+v1\\.83\\.2'",
             $dockerfile,
         );
+        $this->assertStringContainsString('go get github.com/getkin/kin-openapi@v0.149.0', $dockerfile);
+        $this->assertStringContainsString(
+            "grep -E 'github\\.com/getkin/kin-openapi[[:space:]]+v0\\.149\\.0'",
+            $dockerfile,
+        );
         $this->assertStringContainsString("RUN install-php-extensions \\\n    pcntl \\\n    zip", $dockerfile);
         $this->assertStringNotContainsString('docker-php-ext-install', $dockerfile);
         $this->assertStringContainsString('libreoffice-writer=25.8.7.3-r0', $dockerfile);

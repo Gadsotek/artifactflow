@@ -830,11 +830,40 @@ def find_encoded_execution(command: str) -> Finding | None:
     )
 
 
+def mask_static_literal_pipes(command: str) -> str:
+    # Only a direct, static search command has reviewed non-executable arguments.
+    # Other commands can execute quoted payloads (env -S, make --eval, awk system).
+    if "\n" in command or "\r" in command:
+        return command
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return command
+    if (not tokens or os.path.basename(normalize_path_token(tokens[0])) not in {"rg", "grep"}
+            or any(token and set(token) <= set("();<>|&") for token in tokens)
+            or any(token in {"--pre", "--hostname-bin"}
+                   or token.startswith(("--pre=", "--hostname-bin=")) for token in tokens)):
+        return command
+    if "$" in command or "`" in command or any(
+        os.path.basename(normalize_path_token(token)) in SHELL_EXECUTORS | {"eval"}
+        for token in tokens
+    ):
+        return command
+
+    return re.sub(
+        r"""'[^']*'|"(?:\\.|[^"\\])*"|\\.""",
+        lambda match: match.group().replace("|", " "),
+        command,
+    )
+
+
 def find_piped_interpreter_execution(command: str) -> Finding | None:
     executor_names = "|".join(sorted(SHELL_EXECUTORS | SECRET_AWARE_INTERPRETERS))
     if re.search(
         rf"\|\s*(?:(?:command|env|exec|nice|nohup)\s+)*(?:{executor_names})\b",
-        command,
+        mask_static_literal_pipes(command),
         re.IGNORECASE,
     ) is None:
         return None
@@ -1085,12 +1114,51 @@ def find_cloud_risk(segment: list[str]) -> Finding | None:
     return None
 
 
+def join_shell_line_continuations(command: str) -> str:
+    # A real continuation is removed by the shell before tokenization. Preserve
+    # newlines in comments/single quotes and escaped backslashes so a later
+    # command cannot be folded into the safe search-command exception.
+    result: list[str] = []
+    quote = ""
+    comment = False
+    word_start = True
+    index = 0
+    while index < len(command):
+        character = command[index]
+        if comment:
+            comment = character != "\n"
+            if not comment:
+                word_start = True
+        elif character == "\\" and quote != "'" and index + 1 < len(command):
+            following = command[index + 1]
+            if following != "\n":
+                result.extend((character, following))
+                word_start = False
+            index += 2
+            continue
+        elif character == quote:
+            quote = ""
+        elif not quote and character in {"'", '"'}:
+            quote = character
+            word_start = False
+        elif not quote and character == "#" and word_start:
+            comment = True
+        elif not quote:
+            # A literal or escaped character (including whitespace) starts a
+            # word; only an unquoted shell delimiter makes # a comment again.
+            word_start = character in " \t\n;&|()<>"
+        result.append(character)
+        index += 1
+    return "".join(result)
+
+
 def scan_command(command: str) -> list[Finding]:
     findings: list[Finding] = []
+    command = join_shell_line_continuations(command)
     statements = command.splitlines() or [command]
 
     if "\n" in command:
-        statements = [re.sub(r"\\?\r?\n", " ", command), *statements]
+        statements = [command, re.sub(r"\r?\n", " ", command), *statements]
 
     for statement in statements:
         if command_contains_secret_substitution(statement):

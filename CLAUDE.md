@@ -18,3 +18,9 @@ Critical working agreements:
 - Every commit requires DCO sign-off through `git commit -s` or `git commit --signoff`.
 
 Project Claude hooks live in `.claude/settings.json` and share their implementation with Codex hook scripts under `scripts/ai-hooks/`.
+
+Claude Code 2.1.295+ is required for this project's native containment and
+fail-closed hooks. Start in the repository root. Outside-folder access requires
+an explicit human-controlled grant; do not change settings or switch tools to
+evade a denial. See `scripts/agent-containment/README.md` for narrow read-only
+grants, native conformance checks, and the scope of unsandboxed approvals.

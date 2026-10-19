@@ -341,10 +341,10 @@ final class CiCoverageGateConfigurationTest extends TestCase
             "grep -E 'google\\.golang\\.org/grpc[[:space:]]+v1\\.83\\.2'",
             $dockerfile,
         );
-        $this->assertStringContainsString('go get github.com/getkin/kin-openapi@v0.144.0', $dockerfile);
+        $this->assertStringContainsString('go get github.com/getkin/kin-openapi@v0.149.0', $dockerfile);
         $this->assertStringContainsString('go get golang.org/x/crypto@v0.57.0', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E 'github\\.com/getkin/kin-openapi[[:space:]]+v0\\.144\\.0'",
+            "grep -E 'github\\.com/getkin/kin-openapi[[:space:]]+v0\\.149\\.0'",
             $dockerfile,
         );
         $this->assertStringContainsString(

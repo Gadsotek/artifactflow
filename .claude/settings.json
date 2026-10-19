@@ -1,4 +1,137 @@
 {
+  "permissions": {
+    "blockReadsOutsideWorkingDirectories": true,
+    "disableBypassPermissionsMode": "disable",
+    "ask": [
+      "Bash(dangerouslyDisableSandbox:true)",
+      "Edit(/.claude/**)",
+      "Edit(/.codex/**)",
+      "Edit(/.github/workflows/**)",
+      "Edit(/.semgrep/**)",
+      "Edit(/AGENTS.md)",
+      "Edit(/CLAUDE.md)",
+      "Edit(/Makefile)",
+      "Edit(/SECURITY.md)",
+      "Edit(/THREAT-MODEL.md)",
+      "Edit(/harness/**)",
+      "Edit(/phpstan.neon)",
+      "Edit(/phpunit.xml)",
+      "Edit(/rector.php)",
+      "Edit(/scripts/ai-hooks/**)",
+      "Edit(/scripts/agent-containment/**)",
+      "Edit(/tests/Feature/Architecture/AiHarnessDriftContractTest.php)",
+      "Edit(/tests/Feature/Infrastructure/HarnessPolicyConfigurationTest.php)"
+    ],
+    "deny": [
+      "Edit(/.git/**)",
+      "Read(/.env*)",
+      "Read(/**/.env*)",
+      "Edit(/.env*)",
+      "Edit(/**/.env*)",
+      "Read(/**/.npmrc)",
+      "Edit(/**/.npmrc)",
+      "Read(/**/auth.json)",
+      "Edit(/**/auth.json)",
+      "Read(/**/credentials)",
+      "Edit(/**/credentials)",
+      "Read(/**/credentials/**)",
+      "Edit(/**/credentials/**)",
+      "Read(/**/credentials.json)",
+      "Edit(/**/credentials.json)",
+      "Read(/**/service-account.json)",
+      "Edit(/**/service-account.json)",
+      "Read(/**/*.pem)",
+      "Edit(/**/*.pem)",
+      "Read(/**/*.key)",
+      "Edit(/**/*.key)",
+      "Read(/**/*.p12)",
+      "Edit(/**/*.p12)",
+      "Read(/**/*.pfx)",
+      "Edit(/**/*.pfx)",
+      "Read(/**/*.jks)",
+      "Edit(/**/*.jks)",
+      "Read(/**/*.keystore)",
+      "Edit(/**/*.keystore)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": true,
+    "autoAllowBashIfSandboxed": false,
+    "excludedCommands": [],
+    "filesystem": {
+      "denyRead": [
+        "./.env*",
+        "./**/.env*",
+        "./.npmrc",
+        "./**/.npmrc",
+        "./auth.json",
+        "./**/auth.json",
+        "./credentials",
+        "./**/credentials",
+        "./credentials.json",
+        "./**/credentials.json",
+        "./service-account.json",
+        "./**/service-account.json",
+        "./*.pem",
+        "./**/*.pem",
+        "./*.key",
+        "./**/*.key",
+        "./*.p12",
+        "./**/*.p12",
+        "./*.pfx",
+        "./**/*.pfx",
+        "./*.jks",
+        "./**/*.jks",
+        "./*.keystore",
+        "./**/*.keystore"
+      ],
+      "denyWrite": [
+        "./.env*",
+        "./**/.env*",
+        "./.npmrc",
+        "./**/.npmrc",
+        "./auth.json",
+        "./**/auth.json",
+        "./credentials",
+        "./**/credentials",
+        "./credentials.json",
+        "./**/credentials.json",
+        "./service-account.json",
+        "./**/service-account.json",
+        "./*.pem",
+        "./**/*.pem",
+        "./*.key",
+        "./**/*.key",
+        "./*.p12",
+        "./**/*.p12",
+        "./*.pfx",
+        "./**/*.pfx",
+        "./*.jks",
+        "./**/*.jks",
+        "./*.keystore",
+        "./**/*.keystore",
+        "./.claude",
+        "./.codex",
+        "./.github/workflows",
+        "./.semgrep",
+        "./AGENTS.md",
+        "./CLAUDE.md",
+        "./Makefile",
+        "./SECURITY.md",
+        "./THREAT-MODEL.md",
+        "./harness",
+        "./phpstan.neon",
+        "./phpunit.xml",
+        "./rector.php",
+        "./scripts/ai-hooks",
+        "./scripts/agent-containment",
+        "./tests/Feature/Architecture/AiHarnessDriftContractTest.php",
+        "./tests/Feature/Infrastructure/HarnessPolicyConfigurationTest.php"
+      ]
+    }
+  },
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -6,7 +139,8 @@
           {
             "type": "command",
             "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"${CLAUDE_PROJECT_DIR}/scripts/ai-hooks/guard_prompt.py\" --agent claude || exit 2",
-            "timeout": 5
+            "timeout": 5,
+            "onFailure": "block"
           }
         ]
       }
@@ -18,7 +152,8 @@
           {
             "type": "command",
             "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"${CLAUDE_PROJECT_DIR}/scripts/ai-hooks/guard_command.py\" --agent claude || exit 2",
-            "timeout": 10
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },
@@ -27,8 +162,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"${CLAUDE_PROJECT_DIR}/scripts/ai-hooks/guard_file_write.py\" --agent claude || exit 2",
-            "timeout": 10
+            "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"${CLAUDE_PROJECT_DIR}/scripts/agent-containment/guard_tool.py\" --agent claude --write-guard \"${CLAUDE_PROJECT_DIR}/scripts/ai-hooks/guard_file_write.py\" || exit 2",
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       }
@@ -40,7 +176,8 @@
           {
             "type": "command",
             "command": "if ! command -v python3 >/dev/null 2>&1; then echo 'ArtifactFlow AI safety hook runner requires python3; denying operation.' >&2; exit 2; fi; python3 \"${CLAUDE_PROJECT_DIR}/scripts/ai-hooks/guard_command.py\" --agent claude --event PermissionRequest || exit 2",
-            "timeout": 10
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       }

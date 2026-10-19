@@ -13,7 +13,10 @@ project-specific substitutions. ArtifactFlow-specific application architecture, 
 Laravel/Playwright wrappers remain in their normal repository locations.
 
 `ai-hooks-contract.json` defines the intentionally shared AI safety harness. Repositories using
-the contract copy the same contract version and hashes.
+the contract copy the same contract version and hashes. Version 8 narrows
+literal-pipe masking to reviewed static search commands. Executable wrapper
+payloads and compound commands retain interpreter-pipeline denials; ordinary
+quoted search patterns remain usable. ArtifactFlow and HNS share this contract.
 
 - `shared_files` must be byte-identical.
 - `normalized_files` may differ only by their declared `project_substitutions`; the test replaces
@@ -23,3 +26,11 @@ the contract copy the same contract version and hashes.
 
 `tests/Feature/Architecture/AiHarnessDriftContractTest.php` enforces the ArtifactFlow side of the
 contract without reading a sibling checkout in CI.
+
+## Project-native containment
+
+The [native containment layer](../scripts/agent-containment/README.md) configures
+Codex and Claude filesystem boundaries and validates them with synthetic
+conformance probes. It is project-specific and outside the shared hook byte
+contract. Hooks remain defense in depth; subprocess containment comes from the
+native sandbox.

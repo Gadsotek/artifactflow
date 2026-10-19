@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from policy import scan_command, scan_file_write, scan_prompt, strongest_finding
+from policy_commands import mask_static_literal_pipes
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -372,6 +373,43 @@ def main() -> int:
     assert_finding("find storage -name '*.tmp' -delete", "find_execution", "deny")
     assert_finding("find storage -type f -exec cat {} \\;", "find_execution", "deny")
     assert_finding("printf '%s\\n' harmless.tmp | xargs rm", "xargs_execution", "deny")
+    assert_no_command_finding("rg -n 'foo|python|bar' README.md")
+    assert_no_command_finding('rg -n "foo|python|bar" README.md')
+    assert_no_command_finding(r"rg -n foo\|python\|bar README.md")
+    assert_no_command_finding("grep -n 'foo|python|bar' README.md")
+    assert_no_command_finding('/usr/bin/grep -n "foo|python|bar" README.md')
+    assert_no_command_finding("rg -n \\\n 'foo|python|bar' README.md")
+    assert_no_command_finding("rg -n 'foo|python|bar' \\\n README.md")
+    assert_no_command_finding("rg foo#bar \\\n 'foo|python|bar' README.md")
+    assert_no_command_finding("rg foo\\ #bar \\\n 'foo|python|bar' README.md")
+    assert_no_command_finding("rg \\ #bar \\\n 'foo|python|bar' README.md")
+    assert_no_command_finding("rg foo\\#bar \\\n 'foo|python|bar' README.md")
+    assert_no_command_finding("rg 'foo'#bar \\\n 'foo|python|bar' README.md")
+    assert_no_command_finding("rg \"\"#bar \\\n 'foo|python|bar' README.md")
+    assert_finding("rg --pre 'owned | python3' ordinary README.md", "piped_interpreter_execution", "deny")
+    assert_finding("rg --pre='owned | python3' ordinary README.md", "piped_interpreter_execution", "deny")
+    assert_finding("rg --hostname-bin 'owned | python3' ordinary README.md", "piped_interpreter_execution", "deny")
+    assert_finding("rg --hostname-bin='owned | python3' ordinary README.md", "piped_interpreter_execution", "deny")
+    # Pure scanner data; these executable payloads must never lose their denial.
+    assert_finding('env -S \'sh -c "printf pass | python3"\'', "piped_interpreter_execution", "deny")
+    assert_finding('/usr/bin/env -S \'sh -c "printf pass | python3"\'', "piped_interpreter_execution", "deny")
+    assert_finding("make --eval='audit-only: ; printf pass | python3' audit-only", "piped_interpreter_execution", "deny")
+    assert_finding('awk \'BEGIN { system("printf pass | python3") }\'', "piped_interpreter_execution", "deny")
+    assert_finding('rg ordinary README.md; awk \'BEGIN { system("printf pass | python3") }\'', "piped_interpreter_execution", "deny")
+    assert_finding('rg ordinary README.md & awk \'BEGIN { system("printf pass | python3") }\'', "piped_interpreter_execution", "deny")
+    assert_finding('rg ordinary README.md | awk \'BEGIN { system("printf pass | python3") }\'', "piped_interpreter_execution", "deny")
+    for compound in (
+        'rg ordinary README.md\nenv -S \'sh -c "printf pass | python3"\'',
+        'rg ordinary README.md\nawk \'BEGIN { system("printf pass | python3") }\'',
+        'rg ordinary README.md # ignored \\\nenv -S \'sh -c "printf pass | python3"\'',
+        'rg ordinary README.md \\\\\nenv -S \'sh -c "printf pass | python3"\'',
+    ):
+        assert mask_static_literal_pipes(compound) == compound
+        assert_finding(compound, "piped_interpreter_execution", "deny")
+    assert_finding("rg -n 'foo|python|bar' README.md | python3", "piped_interpreter_execution", "deny")
+    assert_finding("eval 'printf x | python3'", "piped_interpreter_execution", "deny")
+    assert_finding('echo "$(printf x | python3)"', "piped_interpreter_execution", "deny")
+    assert_finding("rg 'foo|python", "piped_interpreter_execution", "deny")
     assert_finding("printf 'print(1)' | python3", "piped_interpreter_execution", "deny")
     assert_finding("printf 'puts 1' | ruby", "piped_interpreter_execution", "deny")
 
