@@ -155,3 +155,6 @@ network deployment under the AGPL. See [third-party notices](THIRD_PARTY_NOTICES
 Contributions require DCO sign-off and the one-time [CLA](CLA.md).
 
 Copyright (C) 2026 Gadsotek.
+
+Agent development uses native filesystem containment for Codex and Claude Code.
+See the [configuration, explicit access exceptions, and conformance checks](scripts/agent-containment/README.md).

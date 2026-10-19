@@ -1,13 +1,40 @@
 # Project-local Codex configuration. Codex loads this only after the project is trusted.
 project_doc_max_bytes = 65536
 default_permissions = "artifactflow-edit"
+approval_policy = "on-request"
+approvals_reviewer = "user"
 
 [features]
 hooks = true
 
 [permissions.artifactflow-edit]
-description = "ArtifactFlow source editing with secrets denied and control files approval-gated."
+description = "ArtifactFlow workspace editing; unrelated reads and secrets denied, human approval for exceptions."
 extends = ":workspace"
+
+[permissions.artifactflow-edit.filesystem]
+":root" = "deny"
+":minimal" = "read"
+# The macOS Python installer stores its runtime outside :minimal. Allow the
+# bundle read-only across Python upgrades; keep unrelated /Library data denied.
+"/Library/Frameworks/Python.framework" = "read"
+# Apple git/make/python shims need the selected developer tools and resources.
+"/Library/Developer/CommandLineTools" = "read"
+# System shasum needs Perl's core modules, interpreter library, and XS modules.
+# Keep site modules in /Library/Perl and the rest of /System/Library denied.
+"/System/Library/Perl" = "read"
+# Codex canonicalizes exact symlink grants. Reading this launcher directory
+# lets the normal Python alias reach the granted framework, preserving PATH.
+# Other files here become readable; unrelated symlink targets and the rest
+# of /usr/local remain denied.
+"/usr/local/bin" = "read"
+# Explicit owner-approved Git configuration exception. Includes outside this
+# exact file still require their own approval; no home-directory grant.
+"~/.gitconfig" = "read"
+# Explicit owner-approved global-ignore file; preserve Git's normal excludes
+# without exposing home or disabling ignore rules to silence access warnings.
+"~/.gitignore_global" = "read"
+# Keep the native runtime/temp allowances for developer tools. Personal files
+# and sibling checkouts need an explicitly approved, narrowly scoped grant.
 
 [permissions.artifactflow-edit.filesystem.":workspace_roots"]
 ".env*" = "deny"
@@ -19,6 +46,11 @@ extends = ":workspace"
 "credentials" = "deny"
 "credentials.json" = "deny"
 "service-account.json" = "deny"
+"**/.npmrc" = "deny"
+"**/auth.json" = "deny"
+"**/credentials" = "deny"
+"**/credentials.json" = "deny"
+"**/service-account.json" = "deny"
 "**/*.pem" = "deny"
 "**/*.key" = "deny"
 "**/*.p12" = "deny"
@@ -39,6 +71,7 @@ extends = ":workspace"
 "phpunit.xml" = "read"
 "rector.php" = "read"
 "scripts/ai-hooks" = "read"
+"scripts/agent-containment" = "read"
 "tests/Feature/Architecture/AiHarnessDriftContractTest.php" = "read"
 "tests/Feature/Infrastructure/HarnessPolicyConfigurationTest.php" = "read"
 

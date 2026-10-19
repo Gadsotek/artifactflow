@@ -191,7 +191,7 @@ RUN go version | grep -E '^go version go1\.26\.9[[:space:]]' \
     && go get golang.org/x/crypto@v0.57.0 \
     && go get golang.org/x/net@v0.60.0 \
     && go get google.golang.org/grpc@v1.83.2 \
-    && go get github.com/getkin/kin-openapi@v0.144.0 \
+    && go get github.com/getkin/kin-openapi@v0.149.0 \
     && go mod tidy
 
 WORKDIR /go/src/app/caddy/frankenphp
@@ -204,7 +204,7 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.83\.2' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.144\.0' \
+        | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.149\.0' \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.57\.0' \
     && go version -m /usr/local/bin/frankenphp \
@@ -225,6 +225,7 @@ COPY --from=frankenphp-security-builder /usr/local/bin/frankenphp /usr/local/bin
 # upgrades grpc-go for GHSA-hrxh-6v49-42gf and
 # CVE-2026-84445, kin-openapi for GHSA-r277-6w6q-xmqw, and x/crypto for
 # CVE-2026-56854.
+# kin-openapi 0.149.0 also fixes CVE-2026-100351 through CVE-2026-100354.
 # Current apk minimums: c-ares CVE-2026-33630 is fixed in 1.34.8-r0;
 # OpenSSL CVE-2026-14456 is fixed in 3.5.8-r0; PostgreSQL client library
 # findings reported against 18.4-r0 are fixed in 18.5-r0.

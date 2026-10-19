@@ -275,9 +275,43 @@ audit: audit-php audit-js
 ai-hooks-test:
 	@command -v python3 >/dev/null 2>&1 || { echo 'ArtifactFlow AI safety hook runner requires python3; refusing to run the gate.' >&2; exit 2; }
 	python3 scripts/ai-hooks/run_harness.py
+	$(MAKE) agent-containment-test
+
+.PHONY: agent-containment-test agent-permissions-test claude-permissions-test agent-development-test codex-model-hooks-test codex-permission-hook-test
+
+agent-containment-test:
+	python3 scripts/agent-containment/test_configuration.py
+	python3 scripts/agent-containment/test_owned_receipt.py
+	python3 scripts/agent-containment/test_owned_inputs.py
+	python3 scripts/agent-containment/test_guard_tool.py
+	python3 scripts/agent-containment/test_codex_probe_results.py
+	python3 scripts/agent-containment/test_claude_probe_results.py
+	python3 scripts/agent-containment/test_development_probe.py
+	python3 scripts/agent-containment/test_codex_session.py
+	python3 scripts/agent-containment/test_codex_hook_evidence.py
+	python3 scripts/agent-containment/test_codex_model_session.py
+	python3 scripts/agent-containment/test_codex_permission_evidence.py
+	python3 scripts/agent-containment/test_codex_permission_session.py
+	python3 scripts/agent-containment/test_claude_session.py
+	python3 scripts/agent-containment/test_development_runner.py
+
+# Native client probes are opt-in host checks, not simulated by configuration CI.
+agent-permissions-test: codex-permissions-test claude-permissions-test
 
 codex-permissions-test:
 	sh scripts/ai-hooks/verify-codex-permissions.sh
+
+claude-permissions-test:
+	python3 scripts/agent-containment/run_claude.py --run
+
+agent-development-test:
+	python3 scripts/agent-containment/run_development.py --run
+
+codex-model-hooks-test:
+	python3 scripts/agent-containment/codex_model_session.py --run
+
+codex-permission-hook-test:
+	python3 scripts/agent-containment/codex_permission_session.py --run
 
 verify-reverb-origin:
 	$(MAKE) ensure-env

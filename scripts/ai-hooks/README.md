@@ -38,7 +38,16 @@ The guards are intentionally conservative:
 - Secret-bearing files such as `.env`, `.npmrc`, `auth.json`, and private keys are not printed, edited, opened in terminal editors, inspected through key tools such as `openssl`, loaded through `source`/`.`, read through shell redirection, or hidden inside wrapped `eval`/`sh -c` commands.
 - Known inline-code interpreters, dynamically constructed command/path tokens,
   write-then-execute command chains, decoder-to-interpreter pipelines, and
-  arbitrary pipes into interpreters are denied.
+  arbitrary pipes into interpreters are denied. Static quoted or escaped pipes
+  in a direct `rg` or `grep` search are treated as data. Other command contexts,
+  including quoted `env -S`, Make recipes, and AWK execution payloads, retain
+  conservative scanning. The exception excludes compound commands and shell
+  redirections, remaining line breaks, malformed quoting, and every command
+  containing a dollar sign or backtick, including inside a quoted regular
+  expression. Genuine shell line continuations preserve ordinary search usage;
+  comments and escaped backslashes cannot hide a new command. Ripgrep's explicit
+  process-launch options `--pre` and `--hostname-bin` also disable the exception.
+  Actual interpreter pipelines remain denied.
 - Docker volume deletion, destructive git commands, privilege changes, and cloud deletes require approval.
 - Prompts that appear to contain pasted credentials are blocked.
 

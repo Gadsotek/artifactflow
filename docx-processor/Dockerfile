@@ -13,11 +13,12 @@ WORKDIR /go/src/app/caddy
 
 # Go 1.26.9 and x/net 0.60.0 fix CVE-2026-78667/CVE-2026-78669/CVE-2026-97031.
 # x/net requires x/crypto 0.57.0; retain the other reviewed module fixes.
+# kin-openapi 0.149.0 fixes CVE-2026-100351 through CVE-2026-100354.
 RUN go version | grep -E '^go version go1\.26\.9[[:space:]]' \
     && go get golang.org/x/crypto@v0.57.0 \
     && go get golang.org/x/net@v0.60.0 \
     && go get google.golang.org/grpc@v1.83.2 \
-    && go get github.com/getkin/kin-openapi@v0.144.0 \
+    && go get github.com/getkin/kin-openapi@v0.149.0 \
     && go mod tidy
 
 WORKDIR /go/src/app/caddy/frankenphp
@@ -30,7 +31,7 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.83\.2' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.144\.0' \
+        | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.149\.0' \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.57\.0' \
     && go version -m /usr/local/bin/frankenphp \

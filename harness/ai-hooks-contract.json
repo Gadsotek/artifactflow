@@ -1,5 +1,5 @@
 {
-  "contract_version": 6,
+  "contract_version": 8,
   "canonical_project": "artifactflow",
   "project_substitutions": {
     "slug": "artifactflow",
@@ -10,7 +10,7 @@
     "scripts/ai-hooks/guard_file_write.py": "7bfa0a3ddfa6265b2dee2d66e784ee63c61df94ceda357d18848b0f4d9332533",
     "scripts/ai-hooks/guard_prompt.py": "65fccff46a68751411780a96d634cb6b88ab8b3f9658553a97e7d8d8e47e05b7",
     "scripts/ai-hooks/policy.py": "9872a913ac4cc74ff6c8f4334f9045fabc1425ea835b4ad74a7a4b80eb26c9e0",
-    "scripts/ai-hooks/policy_commands.py": "94c6a9d58f79a1c826d455bec247fd146bb7f175793ca1b4fcb5adaf2dd6fc43",
+    "scripts/ai-hooks/policy_commands.py": "5b1cfbdd7eafe8cb8ff2182359e42b6a052ff47b8a9f7d087e2d3372e22a690f",
     "scripts/ai-hooks/policy_events.py": "8d64c58c39b70dcf7993282c99b26c0da3acccff51f296e871ab40bcb14f8908",
     "scripts/ai-hooks/policy_files.py": "567d533a4ce33fac320fb82e15598dfd88fa8ff932a5c70c30360ef08f0f1dc6",
     "scripts/ai-hooks/policy_observability.py": "1f69a30fd3a98b4b85772693ea4646955369b1b11be07a155ea8806f9d663720",
@@ -19,13 +19,13 @@
   },
   "normalized_files": {
     "scripts/ai-hooks/README.md": {
-      "sha256": "247c15a51a0924220ace8eb6eaaeaedbfd1b4990c2fe198a5b6ec3ca82e43012",
+      "sha256": "f231df1b6c0eaefd861a0b333607ba4c8543cd860219108b96ba3a335a508657",
       "substitutions": [
         "slug"
       ]
     },
     "scripts/ai-hooks/run_harness.py": {
-      "sha256": "71576f86074c9ee7558847c33a4105f9e59c2e6c6765d029e3f4fed9a8a4279e",
+      "sha256": "48018db74e516d6e38e8c253c073f1ef7333fb2be01df4381c5a52903f0b2846",
       "substitutions": [
         "focused_test"
       ]
