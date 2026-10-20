@@ -590,6 +590,14 @@ final readonly class ProductionSecurityConfiguration
         if (!in_array(strtolower($this->string('session.same_site')), ['lax', 'strict'], true)) {
             throw new RuntimeException('Session cookies must use lax or strict SameSite in production.');
         }
+
+        if (!$this->invariants->sessionCookieHasHostPrefix()) {
+            throw new RuntimeException('Session cookie names must start with __Host- in production.');
+        }
+
+        if (!$this->invariants->sessionCookieHasRootPath()) {
+            throw new RuntimeException('Session cookies must use Path=/ for the __Host- prefix.');
+        }
     }
 
     private function ensureSessionDomainDoesNotCoverArtifactHost(string $artifactOrigin): void
@@ -611,6 +619,10 @@ final readonly class ProductionSecurityConfiguration
 
         if ($coverage === 'covers') {
             throw new RuntimeException('Session domain must not cover the artifact origin.');
+        }
+
+        if (!$this->invariants->sessionCookieIsHostOnly()) {
+            throw new RuntimeException('Session cookies must omit Domain for the __Host- prefix.');
         }
     }
 

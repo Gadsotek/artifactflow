@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\Cookie;
 
 final readonly class TwoFactorChallengeController
 {
@@ -96,15 +97,13 @@ final readonly class TwoFactorChallengeController
         if ($rememberDevice) {
             $trustedDevice = $this->trustedDevices->remember($user, $request, $authRevision);
             if ($trustedDevice !== null) {
-                $redirect->withCookie(cookie(
-                    name: TrustedDeviceManager::COOKIE_NAME,
+                $redirect->withCookie(Cookie::create(
+                    name: $this->trustedDevices->cookieName(),
                     value: $trustedDevice['token'],
-                    minutes: $this->trustedDeviceMinutes(),
-                    path: null,
-                    domain: null,
+                    expire: now()->addMinutes($this->trustedDeviceMinutes()),
+                    path: '/',
                     secure: (bool) config('session.secure', false),
                     httpOnly: true,
-                    raw: false,
                     sameSite: $this->trustedDeviceSameSite(),
                 ));
             }
@@ -136,12 +135,13 @@ final readonly class TwoFactorChallengeController
         return max(1, $days);
     }
 
+    /**
+     * @return 'lax'|'strict'
+     */
     private function trustedDeviceSameSite(): string
     {
         $sameSite = config('session.same_site', 'lax');
 
-        return is_string($sameSite) && in_array(strtolower($sameSite), ['lax', 'strict'], true)
-            ? strtolower($sameSite)
-            : 'lax';
+        return is_string($sameSite) && strtolower($sameSite) === 'strict' ? 'strict' : 'lax';
     }
 }
