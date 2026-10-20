@@ -4,6 +4,55 @@ All notable changes to ArtifactFlow will be documented here.
 
 This project is pre-1.0; expect breaking changes between alpha revisions.
 
+## v0.3.7 — 2026-10-20
+
+Security and maintenance update for HTML previews, production images, and MCP
+clients, with refreshed dependencies and developer tooling.
+
+### Security
+
+- Hardened HTML preview rewriting for ambiguous `select`/`noframes`/`plaintext`
+  markup that could leave a nested iframe active. The exact failing input is
+  now covered by permanent Chromium, Firefox, and WebKit regressions.
+  ([#198](https://github.com/Gadsotek/artifactflow/pull/198))
+- Updated the application and DOCX processor FrankenPHP builds to
+  kin-openapi 0.149.0, fixing the dependency findings that blocked Nightly
+  image scans. Both builds verify the compiled module version.
+  ([#196](https://github.com/Gadsotek/artifactflow/pull/196))
+
+### Fixed
+
+- Reject malformed workspace and scope option values when minting MCP tokens.
+  Expanded protocol regressions cover the Laravel MCP 1.0.2 update.
+  ([#192](https://github.com/Gadsotek/artifactflow/pull/192))
+
+### Changed
+
+- Updated the reviewed local MCP bridge to `mcp-remote` 0.15.1 and the Claude
+  Desktop extension to 1.0.6, synchronizing integrity pins and verification
+  fixtures. The static bearer-token path and Node.js 20.18.1 minimum remain.
+  ([#195](https://github.com/Gadsotek/artifactflow/pull/195))
+- Updated Laravel to 13.37.0, Mermaid to 12.2.0, and supporting PHP, frontend,
+  browser-test, and CI dependencies.
+- Added native filesystem containment and conformance tooling for supported
+  Codex and Claude Code development sessions. See the
+  [agent containment guide](scripts/agent-containment/README.md) for supported
+  clients, required launch configuration, and explicit access grants.
+  ([#196](https://github.com/Gadsotek/artifactflow/pull/196))
+
+### Upgrade from v0.3.6
+
+- Deploy the new application image to all application, artifact-host, worker,
+  and scheduler roles. Update the DOCX processor image where DOCX is enabled.
+  Pin image digests and verify SBOMs and provenance using the
+  [production operations guide](docs/operations/production.md).
+- Re-run `./scripts/connect-mcp.sh` to select the updated integrity-locked
+  bridge. Administrators distributing the Desktop extension should build and
+  install version 1.0.6; existing bundles do not update themselves. Existing
+  personal MCP tokens remain valid.
+- No database migrations or required server configuration changes. PDF, XLSX,
+  and DOCX remain default-off with their existing containment requirements.
+
 ## v0.3.6 — 2026-10-13
 
 Security and maintenance update for the application and DOCX processor,
