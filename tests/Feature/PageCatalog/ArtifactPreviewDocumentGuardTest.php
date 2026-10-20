@@ -794,6 +794,33 @@ final class ArtifactPreviewDocumentGuardTest extends TestCase
         );
     }
 
+    public function test_select_noframes_alternate_cannot_hide_a_later_context_behind_plaintext(): void
+    {
+        foreach (['<plaintext>', '<PlAiNtExT/>'] as $plaintextTag) {
+            $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+                '<!doctype html><select><noframes></select><script>' . $plaintextTag . '</noframes>'
+                . '<IFRAME id="af-parser-fuzz-098"></IFRAME>',
+            );
+
+            $this->assertStringNotContainsString('<iframe id="af-parser-fuzz-098"', strtolower($hardened));
+            $this->assertStringContainsString(
+                '<template data-artifactflow-blocked-browsing-context id="af-parser-fuzz-098">',
+                $hardened,
+            );
+        }
+    }
+
+    public function test_plaintext_after_select_noframes_preserves_inert_literal_markup(): void
+    {
+        $literal = '<iframe id="plaintext-after-noframes-literal"></iframe>';
+        $hardened = app(ArtifactPreviewDocumentGuard::class)->harden(
+            '<!doctype html><select><noframes>text</noframes></select><plaintext>' . $literal,
+        );
+
+        $this->assertStringContainsString('<plaintext>' . $literal, $hardened);
+        $this->assertStringNotContainsString('<template data-artifactflow-blocked-browsing-context', $hardened);
+    }
+
     public function test_recognized_raw_text_cannot_desynchronize_insertion_mode_state(): void
     {
         $cases = [

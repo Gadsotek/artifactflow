@@ -2384,6 +2384,36 @@ for (const { name, payload } of [
   });
 }
 
+test('HTML draft preview neutralizes the select noframes plaintext parser differential @artifact-security', async ({
+  page,
+}) => {
+  const fixture = await prepareAuthenticatedDraftPreviewFixture(page);
+  const payload =
+    '<!doctype html><select><noframes></select><script><plaintext></noframes>' +
+    '<IFRAME id="af-parser-fuzz-098"></IFRAME>';
+  await page.setContent(authenticatedDraftPreviewDocument(fixture, payload));
+
+  const responsePromise = page.waitForResponse(
+    (response) => response.url() === draftPreviewEndpoint,
+  );
+  await openAuthenticatedDraftPreview(page);
+  const response = await responsePromise;
+
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-security-policy']).toContain('sandbox allow-scripts');
+  expect(response.headers()['content-security-policy']).toContain("frame-src 'none'");
+  const body = await response.text();
+  expect(body.toLowerCase()).not.toContain('<iframe id="af-parser-fuzz-098"');
+  expect(body).toContain(
+    '<template data-artifactflow-blocked-browsing-context id="af-parser-fuzz-098">',
+  );
+
+  const preview = page.frameLocator('[data-html-draft-preview-frame]');
+  await expect(preview.locator('select')).toHaveCount(1);
+  await expect(preview.locator('iframe, frame, fencedframe, portal')).toHaveCount(0);
+  expect(await preview.locator('body').evaluate(() => window.frames.length)).toBe(0);
+});
+
 test('HTML draft preview neutralizes parser differentials and shadow roots before WebRTC can escape @artifact-security', async ({
   page,
 }) => {

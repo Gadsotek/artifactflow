@@ -175,6 +175,9 @@ $mandatoryCases = [
     'regression/select-noframes-engine-differential' =>
         '<!doctype html><table><select></style><noframes><script><svg>'
         . '<noframes><xmp></noframes><iframe id="af-parser-select-noframes"></iframe>',
+    'regression/select-noframes-plaintext' =>
+        '<!doctype html><select><noframes></select><script><plaintext></noframes>'
+        . '<IFRAME id="af-parser-fuzz-098"></IFRAME>',
     'regression/frameset-plaintext' =>
         '<!doctype html><frameset><noframes></frameset></noframes><plaintext>'
         . '<frame id="af-parser-frameset">',
