@@ -70,8 +70,29 @@ Keep PDF/XLSX/DOCX default-off until [processor enablement](processors.md) is co
 
 ## Cookies, proxies, and TLS
 
-Cookies ignore ports. Use different hostnames and host-only app cookies, or
-an app-only `SESSION_DOMAIN`. Every outer proxy must keep artifact responses
+Cookies ignore ports. Use different hostnames and host-only app cookies.
+Secure sessions automatically use `__Host-` names, including custom
+`SESSION_COOKIE` names (an existing prefix is retained). Trusted-device
+credentials use `__Host-artifactflow_trusted_device`. Production requires
+`SESSION_SECURE_COOKIE=true`, `SESSION_PATH=/`, and `SESSION_DOMAIN` unset or
+empty. Even an explicit app-only domain is invalid: browsers require these
+cookies to omit the `Domain` attribute entirely. The boot gate and doctor
+reject incompatible settings.
+
+This prevents a sibling host from injecting these credential names through a
+parent-domain cookie. It does not isolate applications sharing one hostname,
+nor stop other applications' parent-domain cookies from reaching sibling hosts.
+External-share cookies retain their dedicated paths and do not use `__Host-`;
+Laravel's JavaScript-readable XSRF cookie is also unchanged.
+
+When upgrading from unprefixed credentials, clear any explicit `SESSION_DOMAIN`,
+use `SESSION_PATH=/`, and rebuild the configuration cache through your normal
+deployment process. Users must sign in again and re-establish trusted devices;
+the old unprefixed credentials are not accepted as a fallback. Existing external
+viewing sessions are unaffected. Local HTTP uses `SESSION_SECURE_COOKIE=false`
+and retains unprefixed cookie names.
+
+Every outer proxy must keep artifact responses
 free of `Set-Cookie`; Caddy cannot remove headers added downstream.
 
 `TRUSTED_PROXIES` must list the real edge addresses/CIDRs. Empty, wildcard, and

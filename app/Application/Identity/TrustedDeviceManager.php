@@ -26,9 +26,14 @@ final readonly class TrustedDeviceManager
     ) {
     }
 
+    public function cookieName(): string
+    {
+        return config('session.secure') === true ? '__Host-' . self::COOKIE_NAME : self::COOKIE_NAME;
+    }
+
     public function findValidDevice(User $user, Request $request): ?TrustedDevice
     {
-        $token = $request->cookie(self::COOKIE_NAME);
+        $token = $request->cookie($this->cookieName());
         if (!is_string($token) || $token === '') {
             return null;
         }

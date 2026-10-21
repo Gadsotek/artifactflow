@@ -112,6 +112,9 @@ an opaque iframe sandbox and restrictive CSP. Signed preview access is
 short-lived and authorization-bound. Scanning is advisory; isolation is the
 security boundary.
 
+Secure session and trusted-device cookies use `__Host-`; see the production
+guide for upgrade instructions.
+
 A sandboxed HTML artifact can still navigate itself and send embedded or user-entered data externally. WebRTC blocking is browser-dependent.
 Read the [threat model](THREAT-MODEL.md) for the maintained controls and residual risks.
 

@@ -4,6 +4,17 @@ All notable changes to ArtifactFlow will be documented here.
 
 This project is pre-1.0; expect breaking changes between alpha revisions.
 
+## Unreleased
+
+### Security
+
+- Bind secure session and trusted-device credentials to the application
+  hostname using `__Host-` cookies. Production now requires `Path=/` and
+  no `Domain` attribute, preventing sibling hosts from injecting these
+  cookie names through a shared parent domain. Upgrading requires clearing
+  explicit `SESSION_DOMAIN` settings, refreshing cached configuration,
+  and signing in and enrolling trusted devices again.
+
 ## v0.3.7 — 2026-10-20
 
 Security and maintenance update for HTML previews, production images, and MCP

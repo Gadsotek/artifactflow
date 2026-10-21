@@ -30,12 +30,22 @@ at the artifact boundary, including:
 
 - CSP or iframe sandbox restrictions;
 - application/artifact origin separation and cookie isolation;
+- `__Host-` credential-cookie acceptance, rejection of sibling-domain injection,
+  and request isolation under controlled HTTPS responses in all three engines;
 - nested browsing contexts, document parsing, or browser networking APIs;
 - Mermaid sanitization on the trusted application origin.
 
 Ordinary editor, layout, and application-flow tests remain Chromium-only unless the feature has a
 specific cross-engine compatibility requirement. Use explicit DOM or application readiness
 assertions; do not use `networkidle`, which is unreliable in WebKit.
+
+The host-cookie test uses a loopback HTTPS server and a CONNECT proxy that accepts only its three
+synthetic sibling hosts. Cookie assertions read the receiving server's headers; mocked WebKit
+responses can omit browser-managed Cookie headers from Playwright's request observation. The
+fixture requires `openssl` on the runner, generates its test key and certificate in memory, and
+ignores certificate trust only in that test context. It needs no DNS or machine trust-store changes.
+PHP feature tests separately verify application cookie issuance and authentication; the browser
+fixture does not validate production TLS or reverse-proxy configuration.
 
 Public-site geometry tests set `contextOptions.reducedMotion` and verify the browser media query
 and disabled thumb transition before measuring the theme switch. `reducedMotion` is not a

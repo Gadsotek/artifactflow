@@ -1007,10 +1007,12 @@ final readonly class DeploymentDoctor
         // Same single-parser decision the boot gate enforces, so the doctor cannot bless a
         // non-ASCII SESSION_DOMAIN the browser would canonicalise to cover the artifact host.
         return match ($this->invariants->sessionCookieDomainCoverage($sessionDomain, $artifactHost)) {
-            'unset' => $this->pass('session_domain', 'Session cookie domain', 'No shared session cookie domain is configured.'),
+            'unset' => $this->invariants->sessionCookieIsHostOnly()
+                ? $this->pass('session_domain', 'Session cookie domain', 'Cookies omit Domain as required by __Host-.')
+                : $this->fail('session_domain', 'Session cookie domain', 'Leave SESSION_DOMAIN unset or empty for __Host- cookies.'),
             'invalid' => $this->fail('session_domain', 'Session cookie domain', 'SESSION_DOMAIN must be a canonical ASCII host; a raw IDN/unicode spelling is IDNA-canonicalised by browsers and can cover the artifact host unseen.'),
             'covers' => $this->fail('session_domain', 'Session cookie domain', 'SESSION_DOMAIN must not cover the artifact origin, or app cookies leak onto the artifact host.'),
-            'safe' => $this->pass('session_domain', 'Session cookie domain', sprintf('Session domain %s does not cover the artifact host.', (string) $this->invariants->normalizedSessionCookieHost($sessionDomain))),
+            'safe' => $this->fail('session_domain', 'Session cookie domain', 'Leave SESSION_DOMAIN unset or empty for __Host- cookies; even an explicit app-only domain is prohibited.'),
         };
     }
 
@@ -1551,15 +1553,17 @@ final readonly class DeploymentDoctor
             && $this->config->get('session.encrypt') === true
             && $this->config->get('session.http_only') === true
             && in_array(strtolower($this->string('session.same_site')), ['lax', 'strict'], true)
-            && $this->string('session.driver') === 'database';
+            && $this->string('session.driver') === 'database'
+            && $this->invariants->sessionCookieHasHostPrefix()
+            && $this->invariants->sessionCookieHasRootPath();
 
         if (!$production) {
             return $this->skipped('secure_sessions', 'Session hardening', 'Relaxed session flags are fine locally; production requires secure, encrypted, http-only, same-site database sessions.');
         }
 
         return $secure
-            ? $this->pass('secure_sessions', 'Session hardening', 'Sessions are secure, encrypted, http-only, and same-site.')
-            : $this->fail('secure_sessions', 'Session hardening', 'Enable secure, encrypted, http-only, lax/strict database sessions in production.');
+            ? $this->pass('secure_sessions', 'Session hardening', 'Sessions use __Host- names, Path=/, secure, encrypted, http-only, and same-site settings.')
+            : $this->fail('secure_sessions', 'Session hardening', 'Require __Host- cookie names, SESSION_PATH=/, and secure, encrypted, http-only, lax/strict database sessions in production.');
     }
 
     private function trustedProxiesCheck(bool $production): DoctorCheck
