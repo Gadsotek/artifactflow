@@ -15,11 +15,21 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         $processor = $this->serviceBlock($compose, 'docx-processor', 'app');
         $app = $this->serviceBlock($compose, 'app', 'artifact-host');
 
-        $this->assertStringContainsString('FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:', $dockerfile);
-        $this->assertStringContainsString('FROM dunglas/frankenphp:1-php8.5-alpine@sha256:', $dockerfile);
-        $this->assertStringContainsString("go1\\.26\\.9[[:space:]]", $dockerfile);
+        $this->assertStringContainsString(
+            'FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:3b672209c1201d4c980d4aa76b962171fdb063b47e0108c50d61331488d23d5f AS frankenphp-security-builder',
+            $dockerfile,
+        );
+        $this->assertStringContainsString(
+            'FROM dunglas/frankenphp:1-php8.5-alpine@sha256:f4947926b4c5070176be7c72b03939e045f7ae9d249a3219cf9708bd5e6d0ff2',
+            $dockerfile,
+        );
+        $this->assertStringContainsString(
+            'CustomVersion=FrankenPHP v1.13.2 PHP $PHP_VERSION Caddy',
+            $dockerfile,
+        );
+        $this->assertStringContainsString("go1\\.27\\.3[[:space:]]", $dockerfile);
         $this->assertMatchesRegularExpression(
-            '/FROM golang:1\\.26\\.9-alpine3\\.24@sha256:[a-f0-9]{64} AS go-toolchain/',
+            '/FROM golang:1\\.27\\.3-alpine3\\.24@sha256:[a-f0-9]{64} AS go-toolchain/',
             $dockerfile,
         );
         $this->assertStringContainsString('COPY --from=go-toolchain /usr/local/go /opt/go', $dockerfile);
@@ -27,27 +37,24 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('GOTOOLCHAIN=local', $dockerfile);
         $this->assertStringContainsString('PATH="/opt/go/bin:${PATH}"', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E '^/usr/local/bin/frankenphp: go1\\.26\\.9$'",
+            "grep -E '^/usr/local/bin/frankenphp: go1\\.27\\.3$'",
             $dockerfile,
         );
-        $this->assertStringContainsString('go get golang.org/x/net@v0.60.0', $dockerfile);
+        $this->assertStringNotContainsString('go get ', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E 'golang\\.org/x/net[[:space:]]+v0\\.60\\.0'",
+            "grep -E 'golang\\.org/x/net[[:space:]]+v0\\.61\\.0'",
             $dockerfile,
         );
-        $this->assertStringContainsString('go get golang.org/x/crypto@v0.57.0', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.57\\.0'",
+            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.58\\.0'",
             $dockerfile,
         );
-        $this->assertStringContainsString('go get google.golang.org/grpc@v1.83.2', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E 'google\\.golang\\.org/grpc[[:space:]]+v1\\.83\\.2'",
+            "grep -E 'google\\.golang\\.org/grpc[[:space:]]+v1\\.84\\.0'",
             $dockerfile,
         );
-        $this->assertStringContainsString('go get github.com/getkin/kin-openapi@v0.149.0', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E 'github\\.com/getkin/kin-openapi[[:space:]]+v0\\.149\\.0'",
+            "grep -E 'github\\.com/getkin/kin-openapi[[:space:]]+v0\\.151\\.0'",
             $dockerfile,
         );
         $this->assertStringContainsString("RUN install-php-extensions \\\n    pcntl \\\n    zip", $dockerfile);
