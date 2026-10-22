@@ -4,6 +4,21 @@ All notable changes to ArtifactFlow will be documented here.
 
 This project is pre-1.0; expect breaking changes between alpha revisions.
 
+## Unreleased
+
+### Security
+
+- Update PHP to 8.5.12 across development, application, image-parser, PDF,
+  and DOCX images for CVE-2026-109618 and CVE-2026-109619. Pin matching
+  FrankenPHP 1.13.2 builder and runtime images by immutable digest.
+- Rebuild application and DOCX FrankenPHP binaries with Go 1.27.3, required
+  by the new upstream Go 1.27 baseline and fixing CVE-2026-111943. Preserve
+  upstream's newer security dependencies instead of downgrading them, with
+  compiled-version checks for x/net 0.61.0, x/crypto 0.58.0, gRPC 1.84.0,
+  and kin-openapi 0.151.0.
+- Refresh the PDF and DOCX Alpine certificate-bundle pin to 20261020-r0
+  after the previously pinned package was removed from Alpine 3.24.
+
 ## v0.3.7 — 2026-10-20
 
 Security and maintenance update for HTML previews, production images, and MCP

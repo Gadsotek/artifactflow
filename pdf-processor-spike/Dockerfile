@@ -1,13 +1,13 @@
 # Disabled, non-production PDF extraction candidate. This separate build
 # context is used only by `make pdf-processor-spike-test`.
-FROM php:8.5.9-cli-alpine3.24@sha256:0554eb53778b5316f6b9a3447c9dfa3cf2141c0c02ff816c42cdc9aa240a34aa AS pdf-processor-spike-builder
+FROM php:8.5.12-cli-alpine3.24@sha256:eef5baa8671b37f2909d4b2f1849ea663df6ff4fe8936f102208ce54f1e32e01 AS pdf-processor-spike-builder
 
 ARG PDFBOX_VERSION=3.0.8
 ARG PDFBOX_SHA512=768847238f683568507bf73570a2b6fedcbe58b25c7b4f97fba536ba110b290fe96ba065aed58629d41fb94857d76bc1978c2f31d294b553c69f287f71ee9600
 
 RUN apk add --no-cache \
         build-base=0.5-r4 \
-        ca-certificates=20260611-r0 \
+        ca-certificates=20261020-r0 \
         libseccomp-dev=2.6.1-r0 \
         openjdk21-jdk=21.0.12_p8-r0 \
     && wget -q "https://downloads.apache.org/pdfbox/${PDFBOX_VERSION}/pdfbox-app-${PDFBOX_VERSION}.jar" -O /opt/pdfbox-app.jar \
@@ -27,7 +27,7 @@ RUN mkdir -p /opt/pdf-spike-classes \
         -fstack-protector-strong -Wl,-z,relro,-z,now \
         -o /opt/artifactflow-process-deny /src/process-deny-exec.c -lseccomp
 
-FROM php:8.5.9-cli-alpine3.24@sha256:0554eb53778b5316f6b9a3447c9dfa3cf2141c0c02ff816c42cdc9aa240a34aa AS pdf-processor-spike
+FROM php:8.5.12-cli-alpine3.24@sha256:eef5baa8671b37f2909d4b2f1849ea663df6ff4fe8936f102208ce54f1e32e01 AS pdf-processor-spike
 
 ARG PDFBOX_VERSION=3.0.8
 ARG PDFBOX_SHA512=768847238f683568507bf73570a2b6fedcbe58b25c7b4f97fba536ba110b290fe96ba065aed58629d41fb94857d76bc1978c2f31d294b553c69f287f71ee9600
@@ -35,7 +35,7 @@ ARG PDFBOX_SHA512=768847238f683568507bf73570a2b6fedcbe58b25c7b4f97fba536ba110b29
 # The pinned PHP base freezes its Alpine packages. Patch only the OpenSSL
 # packages affected by CVE-2026-14456 instead of running a blanket upgrade.
 RUN apk add --no-cache \
-        ca-certificates=20260611-r0 \
+        ca-certificates=20261020-r0 \
         "libcrypto3>=3.5.8-r0" \
         "libssl3>=3.5.8-r0" \
         openjdk21-jre-headless=21.0.12_p8-r0 \

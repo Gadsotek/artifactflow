@@ -230,6 +230,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $workflow = $this->readProjectFile('.github/workflows/ci.yml');
         $nightly = $this->readProjectFile('.github/workflows/nightly-audit.yml');
         $dockerfile = $this->readProjectFile('Dockerfile');
+        $pdfDockerfile = $this->readProjectFile('pdf-processor-spike/Dockerfile');
         $healthcheck = $this->readProjectFile('docker/healthcheck-app.sh');
 
         $this->assertStringContainsString('--config p/php', $makefile);
@@ -258,9 +259,21 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('npm audit --audit-level=moderate', $workflow);
         $this->assertStringContainsString('npm audit --audit-level=moderate', $nightly);
         $this->assertStringContainsString('TRIVY_IMAGE ?= aquasec/trivy:0.72.0@sha256:', $makefile);
-        $this->assertStringContainsString('FROM php:8.5.9-cli-trixie@sha256:', $dockerfile);
+        $this->assertStringContainsString('FROM php:8.5.12-cli-trixie@sha256:', $dockerfile);
+        $this->assertStringContainsString(
+            'FROM php:8.5.12-cli-alpine3.24@sha256:eef5baa8671b37f2909d4b2f1849ea663df6ff4fe8936f102208ce54f1e32e01 AS image-parser',
+            $dockerfile,
+        );
+        $this->assertSame(
+            2,
+            substr_count($pdfDockerfile, 'FROM php:8.5.12-cli-alpine3.24@sha256:eef5baa8671b37f2909d4b2f1849ea663df6ff4fe8936f102208ce54f1e32e01 AS '),
+            'Both PDF builder and runtime stages must use the patched PHP base.',
+        );
         $this->assertStringContainsString('FROM node:26-alpine@sha256:', $dockerfile);
-        $this->assertStringContainsString('FROM dunglas/frankenphp:1-php8.5-alpine@sha256:', $dockerfile);
+        $this->assertStringContainsString(
+            'FROM dunglas/frankenphp:1-php8.5-alpine@sha256:f4947926b4c5070176be7c72b03939e045f7ae9d249a3219cf9708bd5e6d0ff2 AS production',
+            $dockerfile,
+        );
         $this->assertStringContainsString('COPY --from=composer:2.9@sha256:', $dockerfile);
         $this->assertStringNotContainsString('apk upgrade --no-cache', $dockerfile);
         $this->assertStringContainsString('"libpq>=18.5-r0"', $dockerfile);
@@ -311,11 +324,19 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $dockerfile = $this->readProjectFile('Dockerfile');
 
         $this->assertStringContainsString(
-            "go version | grep -E '^go version go1\\.26\\.9[[:space:]]'",
+            'FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:3b672209c1201d4c980d4aa76b962171fdb063b47e0108c50d61331488d23d5f AS frankenphp-security-builder',
+            $dockerfile,
+        );
+        $this->assertStringContainsString(
+            'CustomVersion=FrankenPHP v1.13.2 PHP $PHP_VERSION Caddy',
+            $dockerfile,
+        );
+        $this->assertStringContainsString(
+            "go version | grep -E '^go version go1\\.27\\.3[[:space:]]'",
             $dockerfile,
         );
         $this->assertMatchesRegularExpression(
-            '/FROM golang:1\\.26\\.9-alpine3\\.24@sha256:[a-f0-9]{64} AS go-toolchain/',
+            '/FROM golang:1\\.27\\.3-alpine3\\.24@sha256:[a-f0-9]{64} AS go-toolchain/',
             $dockerfile,
         );
         $this->assertStringContainsString('COPY --from=go-toolchain /usr/local/go /opt/go', $dockerfile);
@@ -323,32 +344,24 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('GOTOOLCHAIN=local', $dockerfile);
         $this->assertStringContainsString('PATH="/opt/go/bin:${PATH}"', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E '^/usr/local/bin/frankenphp: go1\\.26\\.9$'",
+            "grep -E '^/usr/local/bin/frankenphp: go1\\.27\\.3$'",
             $dockerfile,
         );
-        $this->assertStringContainsString('go get golang.org/x/net@v0.60.0', $dockerfile);
+        $this->assertStringNotContainsString('go get ', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E 'golang\\.org/x/net[[:space:]]+v0\\.60\\.0'",
-            $dockerfile,
-        );
-        $this->assertStringContainsString('go get golang.org/x/crypto@v0.57.0', $dockerfile);
-        $this->assertStringContainsString(
-            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.57\\.0'",
-            $dockerfile,
-        );
-        $this->assertStringContainsString('go get google.golang.org/grpc@v1.83.2', $dockerfile);
-        $this->assertStringContainsString(
-            "grep -E 'google\\.golang\\.org/grpc[[:space:]]+v1\\.83\\.2'",
-            $dockerfile,
-        );
-        $this->assertStringContainsString('go get github.com/getkin/kin-openapi@v0.149.0', $dockerfile);
-        $this->assertStringContainsString('go get golang.org/x/crypto@v0.57.0', $dockerfile);
-        $this->assertStringContainsString(
-            "grep -E 'github\\.com/getkin/kin-openapi[[:space:]]+v0\\.149\\.0'",
+            "grep -E 'golang\\.org/x/net[[:space:]]+v0\\.61\\.0'",
             $dockerfile,
         );
         $this->assertStringContainsString(
-            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.57\\.0'",
+            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.58\\.0'",
+            $dockerfile,
+        );
+        $this->assertStringContainsString(
+            "grep -E 'google\\.golang\\.org/grpc[[:space:]]+v1\\.84\\.0'",
+            $dockerfile,
+        );
+        $this->assertStringContainsString(
+            "grep -E 'github\\.com/getkin/kin-openapi[[:space:]]+v0\\.151\\.0'",
             $dockerfile,
         );
     }

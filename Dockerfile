@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM php:8.5.9-cli-trixie@sha256:54d82ff9be6bd198145e90c917fc9b2e24230b42e52def8deb3554baf61c451a AS php-base
+FROM php:8.5.12-cli-trixie@sha256:ce5d49625b9c50020dc1ce3c9cf4cdfa31cba31b6651e72daa3e6f5a010d234a AS php-base
 
 ARG INSTALL_XDEBUG=0
 
@@ -126,7 +126,7 @@ CMD ["sh", "/var/www/html/docker/start-local.sh"]
 
 # Native raster decoding lives in a separate minimal image. It receives no
 # application source, database client, credentials, or artifact storage.
-FROM php:8.5.9-cli-alpine3.24@sha256:0554eb53778b5316f6b9a3447c9dfa3cf2141c0c02ff816c42cdc9aa240a34aa AS image-parser
+FROM php:8.5.12-cli-alpine3.24@sha256:eef5baa8671b37f2909d4b2f1849ea663df6ff4fe8936f102208ce54f1e32e01 AS image-parser
 
 # The pinned base digest freezes its Alpine packages. Patch only the OpenSSL
 # packages Trivy reports for CVE-2026-14456 rather than running a blanket
@@ -173,11 +173,11 @@ CMD ["/srv/image-parser/start.sh"]
 
 # Keep the Go toolchain separate from the pinned PHP/FrankenPHP builder so
 # standard-library security updates do not require changing the PHP runtime.
-FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS go-toolchain
+FROM golang:1.27.3-alpine3.24@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS go-toolchain
 
-# FrankenPHP v1.12.6 still resolves vulnerable Go dependencies. Rebuild the
-# bundled binary with patched versions until upstream ships them or newer.
-FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:764a5d89d0042aba4b652225e283f439f63d8505ded2c53158184bb758015640 AS frankenphp-security-builder
+# FrankenPHP 1.13.2 requires Go 1.27. Rebuild with the patched compiler,
+# preserving upstream module versions and verifying the compiled dependencies.
+FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:3b672209c1201d4c980d4aa76b962171fdb063b47e0108c50d61331488d23d5f AS frankenphp-security-builder
 
 COPY --from=go-toolchain /usr/local/go /opt/go
 
@@ -187,30 +187,26 @@ ENV GOROOT=/opt/go \
 
 WORKDIR /go/src/app/caddy
 
-RUN go version | grep -E '^go version go1\.26\.9[[:space:]]' \
-    && go get golang.org/x/crypto@v0.57.0 \
-    && go get golang.org/x/net@v0.60.0 \
-    && go get google.golang.org/grpc@v1.83.2 \
-    && go get github.com/getkin/kin-openapi@v0.149.0 \
+RUN go version | grep -E '^go version go1\.27\.3[[:space:]]' \
     && go mod tidy
 
 WORKDIR /go/src/app/caddy/frankenphp
 
 RUN GOBIN=/usr/local/bin ../../go.sh install \
-        -ldflags "-w -s -X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP v1.12.6 PHP $PHP_VERSION Caddy' -X 'github.com/caddyserver/caddy/v2.CustomBinaryName=frankenphp' -X 'github.com/caddyserver/caddy/v2/modules/caddyhttp.ServerHeader=FrankenPHP Caddy'" \
+        -ldflags "-w -s -extldflags '-Wl,-z,stack-size=0x80000' -X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP v1.13.2 PHP $PHP_VERSION Caddy' -X 'github.com/caddyserver/caddy/v2.CustomBinaryName=frankenphp' -X 'github.com/caddyserver/caddy/v2/modules/caddyhttp.ServerHeader=FrankenPHP Caddy'" \
         -buildvcs=true \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E '^/usr/local/bin/frankenphp: go1\.26\.9$' \
+        | grep -E '^/usr/local/bin/frankenphp: go1\.27\.3$' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.83\.2' \
+        | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.84\.0' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.149\.0' \
+        | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.151\.0' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.57\.0' \
+        | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.58\.0' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'golang\.org/x/net[[:space:]]+v0\.60\.0'
+        | grep -E 'golang\.org/x/net[[:space:]]+v0\.61\.0'
 
-FROM dunglas/frankenphp:1-php8.5-alpine@sha256:def035e964f46253cb5e46a1f9a4633370f658b8e410305e0730ce7247d0ab6a AS production
+FROM dunglas/frankenphp:1-php8.5-alpine@sha256:f4947926b4c5070176be7c72b03939e045f7ae9d249a3219cf9708bd5e6d0ff2 AS production
 
 COPY --from=frankenphp-security-builder /usr/local/bin/frankenphp /usr/local/bin/frankenphp
 
@@ -219,13 +215,8 @@ COPY --from=frankenphp-security-builder /usr/local/bin/frankenphp /usr/local/bin
 # minimum-version constraint below intentionally permits a later patched Alpine
 # revision, so this layer is not byte-for-byte reproducible from the base digest
 # alone; the release image digest, SBOM, and provenance identify the exact output.
-# The source-rebuilt binary above uses Go 1.26.9 and x/net 0.60.0 for
-# CVE-2026-78667, CVE-2026-78669, and CVE-2026-97031 (also retaining the
-# CVE-2026-39821/CVE-2026-46600 fixes),
-# upgrades grpc-go for GHSA-hrxh-6v49-42gf and
-# CVE-2026-84445, kin-openapi for GHSA-r277-6w6q-xmqw, and x/crypto for
-# CVE-2026-56854.
-# kin-openapi 0.149.0 also fixes CVE-2026-100351 through CVE-2026-100354.
+# The source-rebuilt binary uses Go 1.27.3 for CVE-2026-111943 and retains
+# upstream's newer x/net, x/crypto, gRPC, and kin-openapi security fixes.
 # Current apk minimums: c-ares CVE-2026-33630 is fixed in 1.34.8-r0;
 # OpenSSL CVE-2026-14456 is fixed in 3.5.8-r0; PostgreSQL client library
 # findings reported against 18.4-r0 are fixed in 18.5-r0.
