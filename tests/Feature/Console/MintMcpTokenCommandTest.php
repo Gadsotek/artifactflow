@@ -52,6 +52,68 @@ final class MintMcpTokenCommandTest extends TestCase
         $this->assertSame(0, McpAccessToken::query()->count());
     }
 
+    public function test_token_create_rejects_a_scalar_workspace_option_without_provisioning(): void
+    {
+        $owner = User::query()->create([
+            'name' => 'Workspace Owner',
+            'email' => 'workspace-owner@example.test',
+            'password' => Hash::make('correct horse battery staple'),
+        ]);
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'CLI Team');
+
+        $this->runConsoleCommand('artifactflow:mcp-token-create', [
+            '--email' => 'cli-agent@example.test',
+            '--workspace' => $workspace->uid,
+            '--scope' => [McpAccessTokenIssuer::SCOPE_READ],
+        ])
+            ->expectsOutputToContain('The --workspace option must contain a list of UIDs.')
+            ->assertExitCode(1);
+
+        $this->assertSame(0, McpAccessToken::query()->count());
+        $this->assertDatabaseMissing('users', ['email' => 'cli-agent@example.test']);
+    }
+
+    public function test_token_create_rejects_a_scalar_scope_option_without_provisioning(): void
+    {
+        $owner = User::query()->create([
+            'name' => 'Workspace Owner',
+            'email' => 'workspace-owner@example.test',
+            'password' => Hash::make('correct horse battery staple'),
+        ]);
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'CLI Team');
+
+        $this->runConsoleCommand('artifactflow:mcp-token-create', [
+            '--email' => 'cli-agent@example.test',
+            '--workspace' => [$workspace->uid],
+            '--scope' => McpAccessTokenIssuer::SCOPE_READ,
+        ])
+            ->expectsOutputToContain('The --scope option must contain a list of scopes.')
+            ->assertExitCode(1);
+
+        $this->assertSame(0, McpAccessToken::query()->count());
+        $this->assertDatabaseMissing('users', ['email' => 'cli-agent@example.test']);
+    }
+
+    public function test_token_create_preserves_an_explicit_read_only_scope(): void
+    {
+        $owner = User::query()->create([
+            'name' => 'Workspace Owner',
+            'email' => 'workspace-owner@example.test',
+            'password' => Hash::make('correct horse battery staple'),
+        ]);
+        $workspace = app(CreateSharedWorkspace::class)->handle($owner, 'CLI Team');
+
+        $this->runConsoleCommand('artifactflow:mcp-token-create', [
+            '--email' => 'cli-agent@example.test',
+            '--workspace' => [$workspace->uid],
+            '--scope' => [McpAccessTokenIssuer::SCOPE_READ],
+        ])
+            ->expectsOutputToContain('MCP service account ready: cli-agent@example.test')
+            ->assertExitCode(0);
+
+        $this->assertSame([McpAccessTokenIssuer::SCOPE_READ], McpAccessToken::query()->sole()->scopes);
+    }
+
     public function test_token_create_rejects_a_write_scope_beyond_the_max_ttl(): void
     {
         $owner = User::query()->create([

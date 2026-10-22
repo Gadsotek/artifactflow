@@ -23,6 +23,18 @@ final class MintMcpTokenCommand extends Command
         $scopeOptions = $this->option('scope');
         $ttlOption = $this->option('ttl-days');
 
+        if (!is_array($workspaceOptions)) {
+            $this->line('The --workspace option must contain a list of UIDs.');
+
+            return self::FAILURE;
+        }
+
+        if (!is_array($scopeOptions)) {
+            $this->line('The --scope option must contain a list of scopes.');
+
+            return self::FAILURE;
+        }
+
         $email = is_string($emailOption) ? strtolower(trim($emailOption)) : '';
         $name = is_string($nameOption) && trim($nameOption) !== '' ? trim($nameOption) : 'Artifact Flow MCP Agent';
         $workspaceUids = array_values(array_filter($workspaceOptions, 'is_string'));

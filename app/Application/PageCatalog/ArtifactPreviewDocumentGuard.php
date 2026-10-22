@@ -369,6 +369,7 @@ final class ArtifactPreviewDocumentGuard
 
             if (
                 $tag['name'] === 'plaintext'
+                && !$selectNoframesRawTextAlternate
                 && $usesHtmlTokenizer
                 && $openFramesets === 0
                 && $openSelects === 0

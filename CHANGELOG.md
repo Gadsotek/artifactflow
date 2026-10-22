@@ -19,6 +19,98 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 - Refresh the PDF and DOCX Alpine certificate-bundle pin to 20261020-r0
   after the previously pinned package was removed from Alpine 3.24.
 
+## v0.3.7 — 2026-10-20
+
+Security and maintenance update for HTML previews, production images, and MCP
+clients, with refreshed dependencies and developer tooling.
+
+### Security
+
+- Hardened HTML preview rewriting for ambiguous `select`/`noframes`/`plaintext`
+  markup that could leave a nested iframe active. The exact failing input is
+  now covered by permanent Chromium, Firefox, and WebKit regressions.
+  ([#198](https://github.com/Gadsotek/artifactflow/pull/198))
+- Updated the application and DOCX processor FrankenPHP builds to
+  kin-openapi 0.149.0, fixing the dependency findings that blocked Nightly
+  image scans. Both builds verify the compiled module version.
+  ([#196](https://github.com/Gadsotek/artifactflow/pull/196))
+
+### Fixed
+
+- Reject malformed workspace and scope option values when minting MCP tokens.
+  Expanded protocol regressions cover the Laravel MCP 1.0.2 update.
+  ([#192](https://github.com/Gadsotek/artifactflow/pull/192))
+
+### Changed
+
+- Updated the reviewed local MCP bridge to `mcp-remote` 0.15.1 and the Claude
+  Desktop extension to 1.0.6, synchronizing integrity pins and verification
+  fixtures. The static bearer-token path and Node.js 20.18.1 minimum remain.
+  ([#195](https://github.com/Gadsotek/artifactflow/pull/195))
+- Updated Laravel to 13.37.0, Mermaid to 12.2.0, and supporting PHP, frontend,
+  browser-test, and CI dependencies.
+- Added native filesystem containment and conformance tooling for supported
+  Codex and Claude Code development sessions. See the
+  [agent containment guide](scripts/agent-containment/README.md) for supported
+  clients, required launch configuration, and explicit access grants.
+  ([#196](https://github.com/Gadsotek/artifactflow/pull/196))
+
+### Upgrade from v0.3.6
+
+- Deploy the new application image to all application, artifact-host, worker,
+  and scheduler roles. Update the DOCX processor image where DOCX is enabled.
+  Pin image digests and verify SBOMs and provenance using the
+  [production operations guide](docs/operations/production.md).
+- Re-run `./scripts/connect-mcp.sh` to select the updated integrity-locked
+  bridge. Administrators distributing the Desktop extension should build and
+  install version 1.0.6; existing bundles do not update themselves. Existing
+  personal MCP tokens remain valid.
+- No database migrations or required server configuration changes. PDF, XLSX,
+  and DOCX remain default-off with their existing containment requirements.
+
+## v0.3.6 — 2026-10-13
+
+Security and maintenance update for the application and DOCX processor,
+with refreshed frontend dependencies and PHP development tools.
+
+### Security
+
+- Rebuild the application and DOCX processor FrankenPHP binaries with pinned
+  Go 1.26.9 and golang.org/x/net 0.60.0 for the HTTP Range and HTTP/2 SETTINGS
+  CPU-exhaustion and TLS ECH memory-exhaustion fixes (CVE-2026-78667,
+  CVE-2026-78669, and CVE-2026-97031). Both builds verify the compiled
+  toolchain and module versions, update the required x/crypto dependency to
+  0.57.0, and retain the reviewed gRPC and kin-openapi patches.
+  ([#184](https://github.com/Gadsotek/artifactflow/pull/184))
+
+### Changed
+
+- Updated CodeMirror language support to 6.13.1 and Laravel Echo to 2.6.1,
+  with Vite 8.3.4, Playwright 1.64.0, and concurrently 10.0.6 for frontend
+  builds and browser testing.
+  ([#183](https://github.com/Gadsotek/artifactflow/pull/183))
+- Updated the PHP development tools to Larastan 3.13.0, PHPStan 2.3.1,
+  Rector 2.7.0, and Easy Coding Standard 13.3.3.
+  ([#181](https://github.com/Gadsotek/artifactflow/pull/181))
+
+### Fixed
+
+- Synchronized the cookie-isolation browser test with the HTML editor's
+  asynchronous language switch before filling the title, preventing a focus
+  race that could leave the title empty. All cookie-isolation assertions
+  remain in place across Chromium, Firefox, and WebKit.
+  ([#183](https://github.com/Gadsotek/artifactflow/pull/183))
+
+### Upgrade from v0.3.5
+
+- Deploy the new application image to every application, artifact-host,
+  worker, and scheduler role. Update the dedicated DOCX processor image on
+  installations where DOCX is enabled so both FrankenPHP binaries receive
+  the security fixes. Pin image digests and verify their SBOMs and provenance
+  using the [production operations guide](docs/operations/production.md).
+- No database migrations, required configuration changes, or MCP bridge and
+  Desktop extension updates.
+
 ## v0.3.5 — 2026-10-08
 
 Security and maintenance update for the application, MCP clients, and isolated
