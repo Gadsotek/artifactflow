@@ -4,7 +4,10 @@ All notable changes to ArtifactFlow will be documented here.
 
 This project is pre-1.0; expect breaking changes between alpha revisions.
 
-## Unreleased
+## v0.3.8 — 2026-10-22
+
+Security update for PHP and FrankenPHP across the application and document
+processors.
 
 ### Security
 
@@ -18,6 +21,17 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   and kin-openapi 0.151.0.
 - Refresh the PDF and DOCX Alpine certificate-bundle pin to 20261020-r0
   after the previously pinned package was removed from Alpine 3.24.
+
+### Upgrade from v0.3.7
+
+- Update the application image for every application, artifact-host, worker,
+  and scheduler role, plus each enabled PDF, XLSX, and DOCX processor. Pin
+  the release image digests and verify SBOMs and provenance using the
+  [production operations guide](docs/operations/production.md).
+- Rebuild and redeploy the dedicated `image-parser` target from the `v0.3.8`
+  source wherever it is used. The release workflow does not publish a
+  standalone image-parser image.
+- This release has no database schema changes.
 
 ## v0.3.7 — 2026-10-20
 
