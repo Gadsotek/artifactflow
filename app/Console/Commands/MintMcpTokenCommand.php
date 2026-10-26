@@ -19,8 +19,9 @@ final class MintMcpTokenCommand extends Command
     {
         $emailOption = $this->option('email');
         $nameOption = $this->option('name');
-        $workspaceOptions = $this->option('workspace');
-        $scopeOptions = $this->option('scope');
+        // Programmatic ArrayInput can supply scalars despite the repeatable option signature.
+        $workspaceOptions = $this->input->getOption('workspace');
+        $scopeOptions = $this->input->getOption('scope');
         $ttlOption = $this->option('ttl-days');
 
         if (!is_array($workspaceOptions)) {

@@ -106,6 +106,36 @@ updates itself. Preserve the original bridge smoke and all existing gates.
 
 ## Reviewed version
 
+The bridge retains mcp-remote 0.15.1 and updates its transitive security
+dependencies.
+
+The lock updates `body-parser` from 1.20.6 to 1.20.9 for
+[GHSA-27r3-jxmh-p828](https://github.com/expressjs/body-parser/security/advisories/GHSA-27r3-jxmh-p828).
+The reviewed patch detaches and destroys the completed decompression stream,
+handles late decoder errors, and validates unsupported charsets before creating
+a stream. Its `qs` declaration advances to ~6.16.0, matching the existing
+reviewed 6.16.0 override. No additional runtime package is introduced.
+Its independently hashed tarball SHA-512 is
+`sha512-FISIQxV5u91Y9gvuFq3q/tA/qTqLJn3AhRcEvyozyhJTh5OBFFtv827AdHU7Rbyct4r+Ba1/99oFa1Y3yuFsdw==`.
+
+The bridge overrides `undici` to 7.30.1 for the
+[EventSource memory bound](https://github.com/nodejs/undici/security/advisories/GHSA-4qv8-2p9j-2685),
+[case-insensitive subresource-integrity check](https://github.com/nodejs/undici/security/advisories/GHSA-f72v-6w45-q472),
+and [excessive content-encoding handling](https://github.com/nodejs/undici/security/advisories/GHSA-xjj6-f33q-929c)
+security fixes. The [7.30.0 to 7.30.1 delta](https://github.com/nodejs/undici/compare/v7.30.0...v7.30.1)
+also includes TLS session/error handling, connection-option preservation,
+redirect-cache isolation, decompression error handling, bounded WebSocket pong
+writes, and cookie-parser fixes. It adds no runtime dependencies and retains
+Node.js >=20.18.1. Its independently hashed tarball SHA-512 is
+`sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==`.
+
+The Node.js floor, `qs` 6.16.0 override, and `proxy-addr` 2.0.8 lock are unchanged.
+The Desktop extension advances to 1.0.7 for the changed bundled dependencies.
+The current lock SHA-256 is
+`2b75e9c1aa04479a0585173e4976a942a18bcfcf9fbd70cab62b4c589863c2cd`.
+
+## Previous review: 0.15.1 baseline
+
 The 0.15.1 review covers upstream commit
 `b529ea1356aa348b250e77f626ca3347ebae3de5` and the
 [0.14.3 to 0.15.1 delta](https://github.com/punkpeye/mcp-remote/compare/v0.14.3...v0.15.1).

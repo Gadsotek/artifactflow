@@ -23,7 +23,7 @@
     "node": ">=26"
   },
   "overrides": {
-    "dompurify": "3.4.16",
+    "dompurify": "3.4.17",
     "shell-quote": "1.11.0",
     "katex": "0.18.2",
     "elkjs": "0.12.0",

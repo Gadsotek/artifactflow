@@ -22,11 +22,17 @@ final class PdfProcessorSpikeContractTest extends TestCase
         $timeoutHarness = $this->readProjectFile('pdf-processor-spike/timeout-harness.sh');
 
         $this->assertStringContainsString(' AS pdf-processor-spike', $dockerfile);
-        $spikeStage = $this->afterNeedle($dockerfile, ' AS pdf-processor-spike');
+        $spikeStage = $this->afterNeedle($dockerfile, " AS pdf-processor-spike\n");
+        $nextStagePosition = strpos($spikeStage, "\nFROM ");
+        $this->assertNotFalse($nextStagePosition);
+        $runtimeStage = substr($spikeStage, 0, $nextStagePosition);
 
         $this->assertStringContainsString('PDFBOX_VERSION=' . self::PDFBOX_VERSION, $spikeStage);
         $this->assertStringContainsString('PDFBOX_SHA512=' . self::PDFBOX_SHA512, $spikeStage);
         $this->assertStringContainsString('openjdk21-jre-headless=21.0.12_p8-r0', $spikeStage);
+        $this->assertStringContainsString('"brotli-libs>=1.2.1-r0"', $spikeStage);
+        $this->assertStringContainsString('"curl>=8.23.0-r0"', $runtimeStage);
+        $this->assertStringContainsString('"libcurl>=8.23.0-r0"', $runtimeStage);
         $this->assertStringContainsString('"libcrypto3>=3.5.8-r0"', $spikeStage);
         $this->assertStringContainsString('"libssl3>=3.5.8-r0"', $spikeStage);
         $this->assertStringContainsString('"openssl>=3.5.8-r0"', $spikeStage);
