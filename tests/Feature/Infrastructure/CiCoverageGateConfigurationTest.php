@@ -111,9 +111,9 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $licensePolicy = $this->readProjectFile('security/dependency-license-policy.json');
         $notices = $this->readProjectFile('THIRD_PARTY_NOTICES.md');
 
-        $this->assertStringContainsString('"dompurify": "3.4.16"', $packageJson);
-        $this->assertStringContainsString("\"node_modules/dompurify\": {\n      \"version\": \"3.4.16\"", $packageLock);
-        $this->assertStringContainsString("const EXPECTED = '3.4.16';", $verifier);
+        $this->assertStringContainsString('"dompurify": "3.4.17"', $packageJson);
+        $this->assertStringContainsString("\"node_modules/dompurify\": {\n      \"version\": \"3.4.17\"", $packageLock);
+        $this->assertStringContainsString("const EXPECTED = '3.4.17';", $verifier);
         $this->assertStringContainsString('auditRepositoryLicenses', $verifier);
         $this->assertStringContainsString('composer.lock', $licenseVerifier);
         $this->assertStringContainsString('xlsx-processor-spike/package-lock.json', $licenseVerifier);
@@ -281,6 +281,9 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $productionStagePosition = strpos($dockerfile, " AS production\n");
         $this->assertNotFalse($productionStagePosition);
         $productionStage = substr($dockerfile, $productionStagePosition);
+        $this->assertStringContainsString('"brotli-libs>=1.2.1-r0"', $productionStage);
+        $this->assertStringContainsString('"curl>=8.23.0-r0"', $productionStage);
+        $this->assertStringContainsString('"libcurl>=8.23.0-r0"', $productionStage);
         $this->assertStringContainsString('"libcrypto3>=3.5.8-r0"', $productionStage);
         $this->assertStringContainsString('"libssl3>=3.5.8-r0"', $productionStage);
         $this->assertStringContainsString('"openssl>=3.5.8-r0"', $productionStage);

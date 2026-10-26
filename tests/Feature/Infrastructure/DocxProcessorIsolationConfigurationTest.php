@@ -64,6 +64,12 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('font-liberation=2.1.5-r2', $dockerfile);
         $this->assertStringContainsString('tzdata=2026e-r0', $dockerfile);
         $this->assertStringContainsString('util-linux=2.42.3-r1', $dockerfile);
+        $this->assertStringContainsString('"brotli-libs>=1.2.1-r0"', $dockerfile);
+        $runtimeStagePosition = strpos($dockerfile, 'FROM dunglas/frankenphp:1-php8.5-alpine@sha256:');
+        $this->assertNotFalse($runtimeStagePosition);
+        $runtimeStage = substr($dockerfile, $runtimeStagePosition);
+        $this->assertStringContainsString('"curl>=8.23.0-r0"', $runtimeStage);
+        $this->assertStringContainsString('"libcurl>=8.23.0-r0"', $runtimeStage);
         $this->assertStringContainsString('"libcrypto3>=3.5.8-r0"', $dockerfile);
         $this->assertStringContainsString('"libssl3>=3.5.8-r0"', $dockerfile);
         $this->assertStringContainsString('"openssl>=3.5.8-r0"', $dockerfile);

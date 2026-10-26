@@ -4,6 +4,22 @@ All notable changes to ArtifactFlow will be documented here.
 
 This project is pre-1.0; expect breaking changes between alpha revisions.
 
+## Unreleased
+
+### Security
+
+- Pin Mermaid's DOMPurify dependency to 3.4.17 for the upstream sanitization
+  fixes, keeping the override, lockfile, verifier, and security contract aligned.
+- Require patched Brotli 1.2.1-r0 or newer in the application, image-parser,
+  PDF, and DOCX runtime images for CVE-2026-111497. Rebuild these images to
+  replace the vulnerable library inherited from their pinned base images.
+- Require curl and libcurl 8.23.0-r0 or newer in those runtime images for
+  [CVE-2026-92392](https://curl.se/docs/CVE-2026-92392.html), fixing the
+  HTTP/2 upload use-after-free inherited from the pinned base images.
+- Update the locked MCP bridge dependencies to body-parser 1.20.9 and
+  undici 7.30.1 for the reported denial-of-service and integrity-check fixes.
+  Refresh the reviewed lock fingerprint and Desktop extension bundle to 1.0.7.
+
 ## v0.3.8 — 2026-10-22
 
 Security update for PHP and FrankenPHP across the application and document

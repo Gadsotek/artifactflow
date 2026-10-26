@@ -19,6 +19,7 @@ use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\SendQueuedNotifications;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -69,6 +70,7 @@ final class PasswordResetFlowTest extends TestCase
 
         Notification::assertSentTo($user, ResetPasswordNotification::class, function (ResetPasswordNotification $notification) use ($user): bool {
             $mail = $notification->toMail($user);
+            $this->assertInstanceOf(MailMessage::class, $mail);
 
             return str_starts_with($mail->actionUrl, 'https://app.example.internal/reset-password/')
                 && str_contains($mail->actionUrl, 'email=reset-origin%40example.test')
