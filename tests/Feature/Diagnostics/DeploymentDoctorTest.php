@@ -647,13 +647,31 @@ final class DeploymentDoctorTest extends TestCase
         }
     }
 
-    public function test_production_session_domain_may_cover_only_the_app_host(): void
+    public function test_production_rejects_even_an_app_only_cookie_domain(): void
     {
         $report = (new DeploymentDoctor($this->config('production', array_merge($this->hardenedProductionConfig(), [
             'session.domain' => 'app.example.test',
         ]))))->run();
 
-        $this->assertSame(DoctorCheckStatus::Pass, $this->check($report->checks, 'session_domain')->status);
+        $this->assertSame(DoctorCheckStatus::Fail, $this->check($report->checks, 'session_domain')->status);
+        $this->assertStringContainsString('__Host-', $this->check($report->checks, 'session_domain')->detail);
+    }
+
+    public function test_production_doctor_requires_a_host_prefix_and_root_cookie_path(): void
+    {
+        foreach ([
+            ['session.cookie' => 'artifactflow_session'],
+            ['session.cookie' => '__host-artifactflow_session'],
+            ['session.path' => '/login'],
+        ] as $override) {
+            $report = (new DeploymentDoctor($this->config('production', array_merge(
+                $this->hardenedProductionConfig(),
+                $override,
+            ))))->run();
+
+            $this->assertSame(DoctorCheckStatus::Fail, $this->check($report->checks, 'secure_sessions')->status);
+            $this->assertStringContainsString('__Host-', $this->check($report->checks, 'secure_sessions')->detail);
+        }
     }
 
     public function test_production_reverb_misconfiguration_fails_and_non_reverb_is_skipped(): void
@@ -1549,6 +1567,8 @@ final class DeploymentDoctorTest extends TestCase
             'image_parser.url' => 'https://image-parser.internal',
             'image_parser.shared_secret' => 'base64:' . base64_encode(str_repeat('p', 32)),
             'session.driver' => 'database',
+            'session.cookie' => '__Host-artifactflow_session',
+            'session.path' => '/',
             'session.secure' => true,
             'session.encrypt' => true,
             'session.http_only' => true,

@@ -721,8 +721,28 @@ final class ProductionSecurityConfigurationTest extends TestCase
         $this->configureSafeProductionValues();
         config(['session.domain' => 'app.example.test']);
 
-        app(ProductionSecurityConfiguration::class)->ensureSafe();
-        $this->addToAssertionCount(1);
+        $this->assertUnsafeConfiguration('Session cookies must omit Domain for the __Host- prefix.');
+    }
+
+    public function test_production_requires_host_prefixed_root_path_session_cookies(): void
+    {
+        foreach (['artifactflow_session', '__Secure-artifactflow_session', '__host-artifactflow_session', ''] as $name) {
+            $this->configureSafeProductionValues();
+            config(['session.cookie' => $name]);
+            $this->assertUnsafeConfiguration('Session cookie names must start with __Host- in production.');
+        }
+
+        foreach (['/login', '', null] as $path) {
+            $this->configureSafeProductionValues();
+            config(['session.path' => $path]);
+            $this->assertUnsafeConfiguration('Session cookies must use Path=/ for the __Host- prefix.');
+        }
+
+        foreach ([' ', '.', '..'] as $domain) {
+            $this->configureSafeProductionValues();
+            config(['session.domain' => $domain]);
+            $this->assertUnsafeConfiguration('Session cookies must omit Domain for the __Host- prefix.');
+        }
     }
 
     public function test_non_ascii_idn_session_domain_is_rejected_rather_than_compared_byte_wise(): void
@@ -1502,7 +1522,9 @@ final class ProductionSecurityConfigurationTest extends TestCase
             'hashing.bcrypt.rounds' => 12,
             'hashing.driver' => 'bcrypt',
             'session.driver' => 'database',
-            'session.domain' => 'app.example.test',
+            'session.cookie' => '__Host-artifactflow_session',
+            'session.path' => '/',
+            'session.domain' => null,
             'session.encrypt' => true,
             'session.http_only' => true,
             'session.same_site' => 'lax',
@@ -1619,7 +1641,7 @@ final class ProductionSecurityConfigurationTest extends TestCase
                 'DB_SSLROOTCERT' => base_path('README.md'),
                 'MAIL_MAILER' => 'smtp',
                 'QUEUE_CONNECTION' => 'database',
-                'SESSION_DOMAIN' => 'app.example.test',
+                'SESSION_DOMAIN' => '',
                 'SESSION_DRIVER' => 'database',
                 'SESSION_ENCRYPT' => 'true',
                 'SESSION_HTTP_ONLY' => 'true',

@@ -275,6 +275,23 @@ final readonly class SecurityInvariants
         return false;
     }
 
+    public function sessionCookieHasHostPrefix(): bool
+    {
+        $name = $this->config->get('session.cookie');
+
+        return is_string($name) && str_starts_with($name, '__Host-');
+    }
+
+    public function sessionCookieHasRootPath(): bool
+    {
+        return $this->config->get('session.path') === '/';
+    }
+
+    public function sessionCookieIsHostOnly(): bool
+    {
+        return in_array($this->config->get('session.domain'), [null, ''], true);
+    }
+
     /**
      * Decide whether a configured session cookie domain (SESSION_DOMAIN) is safe relative
      * to the artifact host. The session domain is routed through the single origin parser --

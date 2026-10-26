@@ -8,6 +8,13 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ### Security
 
+- Bind secure session and trusted-device credentials to the application
+  hostname using `__Host-` cookies. Production now requires `Path=/` and
+  no `Domain` attribute, preventing sibling hosts from injecting these
+  cookie names through a shared parent domain. Upgrading requires clearing
+  explicit `SESSION_DOMAIN` settings, refreshing cached configuration,
+  and signing in and enrolling trusted devices again.
+
 - Pin Mermaid's DOMPurify dependency to 3.4.17 for the upstream sanitization
   fixes, keeping the override, lockfile, verifier, and security contract aligned.
 - Require patched Brotli 1.2.1-r0 or newer in the application, image-parser,
@@ -19,6 +26,13 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 - Update the locked MCP bridge dependencies to body-parser 1.20.9 and
   undici 7.30.1 for the reported denial-of-service and integrity-check fixes.
   Refresh the reviewed lock fingerprint and Desktop extension bundle to 1.0.7.
+
+### Fixed
+
+- Keep the host-cookie HTTPS test fixture memory-only while making its
+  OpenSSL input portable to Linux CI.
+- Leave `SESSION_DOMAIN` empty in the production environment example,
+  matching the host-only cookie contract and its regression test.
 
 ## v0.3.8 — 2026-10-22
 

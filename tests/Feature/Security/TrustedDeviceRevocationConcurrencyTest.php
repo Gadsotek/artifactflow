@@ -150,7 +150,7 @@ final class TrustedDeviceRevocationConcurrencyTest extends TestCase
         $status = 0;
 
         try {
-            $this->withCookie(TrustedDeviceManager::COOKIE_NAME, $rawDeviceToken)
+            $this->withCookie(app(TrustedDeviceManager::class)->cookieName(), $rawDeviceToken)
                 ->post('/login', [
                     'email' => $user->email,
                     'password' => 'correct horse battery staple',
@@ -178,7 +178,7 @@ final class TrustedDeviceRevocationConcurrencyTest extends TestCase
         $this->assertGuest();
 
         Auth::forgetGuards();
-        $this->withCookie(TrustedDeviceManager::COOKIE_NAME, $rawDeviceToken)
+        $this->withCookie(app(TrustedDeviceManager::class)->cookieName(), $rawDeviceToken)
             ->post('/login', [
                 'email' => $user->email,
                 'password' => 'correct horse battery staple',

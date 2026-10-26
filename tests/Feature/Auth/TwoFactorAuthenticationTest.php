@@ -22,6 +22,7 @@ use App\Models\McpAccessToken;
 use App\Models\TrustedDevice;
 use App\Models\User;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Cookie\CookieJar;
 use Illuminate\Cookie\CookieValuePrefix;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,6 +33,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PragmaRX\Google2FA\Google2FA;
 use Tests\TestCase;
 
@@ -943,7 +945,7 @@ final class TwoFactorAuthenticationTest extends TestCase
         ])->assertRedirect('/dashboard');
 
         $this->assertSame(1, $trustedDevicesRevoked);
-        $response->assertCookieMissing(TrustedDeviceManager::COOKIE_NAME);
+        $response->assertCookieMissing(app(TrustedDeviceManager::class)->cookieName());
         $this->assertSame(0, TrustedDevice::query()->where('user_uid', $user->uid)->count());
         $this->assertSame(
             0,
@@ -1053,7 +1055,7 @@ final class TwoFactorAuthenticationTest extends TestCase
 
         $this->assertTrue($rotationTriggered);
         $this->assertSame($expectedAuthRevision + 1, $user->refresh()->auth_revision);
-        $response->assertCookieMissing(TrustedDeviceManager::COOKIE_NAME);
+        $response->assertCookieMissing(app(TrustedDeviceManager::class)->cookieName());
         $this->assertSame(0, TrustedDevice::query()->where('user_uid', $user->uid)->count());
         $this->assertSame(
             0,
@@ -1082,8 +1084,30 @@ final class TwoFactorAuthenticationTest extends TestCase
         $this->assertSame(1, TrustedDevice::query()->where('user_uid', $user->uid)->count());
     }
 
-    public function test_trusted_device_skips_only_the_totp_challenge_after_password_and_is_revocable(): void
+    /**
+     * @return iterable<string, array{bool, string, string, string|null}>
+     */
+    public static function trustedDeviceCookiePolicies(): iterable
     {
+        yield 'local HTTP' => [false, 'artifactflow_trusted_device', '/', null];
+        yield 'secure host cookie' => [true, '__Host-artifactflow_trusted_device', '/', null];
+        yield 'secure ignores CookieJar defaults' => [
+            true,
+            '__Host-artifactflow_trusted_device',
+            '/login',
+            '.example.test',
+        ];
+    }
+
+    #[DataProvider('trustedDeviceCookiePolicies')]
+    public function test_trusted_device_skips_only_the_totp_challenge_after_password_and_is_revocable(
+        bool $secure,
+        string $cookieName,
+        string $defaultPath,
+        ?string $defaultDomain,
+    ): void {
+        config(['session.secure' => $secure]);
+        app(CookieJar::class)->setDefaultPathAndDomain($defaultPath, $defaultDomain, $secure, 'lax');
         $user = $this->createUser('Trusted Device User', 'trusted@example.test');
         $this->enableTwoFactor($user);
         $otherUser = $this->createUser('Other Trusted User', 'other-trusted@example.test');
@@ -1099,12 +1123,16 @@ final class TwoFactorAuthenticationTest extends TestCase
         ])->assertRedirect('/dashboard');
         $cookie = null;
         foreach ($response->headers->getCookies() as $responseCookie) {
-            if ($responseCookie->getName() === TrustedDeviceManager::COOKIE_NAME) {
+            if ($responseCookie->getName() === $cookieName) {
                 $cookie = $responseCookie;
             }
         }
 
         $this->assertNotNull($cookie);
+        $this->assertSame('/', $cookie->getPath());
+        $this->assertNull($cookie->getDomain());
+        $this->assertSame($secure, $cookie->isSecure());
+        $this->assertTrue($cookie->isHttpOnly());
         $cookieValue = $cookie->getValue();
         $this->assertIsString($cookieValue);
         $this->assertSame(1, TrustedDevice::query()->where('user_uid', $user->uid)->count());
@@ -1113,7 +1141,8 @@ final class TwoFactorAuthenticationTest extends TestCase
         $originalLastUsed = $trustedDevice->last_used_at;
         $this->assertNotSame($cookieValue, $trustedDevice->token_hash);
         $decryptedCookieValue = Crypt::decryptString(rawurldecode($cookieValue));
-        $rawTrustedDeviceToken = CookieValuePrefix::remove($decryptedCookieValue);
+        $rawTrustedDeviceToken = CookieValuePrefix::validate($cookieName, $decryptedCookieValue, [Crypt::getKey()]);
+        $this->assertIsString($rawTrustedDeviceToken);
         $this->assertSame($trustedDevice->token_hash, hash('sha256', $rawTrustedDeviceToken));
         $this->assertSensitiveValuesAbsentFromTwoFactorRecords([
             self::SECRET,
@@ -1125,7 +1154,7 @@ final class TwoFactorAuthenticationTest extends TestCase
         $this->post('/logout')->assertRedirect('/');
         $this->travel(1)->minute();
 
-        $this->withCookie($cookie->getName(), $cookieValue)
+        $this->withUnencryptedCookie($cookie->getName(), $cookieValue)
             ->post('/login', [
                 'email' => 'trusted@example.test',
                 'password' => 'correct horse battery staple',
@@ -1137,7 +1166,7 @@ final class TwoFactorAuthenticationTest extends TestCase
         $this->assertTrue($originalLastUsed === null || $trustedDevice->last_used_at->greaterThan($originalLastUsed));
 
         $this->post('/logout')->assertRedirect('/');
-        $this->withCookie($cookie->getName(), $cookieValue)
+        $this->withUnencryptedCookie($cookie->getName(), $cookieValue)
             ->post('/login', [
                 'email' => 'other-trusted@example.test',
                 'password' => 'correct horse battery staple',
@@ -1145,7 +1174,7 @@ final class TwoFactorAuthenticationTest extends TestCase
         $this->assertGuest();
 
         $trustedDevice->forceFill(['expires_at' => now()->subMinute()])->save();
-        $this->withCookie($cookie->getName(), $cookieValue)
+        $this->withUnencryptedCookie($cookie->getName(), $cookieValue)
             ->post('/login', [
                 'email' => 'trusted@example.test',
                 'password' => 'correct horse battery staple',
@@ -1154,13 +1183,43 @@ final class TwoFactorAuthenticationTest extends TestCase
 
         $trustedDevice->forceFill(['expires_at' => now()->addDays(30)])->save();
         $trustedDevice->delete();
-        $this->withCookie($cookie->getName(), $cookieValue)
+        $this->withUnencryptedCookie($cookie->getName(), $cookieValue)
             ->post('/login', [
                 'email' => 'trusted@example.test',
                 'password' => 'correct horse battery staple',
             ])->assertRedirect('/login/two-factor-challenge');
         $this->assertGuest();
         $this->travelBack();
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function legacyTrustedDeviceCookieNames(): iterable
+    {
+        yield 'legacy name' => ['artifactflow_trusted_device'];
+        yield 'renamed to host cookie' => ['__Host-artifactflow_trusted_device'];
+    }
+
+    #[DataProvider('legacyTrustedDeviceCookieNames')]
+    public function test_secure_login_rejects_legacy_trusted_device_ciphertext(string $submittedCookieName): void
+    {
+        config(['session.secure' => true]);
+        $user = $this->createUser('Legacy Device User', 'legacy-device@example.test');
+        $this->enableTwoFactor($user);
+        $trustedDevice = $this->createTrustedDevice($user, 'legacy-device-token');
+        $legacyCookieValue = Crypt::encryptString(
+            CookieValuePrefix::create('artifactflow_trusted_device', Crypt::getKey()) . 'legacy-device-token',
+        );
+
+        $this->withUnencryptedCookie($submittedCookieName, $legacyCookieValue)
+            ->post('/login', [
+                'email' => 'legacy-device@example.test',
+                'password' => 'correct horse battery staple',
+            ])->assertRedirect('/login/two-factor-challenge');
+
+        $this->assertGuest();
+        $this->assertNull($trustedDevice->refresh()->last_used_at);
     }
 
     public function test_challenge_rate_limit_is_account_global_across_source_ips(): void

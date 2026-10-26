@@ -6,12 +6,20 @@ namespace Tests\Feature\Auth;
 
 use App\Application\Identity\CreateSharedWorkspace;
 use App\Domain\Identity\WorkspaceRole;
+use App\Http\Support\AuthenticationSessionRevision;
 use App\Models\AuditEntry;
 use App\Models\DomainEvent;
 use App\Models\User;
 use App\Models\WorkspaceMembership;
+use Illuminate\Auth\SessionGuard;
+use Illuminate\Cookie\CookieValuePrefix;
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Session\SessionManager;
+use Illuminate\Session\Store;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class AuthenticationShellTest extends TestCase
@@ -50,15 +58,37 @@ final class AuthenticationShellTest extends TestCase
         $this->get('/register')->assertNotFound();
     }
 
-    public function test_users_can_login_and_logout(): void
+    /**
+     * @return iterable<string, array{bool, string}>
+     */
+    public static function sessionCookiePolicies(): iterable
     {
+        yield 'local HTTP' => [false, 'artifactflow_session'];
+        yield 'secure host cookie' => [true, '__Host-artifactflow_session'];
+    }
+
+    #[DataProvider('sessionCookiePolicies')]
+    public function test_users_can_login_and_logout(bool $secure, string $cookieName): void
+    {
+        config([
+            'session.cookie' => $cookieName,
+            'session.secure' => $secure,
+            'session.path' => '/',
+            'session.domain' => null,
+        ]);
         $user = $this->createUser('Login User', 'login@example.test', 'correct password');
 
-        $this->post('/login', [
+        $response = $this->post('/login', [
             'email' => 'login@example.test',
             'password' => 'correct password',
         ])->assertRedirect('/dashboard');
 
+        $cookie = $response->getCookie($cookieName, decrypt: false);
+        $this->assertNotNull($cookie);
+        $this->assertSame('/', $cookie->getPath());
+        $this->assertNull($cookie->getDomain());
+        $this->assertSame($secure, $cookie->isSecure());
+        $this->assertTrue($cookie->isHttpOnly());
         $this->assertAuthenticatedAs($user);
         $event = DomainEvent::query()->where('event_type', 'user.logged_in')->sole();
         $this->assertSame($user->uid, $event->aggregate_uid);
@@ -88,6 +118,62 @@ final class AuthenticationShellTest extends TestCase
 
         foreach ($response->headers->getCookies() as $cookie) {
             $this->assertFalse(str_starts_with($cookie->getName(), 'remember_web_'));
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, string, bool}>
+     */
+    public static function sessionCookieReplayPolicies(): iterable
+    {
+        yield 'active credential' => ['__Host-artifactflow_session', '__Host-artifactflow_session', true];
+        yield 'legacy credential' => ['artifactflow_session', 'artifactflow_session', false];
+        yield 'legacy ciphertext renamed' => ['artifactflow_session', '__Host-artifactflow_session', false];
+    }
+
+    #[DataProvider('sessionCookieReplayPolicies')]
+    public function test_secure_sessions_accept_only_credentials_bound_to_the_active_cookie_name(
+        string $issuedName,
+        string $submittedName,
+        bool $accepted,
+    ): void {
+        config([
+            'session.driver' => 'database',
+            'session.encrypt' => true,
+            'session.cookie' => '__Host-artifactflow_session',
+            'session.secure' => true,
+            'session.path' => '/',
+            'session.domain' => null,
+        ]);
+        $user = $this->createUser('Cookie Replay User', 'cookie-replay@example.test');
+        $guard = Auth::guard('web');
+        $this->assertInstanceOf(SessionGuard::class, $guard);
+        $store = app(SessionManager::class)->driver();
+        $this->assertInstanceOf(Store::class, $store);
+        $this->assertSame('__Host-artifactflow_session', $store->getName());
+        $store->put($guard->getName(), $user->uid);
+        $store->put(AuthenticationSessionRevision::SESSION_KEY, $user->auth_revision);
+        $sessionId = $store->getId();
+        $store->save();
+        $this->assertDatabaseHas('sessions', ['id' => $sessionId]);
+
+        // Preserve the persisted session, but remove in-process authentication
+        // so only the incoming browser cookie can authenticate this request.
+        $store->flush();
+        Auth::forgetGuards();
+        $encrypter = app(Encrypter::class);
+        $ciphertext = $encrypter->encrypt(
+            CookieValuePrefix::create($issuedName, $encrypter->getKey()) . $sessionId,
+            false,
+        );
+        $response = $this->withUnencryptedCookie($submittedName, $ciphertext)->get('/dashboard');
+
+        if ($accepted) {
+            $response->assertOk();
+            $this->assertAuthenticatedAs($user);
+        } else {
+            $response->assertRedirect('/login');
+            $this->assertGuest();
         }
     }
 

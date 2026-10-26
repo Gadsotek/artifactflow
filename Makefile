@@ -330,7 +330,7 @@ verify-reverb-origin:
 		export DB_SSLMODE=verify-full; \
 		export DB_SSLROOTCERT=/etc/ssl/certs/ca-certificates.crt; \
 		export SESSION_DRIVER=database; \
-		export SESSION_DOMAIN=app.example.test; \
+		export SESSION_DOMAIN=; \
 		export SESSION_SECURE_COOKIE=true; \
 		export SESSION_ENCRYPT=true; \
 		export SESSION_HTTP_ONLY=true; \
@@ -844,7 +844,7 @@ gitleaks:
 	gitleaks git --no-banner --redact -c .gitleaks.toml .
 
 quality:
-	node --test scripts/quality-images.test.mjs scripts/publish-guard.test.mjs scripts/playwright-config.test.mjs scripts/update-mcp-remote-pins.test.mjs
+	node --test scripts/quality-images.test.mjs scripts/publish-guard.test.mjs scripts/playwright-config.test.mjs scripts/update-mcp-remote-pins.test.mjs scripts/host-cookie-server.test.mjs
 	$(MAKE) publish-guard
 	$(MAKE) ai-hooks-test
 	$(MAKE) ecs
