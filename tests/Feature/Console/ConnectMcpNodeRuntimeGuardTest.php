@@ -15,7 +15,7 @@ use Tests\TestCase;
  */
 final class ConnectMcpNodeRuntimeGuardTest extends TestCase
 {
-    private const string LOCK_SHA256 = 'a37cbf102f51e41c6248efe7c9bd1b2c452f0a38e670b44d7cfa2a057106ba2b';
+    private const string LOCK_SHA256 = '2b75e9c1aa04479a0585173e4976a942a18bcfcf9fbd70cab62b4c589863c2cd';
 
     /**
      * @var list<string>

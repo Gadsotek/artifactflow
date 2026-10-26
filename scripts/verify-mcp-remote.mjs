@@ -5,16 +5,16 @@ import { fileURLToPath } from 'node:url';
 
 const EXPECTED_VERSION = '0.15.1';
 const EXPECTED_NODE_RANGE = '>=20.18.1';
-const EXPECTED_LOCK_SHA256 = 'a37cbf102f51e41c6248efe7c9bd1b2c452f0a38e670b44d7cfa2a057106ba2b';
+const EXPECTED_LOCK_SHA256 = '2b75e9c1aa04479a0585173e4976a942a18bcfcf9fbd70cab62b4c589863c2cd';
 const EXPECTED_QS_VERSION = '6.16.0';
-const EXPECTED_UNDICI_VERSION = '7.30.0';
+const EXPECTED_UNDICI_VERSION = '7.30.1';
 const MINIMUM_NODE_VERSION = [20, 18, 1];
 const EXPECTED_INTEGRITY =
   'sha512-znJhxnoQZTDx9AieHZrRYs8YqWKpyH1SKyFEFnMTMDUPpx6r9dSc/L4lKf18DdWMQqKpbwWbfIZfyiVg2RSXzg==';
 const EXPECTED_QS_INTEGRITY =
   'sha512-h6fhOIaRrID2CbEY2fqs+7t+UXZo+MLAnU5gRIq85uFtdiUPCdsApMlHhXogKVM4HM2DVbIjGNTTYH2OcmP1vA==';
 const EXPECTED_UNDICI_INTEGRITY =
-  'sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==';
+  'sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==';
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const bridgeDirectory = resolve(repositoryRoot, 'scripts/mcp-remote-bridge');
 const lockPath = resolve(bridgeDirectory, 'package-lock.json');
