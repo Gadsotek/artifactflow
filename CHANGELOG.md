@@ -15,6 +15,54 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   explicit `SESSION_DOMAIN` settings, refreshing cached configuration,
   and signing in and enrolling trusted devices again.
 
+- Pin Mermaid's DOMPurify dependency to 3.4.17 for the upstream sanitization
+  fixes, keeping the override, lockfile, verifier, and security contract aligned.
+- Require patched Brotli 1.2.1-r0 or newer in the application, image-parser,
+  PDF, and DOCX runtime images for CVE-2026-111497. Rebuild these images to
+  replace the vulnerable library inherited from their pinned base images.
+- Require curl and libcurl 8.23.0-r0 or newer in those runtime images for
+  [CVE-2026-92392](https://curl.se/docs/CVE-2026-92392.html), fixing the
+  HTTP/2 upload use-after-free inherited from the pinned base images.
+- Update the locked MCP bridge dependencies to body-parser 1.20.9 and
+  undici 7.30.1 for the reported denial-of-service and integrity-check fixes.
+  Refresh the reviewed lock fingerprint and Desktop extension bundle to 1.0.7.
+
+### Fixed
+
+- Keep the host-cookie HTTPS test fixture memory-only while making its
+  OpenSSL input portable to Linux CI.
+- Leave `SESSION_DOMAIN` empty in the production environment example,
+  matching the host-only cookie contract and its regression test.
+
+## v0.3.8 — 2026-10-22
+
+Security update for PHP and FrankenPHP across the application and document
+processors.
+
+### Security
+
+- Update PHP to 8.5.12 across development, application, image-parser, PDF,
+  and DOCX images for CVE-2026-109618 and CVE-2026-109619. Pin matching
+  FrankenPHP 1.13.2 builder and runtime images by immutable digest.
+- Rebuild application and DOCX FrankenPHP binaries with Go 1.27.3, required
+  by the new upstream Go 1.27 baseline and fixing CVE-2026-111943. Preserve
+  upstream's newer security dependencies instead of downgrading them, with
+  compiled-version checks for x/net 0.61.0, x/crypto 0.58.0, gRPC 1.84.0,
+  and kin-openapi 0.151.0.
+- Refresh the PDF and DOCX Alpine certificate-bundle pin to 20261020-r0
+  after the previously pinned package was removed from Alpine 3.24.
+
+### Upgrade from v0.3.7
+
+- Update the application image for every application, artifact-host, worker,
+  and scheduler role, plus each enabled PDF, XLSX, and DOCX processor. Pin
+  the release image digests and verify SBOMs and provenance using the
+  [production operations guide](docs/operations/production.md).
+- Rebuild and redeploy the dedicated `image-parser` target from the `v0.3.8`
+  source wherever it is used. The release workflow does not publish a
+  standalone image-parser image.
+- This release has no database schema changes.
+
 ## v0.3.7 — 2026-10-20
 
 Security and maintenance update for HTML previews, production images, and MCP

@@ -32,22 +32,24 @@ export async function createHostCookieServer(origins: string[]) {
   // machine trust-store changes. Only this test context ignores TLS trust.
   const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const key = privateKey.export({ type: 'pkcs8', format: 'pem' });
-  const cert = execFileSync(
-    'openssl',
-    [
-      'req',
-      '-new',
-      '-x509',
-      '-key',
-      '/dev/stdin',
-      '-subj',
-      '/CN=*.cookie-prefix.test',
-      '-days',
-      '1',
-      '-sha256',
-    ],
-    { input: key, timeout: 5_000, stdio: ['pipe', 'pipe', 'pipe'] },
-  );
+  let cert: Buffer;
+  try {
+    // Node's child-process stdin is a socket on Linux, which OpenSSL cannot
+    // reopen through /dev/stdin. A fixed shell pipeline supplies a real pipe.
+    // No command text is interpolated, and the key never enters stdout.
+    cert = execFileSync(
+      'sh',
+      [
+        '-c',
+        "cat | openssl req -new -x509 -key /dev/stdin -subj '/CN=*.cookie-prefix.test' -days 1 -sha256",
+      ],
+      { input: key, timeout: 5_000, stdio: ['pipe', 'pipe', 'pipe'] },
+    );
+  } catch {
+    // Child-process errors retain captured output; keep credentials out of
+    // assertion failures and browser reports even if a tool fails unexpectedly.
+    throw new Error('OpenSSL could not generate the ephemeral cookie-test TLS certificate.');
+  }
 
   const httpsServer = createHttpsServer({ key, cert }, (request, response) => {
     const host = request.headers.host ?? '';

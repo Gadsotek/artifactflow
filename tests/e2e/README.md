@@ -44,6 +44,10 @@ synthetic sibling hosts. Cookie assertions read the receiving server's headers; 
 responses can omit browser-managed Cookie headers from Playwright's request observation. The
 fixture requires `openssl` on the runner, generates its test key and certificate in memory, and
 ignores certificate trust only in that test context. It needs no DNS or machine trust-store changes.
+The key is generated in Node and passed through a fixed `cat | openssl` pipeline so OpenSSL
+receives a real stdin pipe instead of Node's Linux socket-backed stdio. Only the certificate
+reaches stdout. Tooling regressions check that fixture startup creates no files, completes a
+TLS handshake, records request headers, and omits captured output from setup errors.
 PHP feature tests separately verify application cookie issuance and authentication; the browser
 fixture does not validate production TLS or reverse-proxy configuration.
 

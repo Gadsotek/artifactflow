@@ -844,7 +844,7 @@ gitleaks:
 	gitleaks git --no-banner --redact -c .gitleaks.toml .
 
 quality:
-	node --test scripts/quality-images.test.mjs scripts/publish-guard.test.mjs scripts/playwright-config.test.mjs scripts/update-mcp-remote-pins.test.mjs
+	node --test scripts/quality-images.test.mjs scripts/publish-guard.test.mjs scripts/playwright-config.test.mjs scripts/update-mcp-remote-pins.test.mjs scripts/host-cookie-server.test.mjs
 	$(MAKE) publish-guard
 	$(MAKE) ai-hooks-test
 	$(MAKE) ecs
