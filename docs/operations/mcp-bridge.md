@@ -3,7 +3,7 @@
 [MCP setup](mcp.md)
 
 Claude's supported Desktop JSON path cannot supply ArtifactFlow's static
-bearer token directly. The connector therefore uses `mcp-remote@0.15.1` for
+bearer token directly. The connector therefore uses `mcp-remote@0.15.2` for
 all supported local clients, including Codex releases that need the stdio bridge.
 
 The [Claude Desktop extension](mcp-desktop.md) packages the same reviewed lock
@@ -106,8 +106,18 @@ updates itself. Preserve the original bridge smoke and all existing gates.
 
 ## Reviewed version
 
-The bridge retains mcp-remote 0.15.1 and updates its transitive security
-dependencies.
+The 0.15.2 review covers upstream commit
+`373f7320f6afd1fdb00e0168826a3cea99102241` and the
+[0.15.1 to 0.15.2 delta](https://github.com/punkpeye/mcp-remote/compare/v0.15.1...v0.15.2).
+It clears the pending OAuth flow when a stale client registration is invalidated,
+so a fresh registration can open its authorization browser. Flow files remain
+available to the SDK's retry path. Other upstream changes adjust Windows tests;
+runtime dependency declarations and CLI entrypoints are unchanged.
+Comparison of both published JavaScript distributions, after accounting for
+version strings and generated chunk names, shows only the pending-flow reset.
+ArtifactFlow's static bearer header and transport settings remain unchanged.
+The independently hashed published tarball SHA-512 is
+`sha512-3PrXMgjJew6xbZH21D7AbtOoHwhvjWt1IY6wepHjKTZLPSkTPifdMVBFuoxsuF6WK6nUlZIgpSj5o5NscJ+XXw==`.
 
 The lock updates `body-parser` from 1.20.6 to 1.20.9 for
 [GHSA-27r3-jxmh-p828](https://github.com/expressjs/body-parser/security/advisories/GHSA-27r3-jxmh-p828).
@@ -132,9 +142,9 @@ Node.js >=20.18.1. Its independently hashed tarball SHA-512 is
 The Node.js floor, `qs` 6.16.0 override, and `proxy-addr` 2.0.8 lock are unchanged.
 The Desktop extension advances to 1.0.7 for the changed bundled dependencies.
 The current lock SHA-256 is
-`2b75e9c1aa04479a0585173e4976a942a18bcfcf9fbd70cab62b4c589863c2cd`.
+`4f1e7839897071bef30b1591870348afe6deeb521d9086e4a05dfa51ccbb5779`.
 
-## Previous review: 0.15.1 baseline
+## Previous review: 0.15.1
 
 The 0.15.1 review covers upstream commit
 `b529ea1356aa348b250e77f626ca3347ebae3de5` and the
