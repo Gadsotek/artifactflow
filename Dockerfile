@@ -128,9 +128,9 @@ CMD ["sh", "/var/www/html/docker/start-local.sh"]
 # application source, database client, credentials, or artifact storage.
 FROM php:8.5.12-cli-alpine3.24@sha256:eef5baa8671b37f2909d4b2f1849ea663df6ff4fe8936f102208ce54f1e32e01 AS image-parser
 
-# The pinned base digest freezes its Alpine packages. Patch only the OpenSSL
-# packages Trivy reports for CVE-2026-14456 rather than running a blanket
-# `apk upgrade`; the published image digest and SBOM identify the exact result.
+# The pinned base digest freezes its Alpine packages. Patch the OpenSSL,
+# Brotli, and curl findings (CVE-2026-14456, CVE-2026-111497, CVE-2026-92392)
+# with targeted minimums; the published image digest and SBOM identify the result.
 RUN apk add --no-cache --virtual .image-parser-build-deps \
         $PHPIZE_DEPS \
         libjpeg-turbo-dev \
@@ -138,8 +138,11 @@ RUN apk add --no-cache --virtual .image-parser-build-deps \
     && docker-php-ext-configure gd --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" exif gd \
     && apk add --no-cache \
+        "brotli-libs>=1.2.1-r0" \
         ca-certificates \
         "c-ares>=1.34.8-r0" \
+        "curl>=8.23.0-r0" \
+        "libcurl>=8.23.0-r0" \
         libjpeg-turbo \
         libpng \
         "libcrypto3>=3.5.8-r0" \
@@ -219,11 +222,16 @@ COPY --from=frankenphp-security-builder /usr/local/bin/frankenphp /usr/local/bin
 # upstream's newer x/net, x/crypto, gRPC, and kin-openapi security fixes.
 # Current apk minimums: c-ares CVE-2026-33630 is fixed in 1.34.8-r0;
 # OpenSSL CVE-2026-14456 is fixed in 3.5.8-r0; PostgreSQL client library
-# findings reported against 18.4-r0 are fixed in 18.5-r0.
+# findings reported against 18.4-r0 are fixed in 18.5-r0;
+# Brotli CVE-2026-111497 is fixed in 1.2.1-r0;
+# curl/libcurl CVE-2026-92392 is fixed in 8.23.0-r0.
 RUN setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp \
     && apk add --no-cache \
+        "brotli-libs>=1.2.1-r0" \
         "c-ares>=1.34.8-r0" \
+        "curl>=8.23.0-r0" \
         "libcrypto3>=3.5.8-r0" \
+        "libcurl>=8.23.0-r0" \
         "libecpg>=18.5-r0" \
         "libpq>=18.5-r0" \
         "libssl3>=3.5.8-r0" \

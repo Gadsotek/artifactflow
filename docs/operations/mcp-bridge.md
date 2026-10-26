@@ -3,7 +3,7 @@
 [MCP setup](mcp.md)
 
 Claude's supported Desktop JSON path cannot supply ArtifactFlow's static
-bearer token directly. The connector therefore uses `mcp-remote@0.15.1` for
+bearer token directly. The connector therefore uses `mcp-remote@0.15.2` for
 all supported local clients, including Codex releases that need the stdio bridge.
 
 The [Claude Desktop extension](mcp-desktop.md) packages the same reviewed lock
@@ -105,6 +105,46 @@ change, including a reviewed bridge upgrade. The bundle does not install
 updates itself. Preserve the original bridge smoke and all existing gates.
 
 ## Reviewed version
+
+The 0.15.2 review covers upstream commit
+`373f7320f6afd1fdb00e0168826a3cea99102241` and the
+[0.15.1 to 0.15.2 delta](https://github.com/punkpeye/mcp-remote/compare/v0.15.1...v0.15.2).
+It clears the pending OAuth flow when a stale client registration is invalidated,
+so a fresh registration can open its authorization browser. Flow files remain
+available to the SDK's retry path. Other upstream changes adjust Windows tests;
+runtime dependency declarations and CLI entrypoints are unchanged.
+Comparison of both published JavaScript distributions, after accounting for
+version strings and generated chunk names, shows only the pending-flow reset.
+ArtifactFlow's static bearer header and transport settings remain unchanged.
+The independently hashed published tarball SHA-512 is
+`sha512-3PrXMgjJew6xbZH21D7AbtOoHwhvjWt1IY6wepHjKTZLPSkTPifdMVBFuoxsuF6WK6nUlZIgpSj5o5NscJ+XXw==`.
+
+The lock updates `body-parser` from 1.20.6 to 1.20.9 for
+[GHSA-27r3-jxmh-p828](https://github.com/expressjs/body-parser/security/advisories/GHSA-27r3-jxmh-p828).
+The reviewed patch detaches and destroys the completed decompression stream,
+handles late decoder errors, and validates unsupported charsets before creating
+a stream. Its `qs` declaration advances to ~6.16.0, matching the existing
+reviewed 6.16.0 override. No additional runtime package is introduced.
+Its independently hashed tarball SHA-512 is
+`sha512-FISIQxV5u91Y9gvuFq3q/tA/qTqLJn3AhRcEvyozyhJTh5OBFFtv827AdHU7Rbyct4r+Ba1/99oFa1Y3yuFsdw==`.
+
+The bridge overrides `undici` to 7.30.1 for the
+[EventSource memory bound](https://github.com/nodejs/undici/security/advisories/GHSA-4qv8-2p9j-2685),
+[case-insensitive subresource-integrity check](https://github.com/nodejs/undici/security/advisories/GHSA-f72v-6w45-q472),
+and [excessive content-encoding handling](https://github.com/nodejs/undici/security/advisories/GHSA-xjj6-f33q-929c)
+security fixes. The [7.30.0 to 7.30.1 delta](https://github.com/nodejs/undici/compare/v7.30.0...v7.30.1)
+also includes TLS session/error handling, connection-option preservation,
+redirect-cache isolation, decompression error handling, bounded WebSocket pong
+writes, and cookie-parser fixes. It adds no runtime dependencies and retains
+Node.js >=20.18.1. Its independently hashed tarball SHA-512 is
+`sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==`.
+
+The Node.js floor, `qs` 6.16.0 override, and `proxy-addr` 2.0.8 lock are unchanged.
+The Desktop extension advances to 1.0.7 for the changed bundled dependencies.
+The current lock SHA-256 is
+`4f1e7839897071bef30b1591870348afe6deeb521d9086e4a05dfa51ccbb5779`.
+
+## Previous review: 0.15.1
 
 The 0.15.1 review covers upstream commit
 `b529ea1356aa348b250e77f626ca3347ebae3de5` and the

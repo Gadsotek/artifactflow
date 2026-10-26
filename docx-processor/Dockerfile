@@ -41,11 +41,14 @@ ENV HOME=/tmp \
 COPY --from=frankenphp-security-builder /usr/local/bin/frankenphp /usr/local/bin/frankenphp
 
 RUN apk add --no-cache \
+        "brotli-libs>=1.2.1-r0" \
         ca-certificates=20261020-r0 \
         "c-ares>=1.34.8-r0" \
+        "curl>=8.23.0-r0" \
         font-dejavu=2.37-r6 \
         font-liberation=2.1.5-r2 \
         "libcrypto3>=3.5.8-r0" \
+        "libcurl>=8.23.0-r0" \
         libreoffice-writer=25.8.7.3-r0 \
         "libssl3>=3.5.8-r0" \
         "openssl>=3.5.8-r0" \
