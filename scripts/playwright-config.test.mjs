@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 // Keep setup diagnostics in the existing pre-browser tooling gate.
 import './e2e-app-command.test.mjs';
+
+test('CI browser dependency setup preserves signed sources and bounds installation', () => {
+  execFileSync(
+    'python3',
+    [fileURLToPath(new URL('./playwright-os-dependencies.test.py', import.meta.url))],
+    { encoding: 'utf8' },
+  );
+});
 
 for (const ci of [false, true]) {
   test(`HTML reports allow the runner to exit and clean up (${ci ? 'CI' : 'local'})`, async () => {
