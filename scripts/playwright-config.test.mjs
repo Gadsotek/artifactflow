@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+// Keep setup diagnostics in the existing pre-browser tooling gate.
+import './e2e-app-command.test.mjs';
 
 for (const ci of [false, true]) {
   test(`HTML reports allow the runner to exit and clean up (${ci ? 'CI' : 'local'})`, async () => {

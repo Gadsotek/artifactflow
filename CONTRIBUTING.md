@@ -109,4 +109,31 @@ nightly automation check advisories, lock integrity, and the
 New/missing license metadata needs a reviewed package-specific resolution,
 not a broadened allowlist. Redistribution obligations still need human review.
 
+### Laravel Rector release metadata
+
+The Composer repository override is limited to the official
+`driftingly/rector-laravel` repository. Its release workflow builds a distribution
+commit and moves the version tag after the initial source tag. Packagist's
+2.7.1 metadata still pointed to that initial source commit when this repair was
+prepared, retaining the abandoned standalone
+`symplify/rule-doc-generator-contracts` dependency. The final official 2.7.1
+distribution resolves to `c472e216fe341cad9c6541ecab7b7b6d42d4166f` and uses the
+contracts bundled by `rector/rector` instead. This does not remove every copy of
+the contracts code, and Composer's abandoned-package audit remains enabled.
+
+The scoped VCS entry reads official tags directly. `no-api` uses Git for
+metadata to avoid exhausting GitHub's anonymous API quota while preserving
+archive downloads. Version constraints remain stable SemVer constraints; the
+lockfile records the reviewed immutable commit. Do not replace this with a
+development branch, a root `replace`/`provide` declaration, an audit exclusion,
+or hand-edited lock metadata.
+
+Remove the override once Packagist indexes the final distribution for the
+selected supported release. Regenerate the lock with Composer, verify its
+source and distribution references against the official final tag, and run
+`make audit`, the Rector dry run, and all normal commit gates. In particular,
+the standalone abandoned contracts package must not reappear. See the
+[upstream release workflow](https://github.com/driftingly/rector-laravel/blob/0a333a9c2394d18de71f63f5a3ecbd1777c9622a/.github/workflows/downgraded_release.yaml)
+and [Composer VCS documentation](https://getcomposer.org/doc/05-repositories.md#vcs).
+
 Follow the [Code of Conduct](CODE_OF_CONDUCT.md).

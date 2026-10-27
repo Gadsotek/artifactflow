@@ -263,7 +263,7 @@ final class McpProtocolContractTest extends McpTestCase
                     'code' => -32022,
                     'message' => 'Unsupported protocol version',
                     'data' => [
-                        'supported' => ['2025-11-25', '2025-06-18'],
+                        'supported' => ['2025-11-25', '2025-06-18', '2025-03-26'],
                         'requested' => '1900-01-01',
                     ],
                 ],
@@ -275,13 +275,38 @@ final class McpProtocolContractTest extends McpTestCase
         $this->assertDatabaseCount('mcp_client_sessions', 0);
     }
 
-    public function test_mcp_accepts_supported_legacy_protocol_headers_without_session_state(): void
+    public function test_mcp_negotiates_supported_legacy_protocols_without_session_state(): void
     {
         config(['session.driver' => 'database']);
         $service = $this->createServiceAccount('Legacy Header Agent', 'legacy-header-agent@example.test');
         $token = $this->issueToken($service, [McpAccessTokenIssuer::SCOPE_SEARCH])->plainTextToken;
 
-        foreach (['2025-11-25', '2025-06-18'] as $version) {
+        foreach (['2025-11-25', '2025-06-18', '2025-03-26'] as $version) {
+            $this->flushHeaders();
+
+            $initialize = $this->postMcp($token, [
+                'jsonrpc' => '2.0',
+                'id' => 'legacy-initialize-' . $version,
+                'method' => 'initialize',
+                'params' => [
+                    'protocolVersion' => $version,
+                    'capabilities' => [],
+                    'clientInfo' => [
+                        'name' => 'artifactflow-tests',
+                        'version' => '1.0.0',
+                    ],
+                ],
+            ])
+                ->assertOk()
+                ->assertJsonPath('id', 'legacy-initialize-' . $version)
+                ->assertJsonPath('result.protocolVersion', $version)
+                ->assertJsonMissingPath('error')
+                ->assertHeaderMissing('MCP-Session-Id');
+
+            $this->assertSame([], $initialize->headers->getCookies());
+            $this->assertDatabaseCount('sessions', 0);
+            $this->assertDatabaseCount('mcp_client_sessions', 0);
+
             $id = 'legacy-tools-list-' . $version;
             $response = $this->withHeaders([
                 'Authorization' => 'Bearer ' . $token,

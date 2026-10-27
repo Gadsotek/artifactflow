@@ -1,9 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createSocket } from 'node:dgram';
 import { createServer } from 'node:net';
-import { fileURLToPath } from 'node:url';
+import { runAppCommand } from './helpers/app-command';
 
 // Standing matrix for connection primitives blocked inside the sandboxed HTML
 // artifact. The artifact runs attacker-authored script (`sandbox allow-scripts`)
@@ -19,8 +18,6 @@ import { fileURLToPath } from 'node:url';
 // documented residual covered by the saved-preview tests and threat model.
 
 const baseUrl = (process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:18180').replace(/\/$/u, '');
-const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
-const appCommandTarget = process.env.E2E_APP_COMMAND_TARGET ?? 'run-e2e-app-cmd';
 
 test.use({ screenshot: 'off', trace: 'off', video: 'off' });
 
@@ -32,25 +29,10 @@ function escapeHtmlAttribute(value: string): string {
     .replaceAll('>', '&gt;');
 }
 
-function runAppCommand(appCommand: string, failureMessage: string): void {
-  if (!['run-e2e-app-cmd', 'run-app-cmd'].includes(appCommandTarget)) {
-    throw new Error('Unsupported e2e app command target.');
-  }
-
-  try {
-    execFileSync('make', [appCommandTarget, `APP_CMD=${appCommand}`], {
-      cwd: repoRoot,
-      stdio: 'ignore',
-    });
-  } catch {
-    throw new Error(failureMessage);
-  }
-}
-
 function assertSavedPreviewSchemaReady(): void {
   runAppCommand(
     'php artisan tinker --execute="if (! Illuminate\\\\Support\\\\Facades\\\\Schema::hasColumn(\\"pages\\", \\"search_vector\\") || ! Illuminate\\\\Support\\\\Facades\\\\Schema::hasTable(\\"installation_settings\\")) { throw new RuntimeException(\\"Missing saved-preview e2e schema\\"); }"',
-    'Artifact egress matrix e2e requires pages.search_vector and installation_settings in the isolated e2e database. Refresh the e2e database schema before running this browser test.',
+    'Artifact egress matrix schema preflight command failed',
   );
 }
 

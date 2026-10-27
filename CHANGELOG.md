@@ -33,6 +33,14 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   OpenSSL input portable to Linux CI.
 - Leave `SESSION_DOMAIN` empty in the production environment example,
   matching the host-only cookie contract and its regression test.
+- Resolve the official final Rector Laravel 2.7.1 distribution directly from
+  its scoped upstream repository while Packagist retains pre-build metadata.
+  Remove the redundant abandoned standalone contracts dependency through a
+  normal Composer update, keeping the dependency audit and Laravel rules active.
+- Cover Laravel MCP 1.1's supported legacy protocol versions, including
+  `2025-03-26`, through initialization and session-free tool requests.
+- Preserve safe process diagnostics for artifact-egress browser setup failures
+  instead of reporting every command failure as a missing database schema.
 
 ## v0.3.8 — 2026-10-22
 
