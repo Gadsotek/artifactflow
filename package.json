@@ -39,7 +39,7 @@
     "laravel-echo": "^2.6.1",
     "mermaid": "12.2.0",
     "pusher-js": "^8.6.0",
-    "tabulator-tables": "6.7.0"
+    "tabulator-tables": "6.7.1"
   },
   "scripts": {
     "build:mcp-desktop": "node scripts/build-mcp-desktop.mjs",
