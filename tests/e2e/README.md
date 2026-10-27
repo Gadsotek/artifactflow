@@ -10,6 +10,13 @@ HTML reports are saved without automatically opening a server, including after f
 wrapper can stop its dedicated services and drop its temporary database. After the wrapper exits,
 inspect a report with `npx playwright show-report` (or pass your custom HTML report directory).
 
+The artifact egress matrix reports safe process diagnostics if its setup command fails:
+Make/child exit codes, a termination signal or spawn code, SQLSTATE, and recognized runtime
+failure labels. It suppresses raw output and command arguments because account setup includes
+passwords. A failed schema preflight is not evidence of missing migrations; use the reported
+diagnostics before choosing a repair. Rerun this probe across all three engines with
+`E2E_GREP='sandboxed HTML artifact blocks guarded outbound APIs' make e2e`.
+
 - A second Laravel server inside the e2e app container uses Cloudflare's published always-pass
   credentials. The browser loads the real login and password-recovery pages and verifies their
   emitted CSP, nonce, action, challenge frame, and generated token. The normal e2e server receives

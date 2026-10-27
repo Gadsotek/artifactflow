@@ -30,7 +30,7 @@
     "resend/resend-php": "^1.0"
   },
   "require-dev": {
-    "driftingly/rector-laravel": "^2.3",
+    "driftingly/rector-laravel": "^2.7.1",
     "fakerphp/faker": "^1.23",
     "larastan/larastan": "^3.1",
     "laravel/pail": "^1.2",
@@ -108,5 +108,15 @@
     }
   },
   "minimum-stability": "stable",
-  "prefer-stable": true
+  "prefer-stable": true,
+  "repositories": [
+    {
+      "type": "vcs",
+      "url": "https://github.com/driftingly/rector-laravel",
+      "no-api": true,
+      "only": [
+        "driftingly/rector-laravel"
+      ]
+    }
+  ]
 }
