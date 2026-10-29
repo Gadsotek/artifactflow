@@ -5,14 +5,14 @@ import { fileURLToPath } from 'node:url';
 
 const EXPECTED_VERSION = '0.15.2';
 const EXPECTED_NODE_RANGE = '>=20.18.1';
-const EXPECTED_LOCK_SHA256 = '4f1e7839897071bef30b1591870348afe6deeb521d9086e4a05dfa51ccbb5779';
-const EXPECTED_QS_VERSION = '6.16.0';
+const EXPECTED_LOCK_SHA256 = '03751610ffd11515126d8787d751a220f14e7921fc983432f696c59c1b509ed0';
+const EXPECTED_QS_VERSION = '6.16.1';
 const EXPECTED_UNDICI_VERSION = '7.30.1';
 const MINIMUM_NODE_VERSION = [20, 18, 1];
 const EXPECTED_INTEGRITY =
   'sha512-3PrXMgjJew6xbZH21D7AbtOoHwhvjWt1IY6wepHjKTZLPSkTPifdMVBFuoxsuF6WK6nUlZIgpSj5o5NscJ+XXw==';
 const EXPECTED_QS_INTEGRITY =
-  'sha512-h6fhOIaRrID2CbEY2fqs+7t+UXZo+MLAnU5gRIq85uFtdiUPCdsApMlHhXogKVM4HM2DVbIjGNTTYH2OcmP1vA==';
+  'sha512-5Px6J7rfHBAGUhNQ3es4YzcOdBBw0SDcVtThJml4RdnKw4tKs2epA0kPZ+K8X+WiHktT93RHVcQ/3ym5aTCgtg==';
 const EXPECTED_UNDICI_INTEGRITY =
   'sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==';
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');

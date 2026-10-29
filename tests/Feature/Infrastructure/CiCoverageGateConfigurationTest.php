@@ -327,6 +327,18 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $dockerfile = $this->readProjectFile('Dockerfile');
 
         $this->assertStringContainsString(
+            'COPY docx-processor/frankenphp-security /opt/artifactflow-frankenphp-security',
+            $dockerfile,
+        );
+        $this->assertStringContainsString(
+            'sh /opt/artifactflow-frankenphp-security/prepare.sh',
+            $dockerfile,
+        );
+        $this->assertStringContainsString(
+            'sh /opt/artifactflow-frankenphp-security/verify.sh /usr/local/bin/frankenphp',
+            $dockerfile,
+        );
+        $this->assertStringContainsString(
             'FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:3b672209c1201d4c980d4aa76b962171fdb063b47e0108c50d61331488d23d5f AS frankenphp-security-builder',
             $dockerfile,
         );

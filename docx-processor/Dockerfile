@@ -4,6 +4,7 @@ FROM golang:1.27.3-alpine3.24@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf
 FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:3b672209c1201d4c980d4aa76b962171fdb063b47e0108c50d61331488d23d5f AS frankenphp-security-builder
 
 COPY --from=go-toolchain /usr/local/go /opt/go
+COPY frankenphp-security /opt/artifactflow-frankenphp-security
 
 ENV GOROOT=/opt/go \
     GOTOOLCHAIN=local \
@@ -11,10 +12,10 @@ ENV GOROOT=/opt/go \
 
 WORKDIR /go/src/app/caddy
 
-# FrankenPHP 1.13.2 requires Go 1.27. Keep its newer fixed modules intact;
-# Go 1.27.3 also fixes CVE-2026-111943. Verify the compiled dependency versions.
+# FrankenPHP 1.13.2 requires Go 1.27. Apply the same reviewed go-jose migration
+# as the app while retaining its other fixed modules and Go 1.27.3 compiler.
 RUN go version | grep -E '^go version go1\.27\.3[[:space:]]' \
-    && go mod tidy
+    && sh /opt/artifactflow-frankenphp-security/prepare.sh
 
 WORKDIR /go/src/app/caddy/frankenphp
 
@@ -30,7 +31,8 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.58\.0' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'golang\.org/x/net[[:space:]]+v0\.61\.0'
+        | grep -E 'golang\.org/x/net[[:space:]]+v0\.61\.0' \
+    && sh /opt/artifactflow-frankenphp-security/verify.sh /usr/local/bin/frankenphp
 
 FROM dunglas/frankenphp:1-php8.5-alpine@sha256:f4947926b4c5070176be7c72b03939e045f7ae9d249a3219cf9708bd5e6d0ff2
 
@@ -39,6 +41,7 @@ ENV HOME=/tmp \
     LC_ALL=C.UTF-8
 
 COPY --from=frankenphp-security-builder /usr/local/bin/frankenphp /usr/local/bin/frankenphp
+COPY --from=frankenphp-security-builder /opt/artifactflow-frankenphp-notices /usr/local/share/licenses/artifactflow-frankenphp
 
 RUN apk add --no-cache \
         "brotli-libs>=1.2.1-r0" \

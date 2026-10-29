@@ -1,0 +1,355 @@
+--- a/acme/api/account_test.go
++++ b/acme/api/account_test.go
+@@ -113,0 +114,4 @@
++}
++
++func testEABHMACKey() []byte {
++	return bytes.Repeat([]byte{1, 3, 3, 7}, 8)
+@@ -563 +567 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -588 +592 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -623 +627 @@
+-				HmacKey:       []byte{1, 3, 3, 7},
++				HmacKey:       testEABHMACKey(),
+@@ -713 +717 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -753 +757 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -797 +801 @@
+-							HmacKey:       []byte{1, 3, 3, 7},
++							HmacKey:       testEABHMACKey(),
+--- a/acme/api/eab_test.go
++++ b/acme/api/eab_test.go
+@@ -3,0 +4 @@
++	"bytes"
+@@ -95 +96 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -118 +119 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -156 +157 @@
+-							HmacKey:       []byte{1, 3, 3, 7},
++							HmacKey:       testEABHMACKey(),
+@@ -170 +171 @@
+-					HmacKey:       []byte{1, 3, 3, 7},
++					HmacKey:       testEABHMACKey(),
+@@ -180 +181 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -204 +205 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -229 +230 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -275 +276 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -322 +323 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -371 +372 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -420 +421 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -469 +470 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -526 +527 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -573 +574 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -614 +615 @@
+-							HmacKey:       []byte{1, 3, 3, 7},
++							HmacKey:       testEABHMACKey(),
+@@ -632 +633 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -669 +670 @@
+-							HmacKey:       []byte{1, 2, 3, 4},
++							HmacKey:       bytes.Repeat([]byte{1, 2, 3, 4}, 8),
+@@ -689 +690 @@
+-			rawEABJWS, err := createRawEABJWS(differentJWK, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(differentJWK, testEABHMACKey(), "eakID", url)
+@@ -726 +727 @@
+-							HmacKey:       []byte{1, 3, 3, 7},
++							HmacKey:       testEABHMACKey(),
+@@ -744 +745 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -780 +781 @@
+-							HmacKey:       []byte{1, 3, 3, 7},
++							HmacKey:       testEABHMACKey(),
+@@ -798 +799 @@
+-			rawEABJWS, err := createRawEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			rawEABJWS, err := createRawEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -835 +836 @@
+-							HmacKey:       []byte{1, 3, 3, 7},
++							HmacKey:       testEABHMACKey(),
+@@ -910 +911 @@
+-			eabJWS, err := createEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			eabJWS, err := createEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -922 +923 @@
+-			eabJWS, err := createEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			eabJWS, err := createEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -934 +935 @@
+-			eabJWS, err := createEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			eabJWS, err := createEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -946 +947 @@
+-			eabJWS, err := createEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			eabJWS, err := createEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -958 +959 @@
+-			eabJWS, err := createEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			eabJWS, err := createEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -970 +971 @@
+-			eabJWS, err := createEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			eabJWS, err := createEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -983 +984 @@
+-			eabJWS, err := createEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			eabJWS, err := createEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -1021 +1022 @@
+-			eabJWS, err := createEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			eabJWS, err := createEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -1058 +1059 @@
+-			eabJWS, err := createEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			eabJWS, err := createEABJWS(jwk, testEABHMACKey(), "eakID", url)
+@@ -1096 +1097 @@
+-			eabJWS, err := createEABJWS(jwk, []byte{1, 3, 3, 7}, "eakID", url)
++			eabJWS, err := createEABJWS(jwk, testEABHMACKey(), "eakID", url)
+--- a/acme/challenge.go
++++ b/acme/challenge.go
+@@ -685 +685 @@
+-		Audience: jose.Audience{v.audience},
++		AnyAudience: jose.Audience{v.audience},
+@@ -730 +730 @@
+-		Audience: jose.Audience{v.audience},
++		AnyAudience: jose.Audience{v.audience},
+--- a/acme/challenge_wire_test.go
++++ b/acme/challenge_wire_test.go
+@@ -283 +283 @@
+-									assert.Equal(t, `failed validating Wire access token: failed parsing token: go-jose/go-jose: compact JWS format must have three parts`, k.Err.Error())
++									assert.Equal(t, `failed validating Wire access token: failed parsing token: go-jose/go-jose: empty input`, k.Err.Error())
+--- a/api/api_test.go
++++ b/api/api_test.go
+@@ -1021 +1021 @@
+-		s, err := jose.Signed(sig).Claims(claims).CompactSerialize()
++		s, err := jose.Signed(sig).Claims(claims).Serialize()
+--- a/authority/authorize_test.go
++++ b/authority/authorize_test.go
+@@ -89 +89 @@
+-	return jose.Signed(sig).Claims(claims).CompactSerialize()
++	return jose.Signed(sig).Claims(claims).Serialize()
+@@ -122 +122 @@
+-	return jose.Signed(sig).Claims(claims).Claims(extraClaims).CompactSerialize()
++	return jose.Signed(sig).Claims(claims).Claims(extraClaims).Serialize()
+@@ -165 +165 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -187 +187 @@
+-			raw, err := jose.Signed(_sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(_sig).Claims(cl).Serialize()
+@@ -206 +206 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -224 +224 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -241 +241 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -260 +260 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -276 +276 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -303 +303 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -326 +326 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -351 +351 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -369 +369 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -440 +440 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -458 +458 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -524 +524 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -542 +542 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -620 +620 @@
+-			token, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			token, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -646 +646 @@
+-			token, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			token, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -746 +746 @@
+-			token, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			token, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -1011 +1011 @@
+-	return jose.Signed(sig).Claims(claims).CompactSerialize()
++	return jose.Signed(sig).Claims(claims).Serialize()
+@@ -1075 +1075 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -1169 +1169 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -1277 +1277 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -1369 +1369 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -1466 +1466 @@
+-		s, err := jose.Signed(sig).Claims(claims).CompactSerialize()
++		s, err := jose.Signed(sig).Claims(claims).Serialize()
+--- a/authority/policy_test.go
++++ b/authority/policy_test.go
+@@ -9 +9 @@
+-	"github.com/go-jose/go-jose/v3"
++	"github.com/go-jose/go-jose/v4"
+--- a/authority/provisioner/aws.go
++++ b/authority/provisioner/aws.go
+@@ -293 +293 @@
+-	tok, err := jose.Signed(signer).Claims(payload).CompactSerialize()
++	tok, err := jose.Signed(signer).Claims(payload).Serialize()
+--- a/authority/provisioner/azure.go
++++ b/authority/provisioner/azure.go
+@@ -293 +293 @@
+-		Audience: []string{p.Audience},
++		AnyAudience: []string{p.Audience},
+--- a/authority/provisioner/azure_test.go
++++ b/authority/provisioner/azure_test.go
+@@ -347 +347 @@
+-			tok, err := jose.Signed(sig).Claims(claims).CompactSerialize()
++			tok, err := jose.Signed(sig).Claims(claims).Serialize()
+--- a/authority/provisioner/nebula_test.go
++++ b/authority/provisioner/nebula_test.go
+@@ -240 +240 @@
+-	tok, err := jose.Signed(sig).Claims(claims).CompactSerialize()
++	tok, err := jose.Signed(sig).Claims(claims).Serialize()
+@@ -281 +281 @@
+-	tok, err := jose.Signed(sig).Claims(claims).CompactSerialize()
++	tok, err := jose.Signed(sig).Claims(claims).Serialize()
+--- a/authority/provisioner/oidc.go
++++ b/authority/provisioner/oidc.go
+@@ -219 +219 @@
+-		Audience: jose.Audience{o.ClientID},
++		AnyAudience: jose.Audience{o.ClientID},
+--- a/authority/provisioner/provisioner_test.go
++++ b/authority/provisioner/provisioner_test.go
+@@ -9 +9 @@
+-	"github.com/go-jose/go-jose/v3"
++	"github.com/go-jose/go-jose/v4"
+--- a/authority/provisioner/utils_test.go
++++ b/authority/provisioner/utils_test.go
+@@ -770 +770 @@
+-	return jose.Signed(sig).Claims(claims).CompactSerialize()
++	return jose.Signed(sig).Claims(claims).Serialize()
+@@ -801 +801 @@
+-	return jose.Signed(sig).Claims(claims).Claims(extraClaims).CompactSerialize()
++	return jose.Signed(sig).Claims(claims).Claims(extraClaims).Serialize()
+@@ -842 +842 @@
+-	return jose.Signed(sig).Claims(claims).CompactSerialize()
++	return jose.Signed(sig).Claims(claims).Serialize()
+@@ -860 +860 @@
+-	return jose.Signed(sig).Claims(claims).CompactSerialize()
++	return jose.Signed(sig).Claims(claims).Serialize()
+@@ -894 +894 @@
+-	return jose.Signed(sig).Claims(*claims).CompactSerialize()
++	return jose.Signed(sig).Claims(*claims).Serialize()
+@@ -942 +942 @@
+-	return jose.Signed(sig).Claims(claims).CompactSerialize()
++	return jose.Signed(sig).Claims(claims).Serialize()
+@@ -980 +980 @@
+-	return jose.Signed(sig).Claims(claims).CompactSerialize()
++	return jose.Signed(sig).Claims(claims).Serialize()
+@@ -1037 +1037 @@
+-	return jose.Signed(sig).Claims(claims).CompactSerialize()
++	return jose.Signed(sig).Claims(claims).Serialize()
+@@ -1075 +1075 @@
+-	return jose.Signed(sig).Claims(claims).CompactSerialize()
++	return jose.Signed(sig).Claims(claims).Serialize()
+--- a/authority/tls_test.go
++++ b/authority/tls_test.go
+@@ -1554 +1554 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -1594 +1594 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -1634 +1634 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -1673 +1673 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -1709 +1709 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -1801 +1801 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -2027 +2027 @@
+-				raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++				raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -2091 +2091 @@
+-				raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++				raw, err := jose.Signed(sig).Claims(cl).Serialize()
+--- a/ca/bootstrap_test.go
++++ b/ca/bootstrap_test.go
+@@ -143 +143 @@
+-	raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++	raw, err := jose.Signed(sig).Claims(cl).Serialize()
+--- a/ca/ca_test.go
++++ b/ca/ca_test.go
+@@ -194 +194 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -227 +227 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+@@ -260 +260 @@
+-			raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++			raw, err := jose.Signed(sig).Claims(cl).Serialize()
+--- a/ca/tls_test.go
++++ b/ca/tls_test.go
+@@ -56 +56 @@
+-	raw, err := jose.Signed(sig).Claims(cl).CompactSerialize()
++	raw, err := jose.Signed(sig).Claims(cl).Serialize()
+--- a/cas/stepcas/jwk_issuer.go
++++ b/cas/stepcas/jwk_issuer.go
+@@ -98 +98 @@
+-	tok, err := builder.CompactSerialize()
++	tok, err := builder.Serialize()
+--- a/cas/stepcas/x5c_issuer.go
++++ b/cas/stepcas/x5c_issuer.go
+@@ -105 +105 @@
+-	tok, err := builder.CompactSerialize()
++	tok, err := builder.Serialize()
+--- a/test/integration/requestid_test.go
++++ b/test/integration/requestid_test.go
+@@ -250 +250 @@
+-	raw, err := jose.Signed(signer).Claims(cl).CompactSerialize()
++	raw, err := jose.Signed(signer).Claims(cl).Serialize()
