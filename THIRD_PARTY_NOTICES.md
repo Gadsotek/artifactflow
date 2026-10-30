@@ -4,6 +4,16 @@ This file records direct third-party components whose binaries or bundled
 browser code are distributed by ArtifactFlow. It complements, rather than
 replaces, the dependency manifests and generated software bills of materials.
 
+## FrankenPHP security dependencies
+
+The app and DOCX images compile modified Apache-2.0 Smallstep crypto 0.91.0,
+certificates 0.30.2 and cli-utils 0.12.2 sources to use the official
+go-jose/v4.1.6 release. The exact input hashes, source patches, upstream
+attribution and verification contract are in
+[the build migration](docx-processor/frankenphp-security/README.md).
+Both images retain the original license texts, build information and migration
+metadata at `/usr/local/share/licenses/artifactflow-frankenphp`.
+
 ## Claude Desktop connector
 
 The optional `.mcpb` package distributes the reviewed `mcp-remote` bridge and

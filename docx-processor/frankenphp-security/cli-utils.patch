@@ -1,0 +1,5 @@
+--- a/token/token.go
++++ b/token/token.go
+@@ -99 +99 @@
+-	raw, err := jose.Signed(signer).Claims(c.Claims).Claims(c.ExtraClaims).CompactSerialize()
++	raw, err := jose.Signed(signer).Claims(c.Claims).Claims(c.ExtraClaims).Serialize()

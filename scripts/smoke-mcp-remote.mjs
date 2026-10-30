@@ -21,9 +21,49 @@ if (!smokeWorkingDirectory) {
   throw new Error('MCP_BRIDGE_SMOKE_CWD must point at a dedicated empty working directory.');
 }
 
+const bridgeRequire = createRequire(resolve(bridgeDirectory, 'package.json'));
+
+// GHSA-6pq8-jhm2-2vcw: comma serialization must tolerate JSON or parsed
+// objects without a callable toString. This is dependency coverage, not a
+// claim that ArtifactFlow exposes this serialization path to remote input.
+const qs = bridgeRequire('qs');
+for (const encodeValuesOnly of [false, true]) {
+  const options = { arrayFormat: 'comma', encodeValuesOnly };
+  const input = JSON.parse('{"items":["start",{"toString":"untrusted"},"end"]}');
+  assert.doesNotThrow(
+    () => qs.stringify(input, options),
+    'GHSA-6pq8-jhm2-2vcw: non-callable toString must not crash comma serialization.',
+  );
+  assert.equal(
+    qs.stringify(input, options),
+    encodeValuesOnly
+      ? 'items=start,%5Bobject%20Object%5D,end'
+      : 'items=start%2C%5Bobject%20Object%5D%2Cend',
+  );
+  for (const parsed of [
+    qs.parse('items[][label]=value', { plainObjects: true }),
+    qs.parse('items[0][toString]=untrusted', { allowPrototypes: true }),
+    JSON.parse('{"items":[[{"toString":"untrusted"}]]}'),
+  ]) {
+    assert.equal(qs.stringify(parsed, options), 'items=%5Bobject%20Object%5D');
+  }
+  assert.equal(
+    qs.stringify({ items: ['one', 2, true] }, options),
+    encodeValuesOnly ? 'items=one,2,true' : 'items=one%2C2%2Ctrue',
+  );
+  assert.equal(qs.stringify({ items: [{ toString: () => 'custom' }] }, options), 'items=custom');
+  assert.throws(
+    () => qs.stringify({ items: [{ toString() { throw new SyntaxError('fixture'); } }] }, options),
+    SyntaxError,
+    'User-defined exceptions must not be swallowed by the security fix.',
+  );
+}
+assert.deepEqual(qs.parse('name=example&tags[]=one&tags[]=two'), {
+  name: 'example', tags: ['one', 'two'],
+});
+console.log('Bridge qs comma serialization regression passed.');
 // GHSA-jqcg-44mw-7w3h: neither trust path may accept a forged forwarded address
 // from an IPv4 peer through a native IPv6 or short-prefix mapped trust subnet.
-const bridgeRequire = createRequire(resolve(bridgeDirectory, 'package.json'));
 const proxyaddr = bridgeRequire('proxy-addr');
 for (const subnet of ['::ffff:10.0.0.0/8', '::/1']) {
   for (const trusted of [[subnet], [subnet, '2001:db8::/32']]) {

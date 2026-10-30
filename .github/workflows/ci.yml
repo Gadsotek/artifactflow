@@ -193,7 +193,12 @@ jobs:
           key: playwright-all-engines-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright browser OS dependencies
-        run: npx playwright install-deps chromium firefox webkit
+        timeout-minutes: 10
+        run: |
+          # Slow Azure archive downloads previously exhausted the whole browser job.
+          # Change only the mirror URI; retain Ubuntu suites, components and Signed-By.
+          sudo perl -pi -e 's{(?<=\s)https?://azure\.archive\.ubuntu\.com/ubuntu(/?)(?=\s|$)}{https://archive.ubuntu.com/ubuntu$1}g if /^URIs:/' /etc/apt/sources.list.d/ubuntu.sources
+          npx playwright install-deps chromium firefox webkit
 
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'

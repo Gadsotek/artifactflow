@@ -123,8 +123,8 @@ The lock updates `body-parser` from 1.20.6 to 1.20.9 for
 [GHSA-27r3-jxmh-p828](https://github.com/expressjs/body-parser/security/advisories/GHSA-27r3-jxmh-p828).
 The reviewed patch detaches and destroys the completed decompression stream,
 handles late decoder errors, and validates unsupported charsets before creating
-a stream. Its `qs` declaration advances to ~6.16.0, matching the existing
-reviewed 6.16.0 override. No additional runtime package is introduced.
+a stream. Its `qs` declaration is ~6.16.0; the reviewed override below
+selects 6.16.1. No additional runtime package is introduced.
 Its independently hashed tarball SHA-512 is
 `sha512-FISIQxV5u91Y9gvuFq3q/tA/qTqLJn3AhRcEvyozyhJTh5OBFFtv827AdHU7Rbyct4r+Ba1/99oFa1Y3yuFsdw==`.
 
@@ -139,10 +139,29 @@ writes, and cookie-parser fixes. It adds no runtime dependencies and retains
 Node.js >=20.18.1. Its independently hashed tarball SHA-512 is
 `sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==`.
 
-The Node.js floor, `qs` 6.16.0 override, and `proxy-addr` 2.0.8 lock are unchanged.
-The Desktop extension advances to 1.0.7 for the changed bundled dependencies.
+The bridge overrides `qs` to 6.16.1 for
+[GHSA-6pq8-jhm2-2vcw](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw).
+The [reviewed fix](https://github.com/ljharb/qs/commit/a952e75) prevents comma
+serialization from throwing on JSON or parsed array elements with no callable
+`toString`, including null-prototype objects and nested arrays. Callable custom
+coercion and its deliberate exceptions retain their behavior. The installed
+bridge smoke covers both encoding modes, hostile elements, ordinary values,
+and normal query parsing. This dependency regression does not establish a
+remotely reachable serialization path in ArtifactFlow.
+
+The [6.16.1 changelog](https://github.com/ljharb/qs/blob/v6.16.1/CHANGELOG.md)
+also covers parsing without mutating object input, dot/bracket handling,
+bounded array merging, inherited array-format names, and encoder argument and
+encoding corrections. The published package retains the same runtime dependency
+declarations, Node.js engine range and BSD-3-Clause license. Its independently
+hashed tarball SHA-512 is
+`sha512-5Px6J7rfHBAGUhNQ3es4YzcOdBBw0SDcVtThJml4RdnKw4tKs2epA0kPZ+K8X+WiHktT93RHVcQ/3ym5aTCgtg==`.
+
+Only the `qs` entry changes in the dependency lock. The bridge remains 0.15.2,
+Undici remains 7.30.1, and the Node.js floor and `proxy-addr` 2.0.8 lock are
+unchanged. The Desktop extension advances to 1.0.8 for the changed bundled bytes.
 The current lock SHA-256 is
-`4f1e7839897071bef30b1591870348afe6deeb521d9086e4a05dfa51ccbb5779`.
+`03751610ffd11515126d8787d751a220f14e7921fc983432f696c59c1b509ed0`.
 
 ## Previous review: 0.15.1
 
