@@ -7,6 +7,35 @@ const katex = mermaidRequire('katex');
 const concurrentlyRequire = createRequire(import.meta.resolve('concurrently'));
 const { parse, quote } = concurrentlyRequire('shell-quote');
 
+const eslintRequire = createRequire(import.meta.resolve('eslint'));
+const eslintConfigRequire = createRequire(eslintRequire.resolve('@eslint/config-array'));
+
+// GHSA-g3hv-75wg-m249: exercise each ESLint consumer with a small, bounded
+// amplification fixture, without claiming application exposure to hostile globs.
+for (const [consumer, consumerRequire] of [
+  ['eslint', eslintRequire],
+  ['@eslint/config-array', eslintConfigRequire],
+]) {
+  const { Minimatch } = consumerRequire('minimatch');
+
+  test(`${consumer} minimatch bounds globstar-parent pattern expansion`, () => {
+    const pattern = Array(8).fill('**/../a/b').join('/');
+    const matcher = new Minimatch(pattern, { optimizationLevel: 2, braceExpandMax: 16 });
+
+    assert.ok(matcher.set.length > 0);
+    assert.ok(matcher.set.length <= 16);
+  });
+
+  test(`${consumer} minimatch preserves ordinary file selection`, () => {
+    const matcher = new Minimatch('resources/**/*.{js,css}', { optimizationLevel: 2 });
+
+    assert.equal(matcher.match('resources/js/app.js'), true);
+    assert.equal(matcher.match('resources/css/app.css'), true);
+    assert.equal(matcher.match('resources/views/app.blade.php'), false);
+    assert.equal(matcher.match('resources/.private/app.js'), false);
+  });
+}
+
 // GHSA-pqg4-j6r4-53mv: inspect quoting only; never execute the resulting shell text.
 for (const [name, terminator] of Object.entries({
   LF: '\n',

@@ -71,10 +71,12 @@ final class PasswordResetFlowTest extends TestCase
         Notification::assertSentTo($user, ResetPasswordNotification::class, function (ResetPasswordNotification $notification) use ($user): bool {
             $mail = $notification->toMail($user);
             $this->assertInstanceOf(MailMessage::class, $mail);
+            $actionUrl = $mail->actionUrl;
+            $this->assertIsString($actionUrl);
 
-            return str_starts_with($mail->actionUrl, 'https://app.example.internal/reset-password/')
-                && str_contains($mail->actionUrl, 'email=reset-origin%40example.test')
-                && !str_contains($mail->actionUrl, 'artifacts.example.internal');
+            return str_starts_with($actionUrl, 'https://app.example.internal/reset-password/')
+                && str_contains($actionUrl, 'email=reset-origin%40example.test')
+                && !str_contains($actionUrl, 'artifacts.example.internal');
         });
     }
 

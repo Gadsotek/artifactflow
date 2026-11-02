@@ -8,6 +8,8 @@ use Tests\TestCase;
 
 final class PdfProcessorSpikeContractTest extends TestCase
 {
+    private const string OPENJDK_VERSION = '21.0.13.0.3_p1-r0';
+
     private const string PDFBOX_VERSION = '3.0.8';
 
     private const string PDFBOX_SHA512 = '768847238f683568507bf73570a2b6fedcbe58b25c7b4f97fba536ba110b290fe96ba065aed58629d41fb94857d76bc1978c2f31d294b553c69f287f71ee9600';
@@ -29,7 +31,8 @@ final class PdfProcessorSpikeContractTest extends TestCase
 
         $this->assertStringContainsString('PDFBOX_VERSION=' . self::PDFBOX_VERSION, $spikeStage);
         $this->assertStringContainsString('PDFBOX_SHA512=' . self::PDFBOX_SHA512, $spikeStage);
-        $this->assertStringContainsString('openjdk21-jre-headless=21.0.12_p8-r0', $spikeStage);
+        $this->assertStringContainsString('openjdk21-jdk=' . self::OPENJDK_VERSION, $dockerfile);
+        $this->assertStringContainsString('openjdk21-jre-headless=' . self::OPENJDK_VERSION, $spikeStage);
         $this->assertStringContainsString('"brotli-libs>=1.2.1-r0"', $spikeStage);
         $this->assertStringContainsString('"curl>=8.23.0-r0"', $runtimeStage);
         $this->assertStringContainsString('"libcurl>=8.23.0-r0"', $runtimeStage);

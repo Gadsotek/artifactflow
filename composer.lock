@@ -1849,16 +1849,16 @@
         },
         {
             "name": "league/commonmark",
-            "version": "2.10.4",
+            "version": "2.10.6",
             "source": {
                 "type": "git",
                 "url": "https://github.com/thephpleague/commonmark.git",
-                "reference": "40821b7606d8d946bac57dbd2290076c722e3a65"
+                "reference": "cb3d6a523587751db4b8e1d0c3945d2d68535bd3"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/thephpleague/commonmark/zipball/40821b7606d8d946bac57dbd2290076c722e3a65",
-                "reference": "40821b7606d8d946bac57dbd2290076c722e3a65",
+                "url": "https://api.github.com/repos/thephpleague/commonmark/zipball/cb3d6a523587751db4b8e1d0c3945d2d68535bd3",
+                "reference": "cb3d6a523587751db4b8e1d0c3945d2d68535bd3",
                 "shasum": ""
             },
             "require": {
@@ -1952,7 +1952,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-10-17T19:59:50+00:00"
+            "time": "2026-10-30T12:21:38+00:00"
         },
         {
             "name": "league/config",
@@ -7455,16 +7455,16 @@
         },
         {
             "name": "driftingly/rector-laravel",
-            "version": "2.7.2",
+            "version": "2.7.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/driftingly/rector-laravel",
-                "reference": "2a2776e713afd241972221bae5b37dcfe87e80b7"
+                "reference": "d7e2d4e18208edf96302f25c551dc793daf26337"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/driftingly/rector-laravel/zipball/2a2776e713afd241972221bae5b37dcfe87e80b7",
-                "reference": "2a2776e713afd241972221bae5b37dcfe87e80b7",
+                "url": "https://api.github.com/repos/driftingly/rector-laravel/zipball/d7e2d4e18208edf96302f25c551dc793daf26337",
+                "reference": "d7e2d4e18208edf96302f25c551dc793daf26337",
                 "shasum": ""
             },
             "require": {
@@ -7487,7 +7487,7 @@
                 "MIT"
             ],
             "description": "Rector upgrades rules for Laravel Framework",
-            "time": "2026-10-26T15:46:30+00:00"
+            "time": "2026-10-27T12:42:21+00:00"
         },
         {
             "name": "fakerphp/faker",

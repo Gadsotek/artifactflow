@@ -9,7 +9,7 @@ RUN apk add --no-cache \
         build-base=0.5-r4 \
         ca-certificates=20261020-r0 \
         libseccomp-dev=2.6.1-r0 \
-        openjdk21-jdk=21.0.12_p8-r0 \
+        openjdk21-jdk=21.0.13.0.3_p1-r0 \
     && wget -q "https://downloads.apache.org/pdfbox/${PDFBOX_VERSION}/pdfbox-app-${PDFBOX_VERSION}.jar" -O /opt/pdfbox-app.jar \
     && echo "${PDFBOX_SHA512}  /opt/pdfbox-app.jar" | sha512sum -c -
 
@@ -41,7 +41,7 @@ RUN apk add --no-cache \
         "libcrypto3>=3.5.8-r0" \
         "libcurl>=8.23.0-r0" \
         "libssl3>=3.5.8-r0" \
-        openjdk21-jre-headless=21.0.12_p8-r0 \
+        openjdk21-jre-headless=21.0.13.0.3_p1-r0 \
         "openssl>=3.5.8-r0" \
     && addgroup -S -g 10002 pdf-spike \
     && adduser -S -D -H -u 10002 -G pdf-spike -s /sbin/nologin pdf-spike
