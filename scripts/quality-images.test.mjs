@@ -8,6 +8,9 @@ import test from 'node:test';
 
 const self = fileURLToPath(import.meta.url);
 const root = dirname(dirname(self));
+// The integration fixture starts 21 Node CLI stubs. Allow cold or contended
+// hosts enough startup time while retaining a finite subprocess deadline.
+const fixtureTimeoutMs = 60_000;
 const imageVariables = [
   'PRODUCTION_IMAGE', 'IMAGE_PARSER_IMAGE', 'PDF_PROCESSOR_SERVICE_IMAGE',
   'PDF_PROCESSOR_PRIVATE_SERVICE_IMAGE', 'XLSX_PROCESSOR_SERVICE_IMAGE', 'DOCX_PROCESSOR_IMAGE',
@@ -102,7 +105,7 @@ function run(t, mode = 'success') {
     ? ['--no-print-directory', '-f', join(root, 'Makefile'), 'quality-full', `MAKE=${join(directory, 'make')}`]
     : [join(root, 'scripts/quality-images.sh'), join(directory, 'make')];
   const result = spawnSync(command, args, {
-    cwd: root, encoding: 'utf8', timeout: 10000,
+    cwd: root, encoding: 'utf8', timeout: fixtureTimeoutMs,
     env: {
       ...process.env, PATH: `${directory}:${process.env.PATH}`, QUALITY_FIXTURE_STATE: stateFile,
       MAKEFLAGS: '', MFLAGS: '', PRODUCTION_IMAGE: protectedImages[0], DOCKER_BUILD: 'do-not-use',
