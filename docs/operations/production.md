@@ -5,6 +5,17 @@
 Use the production images with your own orchestration, TLS, PostgreSQL, secrets,
 and persistent storage. The bundled Compose stack is local-only.
 
+People can find, use, and share artifacts through the browser without Git or
+development tools. An operator must still maintain deployments, security
+configuration, updates, backups, and tested recovery. This operational work is
+the trade-off for controlling your infrastructure and access rules.
+
+External sharing is disabled by default. Administrator enablement and live
+page authority are required; review the [sharing contract](../architecture/external-sharing.md)
+before offering expiring or one-time links. One-time mode has no time expiry,
+and revocation cannot retract content already delivered. PDF, XLSX, and DOCX
+have separate default-off processor enablement requirements below.
+
 ## Roles and processes
 
 | Role | `APP_RUNTIME_ROLE` | Container command |

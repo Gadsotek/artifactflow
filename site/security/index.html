@@ -151,6 +151,20 @@
           <p>These processors reduce blast radius; they do not eliminate container-runtime or kernel escape risk. Keep SheetJS, LibreOffice, PDFBox, base images, and the container runtime patched, pin released image digests, and complete the documented browser and deployment checks before enabling a format.</p>
         </section>
 
+        <section id="external-sharing">
+          <p class="kicker">Controlled external sharing</p>
+          <h2>Share one artifact under explicit access rules.</h2>
+          <p>Internal discovery and access follow workspace roles and page permissions. External sharing is disabled by default and requires administrator enablement plus authority to share the page. It exposes only the current version of one artifact, without workspace access, search, source, history, or editing.</p>
+          <ul class="detail-list">
+            <li><strong>Expiring links</strong>Multiple viewing sessions may start during the validity period. Expiry blocks new sessions and subsequent content loads, including loads from established sessions.</li>
+            <li><strong>One-time links</strong>Exactly one successful explicit redemption is allowed, not one page view. Further redemptions fail. The successful viewer can reload and continue in their established session while authorization remains valid. This mode has no time-based expiry.</li>
+            <li><strong>Manual revocation</strong>Both modes are revocable and cannot be combined. Every content load rechecks live share and page state. Revocation stops subsequent access; it cannot retract content already delivered or saved.</li>
+          </ul>
+          <p>Possession of a valid bearer link can grant access; it does not authenticate the intended recipient. The separate anonymous viewing session uses a window-held proof, but browser duplication or deliberate copying can reproduce client-held state. This is not DRM. Protect the link as a secret.</p>
+          <p>External previews retain each format's normal isolation and warnings. XLSX shares expose only the validated typed manifest; DOCX shares expose only the independently validated PDF derivative. Original Office files are never shared. PDF and DOCX-PDF viewing is download-equivalent, with no separate anonymous original-file download endpoint. HTML self-navigation and browser-dependent WebRTC risks still apply.</p>
+          <p>The <a href="https://github.com/Gadsotek/artifactflow/blob/main/docs/architecture/external-sharing.md">external-sharing contract</a> defines secret handling, explicit POST redemption, window proof, live checks, and required security evidence.</p>
+        </section>
+
         <section id="provenance-trust">
           <p class="kicker">Provenance trust</p>
           <h2>A declared model is useful metadata, not a cryptographic proof.</h2>
@@ -193,6 +207,7 @@
         <a href="#preview-flows">Preview flows</a>
         <a href="#defense-in-depth">Defense in depth</a>
         <a href="#native-documents">Native documents</a>
+        <a href="#external-sharing">External sharing</a>
         <a href="#provenance-trust">Provenance trust</a>
         <a href="#residuals">Residual risks</a>
       </aside>

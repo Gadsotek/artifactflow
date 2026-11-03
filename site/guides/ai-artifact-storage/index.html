@@ -99,35 +99,35 @@
 
         <section id="git">
           <p class="kicker">Git repository</p>
-          <h2>Best when the artifact has become maintained software.</h2>
+          <h2>Use a development workflow for source collaboration.</h2>
           <div class="split-cards">
             <article class="split-card">
               <h3>Strengths</h3>
-              <p>Git provides precise source history, branching, code review, automation, dependency management, tests, releases, and collaboration for technical teams.</p>
+              <p>Git provides excellent source control, collaboration, branching, and merging for documents as well as software. Repository platforms and complementary tools add review, testing, and release workflows.</p>
             </article>
             <article class="split-card">
-              <h3>Limits</h3>
-              <p>A repository, build, deployment, and release process is substantial overhead for every small calculator, runbook, briefing, diagram, or screenshot.</p>
+              <h3>Fit for your audience</h3>
+              <p>Consider who will use the result. A PM or analyst may want colleagues to open a finished calculator without learning repository tooling or assembling a publishing workflow.</p>
             </article>
           </div>
-          <p>Move an artifact to Git when multiple files, dependencies, production operation, review workflows, or continuous delivery have become part of its real shape.</p>
+          <p>Git and ArtifactFlow can complement each other: maintain source through Git and deliberately save a usable output in the shared workspace. ArtifactFlow does not automatically synchronize repositories or replace branching and merging.</p>
         </section>
 
         <section id="hosting">
           <p class="kicker">Static hosting</p>
-          <h2>Best when the primary requirement is delivering a public web page.</h2>
-          <p>Static hosting is excellent for inexpensive, cacheable public delivery. It is not automatically a searchable source-of-truth system with private workspaces, artifact-level permissions, retained source versions, ownership, lifecycle state, and audit.</p>
-          <p>Serving generated HTML from the same origin as an authenticated control plane also creates a security decision that ordinary hosting does not solve merely by making deployment easy.</p>
+          <h2>Publish a site through a hosting workflow.</h2>
+          <p>GitHub Pages provides publication capabilities. Hosting platforms and complementary services can also provide authentication, private hosting, and controlled sharing. These are valid choices when that assembled workflow suits your team.</p>
+          <p>Evaluate the complete path from source to a usable result: who publishes it, how colleagues discover it, how access is granted or revoked, and who maintains the services. Executable HTML also needs an explicit isolation boundary away from authenticated application sessions.</p>
         </section>
 
         <section id="vault">
           <p class="kicker">Managed artifact vault</p>
-          <h2>Best for reusable internal outputs that deserve governance without a new project.</h2>
-          <p>An artifact vault gives the result a stable record, authoritative payload, retained versions, search, ownership, permissions, safe preview, and audit. People and approved agents can retrieve and improve the same asset through one authority model.</p>
-          <p>ArtifactFlow brings this combination into a self-hosted, model-agnostic workspace for teams and authorized AI clients. It supports Markdown, Mermaid, single-file HTML, normalized images, and default-off PDF, XLSX, and DOCX.</p>
+          <h2>Use one workspace for finished artifacts and controlled access.</h2>
+          <p>ArtifactFlow brings usable previews, organization and discovery, artifact-level permissions, controlled sharing, retained versions, and authorized MCP access together. Product managers, business analysts, and technical and nontechnical colleagues can use the results without Git or development tools. The individual capabilities are not unique; their integration is the value.</p>
+          <p>It is open-source and self-hosted, with documented isolation boundaries. An operator must manage deployment, maintenance, backups, and security configuration. Supported formats are Markdown, Mermaid, single-file HTML, normalized images, and default-off PDF, XLSX, and DOCX.</p>
           <div class="callout">
             <strong>Expiring and one-time page links</strong>
-            <p>Narrow external sharing is available for an individual page, subject to access policy. Links are revocable and either expire or start one browser-window viewing session. There is no public catalog, unlimited reusable link, or marketplace.</p>
+            <p>External sharing is disabled by default and requires administrator enablement plus page authority. Expiring links permit multiple sessions until expiry. One-time links permit exactly one successful redemption, with no time-based expiry; the established session continues while authorized. Both are manually revocable and cannot be combined. A bearer link does not authenticate the recipient, and revocation cannot retract delivered content. <a href="/security/#external-sharing">Read the sharing boundaries.</a></p>
           </div>
         </section>
 
@@ -137,9 +137,9 @@
           <ul class="detail-list">
             <li><strong>Keep it in AI chat</strong>when it is still disposable working material or its conversational context is the important record.</li>
             <li><strong>Use a shared file surface</strong>when ordinary document collaboration and compatibility matter more than executable preview or artifact-specific governance.</li>
-            <li><strong>Use Git</strong>when the output is maintained software with dependencies, review, testing, releases, and operational ownership.</li>
-            <li><strong>Use static hosting</strong>when public delivery is the primary product and the source-of-truth workflow lives elsewhere.</li>
-            <li><strong>Use an artifact vault</strong>when a deliberate internal output must stay findable, versioned, permissioned, safely usable, and available to people and approved agents.</li>
+            <li><strong>Use Git</strong>when source review, branching, merging, and repository tooling fit your contributors, with publication and access services as needed.</li>
+            <li><strong>Use static hosting</strong>when delivering a site is the main job and your chosen hosting and access services meet the audience's needs.</li>
+            <li><strong>Use an artifact workspace</strong>when people need to find, use, revise, and controllably share finished outputs through one application, with optional authorized AI access.</li>
           </ul>
           <div class="page-links">
             <a class="page-link" href="/guides/ai-artifact-vault/"><strong>What is an AI artifact vault?</strong><span>The category definition, essential properties, and current ArtifactFlow scope.</span></a>

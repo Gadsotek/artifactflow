@@ -59,7 +59,7 @@
     <div class="shell">
       <p class="eyebrow">Model Context Protocol</p>
       <h1>Give your AI access to the work worth keeping.</h1>
-      <p class="lede">Connect a compatible AI client to the same artifact library your team uses. Find existing work, retrieve its content, and save the next version with only the access you choose.</p>
+      <p class="lede">Your team can use and share a saved report in the browser. When it needs another revision, an authorized AI client can retrieve it and continue the work through MCP, even if you change tools.</p>
       <div class="detail-actions">
         <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/operations/mcp.md">MCP operations guide ↗</a>
         <a class="button" href="https://github.com/Gadsotek/artifactflow">Get the source ↗</a>
@@ -78,6 +78,9 @@
     <li><span class="card-number">03 / CONTINUE</span><h3>Save the next revision.</h3><p>Create, organize, update, or restore within granted scopes.</p></li>
   </ol>
   <p>Compatible clients use the same live permissions, version history, and audit trail as your team. Start with read-only access to selected workspaces and grant write scopes when needed.</p>
+  <p>MCP is an optional part of the <a href="/workflow/">artifact workflow</a>. People can save, find, use, and share work through the application without an AI connection or Git. ArtifactFlow does not generate content or run agents; it requires no model subscription or AI API key.</p>
+  <p>For example, an authorized client can retrieve a PM's saved HTML calculator and append a revised version under the same identity. The PM and colleagues continue using it through their existing access. This is an illustrative workflow, not evidence of adoption.</p>
+  <p>External sharing is disabled by default. If enabled, <code>mcp:share</code> permits creation only for owned editable pages when workspace policy allows it. Expiring links allow multiple sessions until expiry; one-time links allow exactly one successful redemption with no time-based expiry. The established viewer session remains usable while authorized. Both modes are manually revocable by an authorized person in the app; MCP cannot list or revoke shares. A bearer link does not authenticate its recipient, and revocation cannot retract delivered content. <a href="/security/#external-sharing">Read the sharing boundaries.</a></p>
 </section>
 
         <section id="session"><details class="reference-details"><summary>Search, read the source, preserve a revision, and reject a stale write.</summary>
@@ -169,6 +172,7 @@
 
         <section id="tools"><details class="reference-details"><summary>Twenty tools cover discovery, governed reads, and versioned changes.</summary>
 
+          <p>PDF, XLSX, and DOCX are default-off. Their tools require explicit operator enablement and isolated processors; DOCX also requires the PDF processor.</p>
           <ul class="detail-list">
             <li><strong><code>list_workspaces</code></strong>Lists only workspaces reachable within the token's live scope.</li>
             <li><strong><code>list_taxonomy</code></strong>Returns searchable global tags and workspace-qualified categories visible through reachable content.</li>

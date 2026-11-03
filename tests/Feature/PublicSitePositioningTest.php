@@ -11,7 +11,7 @@ use Tests\TestCase;
 
 final class PublicSitePositioningTest extends TestCase
 {
-    public function test_public_positioning_leads_with_a_shared_model_agnostic_workspace(): void
+    public function test_public_positioning_leads_with_useful_work_and_access_without_git(): void
     {
         foreach (['README.md', 'site/index.html', 'site/llms.txt', 'site/README.md', 'package.json', 'composer.json'] as $path) {
             $copy = file_get_contents(base_path($path));
@@ -22,10 +22,10 @@ final class PublicSitePositioningTest extends TestCase
         }
 
         $xpath = $this->page('site/index.html');
-        $this->assertSame('Your AI work, in one place.', $xpath->evaluate('normalize-space(//h1)'));
+        $this->assertSame('Keep AI-generated work useful beyond the chat.', $xpath->evaluate('normalize-space(//h1)'));
         $hero = $xpath->evaluate('string(//section[@id="top"])');
         $this->assertIsString($hero);
-        foreach (['model-agnostic', 'chats, files, and people', 'Self-host ArtifactFlow', 'View on GitHub'] as $required) {
+        foreach (['shared workspace', 'reports, calculators, dashboards', 'without Git', 'Self-host ArtifactFlow', 'View on GitHub'] as $required) {
             $this->assertStringContainsString($required, $hero);
         }
         $this->assertStringNotContainsString('Built first for executable HTML', $hero);
@@ -37,14 +37,14 @@ final class PublicSitePositioningTest extends TestCase
         $main = $xpath->evaluate('string(//main)');
         $this->assertIsString($main);
         $this->assertLessThan(850, str_word_count($main));
-        foreach (['Switch models. Keep your work.', 'One workspace for people and AI.', 'MCP-compatible', 'no automatic chat import', 'retention', 'default-off PDF, XLSX, and DOCX', 'not independently audited'] as $required) {
+        foreach (['product managers', 'business analysts', 'MCP-compatible', 'no automatic chat import', 'retention', 'default-off PDF, XLSX, and DOCX', 'not independently audited'] as $required) {
             $this->assertStringContainsString($required, $main);
         }
 
         $html = file_get_contents(base_path('site/index.html'));
         $this->assertIsString($html);
         $previous = -1;
-        foreach (['product', 'agents', 'gallery', 'self-host', 'safety'] as $id) {
+        foreach (['product', 'sharing', 'agents', 'gallery', 'self-host', 'safety'] as $id) {
             $position = strpos($html, sprintf('id="%s"', $id));
             $this->assertIsInt($position);
             $this->assertGreaterThan($previous, $position);
@@ -52,6 +52,15 @@ final class PublicSitePositioningTest extends TestCase
         }
         $this->assertStringNotContainsString('artifactflow.untrusted_data', $html);
         $this->assertStringNotContainsString('No public sharing,', $html);
+    }
+
+    public function test_homepage_explains_the_distinct_sharing_modes_and_delivery_limits(): void
+    {
+        $copy = $this->page('site/index.html')->evaluate('string(//section[@id="sharing"])');
+        $this->assertIsString($copy);
+        foreach (['disabled by default', 'workspace roles', 'page permissions', 'Multiple viewing sessions', 'exactly one successful redemption', 'no time-based expiry', 'established session', 'manually revocable', 'does not verify recipient identity', 'cannot retract content already delivered'] as $required) {
+            $this->assertStringContainsString($required, $copy);
+        }
     }
 
     public function test_public_pages_keep_styles_and_executable_scripts_in_external_files(): void
@@ -104,8 +113,8 @@ final class PublicSitePositioningTest extends TestCase
         $xpath = $this->page('site/workflow/index.html');
         $steps = $xpath->query('//ol[@class="journey-steps"]/li');
         $this->assertNotFalse($steps);
-        $this->assertSame(3, $steps->length);
-        foreach (['create', 'identity', 'find', 'reuse', 'versions', 'metadata', 'provenance'] as $id) {
+        $this->assertSame(6, $steps->length);
+        foreach (['create', 'identity', 'find', 'share', 'reuse', 'versions', 'metadata', 'provenance'] as $id) {
             $targets = $xpath->query(sprintf('//*[@id="%s"]', $id));
             $this->assertNotFalse($targets);
             $this->assertSame(1, $targets->length);
