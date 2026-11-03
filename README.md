@@ -2,9 +2,9 @@
 
 # ArtifactFlow
 
-**Your AI work, in one place.**
+**Keep AI-generated work useful beyond the chat.**
 
-Open-source, self-hosted, model-agnostic workspace for AI-generated artifacts.
+An open-source, self-hosted workspace to save, organize, preview, version, and share AI-generated artifacts.
 
 [Website](https://artifactflow.app) · [How it works](https://artifactflow.app/workflow/) · [MCP](https://artifactflow.app/mcp/) · [Self-hosting](https://artifactflow.app/self-hosting/)
 
@@ -14,53 +14,73 @@ Open-source, self-hosted, model-agnostic workspace for AI-generated artifacts.
 
 </div>
 
-Useful AI work gets scattered across chats, downloads, repositories, and people.
-ArtifactFlow gives your team and authorized AI clients one shared place to keep,
-find, share, and continue working on the outputs worth retaining.
+For individuals, product managers, business analysts, and technical and nontechnical
+teams: a shared library of useful reports, calculators, dashboards, and documents.
+Colleagues use it in their browser without cloning repositories, running code
+locally, or configuring publication.
 
-![ArtifactFlow Home with workspace search, recently opened pages, and favorites](site/assets/app-dashboard.jpg)
+![ArtifactFlow Home with search, recent pages, and favorites](site/assets/app-dashboard.jpg)
 
-Screenshots show the fictional Northstar Labs team and sample content.
+Screenshots use fictional Northstar Labs content.
 
-## What you can do
+## Share with explicit access rules
 
-- **Keep and organize:** save artifacts in personal or shared workspaces with owners, categories, tags, and page hierarchy.
-- **Find and share:** search content and metadata, apply workspace roles and page permissions, or create narrow revocable expiring or one-time page links.
-- **Get back to work:** use private favorites and recently opened pages, jump to a page with Cmd/Ctrl+K, or browse the paginated Library.
-- **Continue the work:** append versions, compare source, and restore retained content. History follows configurable retention limits; stale writes are rejected.
-- **Reuse with AI:** MCP-compatible clients can search, read, create, update, and organize the same library. Tokens have explicit operation and workspace scopes, capped at Editor authority.
+Personal and shared workspaces offer content search, tags, categories, and previews.
+Workspace roles and page-level permissions govern internal discovery and access.
 
-System Admins can configure MCP token lifetime limits up to 365 days in
-**Administration > Storage and limits**. See [MCP setup](docs/operations/mcp.md)
-for defaults, issuance, and revocation.
+External sharing is **disabled by default** and requires administrator enablement
+and permission to share the page. A link exposes one artifact's current version,
+without granting workspace, search, source, or history access.
 
-Claude Desktop users can install the [ArtifactFlow desktop extension](docs/operations/mcp-desktop.md)
-provided by their administrator, then enter their server URL and personal MCP
-token. No separate Node.js or Python installation is required.
+- **Expiring:** multiple viewing sessions during a defined validity period. Expiry blocks new access and subsequent content loads.
+- **One-time:** exactly one successful explicit redemption, not a single page view. The successful viewer can continue in their established session while authorization remains valid. There is no time-based expiration in this mode.
 
-Choose your AI tools independently. ArtifactFlow requires no model subscription
-or AI API key. Bring work in by paste, upload, or authorized MCP calls; it does
-not automatically capture chats, run agents, generate content, or provide vector
-search or simultaneous document editing.
+Both are manually revocable; the modes cannot be combined. Possession of a bearer
+link does not authenticate the intended recipient. Revocation cannot retract
+content already delivered. Isolated previews and format restrictions still apply.
+See the [sharing contract](docs/architecture/external-sharing.md).
+
+## One example workflow
+
+Illustrative workflow, not adoption evidence:
+
+1. A PM generates an interactive HTML report or calculator with AI.
+2. They save it in ArtifactFlow with a workspace and tags.
+3. Authorized colleagues find and use it in their browser, without Git.
+4. When enabled, the PM shares it externally with an expiring or one-time link.
+5. A revision becomes a retained version under the same artifact identity.
+6. An authorized MCP-compatible client retrieves and updates it across AI tools.
+
+Compare source or restore retained versions within retention limits. Stale writes
+are rejected; MCP tokens have operation/workspace scopes and an Editor ceiling.
+
+See [MCP setup](docs/operations/mcp.md) or the administrator-provided
+[Claude Desktop extension](docs/operations/mcp-desktop.md).
+
+## How this fits alongside Git
+
+Git provides source control, collaboration, branching, and merging.
+GitHub Pages provides publication; complementary services can add authentication,
+private hosting, and controlled sharing. The tools can complement each other.
+
+ArtifactFlow integrates previews, discovery, artifact permissions, controlled
+sharing, retained versions, and MCP into a ready-made workflow for finished,
+usable artifacts. The value is integration and accessibility, not unique features.
+
+It is not a replacement for Git, an AI generation platform, an automatic chat
+archive, a general public website host, or a fully collaborative document editor.
+It does not run agents or provide simultaneous editing.
 
 <details>
-<summary>Explore four more product screenshots</summary>
+<summary>More screenshots</summary>
 
-Browse a workspace’s pages, filter by type, or search their content.
+![Library with nested workspaces](site/assets/app-library.jpg)
 
-![ArtifactFlow Library with nested workspaces and sample team pages](site/assets/app-library.jpg)
+![Quick page search](site/assets/app-quick-navigation.jpg)
 
-Press Cmd/Ctrl+K to find a page by title and jump back to it.
+![Interactive sprint capacity planner](site/assets/app-artifact-live.jpg)
 
-![ArtifactFlow quick search finding the fictional team's release checklist](site/assets/app-quick-navigation.jpg)
-
-Use saved interactive HTML tools in an isolated preview.
-
-![Northstar Labs sprint capacity planner running in ArtifactFlow](site/assets/app-artifact-live.jpg)
-
-Keep shared Markdown guides with rendered Mermaid diagrams.
-
-![Northstar Labs incident response guide and Mermaid flowchart](site/assets/app-markdown.jpg)
+![Markdown guide with Mermaid flowchart](site/assets/app-markdown.jpg)
 
 </details>
 
@@ -81,8 +101,7 @@ DOCX also requires the PDF processor. OCR is not implemented.
 
 ## Try it locally
 
-Requires Docker with Compose v2 and GNU `make`. PHP 8.5, Laravel 13, PostgreSQL,
-Caddy, and FrankenPHP run inside the containers.
+Requires Docker with Compose v2 and GNU `make`.
 
 ```sh
 git clone https://github.com/Gadsotek/artifactflow
@@ -92,19 +111,18 @@ make shell
 php artisan artifactflow:install
 ```
 
-Choose **local**, create the first System Admin, and optionally add demo content.
-Exit the container shell. If the installer changed configuration, rerun `make up`,
-then run `make doctor`. Sign in at [localhost:18080/login](http://localhost:18080/login).
+Choose **local**, create the first System Admin, and exit. If configuration changed,
+rerun `make up`, then `make doctor`. Sign in at [localhost:18080/login](http://localhost:18080/login).
 
-PDF, XLSX, and DOCX start disabled. Before enabling XLSX, run `make build-assets`.
-DOCX enables its required PDF pipeline. For an existing installation, use
-`make migrate` to apply pending schema changes. See the
-[operations guide](docs/OPERATIONS.md) for unattended installation and upgrades.
+Before enabling XLSX, run `make build-assets`; DOCX requires PDF.
+Existing installations use `make migrate`. See the [operations guide](docs/OPERATIONS.md).
 
-**The bundled Compose stack is for local evaluation and development. It is not a
-production deployment template.**
+**The bundled Compose stack is local-only, not a production deployment template.**
 
 ## Self-hosting and security
+
+An operator must handle deployment, maintenance, backups, and security configuration,
+even when application users need no development tools.
 
 Production requires **two separate HTTPS origins**: the authenticated app and a
 cookieless artifact host. Untrusted HTML runs only on the artifact origin under
@@ -116,12 +134,7 @@ Secure session and trusted-device cookies use `__Host-`; see the production
 guide for upgrade instructions.
 
 A sandboxed HTML artifact can still navigate itself and send embedded or user-entered data externally. WebRTC blocking is browser-dependent.
-Read the [threat model](THREAT-MODEL.md) for the maintained controls and residual risks.
-
-Run the application image as separate app, artifact-host, worker, and scheduler
-roles. Supply private persistent storage, PostgreSQL with verified TLS, mail,
-independent secrets, and the documented rate-limit and proxy configuration.
-The production boot gate rejects an incomplete security contract.
+Read the [threat model](THREAT-MODEL.md).
 
 Follow the [production operations guide](docs/operations/production.md) and
 [release checklist](RELEASE-CHECKLIST.md) before inviting users.
@@ -132,7 +145,7 @@ Report vulnerabilities through [SECURITY.md](SECURITY.md).
 - [Artifact workflow](docs/ARTIFACT-LIFECYCLE.md): identity, versions, metadata, and retention.
 - [Architecture](docs/ARCHITECTURE.md) and [visual overview](docs/architecture/README.md): [system map](docs/architecture/overview.svg) · [two-origin flows](docs/architecture/workflows.svg).
 - Format contracts: [PDF](docs/architecture/pdf-artifacts.md) · [XLSX](docs/architecture/xlsx-artifacts.md) · [DOCX](docs/architecture/docx-artifacts.md).
-- [External sharing](docs/architecture/external-sharing.md) · [Operations and MCP setup](docs/OPERATIONS.md) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md).
+- [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md).
 
 ## Status
 

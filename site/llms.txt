@@ -1,17 +1,25 @@
 # ArtifactFlow
 
-> ArtifactFlow is an open-source, self-hosted, model-agnostic workspace for AI-generated artifacts, shared by people and authorized AI clients through MCP.
+> Keep AI-generated work useful beyond the chat. ArtifactFlow is an open-source, self-hosted shared workspace to save, organize, preview, version, and share useful AI-generated artifacts.
 
-AI work can be scattered across chats, local files, providers, and people. ArtifactFlow preserves the output, not the conversation. It keeps authoritative source or retained original bytes, immutable content versions, searchable content, ownership, permissions, safe previews, and audit history. It does not run agents, call external AI APIs, automatically import chats, or provide vector search. MCP compatibility does not imply an official provider integration. It is not agent memory, a chat archive, or an AI generator.
+It serves individuals, product managers, business analysts, and technical and nontechnical teams using different AI tools. Colleagues can find and use reports, calculators, dashboards, and documents in their browser without cloning repositories, running code locally, or configuring a publishing pipeline. Its value is an integrated artifact workflow, not unique individual features.
+
+Git provides source control, collaboration, branching, and merging; GitHub Pages provides publication. Complementary services can add authentication, private hosting, and controlled sharing. Git and ArtifactFlow can complement each other. ArtifactFlow combines usable previews, discovery, artifact permissions, sharing, retained versions, and authorized MCP access, with documented isolation boundaries. An operator must maintain deployment, updates, backups, and security configuration.
+
+Illustrative PM workflow, not evidence of adoption: generate an HTML calculator with AI; save it in ArtifactFlow; let authorized colleagues find and use it; share it externally under an expiring or one-time link when enabled; save a revision under the same artifact identity; then let an authorized MCP client retrieve and update it. MCP supports continuing work across tools. It is optional for people using the browser application and is subject to live permissions and token scopes.
+
+ArtifactFlow preserves the output, not the conversation, with authoritative content, immutable content versions within retention limits, ownership, permissions, and audit history. It is not a replacement for Git, an AI generation platform, an automatic chat archive, a general public website host, or a fully collaborative document editor. It does not run agents, call external AI APIs, provide vector search, or support simultaneous editing. MCP compatibility does not imply an official provider integration.
 
 The current public alpha supports Markdown pages with Mermaid diagrams, self-contained HTML artifacts, normalized PNG/JPEG images, and default-off native-text PDF, typed XLSX, and searchable DOCX artifacts. It searches authoritative or bounded derived text and metadata, keeps retained versions, and exposes approved format-specific read and write operations through scoped MCP access. PDF, XLSX, and DOCX require explicit enablement of their isolated processor boundaries; DOCX additionally requires independent validation by the PDF processor, while PDF OCR remains later work. Untrusted HTML executes only on a separate cookieless artifact origin; image uploads retain only normalized pixels, XLSX preview receives only a typed visible-cell manifest, and DOCX preview receives only a validated passive PDF derivative. The security page and threat model document these boundaries and their residual risks.
 
-Team sharing follows live workspace roles and page overrides. Narrow external shares are revocable expiring or one-time page links, not a public catalog. Version history follows configured retention limits. Producer claims can be partial and remain self-reported. The product is alpha and has not received an independent security audit.
+Internal discovery and access follow personal/shared workspace roles and page permissions. External sharing is disabled by default and requires administrator enablement and authority to share the page. It exposes one artifact's current version without workspace, search, source, history, or editing access. Expiring links permit multiple viewing sessions during a defined validity period; expiry blocks new access and subsequent content loads. One-time links permit exactly one successful explicit redemption, not a single page view, with no time-based expiration. The successful viewer can continue in their established session while authorization remains valid. These modes cannot be combined. Both are manually revocable, but a bearer link does not authenticate the intended recipient and revocation cannot retract delivered content.
+
+External previews retain normal format isolation. XLSX shares expose only a validated typed manifest; DOCX shares expose only the independently validated PDF derivative. Original Office files are never shared. PDF/DOCX-PDF viewing is download-equivalent; there is no separate anonymous original-file download endpoint. Version history follows configured retention limits. Producer claims can be partial and remain self-reported. The product is alpha and has not received an independent security audit.
 
 ## Product
 
 - [Home](https://artifactflow.app/): Product overview, current screenshots, capabilities, alpha status, and project boundaries.
-- [Artifact workflow](https://artifactflow.app/workflow/): An artifact moves from creation to team search, authorized MCP retrieval, and new retained versions as models change.
+- [Artifact workflow](https://artifactflow.app/workflow/): An illustrative PM journey from generation to team use, controlled external sharing, retained revisions, and authorized MCP updates.
 - [Security architecture](https://artifactflow.app/security/): Two-origin isolation, sandbox and CSP controls, signed previews, defense in depth, and residual risks.
 - [MCP server](https://artifactflow.app/mcp/): Current text and binary operations, Office read boundaries, token scopes, authority limits, untrusted-data envelopes, and write safeguards.
 - [Self-hosting](https://artifactflow.app/self-hosting/): Local evaluation and production requirements for origins, runtime roles, PostgreSQL, storage, secrets, and mail.
@@ -27,6 +35,7 @@ Team sharing follows live workspace roles and page overrides. Narrow external sh
 
 - [GitHub repository](https://github.com/Gadsotek/artifactflow): Source code, installation instructions, license, and project status.
 - [Artifact lifecycle](https://github.com/Gadsotek/artifactflow/blob/main/docs/ARTIFACT-LIFECYCLE.md): Authoritative identity, immutable-version, draft, metadata, and format-specific document-payload semantics.
+- [External sharing](https://github.com/Gadsotek/artifactflow/blob/main/docs/architecture/external-sharing.md): Default-off sharing, exclusive expiring and one-time modes, live authorization, window proof, and delivery limits.
 - [Threat model](https://github.com/Gadsotek/artifactflow/blob/main/THREAT-MODEL.md): Security boundaries, attacker cases, maintained controls, and documented residual risks.
 - [Security policy](https://github.com/Gadsotek/artifactflow/blob/main/SECURITY.md): Supported versions and vulnerability reporting process.
 - [Operations guide](https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md): Production configuration, deployment, backup, restore, and release operations.

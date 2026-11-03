@@ -91,7 +91,8 @@
         <section id="sharing">
           <p class="kicker">Shipped in v0.0.7</p>
           <h2>Narrow external sharing is available.</h2>
-          <p>Expiring and one-time links now use the documented bearer-capability boundary. ArtifactFlow stores only a hash of the random secret, reveals only the selected page, re-checks live state on every load, consumes one-time links atomically, and keeps executable HTML on the isolated artifact origin.</p>
+          <p>External sharing is implemented and disabled by default. Expiring links permit multiple viewing sessions until expiry; one-time links allow exactly one successful redemption with no time-based expiry. The established session continues while authorized. Both modes are manually revocable and cannot be combined. A bearer link does not authenticate the recipient, and revocation cannot retract delivered content.</p>
+          <p>ArtifactFlow stores only a hash of the random secret, reveals only the selected page, re-checks live state on every load, consumes one-time links atomically, and keeps executable HTML on the isolated artifact origin. See the <a href="/security/#external-sharing">sharing boundaries</a>.</p>
           <p>This is intentionally not broad public hosting: there is no public navigation, search, reusable unlimited link, recipient account, or workspace disclosure.</p>
         </section>
 
@@ -157,7 +158,7 @@
             <li><strong>No target dates</strong>The roadmap does not promise a release date or quarter for candidate work.</li>
             <li><strong>No guaranteed ordering</strong>Feedback and security findings may change priorities before a candidate is scheduled.</li>
             <li><strong>No built-in AI generation</strong>ArtifactFlow preserves deliberate artifacts; it is not becoming an AI generation platform.</li>
-            <li><strong>No broad public hosting product</strong>Expiring and one-time page links are available. They do not provide a public catalog, marketplace, or unlimited reusable sharing.</li>
+            <li><strong>No broad public hosting product</strong>Expiring and one-time page links require administrator enablement and sharing authority. They do not provide a public catalog, marketplace, or unlimited reusable sharing.</li>
             <li><strong>No automatic enterprise expansion</strong>SSO, a full approval system, and a broad enterprise RBAC suite remain outside the current roadmap.</li>
           </ul>
         </section>

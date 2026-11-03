@@ -4,6 +4,27 @@ A page is one managed artifact. It keeps its stable artifact UID as the work
 changes. Each saved content version has its own UID, number, and immutable
 payload. Links and permissions stay attached to the page.
 
+## A practical workflow
+
+Illustrative example, not evidence of verified adoption:
+
+1. A PM generates an interactive HTML report or calculator in an AI tool.
+2. They save it in ArtifactFlow, with a workspace and tags.
+3. Authorized colleagues find and use it in their browser without cloning a
+   repository, running code locally, or configuring publication.
+4. If external sharing is enabled and the PM has sharing authority, they send
+   an external stakeholder an expiring or one-time link to that artifact.
+5. Revisions append retained versions under the same artifact identity.
+6. An authorized MCP client retrieves the source and saves a subsequent revision.
+
+Valid external shares follow the current version, not a historical snapshot.
+Expiring links allow multiple sessions until expiry. One-time links allow one
+successful explicit redemption with no time expiry; the established session
+continues while authorized. Both are manually revocable. A bearer link does not
+authenticate the recipient, and revocation cannot retract delivered content.
+External sharing is disabled by default; see the
+[sharing contract](architecture/external-sharing.md) for the full boundary.
+
 ## New version or new artifact?
 
 **Product guidance:** keep the identity when the output still does the same job.

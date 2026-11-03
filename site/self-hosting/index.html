@@ -59,7 +59,7 @@
     <div class="shell">
       <p class="eyebrow">Run it on your infrastructure</p>
       <h1>Keep AI work on infrastructure you control.</h1>
-      <p class="lede">Your artifacts, versions, metadata, users, and access rules live on your deployment. ArtifactFlow does not call external AI APIs or require a model provider. You choose which AI clients can connect and what they can read.</p>
+      <p class="lede">Give your team a shared workspace they can use without Git or development tools. An operator still handles deployment, maintenance, backups, and security configuration. Your artifacts and access rules live on infrastructure you maintain.</p>
       <div class="detail-actions">
         <a class="button button-primary" href="https://github.com/Gadsotek/artifactflow/blob/main/docs/OPERATIONS.md">Read the operations guide ↗</a>
         <a class="button" href="https://github.com/Gadsotek/artifactflow">Clone the repository ↗</a>
@@ -71,6 +71,7 @@
     <div class="article-shell article-grid">
       <div class="article-content">
         <section id="local">
+          <p>ArtifactFlow combines usable previews, discovery, permissions, retained versions, controlled sharing, and optional MCP access. The trade-off is ongoing operation of the application and its isolation boundaries. It does not call external AI APIs or require a model provider; you choose which authorized clients can retrieve content.</p>
           <p>Docker and PostgreSQL provide the core runtime. Production also needs HTTPS, private storage, and mail delivery. Optional services such as Turnstile or your chosen AI clients have their own external connections; content retrieved by a client goes to that client.</p>
           <p class="kicker">Local evaluation</p>
           <h2>Start with Docker Compose and GNU make.</h2>
@@ -141,6 +142,7 @@ docker run --rm --env-file &lt;production-env&gt; &lt;image&gt; \
           <p class="kicker">Operate the whole system</p>
           <h2>Backups and releases include data, artifacts, and key custody.</h2>
           <p>Consistent recovery needs a PostgreSQL dump and the private artifact tree, validated together by the repository's backup workflow. <code>APP_KEY</code> and the artifact signing key are deliberately not copied into data backups, so secret-manager custody and recovery procedures must be tested separately.</p>
+          <p>External sharing is disabled by default. A System Admin must enable it under the installation's sharing policy; page authority still controls who can create and revoke links. Review the <a href="/security/#external-sharing">expiring and one-time access boundaries</a> with users. Bearer links do not establish recipient identity, and revocation cannot retract delivered content. Keep PDF, XLSX, and DOCX disabled until their separate processor and operator checks pass.</p>
           <p>Before inviting users, complete the alpha release checklist, verify signed preview behavior in supported browsers, run the deployment doctor, validate backup restoration, and keep the dependency, test, build, and image-scan gates green. Releases that offer Office processing must publish and attest independent processor image digests rather than treating the application image as provenance for SheetJS or LibreOffice.</p>
         </section>
 

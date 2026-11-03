@@ -2,8 +2,16 @@
 
 [Operations](../OPERATIONS.md) · [Tool reference](https://artifactflow.app/mcp/)
 
-ArtifactFlow serves Streamable HTTP MCP at `POST /mcp` on the app origin only.
-No AI API key or model subscription is required by ArtifactFlow itself.
+MCP lets authorized AI clients continue work from the same library people use
+in their browser. For example, a PM can save an HTML calculator, share it with
+authorized colleagues or externally under the sharing policy, then ask a
+compatible client to retrieve its source and save a new version. This is an
+illustrative workflow, not evidence of adoption.
+
+The application works without an AI connection or Git. ArtifactFlow serves
+Streamable HTTP MCP at `POST /mcp` on the app origin only; it does not generate
+content or run agents. No AI API key or model subscription is required by
+ArtifactFlow itself.
 
 ## Human tokens
 
@@ -101,6 +109,17 @@ All scopes intersect live principal access and exact selected workspaces.
 Admin is capped at Editor. MCP cannot administer workspaces, change access,
 archive, delete, move ownership, or bypass the workspace sharing switch.
 Search metadata itself can be sensitive; scope it deliberately.
+
+External sharing is disabled by default. When enabled, `mcp:share` creates
+only expiring or one-time links under the owner and workspace rules above.
+Expiring links allow multiple sessions until expiry. One-time links allow
+exactly one successful explicit redemption, with no time-based expiration;
+the established viewing session continues while live authorization remains
+valid. The modes cannot be combined. Both are manually revocable through the
+authorized app interface; MCP cannot list or revoke shares. Bearer possession
+does not authenticate the recipient, and revocation cannot retract delivered
+content. Keep returned share URLs out of artifact content, prompts, traces,
+and logs. See the [sharing contract](../architecture/external-sharing.md).
 
 ## Reads and writes
 

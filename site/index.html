@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ArtifactFlow | Open-source workspace for AI-generated artifacts</title>
-<meta name="description" content="Keep AI-generated work searchable, shareable, versioned, and independent of any model. Open-source, self-hosted, and accessible to your team and AI through MCP.">
+<meta name="description" content="A shared workspace for AI-generated reports, calculators, and documents. Find, use, and share useful work without Git. Open-source and self-hosted.">
 <link rel="canonical" href="https://artifactflow.app/">
 <meta property="og:title" content="ArtifactFlow | Open-source workspace for AI-generated artifacts">
-<meta property="og:description" content="Keep AI-generated work searchable, shareable, versioned, and independent of any model. Open-source, self-hosted, and accessible to your team and AI through MCP.">
+<meta property="og:description" content="A shared workspace for AI-generated reports, calculators, and documents. Find, use, and share useful work without Git. Open-source and self-hosted.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://artifactflow.app/">
 <meta property="og:site_name" content="ArtifactFlow">
@@ -15,7 +15,7 @@
 <meta property="og:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="ArtifactFlow | Open-source workspace for AI-generated artifacts">
-<meta name="twitter:description" content="Keep AI-generated work searchable, shareable, versioned, and independent of any model. Open-source, self-hosted, and accessible to your team and AI through MCP.">
+<meta name="twitter:description" content="A shared workspace for AI-generated reports, calculators, and documents. Find, use, and share useful work without Git. Open-source and self-hosted.">
 <meta name="twitter:image" content="https://artifactflow.app/assets/artifactflow-social.png">
 <meta name="twitter:image:alt" content="ArtifactFlow dark-mode dashboard beside the words Versioned artifact vault">
 <meta name="theme-color" content="#f8f9fc" media="(prefers-color-scheme: light)" data-theme-color="light">
@@ -33,7 +33,7 @@
       "@id": "https://artifactflow.app/#website",
       "url": "https://artifactflow.app/",
       "name": "ArtifactFlow",
-      "description": "Keep AI-generated work searchable, shareable, versioned, and independent of any model. Open-source, self-hosted, and accessible to your team and AI through MCP.",
+      "description": "A shared workspace for AI-generated reports, calculators, and documents. Find, use, and share useful work without Git. Open-source and self-hosted.",
       "publisher": {
         "@id": "https://artifactflow.app/#organization"
       }
@@ -74,9 +74,9 @@
   <section class="hero home-hero" id="top">
     <div class="shell">
       <div class="hero-copy">
-        <p class="eyebrow">Open source · self-hosted · model-agnostic</p>
-        <h1>Your AI work, <span>in one place.</span></h1>
-        <p class="lede">Useful work gets lost across chats, files, and people.<br> Give it a home your team and AI can build on.</p>
+        <p class="eyebrow">Open source · self-hosted · shared workspace</p>
+        <h1>Keep AI-generated work <span>useful beyond the chat.</span></h1>
+        <p class="lede">Save, find, use, and share reports, calculators, dashboards, and documents. Give your team a shared workspace they can use without Git or development tools.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="/self-hosting/#local">Self-host ArtifactFlow <span aria-hidden="true">↗</span></a>
           <a class="button" href="https://github.com/Gadsotek/artifactflow">View on GitHub <span aria-hidden="true">↗</span></a>
@@ -126,7 +126,7 @@
     <div class="shell">
       <div class="section-head">
         <div><p class="kicker">From scattered output to shared work</p><h2>Keep it. Find it. Use it again.</h2></div>
-        <p class="lede">The architecture note in one chat. The dashboard in Downloads. Give useful AI-generated artifacts a home everyone can return to.</p>
+        <p class="lede">For product managers, business analysts, individuals, and technical and nontechnical teams: useful outputs your colleagues can find and use in their browser.</p>
       </div>
       <ol class="value-loop">
         <li><div class="feature-visual" aria-hidden="true"><svg viewBox="0 0 200 110"><rect x="34" y="18" width="100" height="68" rx="7" transform="rotate(-10 84 52)"></rect><rect x="58" y="20" width="100" height="68" rx="7" transform="rotate(8 108 54)"></rect><rect x="50" y="25" width="100" height="68" rx="7"></rect><path class="visual-ink" d="M65 42h34M65 55h70M65 68h50"></path><circle class="visual-dot" cx="133" cy="79" r="3"></circle></svg></div><span class="card-number">01 / KEEP &amp; ORGANIZE</span><h3>A home beyond the chat.</h3><p>Save the work with an owner, workspace, categories, and tags.</p></li>
@@ -137,9 +137,21 @@
     </div>
   </section>
 
+  <section class="section workspace-section" id="sharing">
+    <div class="shell">
+      <div class="section-head"><div><p class="kicker">Controlled sharing</p><h2>Your artifacts. Your access rules.</h2></div><p class="lede">Work together internally. Share one artifact externally without opening its workspace. External sharing is disabled by default; an administrator must enable it and the sharer needs permission.</p></div>
+      <ol class="value-loop">
+        <li><span class="card-number">01 / INTERNAL</span><h3>Share with your team.</h3><p>Personal and shared workspaces use workspace roles and page permissions for authorized discovery and access.</p></li>
+        <li><span class="card-number">02 / EXPIRING</span><h3>Set a validity period.</h3><p>Multiple viewing sessions can start before expiry. Expiry blocks new access and subsequent content loads.</p></li>
+        <li><span class="card-number">03 / ONE-TIME</span><h3>Allow one redemption.</h3><p>Allow exactly one successful redemption, with no time-based expiry. The viewer can continue in their established session while authorization remains valid.</p></li>
+      </ol>
+      <p class="format-note">Both external modes are manually revocable and cannot be combined. A bearer link does not verify recipient identity. Revocation cannot retract content already delivered. <a href="/security/#external-sharing">Sharing boundaries →</a></p>
+    </div>
+  </section>
+
   <section class="section model-section" id="agents">
     <div class="shell model-grid">
-      <div><p class="kicker">Independent of the model</p><h2>Switch models. Keep your work.</h2><p class="lede">One workspace for people and AI. Find an artifact yourself, or let an MCP-compatible client find it for you.</p><a class="text-link" href="/mcp/">Give your AI the access it needs →</a></div>
+      <div><p class="kicker">Continue across AI tools</p><h2>Pick up where the work left off.</h2><p class="lede">An authorized MCP-compatible client can retrieve your saved work and update the same artifact. Your team keeps using it in the browser.</p><a class="text-link" href="/mcp/">Connect your AI client →</a></div>
       <div class="continuity">
         <div class="continuity-title"><span class="file-symbol" aria-hidden="true">MD</span><div><strong>Architecture notes</strong><span>One artifact. A continuing history.</span></div></div>
         <ol class="version-journey">
@@ -154,7 +166,7 @@
 
   <section class="section gallery workspace-section" id="gallery">
     <div class="shell">
-      <div class="section-head"><div><p class="kicker">Inside ArtifactFlow</p><h2>Your workspace, up close.</h2></div><p class="lede">Browse the Library, jump back to a page, use an interactive tool, or read a shared guide. Real product screenshots with fictional Northstar Labs content. Open any image for a closer look.</p></div>
+      <div class="section-head"><div><p class="kicker">Inside ArtifactFlow</p><h2>Your workspace, up close.</h2></div><p class="lede">Find a page, use a tool, or read a guide. Real product screenshots with fictional Northstar Labs content.</p></div>
       <div class="gallery-grid">
         <figure class="shot">
           <a class="preview-trigger" href="/assets/app-library.jpg" data-preview-caption="Workspace Library" aria-label="Preview the workspace Library">
@@ -217,7 +229,7 @@
 
   <section class="section workspace-section" id="self-host">
     <div class="shell ownership-grid">
-      <div><p class="kicker">Open source · AGPL-3.0-or-later</p><h2>Your artifacts. Your infrastructure.</h2><p class="lede">Self-host with Docker. Control storage, retention, and access. Choose your AI clients independently; ArtifactFlow requires no model subscription or AI API key.</p><a class="text-link" href="/self-hosting/">Start with a local installation →</a></div>
+      <div><p class="kicker">Open source · AGPL-3.0-or-later</p><h2>Your artifacts. Your infrastructure.</h2><p class="lede">Your team uses the workspace without Git. An operator handles deployment, maintenance, backups, and security configuration.</p><p>Git remains excellent for source collaboration, branching, and merging. GitHub Pages publishes sites; complementary services can add private access and controlled sharing. ArtifactFlow brings previews, discovery, permissions, sharing, versions, and MCP together. The tools can complement each other.</p><a class="text-link" href="/self-hosting/">Start with a local installation →</a></div>
       <div class="ownership-visual" aria-label="Self-hosting keeps storage, access, retention, and AI tool choices under your control">
         <strong>Yours.</strong><span>Your server. Your decisions.</span>
         <div class="ownership-node">Your storage</div><div class="ownership-node">Your access rules</div><div class="ownership-node">Your AI tools</div><div class="ownership-node">Your retention</div>
@@ -235,7 +247,7 @@
   </section>
 
   <section class="section closing">
-    <div class="shell closing-grid"><div><p class="kicker">Keep the work worth keeping</p><h2>Make it your workspace.</h2><p class="closing-copy">Public alpha: expect changes, pin a revision, and review the threat model. Internally reviewed; not independently audited.</p></div><div class="closing-actions"><a class="button button-primary" href="/self-hosting/#local">Self-host ArtifactFlow →</a></div></div>
+    <div class="shell closing-grid"><div><p class="kicker">Keep the work worth keeping</p><h2>Make it your workspace.</h2><p class="closing-copy">No AI generation, automatic chat archive, general public website hosting, or simultaneous document editing. Public alpha: pin a revision and review the threat model. Internally reviewed; not independently audited.</p></div><div class="closing-actions"><a class="button button-primary" href="/self-hosting/#local">Self-host ArtifactFlow →</a></div></div>
   </section>
 </main>
 

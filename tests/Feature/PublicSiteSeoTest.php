@@ -754,7 +754,7 @@ final class PublicSiteSeoTest extends TestCase
 
         $this->assertStringContainsString('href="/workflow/"', $homepage);
         $this->assertStringContainsString("browser's native PDF viewer on the existing cookieless artifact origin", $workflowDocumentation);
-        $this->assertStringContainsString('Architecture notes', $workflowPage);
+        $this->assertStringContainsString('Launch capacity calculator', $workflowPage);
         $this->assertStringContainsString('MCP-compatible', $workflowPage);
         $this->assertStringContainsString('retention', $workflowPage);
         $this->assertStringContainsString('docs/ARTIFACT-LIFECYCLE.md', $workflowPage);

@@ -1,7 +1,9 @@
 # site/
 
 Static marketing/landing page for ArtifactFlow, an open-source, self-hosted workspace for
-AI-generated artifacts shared by teams and authorized AI clients. It is published separately from the application and deliberately
+AI-generated artifacts that individuals and teams can find, use, reuse, and share
+without Git or development tools. Lead with useful outputs and controlled sharing;
+explain MCP and isolation after the use case. It is published separately from the application and deliberately
 keeps the homepage focused on the product. The artifact-workflow, security, MCP, self-hosting,
 roadmap, and engineering-harness subpages hold the deeper explanations. Three first-party
 guides answer common discovery questions with links to the repository evidence. Each route is
@@ -15,6 +17,15 @@ access begins only when a visitor follows an external link.
 Typography uses system sans-serif fonts. Illustrations are native HTML/CSS/SVG;
 motion respects reduced-motion preferences. Screenshot previews show the real product,
 while the floating artifact cards are illustrative. No font downloads or animation library is required.
+
+Keep copy aligned with `docs/architecture/external-sharing.md`: external sharing
+is disabled by default, expiring and one-time modes are exclusive, and one-time
+means one successful redemption with no time expiry, not one page view. The
+established session continues only while authorized. Both modes are revocable;
+bearer possession is not recipient identity and revocation cannot retract
+delivered content. PDF/XLSX/DOCX remain default-off. Explain operator responsibilities
+and keep illustrative workflows distinct from adoption evidence. Preserve release
+gates and alpha status until the separate release process authorizes a change.
 
 Canonical routes:
 

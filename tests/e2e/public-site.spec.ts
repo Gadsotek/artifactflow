@@ -127,9 +127,9 @@ for (const width of [1280, 390]) {
 
       test('workflow remains readable without horizontal overflow', async ({ page }) => {
         await page.goto('http://public-site.test/workflow/');
-        await expect(page.locator('.journey-steps > li')).toHaveCount(3);
+        await expect(page.locator('.journey-steps > li')).toHaveCount(6);
         await expect(
-          page.getByRole('heading', { name: 'Architecture notes', exact: true }),
+          page.getByRole('heading', { name: 'Launch capacity calculator', exact: true }),
         ).toBeVisible();
         const dimensions = await page.evaluate(() => ({
           content: document.documentElement.scrollWidth,
