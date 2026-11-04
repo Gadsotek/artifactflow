@@ -131,7 +131,7 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
             'RELATIONSHIPS_NAMESPACE',
             'CONTENT_TYPES_NAMESPACE',
             'internalRelationshipTarget',
-            'rejectActiveFields',
+            'WordFieldPolicy::process($content)',
             'artifactflow-docx-processor-health-v1',
             'verifyNetworkIsolation',
             "'/sys/class/net/*/operstate'",
@@ -142,6 +142,12 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         ] as $boundary) {
             $this->assertStringContainsString($boundary, $source);
         }
+
+        $fields = $this->readProjectFile('docx-processor/src/WordFieldPolicy.php');
+        foreach (['DDE', 'DDEAUTO', 'INCLUDETEXT', 'INCLUDEPICTURE', 'DATABASE', 'LINK'] as $command) {
+            $this->assertStringContainsString("'" . $command . "'", $fields);
+        }
+        $this->assertStringContainsString('The DOCX package contains a prohibited active field.', $fields);
 
         $this->assertStringContainsString("\$path !== '/v1/docx/previews'", $index);
         $this->assertStringContainsString("\$path === '/health'", $index);

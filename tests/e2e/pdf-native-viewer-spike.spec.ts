@@ -10,14 +10,15 @@ interface ObservedRequest {
   range: string | undefined;
 }
 
-function buildPdf(): Buffer {
+function buildPdf(linkTarget: string): Buffer {
   const content = 'BT /F1 24 Tf 72 700 Td (ArtifactFlow PDF cage) Tj ET';
   const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Catalog /Pages 2 0 R /OpenAction [3 0 R /XYZ null null 1] >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R /Annots [6 0 R] >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
     `<< /Length ${Buffer.byteLength(content, 'ascii')} >>\nstream\n${content}\nendstream`,
+    `<< /Type /Annot /Subtype /Link /Rect [72 650 300 680] /A << /S /URI /URI (${linkTarget}) >> >>`,
   ];
   let document = '%PDF-1.4\n';
   const offsets = [0];
@@ -123,7 +124,8 @@ test('PDF native-viewer transport uses a narrow PDF-only iframe exception withou
 }, testInfo) => {
   test.setTimeout(30_000);
 
-  const pdf = buildPdf();
+  let pdf = Buffer.alloc(0);
+  let automaticLinkRequests = 0;
   const artifactRequests: ObservedRequest[] = [];
   let artifactOrigin = '';
 
@@ -166,6 +168,12 @@ test('PDF native-viewer transport uses a narrow PDF-only iframe exception withou
 
   const artifactServer = createServer((request, response) => {
     const requestUrl = new URL(request.url ?? '/', 'http://artifact.invalid');
+    if (requestUrl.pathname === '/pdf-navigation-probe') {
+      automaticLinkRequests += 1;
+      response.writeHead(204);
+      response.end();
+      return;
+    }
     const profile = requestUrl.searchParams.get('profile') ?? 'unknown';
     artifactRequests.push({
       cookie: request.headers.cookie,
@@ -177,6 +185,7 @@ test('PDF native-viewer transport uses a narrow PDF-only iframe exception withou
   });
   const artifactPort = await listen(artifactServer);
   artifactOrigin = `http://127.0.0.1:${artifactPort}`;
+  pdf = buildPdf(`${artifactOrigin}/pdf-navigation-probe`);
 
   try {
     const waitForProfileResponse = (profile: string) =>
@@ -253,6 +262,9 @@ test('PDF native-viewer transport uses a narrow PDF-only iframe exception withou
     const frame = await pdfIframe.elementHandle().then((element) => element?.contentFrame());
     expect(frame).not.toBeNull();
     expect(frame?.url()).not.toContain('chrome-error://');
+    expect(automaticLinkRequests).toBe(0);
+    expect(page.url()).toBe(`${appOrigin}/`);
+    expect(page.context().pages()).toHaveLength(1);
 
     process.stdout.write(
       `PDF viewer evidence ${browserName}: ${JSON.stringify({ artifactRequests, frameUrl: frame?.url(), screenshotDiffersFromBlank })}\n`,

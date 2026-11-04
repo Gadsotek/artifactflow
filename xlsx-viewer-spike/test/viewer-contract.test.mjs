@@ -9,6 +9,26 @@ import {
 } from '../../resources/js/xlsx-viewer-contract.js';
 import { manifestFixture, stressManifest } from '../fixture-manifest.js';
 
+test('accepts bounded hidden metadata without widening visible rendering limits', () => {
+  const manifest = structuredClone(manifestFixture);
+  manifest.workbook.omittedHiddenSheetCount = 20;
+  manifest.sheets[0].omittedHiddenRowCount = 40_000;
+  manifest.sheets[0].omittedHiddenColumnCount = 16_128;
+  assert.equal(validatedManifest(manifest).sheets.length, manifestFixture.sheets.length);
+  for (const [key, value] of [
+    ['omittedHiddenRowCount', 1_048_577],
+    ['omittedHiddenColumnCount', 16_385],
+    ['rowExtent', 20_001],
+    ['columnExtent', 257],
+  ]) {
+    const invalid = structuredClone(manifest);
+    invalid.sheets[0][key] = value;
+    assert.throws(() => validatedManifest(invalid), /worksheet manifest/u);
+  }
+  manifest.workbook.omittedHiddenSheetCount = 2_000;
+  assert.throws(() => validatedManifest(manifest), /workbook facts/u);
+});
+
 test('decodes only coordinates inside the viewer profile', () => {
   assert.deepEqual(decodedCoordinate('A1'), { column: 0, row: 0 });
   assert.deepEqual(decodedCoordinate('IV20000'), { column: 255, row: 19_999 });
@@ -94,7 +114,7 @@ test('accepts the canonical fixture and rejects malformed manifest authority', (
   assert.throws(() => validatedManifest(missingTypedValue), /cell/u);
 
   const impossibleSheetCount = structuredClone(manifestFixture);
-  impossibleSheetCount.workbook.omittedHiddenSheetCount = 20;
+  impossibleSheetCount.workbook.omittedHiddenSheetCount = 2_000;
   assert.throws(() => validatedManifest(impossibleSheetCount), /facts/u);
 
   const nonCanonicalOrder = structuredClone(manifestFixture);

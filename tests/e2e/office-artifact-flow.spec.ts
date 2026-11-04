@@ -129,7 +129,7 @@ function buildXlsx(
       name: '_rels/.rels',
       data: xml(
         `<Relationships xmlns="${packageRelationships}">` +
-          `<Relationship Id="rId1" Type="${workbookRelationships}/officeDocument" Target="xl/workbook.xml"/>` +
+          `<Relationship Id="rId1" Type="${workbookRelationships}/officeDocument" Target="xl/workbook.xml" TargetMode="Internal"/>` +
           '</Relationships>',
       ),
     },
@@ -152,13 +152,14 @@ function buildXlsx(
       name: 'xl/worksheets/sheet1.xml',
       dataDescriptor: true,
       data: xml(
-        `<worksheet xmlns="${spreadsheet}" xmlns:r="${workbookRelationships}"><dimension ref="A1:B3"/><sheetData>` +
+        `<worksheet xmlns="${spreadsheet}" xmlns:r="${workbookRelationships}"><dimension ref="A1:B3"/><cols><col min="257" max="16384" hidden="1"/></cols><sheetData>` +
           '<row r="1"><c r="A1" t="inlineStr"><is><t>Marker</t></is></c>' +
           '<c r="B1" t="inlineStr"><is><t>Revenue</t></is></c></row>' +
           `<row r="2"><c r="A2" t="inlineStr"><is><t>${marker}</t></is></c>` +
           '<c r="B2"><v>1200</v></c></row>' +
           '<row r="3"><c r="A3" t="inlineStr"><is><t>Total</t></is></c>' +
           '<c r="B3"><f>SUM(B2:B2)</f><v>1200</v></c></row>' +
+          '<row r="20001" hidden="1"><c r="A20001" t="inlineStr"><is><t>OMITTED_HIDDEN_MARKER</t></is></c></row>' +
           '</sheetData><hyperlinks><hyperlink ref="A2" r:id="rId1"/><hyperlink ref="B2" location="Summary!A2:B3"/></hyperlinks>' +
           '<customProperties><customPr name="ArtifactFlow fixture property" r:id="rId4"/></customProperties></worksheet>',
       ),
@@ -235,7 +236,7 @@ function buildDocx(marker: string, includeEmbeddedWorkbook = false): Buffer {
       data: xml(
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
           '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officedocument/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
-          '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+          '<Relationship Id="Document" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="/word/document.xml" TargetMode="Internal"/>' +
           '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail" Target="docProps/thumbnail.emf"/>' +
           '</Relationships>',
       ),
@@ -256,6 +257,9 @@ function buildDocx(marker: string, includeEmbeddedWorkbook = false): Buffer {
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:v="urn:schemas-microsoft-com:vml">' +
         `<w:body><w:p><w:r><w:t>${marker}</w:t></w:r></w:p>` +
+        '<w:p><w:bookmarkStart w:id="1" w:name="Hidden"/><w:r><w:t>Reference text</w:t></w:r><w:bookmarkEnd w:id="1"/></w:p>' +
+        '<w:p><w:fldSimple w:instr="REF Hidden"><w:r><w:t>Reference text</w:t></w:r></w:fldSimple></w:p>' +
+        `<w:p><w:fldSimple w:instr="HYPERLINK &quot;https://example.com/&quot;"><w:r><w:t>FieldDisplay${marker}</w:t></w:r></w:fldSimple></w:p>` +
         '<w:sdt><w:sdtPr><w:dataBinding w:prefixMappings="" w:xpath="/root[1]/value[1]" w:storeItemID="{00112233-4455-6677-8899-AABBCCDDEEFF}"/></w:sdtPr><w:sdtContent><w:p><w:r><w:t>Cached custom XML preview text</w:t></w:r></w:p></w:sdtContent></w:sdt>' +
         '<w:p><w:r><w:pict><v:shape id="ArtifactFlowEmf" style="width:72pt;height:72pt"><v:imagedata r:id="rId2"/></v:shape></w:pict></w:r></w:p>' +
         '<w:sectPr/></w:body></w:document>',
@@ -468,7 +472,9 @@ test('XLSX and Word uploads are searchable, isolated, previewable, and exactly d
   expect(page.context().pages()).toHaveLength(pageCount);
   const linkDialog = page.getByRole('dialog', { name: 'Open external workbook link?' });
   await expect(linkDialog).toBeVisible();
-  await expect(linkDialog.getByText(`https://example.com/artifactflow-${xlsxMarker}`)).toBeVisible();
+  await expect(
+    linkDialog.getByText(`https://example.com/artifactflow-${xlsxMarker}`),
+  ).toBeVisible();
   const confirmedLink = linkDialog.getByRole('link', { name: 'Open external link' });
   await expect(confirmedLink).toHaveAttribute(
     'href',
@@ -584,6 +590,10 @@ test('XLSX and Word uploads are searchable, isolated, previewable, and exactly d
   expect(readFileSync(docxDownloadPath as string)).toEqual(docx);
 
   await page.goto(`${baseUrl}/pages?q=${encodeURIComponent(docxMarker)}`, {
+    waitUntil: 'domcontentloaded',
+  });
+  await expect(page.getByRole('link', { name: docxTitle })).toBeVisible();
+  await page.goto(`${baseUrl}/pages?q=${encodeURIComponent(`FieldDisplay${docxMarker}`)}`, {
     waitUntil: 'domcontentloaded',
   });
   await expect(page.getByRole('link', { name: docxTitle })).toBeVisible();

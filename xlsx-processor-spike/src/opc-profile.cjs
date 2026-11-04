@@ -695,7 +695,8 @@ function parseRelationshipPart(entry, source, limits, fail) {
       if (
         source === null &&
         type === `${WORKBOOK_RELATIONSHIP_PREFIX}officeDocument` &&
-        targetMode !== undefined
+        targetMode !== undefined &&
+        targetMode !== 'Internal'
       ) {
         fail('invalid_xlsx_package', 'The package root relationship is not a local workbook.');
       }
@@ -704,7 +705,7 @@ function parseRelationshipPart(entry, source, limits, fail) {
         !/^[A-Za-z_][A-Za-z0-9_.-]{0,255}$/u.test(id) ||
         ids.has(id) ||
         rule === undefined ||
-        (targetMode !== undefined && targetMode !== 'External')
+        (targetMode !== undefined && targetMode !== 'Internal' && targetMode !== 'External')
       ) {
         fail('unsupported_xlsx_profile', 'The package contains an unsupported relationship.');
       }
@@ -730,7 +731,7 @@ function parseRelationshipPart(entry, source, limits, fail) {
         validateExternalHyperlink(target, fail);
         relationships.push({ external: true, target, type });
       } else {
-        if (targetMode !== undefined) {
+        if (targetMode !== undefined && targetMode !== 'Internal') {
           fail('unsupported_xlsx_profile', 'Only hyperlink relationships may be external.');
         }
 

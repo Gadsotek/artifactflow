@@ -19,7 +19,7 @@ COPY src/main/java /src/main/java
 
 RUN mkdir -p /opt/pdf-spike-classes \
     && javac --release 21 -cp /opt/pdfbox-app.jar -d /opt/pdf-spike-classes \
-        /src/main/java/app/artifactflow/pdfspike/Main.java \
+        /src/main/java/app/artifactflow/pdfspike/*.java \
     && cc -std=c17 -O2 -Wall -Wextra -Werror \
         -fstack-protector-strong -Wl,-z,relro,-z,now \
         -o /opt/artifactflow-network-deny /src/network-deny-exec.c -lseccomp \

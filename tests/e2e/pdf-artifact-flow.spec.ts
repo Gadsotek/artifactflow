@@ -58,11 +58,15 @@ function buildPdf(text: string): Buffer {
   const content = `BT /F1 24 Tf 72 700 Td (${text}) Tj ET`;
 
   return assemblePdf([
-    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Catalog /Pages 2 0 R /OpenAction [3 0 R /XYZ null null 0] /Outlines 8 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R /Annots [6 0 R 7 0 R] >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
     `<< /Length ${Buffer.byteLength(content, 'ascii')} >>\nstream\n${content}\nendstream`,
+    '<< /Type /Annot /Subtype /Link /Rect [72 650 300 680] /A << /S /URI /URI (https://example.test/pdf-navigation-probe) >> >>',
+    '<< /Type /Annot /Subtype /Link /Rect [72 600 300 630] /Dest [3 0 R /Fit] >>',
+    '<< /Type /Outlines /First 9 0 R /Last 9 0 R /Count 1 >>',
+    '<< /Title (Section) /Parent 8 0 R /A << /S /GoTo /D [3 0 R /Fit] >> >>',
   ]);
 }
 
@@ -123,7 +127,7 @@ test('rejected interactive PDF keeps the creation form and exposes the reason @a
   await expect(page.getByText('Select the PDF again after correcting the issue.')).toBeVisible();
 });
 
-test('PDF upload, replacement, and restore are processed, searchable, isolated, and downloadable while renamed HTML is rejected @artifact-security', async ({
+test('PDF with passive navigation supports upload, replacement, restore, search, isolated preview, and download while renamed HTML is rejected @artifact-security', async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -135,6 +139,11 @@ test('PDF upload, replacement, and restore are processed, searchable, isolated, 
   const searchMarker = `PdfCage${suffix}`;
   const pdf = buildPdf(`ArtifactFlow ${searchMarker}`);
   let hostileScriptRequests = 0;
+  let automaticLinkRequests = 0;
+  await page.context().route('https://example.test/pdf-navigation-probe', async (route) => {
+    automaticLinkRequests += 1;
+    await route.abort();
+  });
 
   runAppCommand(
     `php artisan artifactflow:create-user --name=PdfArtifactE2E --email=${email} --password=${password}`,
@@ -196,6 +205,7 @@ test('PDF upload, replacement, and restore are processed, searchable, isolated, 
   expect(previewCsp).toContain("object-src 'none'");
   expect(previewCsp).toContain(`frame-ancestors ${baseUrl}`);
   expect(previewCsp).not.toMatch(/(?:^|;)\s*sandbox(?:\s|;|$)/u);
+  expect(automaticLinkRequests).toBe(0);
 
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('link', { name: 'Download PDF' }).click();
@@ -314,6 +324,7 @@ test('PDF upload, replacement, and restore are processed, searchable, isolated, 
   await expect(page).toHaveURL(/\/pages\/create$/u);
   await expect(page.getByRole('heading', { name: 'Create page' })).toBeVisible();
   expect(hostileScriptRequests).toBe(0);
+  expect(automaticLinkRequests).toBe(0);
 
   await page.goto(`${baseUrl}/pages?q=${encodeURIComponent(hostileTitle)}`, {
     waitUntil: 'domcontentloaded',
