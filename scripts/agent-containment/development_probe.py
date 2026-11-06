@@ -17,6 +17,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # The native probe runs with -I, so load only this reviewed adjacent module;
@@ -222,9 +223,12 @@ def verify_layout(project: Path, fixture: Path, outside: Path | None, *, workspa
 def run_process(command: list[str], cwd: Path, timeout: int, *, stdin_text: str | None = None) -> subprocess.CompletedProcess:
     """Clean our command group on timeout or helper TERM/INT, not client groups."""
     previous_handlers = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
+    stop_signal = None
 
     def stop_helper(signum: int, _frame: object) -> None:
-        raise SystemExit(128 + signum)
+        # Do not interrupt Popen before we have the child handle for cleanup.
+        nonlocal stop_signal
+        stop_signal = signum
 
     for sig in previous_handlers:
         signal.signal(sig, stop_helper)
@@ -234,8 +238,26 @@ def run_process(command: list[str], cwd: Path, timeout: int, *, stdin_text: str 
                                    text=True, start_new_session=True)
 
         try:
-            stdout, stderr = process.communicate(input=stdin_text, timeout=timeout)
-            return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+            deadline = time.monotonic() + timeout
+            remaining = timeout
+            while True:
+                if stop_signal is not None:
+                    raise SystemExit(128 + stop_signal)
+                try:
+                    # Return to Python regularly even when a pending signal did
+                    # not wake the pipe wait. The command keeps one total deadline.
+                    stdout, stderr = process.communicate(input=stdin_text, timeout=min(.25, remaining))
+                except subprocess.TimeoutExpired as error:
+                    # communicate retains buffered input/output across retries.
+                    stdin_text = None
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0 and stop_signal is None:
+                        raise subprocess.TimeoutExpired(command, timeout, output=error.output,
+                                                        stderr=error.stderr) from error
+                else:
+                    if stop_signal is not None:
+                        raise SystemExit(128 + stop_signal)
+                    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
         finally:
             # A repeated graceful stop must not remove the cleanup watchdog.
             for sig in previous_handlers:
