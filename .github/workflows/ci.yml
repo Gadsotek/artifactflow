@@ -195,9 +195,13 @@ jobs:
       - name: Install Playwright browser OS dependencies
         timeout-minutes: 10
         run: |
-          # Slow Azure archive downloads previously exhausted the whole browser job.
-          # Change only the mirror URI; retain Ubuntu suites, components and Signed-By.
-          sudo perl -pi -e 's{(?<=\s)https?://azure\.archive\.ubuntu\.com/ubuntu(/?)(?=\s|$)}{https://archive.ubuntu.com/ubuntu$1}g if /^URIs:/' /etc/apt/sources.list.d/ubuntu.sources
+          # Support both direct deb822 URIs and Ubuntu's mirror+file source.
+          # Change only the Azure archive URI; retain signatures and all other mirrors.
+          for source in /etc/apt/sources.list.d/ubuntu.sources /etc/apt/apt-mirrors.txt; do
+            if [ -f "$source" ]; then
+              sudo perl -pi -e 's{(?<!\S)https?://azure\.archive\.ubuntu\.com/ubuntu(/?)(?=\s|$)}{https://archive.ubuntu.com/ubuntu$1}g if /^(?:URIs:|https?:\/\/azure\.archive\.ubuntu\.com\/ubuntu\/?(?:\s|$))/' "$source"
+            fi
+          done
           npx playwright install-deps chromium firefox webkit
 
       - name: Install Playwright browsers
