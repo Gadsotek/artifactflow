@@ -3,14 +3,14 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const EXPECTED_VERSION = '0.15.2';
+const EXPECTED_VERSION = '0.16.0';
 const EXPECTED_NODE_RANGE = '>=20.18.1';
-const EXPECTED_LOCK_SHA256 = '03751610ffd11515126d8787d751a220f14e7921fc983432f696c59c1b509ed0';
+const EXPECTED_LOCK_SHA256 = '20cd6748657f35f7d2007c3f1652addb8b34b44fef09f5fd9221c3fa3b7cc506';
 const EXPECTED_QS_VERSION = '6.16.1';
 const EXPECTED_UNDICI_VERSION = '7.30.1';
 const MINIMUM_NODE_VERSION = [20, 18, 1];
 const EXPECTED_INTEGRITY =
-  'sha512-3PrXMgjJew6xbZH21D7AbtOoHwhvjWt1IY6wepHjKTZLPSkTPifdMVBFuoxsuF6WK6nUlZIgpSj5o5NscJ+XXw==';
+  'sha512-LvEbfF8fEjDKPoD+9ELThgaBPAThiq/pEBUfUXmlAZ1oxRiduP+dJ3NQvsaiFbWSoNqfKFoan49i3x9HYvD27g==';
 const EXPECTED_QS_INTEGRITY =
   'sha512-5Px6J7rfHBAGUhNQ3es4YzcOdBBw0SDcVtThJml4RdnKw4tKs2epA0kPZ+K8X+WiHktT93RHVcQ/3ym5aTCgtg==';
 const EXPECTED_UNDICI_INTEGRITY =

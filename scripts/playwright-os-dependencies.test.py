@@ -33,7 +33,7 @@ class PlaywrightOsDependenciesTest(unittest.TestCase):
         command = shlex.split(lines[0])
         self.assertEqual(command[:4], ["sudo", "perl", "-pi", "-e"])
         self.assertEqual(len(command), 6)
-        self.assertEqual(command[-1], "/etc/apt/sources.list.d/ubuntu.sources")
+        self.assertEqual(command[-1], "$source")
         # Test the actual expression against stdin. Never invoke sudo or in-place editing.
         result = subprocess.run(
             ["perl", "-pe", command[4]], input=source, text=True,
@@ -47,6 +47,11 @@ class PlaywrightOsDependenciesTest(unittest.TestCase):
         self.assertLess(self.step.index("sudo perl "), self.step.index("npx playwright"))
         self.assertNotIn("continue-on-error", self.step)
         self.assertNotIn("|| true", self.step)
+        self.assertIn(
+            "for source in /etc/apt/sources.list.d/ubuntu.sources /etc/apt/apt-mirrors.txt; do",
+            self.step,
+        )
+        self.assertIn('if [ -f "$source" ]; then', self.step)
         self.assertRegex(self.workflow, r"browser:\n    runs-on: ubuntu-latest\n    timeout-minutes: 50\n")
 
     def test_exact_azure_mirror_changes_preserve_signed_repository_fields(self):
@@ -81,9 +86,29 @@ class PlaywrightOsDependenciesTest(unittest.TestCase):
         self.assertEqual(self.rewrite(source), source)
 
     def test_rewriting_is_idempotent(self):
-        source = "URIs: http://azure.archive.ubuntu.com/ubuntu\n"
-        once = self.rewrite(source)
-        self.assertEqual(self.rewrite(once), once)
+        for source in [
+            "URIs: http://azure.archive.ubuntu.com/ubuntu\n",
+            "http://azure.archive.ubuntu.com/ubuntu\n",
+        ]:
+            once = self.rewrite(source)
+            self.assertEqual(self.rewrite(once), once)
+
+    def test_mirror_list_entries_change_without_touching_other_mirrors(self):
+        source = (
+            "http://azure.archive.ubuntu.com/ubuntu\n"
+            "https://azure.archive.ubuntu.com/ubuntu/ priority:1\n"
+            "http://security.ubuntu.com/ubuntu\n"
+            "# http://azure.archive.ubuntu.com/ubuntu\n"
+            "http://azure.archive.ubuntu.com/ubuntu-extra\n"
+        )
+        expected = (
+            "https://archive.ubuntu.com/ubuntu\n"
+            "https://archive.ubuntu.com/ubuntu/ priority:1\n"
+            "http://security.ubuntu.com/ubuntu\n"
+            "# http://azure.archive.ubuntu.com/ubuntu\n"
+            "http://azure.archive.ubuntu.com/ubuntu-extra\n"
+        )
+        self.assertEqual(self.rewrite(source), expected)
 
 
 if __name__ == "__main__":
