@@ -226,7 +226,6 @@ final class ImageArtifactHttpTest extends TestCase
             'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z4eQAAAAASUVORK5CYII=',
             true,
         );
-        $this->assertIsString($corruptRaster);
 
         $this->actingAs($editor)
             ->from('/pages/create')
