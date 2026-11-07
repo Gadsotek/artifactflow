@@ -600,10 +600,6 @@ final readonly class RasterNormalizer
     {
         $probe = base64_decode(self::HEALTHCHECK_PNG, true);
 
-        if (!is_string($probe)) {
-            throw new RuntimeException('Image parser health probe is invalid.');
-        }
-
         [$image] = $this->normalize(new ParserRequest(
             nonce: str_repeat('0', 32),
             mediaType: 'image/png',
