@@ -29,6 +29,21 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ### Fixed
 
+- Accept ordinary DOCX cross-reference names and cached hyperlink fields,
+  equivalent internal Office relationships, and XLSX workbooks with hidden
+  sheets or unused hidden rows/columns beyond the visible preview area.
+  Omit merges spanning hidden content without exposing hidden cells. Apply
+  the database migration and rebuild viewer assets when upgrading; downgrade
+  refuses to invalidate retained versions that need the expanded hidden limits.
+- Admit highly compressible XLSX/DOCX content within the existing absolute
+  expansion and execution limits. Permit validated, user-selected PDF local
+  navigation and HTTP/HTTPS/email links while rejecting automatic actions,
+  action chains, unsafe schemes, and remote-file actions. Rebuild the PDF,
+  XLSX, and DOCX processor images to apply these compatibility changes.
+- Accept passive PDF initial-page and zoom destinations instead of rejecting
+  every `OpenAction` entry as active content. Validate the destination's page,
+  view mode, and parameters while continuing to reject executable opening
+  actions. Rebuild and redeploy the PDF processor to apply this compatibility fix.
 - Keep the host-cookie HTTPS test fixture memory-only while making its
   OpenSSL input portable to Linux CI.
 - Leave `SESSION_DOMAIN` empty in the production environment example,

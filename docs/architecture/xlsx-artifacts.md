@@ -15,7 +15,7 @@ the browser parses the original workbook, and SheetJS HTML output is never used.
 The accepted profile uses SheetJS CE 0.20.3 after an independent ZIP, XML, content-
 type, and OPC relationship gate. It supports bounded visible cells, cached
 formula results, merged ranges, and typed HTTP, HTTPS, email, and same-workbook
-links. It deliberately rejects hidden-data ambiguity and optional workbook
+links. It omits formatting that spans hidden content and rejects optional workbook
 features that can execute, embed another package, escape the package, or require
 external access. Bounded passive optional parts may remain in the exact original
 but never expand the typed projection.
@@ -91,6 +91,26 @@ bytes at 64 MiB, entries at 2,000, visible sheets at 20, rows per sheet at
 20,000, columns at 256, projected cells at 100,000, merged ranges at 1,000, and
 search text at 8 MiB. Installation artifact limits may lower the retained input
 or derivative ceilings but never raise the processor profile.
+
+The 20-sheet allowance counts visible sheets only; the complete sheet catalog
+is separately bounded by the 2,000-entry package ceiling. Hidden rows and columns
+may lie anywhere within Excel's physical coordinate limits. They and their cells
+stay out of preview/search, and do not consume visible extent limits. Merges
+crossing hidden content are omitted while visible cells remain available;
+all input merges still count toward the processing limit. Visible cells and
+fully visible merges outside the preview dimensions remain rejected.
+
+Explicit `TargetMode="Internal"` is equivalent to an omitted internal mode;
+external non-hyperlink targets remain rejected. Compression ratio alone does
+not reject a workbook. Declared and actual expanded bytes must fit the existing
+64 MiB ceiling; bounded inflation, exact sizes/CRC, XML budgets, and worker
+time/memory/CPU limits remain mandatory even for highly compressible entries.
+
+Existing installations must run the hidden-content-limits migration as part of
+the application upgrade and rebuild the processor and viewer assets. It adjusts
+the corresponding retained-facts constraint without rewriting documents. A
+downgrade refuses to restore the old limits while any retained version exceeds
+them; it does not delete versions or alter their processing facts.
 
 Only sparse cells are traversed; a worksheet dimension does not authorize dense
 range allocation. Manifest counts, extents, coordinate order, cell kinds,

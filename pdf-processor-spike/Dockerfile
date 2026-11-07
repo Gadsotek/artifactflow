@@ -19,7 +19,7 @@ COPY src/main/java /src/main/java
 
 RUN mkdir -p /opt/pdf-spike-classes \
     && javac --release 21 -cp /opt/pdfbox-app.jar -d /opt/pdf-spike-classes \
-        /src/main/java/app/artifactflow/pdfspike/Main.java \
+        /src/main/java/app/artifactflow/pdfspike/*.java \
     && cc -std=c17 -O2 -Wall -Wextra -Werror \
         -fstack-protector-strong -Wl,-z,relro,-z,now \
         -o /opt/artifactflow-network-deny /src/network-deny-exec.c -lseccomp \
@@ -41,6 +41,8 @@ RUN apk add --no-cache \
         "libcrypto3>=3.5.8-r0" \
         "libcurl>=8.23.0-r0" \
         "libssl3>=3.5.8-r0" \
+        "musl>=1.2.6-r3" \
+        "musl-utils>=1.2.6-r3" \
         openjdk21-jre-headless=21.0.13.0.3_p1-r0 \
         "openssl>=3.5.8-r0" \
     && addgroup -S -g 10002 pdf-spike \

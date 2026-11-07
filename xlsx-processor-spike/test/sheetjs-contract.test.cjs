@@ -535,17 +535,16 @@ test('projects dates and bounded visible merged ranges without style authority',
   assert.equal(projected.workbook.truncated, false);
 });
 
-test('rejects merged ranges that cross hidden or unsupported extents', () => {
+test('omits merges across hidden content but rejects visible unsupported extents', () => {
   const hiddenWorkbook = XLSX.utils.book_new();
   const hiddenSheet = XLSX.utils.aoa_to_sheet([['heading'], [], []]);
   hiddenSheet['!merges'] = [XLSX.utils.decode_range('A1:B3')];
   hiddenSheet['!rows'] = [{}, { hidden: true }, {}];
   XLSX.utils.book_append_sheet(hiddenWorkbook, hiddenSheet, 'Hidden merge');
 
-  expectProjectionError(
-    () => projectXlsx(writeWorkbook(hiddenWorkbook)),
-    'unsupported_merged_range',
-  );
+  const hiddenProjection = projectXlsx(writeWorkbook(hiddenWorkbook));
+  assert.deepEqual(hiddenProjection.sheets[0].merges, []);
+  assert.match(hiddenProjection.searchText, /heading/);
 
   const farWorkbook = XLSX.utils.book_new();
   const farSheet = XLSX.utils.aoa_to_sheet([['heading']]);
@@ -555,6 +554,122 @@ test('rejects merged ranges that cross hidden or unsupported extents', () => {
   expectProjectionError(
     () => projectXlsx(writeWorkbook(farWorkbook)),
     'worksheet_extent_limit_exceeded',
+  );
+});
+
+test('accepts explicit internal package relationships without allowing external workbook parts', () => {
+  for (const part of ['/_rels/.rels', '/xl/_rels/workbook.xml.rels']) {
+    const input = replaceZipEntry(writeWorkbook(basicWorkbook()), part, (source) =>
+      source.replaceAll('<Relationship ', '<Relationship TargetMode="Internal" '),
+    );
+    assert.equal(projectXlsx(input).workbook.visibleSheetCount, 1);
+    for (const mode of ['External', 'internal', 'Unknown']) {
+      const hostile = replaceZipEntry(input, part, (source) =>
+        source.replaceAll('TargetMode="Internal"', `TargetMode="${mode}"`),
+      );
+      assert.throws(() => projectXlsx(hostile), XlsxProjectionError);
+    }
+  }
+});
+
+test('counts only visible sheets against the preview allowance', () => {
+  const workbook = XLSX.utils.book_new();
+  workbook.Workbook = { Sheets: [] };
+  for (let index = 0; index < 21; index += 1) {
+    const name = `Sheet${index}`;
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.aoa_to_sheet([[index === 0 ? 'visible' : 'omitted']]),
+      name,
+    );
+    workbook.Workbook.Sheets.push({ name, Hidden: index === 0 ? 0 : 1 });
+  }
+  const projected = projectXlsx(writeWorkbook(workbook), { maxSheets: 1 });
+  assert.equal(projected.workbook.visibleSheetCount, 1);
+  assert.doesNotMatch(projected.searchText, /omitted/);
+  workbook.Workbook.Sheets[1].Hidden = 0;
+  assert.throws(() => projectXlsx(writeWorkbook(workbook), { maxSheets: 1 }), XlsxProjectionError);
+});
+
+test('omits far hidden rows and columns while retaining visible extent limits', () => {
+  const workbook = XLSX.utils.book_new();
+  const sheet = XLSX.utils.aoa_to_sheet([['visible']]);
+  sheet['!rows'] = [];
+  sheet['!rows'][20000] = { hidden: true };
+  sheet['!cols'] = [];
+  sheet['!cols'][256] = { hidden: true };
+  sheet.A20001 = { t: 's', v: 'HIDDEN_ROW_MARKER' };
+  sheet.IW1 = { t: 's', v: 'HIDDEN_COLUMN_MARKER' };
+  sheet['!ref'] = 'A1:IW20001';
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Report');
+  const projected = projectXlsx(writeWorkbook(workbook));
+  assert.equal(projected.workbook.cellCount, 1);
+  assert.doesNotMatch(projected.searchText, /HIDDEN_/);
+  sheet['!rows'][20000].hidden = false;
+  expectProjectionError(
+    () => projectXlsx(writeWorkbook(workbook)),
+    'worksheet_extent_limit_exceeded',
+  );
+});
+
+// Recompress actual entries with zlib: SheetJS's writer uses a lower compression ratio.
+function stronglyCompressedWorkbook(input) {
+  const { deflateRawSync, inflateRawSync } = require('node:zlib');
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const entry of centralDirectoryEntries(input)) {
+    const nameLength = input.readUInt16LE(entry.localOffset + 26);
+    const extraLength = input.readUInt16LE(entry.localOffset + 28);
+    const start = entry.localOffset + 30 + nameLength + extraLength;
+    const original = input.subarray(start, start + entry.compressedBytes);
+    const data =
+      input.readUInt16LE(entry.localOffset + 8) === 8 ? inflateRawSync(original) : original;
+    const compressed = deflateRawSync(data, { level: 9 });
+    const name = Buffer.from(entry.name);
+    const local = Buffer.from(input.subarray(entry.localOffset, entry.localOffset + 30));
+    local.writeUInt16LE(8, 8);
+    local.writeUInt32LE(compressed.length, 18);
+    local.writeUInt16LE(0, 28);
+    const central = Buffer.from(input.subarray(entry.centralOffset, entry.centralOffset + 46));
+    central.writeUInt16LE(8, 10);
+    central.writeUInt32LE(compressed.length, 20);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, name, compressed);
+    centrals.push(central, name);
+    offset += local.length + name.length + compressed.length;
+  }
+  const central = Buffer.concat(centrals);
+  const end = Buffer.from(input.subarray(input.length - 22));
+  end.writeUInt32LE(central.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, central, end]);
+}
+
+test('accepts highly compressible bounded content but still bounds actual expansion', () => {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet(Array.from({ length: 100 }, () => ['X'.repeat(30000)])),
+    'Report',
+  );
+  const input = stronglyCompressedWorkbook(writeWorkbook(workbook));
+  assert.ok(
+    centralDirectoryEntries(input).some(
+      (entry) => entry.expandedBytes / entry.compressedBytes > 200,
+    ),
+  );
+  assert.equal(projectXlsx(input).workbook.cellCount, 100);
+  expectProjectionError(
+    () => projectXlsx(input, { maxExpandedBytes: 1_000_000 }),
+    'expanded_size_limit_exceeded',
+  );
+  const forged = forgeDeclaredExpandedSize(input, 'xl/worksheets/sheet1.xml', 1);
+  expectProjectionError(
+    () => projectXlsx(forged, { maxExpandedBytes: 1_000_000 }),
+    'expanded_size_limit_exceeded',
   );
 });
 

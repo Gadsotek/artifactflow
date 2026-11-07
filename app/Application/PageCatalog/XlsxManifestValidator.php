@@ -12,6 +12,12 @@ final class XlsxManifestValidator
 {
     private const int MAX_SHEETS = 20;
 
+    private const int MAX_TOTAL_SHEETS = 2_000;
+
+    private const int MAX_HIDDEN_ROWS = 1_048_576;
+
+    private const int MAX_HIDDEN_COLUMNS = 16_384;
+
     private const int MAX_ROWS = 20_000;
 
     private const int MAX_COLUMNS = 256;
@@ -71,7 +77,7 @@ final class XlsxManifestValidator
         $omittedHiddenSheetCount = $this->boundedInteger(
             $workbook['omittedHiddenSheetCount'] ?? null,
             0,
-            self::MAX_SHEETS,
+            self::MAX_TOTAL_SHEETS,
         );
         $declaredFormulaCount = $this->boundedInteger($workbook['formulaCount'] ?? null, 0, self::MAX_CELLS);
         $declaredCellCount = $this->boundedInteger($workbook['cellCount'] ?? null, 0, self::MAX_CELLS);
@@ -86,7 +92,7 @@ final class XlsxManifestValidator
 
         if (
             $visibleSheetCount !== count($sheets)
-            || $visibleSheetCount + $omittedHiddenSheetCount > self::MAX_SHEETS
+            || $visibleSheetCount + $omittedHiddenSheetCount > self::MAX_TOTAL_SHEETS
             || $declaredUncachedFormulaCount > $declaredFormulaCount
             || $truncated !== false
         ) {
@@ -128,12 +134,12 @@ final class XlsxManifestValidator
             $omittedHiddenRowCount = $this->boundedInteger(
                 $sheet['omittedHiddenRowCount'] ?? null,
                 0,
-                self::MAX_ROWS,
+                self::MAX_HIDDEN_ROWS,
             );
             $omittedHiddenColumnCount = $this->boundedInteger(
                 $sheet['omittedHiddenColumnCount'] ?? null,
                 0,
-                self::MAX_COLUMNS,
+                self::MAX_HIDDEN_COLUMNS,
             );
             $cells = $this->list($sheet['cells'] ?? null, 'XLSX worksheet cells have an invalid shape.');
             $merges = $this->list($sheet['merges'] ?? null, 'XLSX worksheet merges have an invalid shape.');
