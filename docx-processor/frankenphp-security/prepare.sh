@@ -45,6 +45,7 @@ go mod edit -replace=go.step.sm/crypto=/opt/artifactflow-frankenphp-sources/cryp
 go mod edit -replace=github.com/smallstep/certificates=/opt/artifactflow-frankenphp-sources/certificates
 go mod edit -replace=github.com/smallstep/cli-utils=/opt/artifactflow-frankenphp-sources/cli-utils
 go mod edit -require=github.com/go-jose/go-jose/v4@v4.1.6
+go mod edit -require=golang.org/x/net@v0.62.0
 go mod tidy
 go mod download all
 
@@ -54,6 +55,7 @@ go mod download all
 # PHP linker flags unsuitable for standalone Go test binaries; the production
 # executable below is still built through upstream's normal CGO go.sh path.
 CGO_ENABLED=0 go test -mod=readonly -count=1 -timeout=10m \
+    golang.org/x/net/html \
     github.com/go-jose/go-jose/v4 \
     go.step.sm/crypto/jose/... \
     github.com/smallstep/cli-utils/token/... \

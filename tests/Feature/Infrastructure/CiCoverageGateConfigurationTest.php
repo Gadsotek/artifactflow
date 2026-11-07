@@ -322,9 +322,28 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('/var/www/html/docker/healthcheck-app.sh', $schedulerBlock);
     }
 
+    public function test_pinned_alpine_runtime_stages_require_patched_musl_packages(): void
+    {
+        foreach (['Dockerfile' => 2, 'docx-processor/Dockerfile' => 1, 'pdf-processor-spike/Dockerfile' => 1] as $path => $stages) {
+            $dockerfile = $this->readProjectFile($path);
+            $this->assertSame(
+                $stages,
+                substr_count($dockerfile, '"musl>=1.2.6-r3"'),
+                'Pinned Alpine runtime must require patched musl: ' . $path,
+            );
+            $this->assertSame(
+                $stages,
+                substr_count($dockerfile, '"musl-utils>=1.2.6-r3"'),
+                'Pinned Alpine runtime must require patched musl-utils: ' . $path,
+            );
+        }
+    }
+
     public function test_production_frankenphp_rebuild_pins_scanner_required_go_security_updates(): void
     {
         $dockerfile = $this->readProjectFile('Dockerfile');
+        $prepare = $this->readProjectFile('docx-processor/frankenphp-security/prepare.sh');
+        $this->assertStringContainsString('go mod edit -require=golang.org/x/net@v0.62.0', $prepare);
 
         $this->assertStringContainsString(
             'COPY docx-processor/frankenphp-security /opt/artifactflow-frankenphp-security',
@@ -364,7 +383,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
         );
         $this->assertStringNotContainsString('go get ', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E 'golang\\.org/x/net[[:space:]]+v0\\.61\\.0'",
+            "grep -E 'golang\\.org/x/net[[:space:]]+v0\\.62\\.0'",
             $dockerfile,
         );
         $this->assertStringContainsString(

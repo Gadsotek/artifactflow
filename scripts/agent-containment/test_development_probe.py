@@ -380,7 +380,7 @@ class DevelopmentProbeTest(unittest.TestCase):
         self.assertEqual(subprocess.PIPE, launch.call_args.kwargs["stdin"])
         self.assertNotIn("env", launch.call_args.kwargs)
         self.assertEqual("source.txt: OK\n", result.stdout)
-        process.communicate.assert_called_once_with(input=manifest, timeout=15)
+        process.communicate.assert_called_once_with(input=manifest, timeout=.25)
 
     def test_missing_command_and_timeout_are_failures(self) -> None:
         for error in (FileNotFoundError("private path"), subprocess.TimeoutExpired("private command", 15)):
@@ -417,10 +417,90 @@ class DevelopmentProbeTest(unittest.TestCase):
         process.communicate.side_effect = [error, ("", "")]
         with patch.object(self.module.subprocess, "Popen", return_value=process) as launch, \
                 patch.object(self.module, "stop_owned_process_group") as cleanup, \
+                patch.object(self.module.time, "monotonic", side_effect=[100, 115]), \
                 self.assertRaises(subprocess.TimeoutExpired):
             self.module.run_process(["synthetic"], Path("/synthetic"), 15)
         self.assertTrue(launch.call_args.kwargs["start_new_session"])
         cleanup.assert_called_once_with(process)
+
+    def test_sliced_wait_preserves_total_deadline_and_partial_output(self) -> None:
+        error = subprocess.TimeoutExpired("synthetic", .25, output=b"partial", stderr=b"diagnostic")
+        process = MagicMock(pid=845)
+        process.communicate.side_effect = error
+        with patch.object(self.module.subprocess, "Popen", return_value=process), \
+                patch.object(self.module, "stop_owned_process_group") as cleanup, \
+                patch.object(self.module.time, "monotonic", side_effect=[100, 100.25, 100.5, 101]), \
+                self.assertRaises(subprocess.TimeoutExpired) as expired:
+            self.module.run_process(["synthetic"], Path("/synthetic"), 1, stdin_text="owned input")
+        self.assertEqual(1, expired.exception.timeout)
+        self.assertEqual(b"partial", expired.exception.output)
+        self.assertEqual(b"diagnostic", expired.exception.stderr)
+        self.assertEqual(["owned input", None, None],
+                         [call.kwargs["input"] for call in process.communicate.call_args_list])
+        self.assertEqual([.25, .25, .25],
+                         [call.kwargs["timeout"] for call in process.communicate.call_args_list])
+        cleanup.assert_called_once_with(process)
+
+    def test_sliced_wait_delivers_stdin_once_and_retains_real_output(self) -> None:
+        script = ("import sys,time; data=sys.stdin.read(); "
+                  "print('first',flush=True); time.sleep(.35); "
+                  "print(data); print('diagnostic',file=sys.stderr)")
+        result = self.module.run_process([sys.executable, "-I", "-B", "-c", script],
+                                         Path.cwd(), 3, stdin_text="owned input")
+        self.assertEqual(0, result.returncode)
+        self.assertEqual("first\nowned input\n", result.stdout)
+        self.assertEqual("diagnostic\n", result.stderr)
+
+    def test_stop_requested_as_command_finishes_cannot_return_success(self) -> None:
+        process = MagicMock(pid=845, returncode=0)
+
+        def communicate(**_kwargs):
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+            return "output", ""
+
+        process.communicate.side_effect = communicate
+        with patch.object(self.module.subprocess, "Popen", return_value=process), \
+                patch.object(self.module, "stop_owned_process_group") as cleanup, \
+                self.assertRaises(SystemExit) as stopped:
+            self.module.run_process(["synthetic"], Path("/synthetic"), 15)
+        self.assertEqual(128 + signal.SIGTERM, stopped.exception.code)
+        cleanup.assert_called_once_with(process)
+
+    def test_stop_during_launch_still_reaps_the_returned_owned_child(self) -> None:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            with self.subTest(signal=sig):
+                process = MagicMock(pid=845)
+
+                def launch(*args, **kwargs):
+                    signal.getsignal(sig)(sig, None)
+                    return process
+
+                before = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGINT)}
+                with patch.object(self.module.subprocess, "Popen", side_effect=launch), \
+                        patch.object(self.module, "stop_owned_process_group") as cleanup, \
+                        self.assertRaises(SystemExit) as stopped:
+                    self.module.run_process(["synthetic"], Path("/synthetic"), 15)
+                self.assertEqual(128 + sig, stopped.exception.code)
+                cleanup.assert_called_once_with(process)
+                process.communicate.assert_not_called()
+                self.assertEqual(before, {s: signal.getsignal(s) for s in before})
+
+    def test_wait_returns_to_python_promptly_before_the_overall_deadline(self) -> None:
+        process = MagicMock(pid=845, returncode=0)
+
+        def communicate(*, input, timeout):
+            self.assertLessEqual(timeout, .25)
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+            raise subprocess.TimeoutExpired("synthetic", timeout)
+
+        process.communicate.side_effect = communicate
+        with patch.object(self.module.subprocess, "Popen", return_value=process), \
+                patch.object(self.module, "stop_owned_process_group") as cleanup, \
+                self.assertRaises(SystemExit) as stopped:
+            self.module.run_process(["synthetic"], Path("/synthetic"), 60)
+        self.assertEqual(128 + signal.SIGTERM, stopped.exception.code)
+        cleanup.assert_called_once_with(process)
+
 
     def test_cleanup_failure_cannot_return_a_successful_command(self) -> None:
         process = MagicMock(pid=845, returncode=0)
