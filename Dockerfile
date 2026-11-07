@@ -147,6 +147,8 @@ RUN apk add --no-cache --virtual .image-parser-build-deps \
         libpng \
         "libcrypto3>=3.5.8-r0" \
         "libssl3>=3.5.8-r0" \
+        "musl>=1.2.6-r3" \
+        "musl-utils>=1.2.6-r3" \
         "openssl>=3.5.8-r0" \
         socat=1.8.1.3-r0 \
     && apk del .image-parser-build-deps
@@ -208,7 +210,7 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.58\.0' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'golang\.org/x/net[[:space:]]+v0\.61\.0' \
+        | grep -E 'golang\.org/x/net[[:space:]]+v0\.62\.0' \
     && sh /opt/artifactflow-frankenphp-security/verify.sh /usr/local/bin/frankenphp
 
 FROM dunglas/frankenphp:1-php8.5-alpine@sha256:f4947926b4c5070176be7c72b03939e045f7ae9d249a3219cf9708bd5e6d0ff2 AS production
@@ -238,6 +240,8 @@ RUN setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp \
         "libecpg>=18.5-r0" \
         "libpq>=18.5-r0" \
         "libssl3>=3.5.8-r0" \
+        "musl>=1.2.6-r3" \
+        "musl-utils>=1.2.6-r3" \
         "openssl>=3.5.8-r0"
 
 RUN install-php-extensions \
