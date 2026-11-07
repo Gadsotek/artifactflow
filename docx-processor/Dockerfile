@@ -31,7 +31,7 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.58\.0' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'golang\.org/x/net[[:space:]]+v0\.61\.0' \
+        | grep -E 'golang\.org/x/net[[:space:]]+v0\.62\.0' \
     && sh /opt/artifactflow-frankenphp-security/verify.sh /usr/local/bin/frankenphp
 
 FROM dunglas/frankenphp:1-php8.5-alpine@sha256:f4947926b4c5070176be7c72b03939e045f7ae9d249a3219cf9708bd5e6d0ff2
@@ -54,6 +54,8 @@ RUN apk add --no-cache \
         "libcurl>=8.23.0-r0" \
         libreoffice-writer=25.8.7.3-r0 \
         "libssl3>=3.5.8-r0" \
+        "musl>=1.2.6-r3" \
+        "musl-utils>=1.2.6-r3" \
         "openssl>=3.5.8-r0" \
         tzdata=2026f-r0 \
         util-linux=2.42.3-r1 \

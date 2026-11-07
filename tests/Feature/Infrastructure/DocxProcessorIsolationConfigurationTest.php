@@ -54,7 +54,7 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         );
         $this->assertStringNotContainsString('go get ', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E 'golang\\.org/x/net[[:space:]]+v0\\.61\\.0'",
+            "grep -E 'golang\\.org/x/net[[:space:]]+v0\\.62\\.0'",
             $dockerfile,
         );
         $this->assertStringContainsString(
