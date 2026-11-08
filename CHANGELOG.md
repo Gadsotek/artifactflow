@@ -6,6 +6,11 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 
 ## Unreleased
 
+## v0.3.9 — 2026-11-08
+
+Security and maintenance update for credential cookies, production runtimes,
+and MCP clients, with refreshed application dependencies and build tooling.
+
 ### Security
 
 - Bind secure session and trusted-device credentials to the application
@@ -14,7 +19,6 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   cookie names through a shared parent domain. Upgrading requires clearing
   explicit `SESSION_DOMAIN` settings, refreshing cached configuration,
   and signing in and enrolling trusted devices again.
-
 - Pin Mermaid's DOMPurify dependency to 3.4.17 for the upstream sanitization
   fixes, keeping the override, lockfile, verifier, and security contract aligned.
 - Require patched Brotli 1.2.1-r0 or newer in the application, image-parser,
@@ -23,9 +27,28 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
 - Require curl and libcurl 8.23.0-r0 or newer in those runtime images for
   [CVE-2026-92392](https://curl.se/docs/CVE-2026-92392.html), fixing the
   HTTP/2 upload use-after-free inherited from the pinned base images.
-- Update the locked MCP bridge dependencies to body-parser 1.20.9 and
-  undici 7.30.1 for the reported denial-of-service and integrity-check fixes.
-  Refresh the reviewed lock fingerprint and Desktop extension bundle to 1.0.7.
+- Require musl and musl-utils 1.2.6-r3 or newer in the application,
+  image-parser, PDF, and DOCX runtime images, and update the PDF processor's
+  OpenJDK runtime to 21.0.13.0.3_p1-r0.
+- Rebuild application and DOCX FrankenPHP binaries with go-jose 4.1.6 and
+  x/net 0.62.0. The reviewed Smallstep source migration removes go-jose v3
+  from the compiled dependency graph while preserving upstream identities,
+  licenses, source hashes, and compatibility regressions.
+- Update the locked MCP bridge dependencies to body-parser 1.20.9,
+  undici 7.30.1, and qs 6.16.1; refresh the reviewed lock fingerprints.
+- Update Symfony Mime to 8.1.10 and HTTP Foundation to 8.1.11, with
+  regressions rejecting invalid MIME parameter names while preserving
+  valid filename encoding. Pin the frontend minimatch override to 11.0.1.
+
+### Changed
+
+- Update the reviewed MCP bridge to `mcp-remote` 0.16.0 and the Claude
+  Desktop extension to 1.0.8. The Node.js 20.18.1 minimum and static
+  bearer-token connection remain supported.
+- Update Laravel to 13.40.0, Laravel MCP to 1.1.2, Mermaid to 12.3.0,
+  Tabulator to 6.7.1, and supporting PHP, frontend, and development tools.
+- Clarify the artifact workflow, controlled sharing, and operator
+  responsibilities across the README, public site, and operations guides.
 
 ### Fixed
 
@@ -33,14 +56,37 @@ This project is pre-1.0; expect breaking changes between alpha revisions.
   OpenSSL input portable to Linux CI.
 - Leave `SESSION_DOMAIN` empty in the production environment example,
   matching the host-only cookie contract and its regression test.
-- Resolve the official final Rector Laravel 2.7.1 distribution directly from
-  its scoped upstream repository while Packagist retains pre-build metadata.
-  Remove the redundant abandoned standalone contracts dependency through a
-  normal Composer update, keeping the dependency audit and Laravel rules active.
+- Resolve Rector Laravel from its scoped upstream repository and update it
+  to 2.7.3. Remove the redundant abandoned standalone contracts dependency
+  through a normal Composer update, keeping the dependency audit and Laravel
+  rules active.
 - Cover Laravel MCP 1.1's supported legacy protocol versions, including
   `2025-03-26`, through initialization and session-free tool requests.
 - Preserve safe process diagnostics for artifact-egress browser setup failures
   instead of reporting every command failure as a missing database schema.
+- Bound browser CI setup and install its required operating-system libraries
+  without relying on the slow Azure archive mirror.
+
+### Upgrade from v0.3.8
+
+- Update the application image for every application, artifact-host, worker,
+  and scheduler role, plus each enabled PDF, XLSX, and DOCX processor. Pin
+  release image digests and verify SBOMs and provenance using the
+  [production operations guide](docs/operations/production.md).
+- Rebuild and redeploy the dedicated `image-parser` target from the `v0.3.9`
+  source wherever it is used. The release workflow does not publish a
+  standalone image-parser image.
+- Keep `SESSION_SECURE_COOKIE=true`, set `SESSION_PATH=/`, and clear any
+  explicit `SESSION_DOMAIN`, including an app-only domain. Rebuild cached
+  configuration through the normal deployment process. Users must sign in
+  again and re-establish trusted devices; existing external viewing sessions
+  are unaffected.
+- Re-run `./scripts/connect-mcp.sh` to select the updated integrity-locked
+  bridge. Administrators distributing the Desktop extension should build and
+  install version 1.0.8; existing bundles do not update themselves. Existing
+  personal MCP tokens remain valid.
+- This release has no database schema changes. PDF, XLSX, and DOCX remain
+  default-off with their existing production-enablement requirements.
 
 ## v0.3.8 — 2026-10-22
 
