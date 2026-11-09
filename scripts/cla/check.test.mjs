@@ -5,6 +5,7 @@ import {
   CLA_SIGN_COMMENT,
   collectCommits,
   collectComments,
+  createClient,
   evaluateCla,
   rerunFailedCheck,
   runCla,
@@ -13,6 +14,33 @@ import {
 
 const owner = { id: 14184492, login: 'Gadsotek' };
 const contributor = { id: 12345, login: 'new-contributor' };
+
+test('the GitHub HTTP client accepts an empty successful workflow rerun response', async () => {
+  const path = '/repos/Gadsotek/artifactflow/actions/runs/9001/rerun';
+  const client = createClient('test-token', async (url, options) => {
+    assert.equal(url.href, `https://api.github.com${path}`);
+    assert.equal(options.method, 'POST');
+    return new Response(null, { status: 201 });
+  });
+
+  assert.equal(await client.request('POST', path), null);
+});
+
+test('the GitHub HTTP client still requires JSON from successful data endpoints', async () => {
+  const emptyGet = createClient('test-token', async () => new Response(null, { status: 200 }));
+  const emptyCommentCreate = createClient(
+    'test-token',
+    async () => new Response(null, { status: 201 }),
+  );
+
+  await assert.rejects(emptyGet.request('GET', '/repos/Gadsotek/artifactflow/pulls/12'));
+  await assert.rejects(
+    emptyCommentCreate.request('POST', '/repos/Gadsotek/artifactflow/issues/12/comments', {
+      body: 'Comment',
+    }),
+  );
+});
+
 const trustedJobs = () => ({
   total_count: 1,
   jobs: [

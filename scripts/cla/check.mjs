@@ -263,7 +263,7 @@ class GitHubApiError extends Error {
   }
 }
 
-function createClient(token) {
+export function createClient(token, fetcher = fetch) {
   const headers = {
     Accept: 'application/vnd.github+json',
     Authorization: `Bearer ${token}`,
@@ -271,14 +271,21 @@ function createClient(token) {
   };
 
   async function request(method, path, body) {
-    const response = await fetch(new URL(path, 'https://api.github.com'), {
+    const response = await fetcher(new URL(path, 'https://api.github.com'), {
       method,
       headers: body === undefined ? headers : { ...headers, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) throw new GitHubApiError(response.status, method, path);
-    if (response.status === 204) return null;
+    // GitHub accepts workflow reruns with an empty 201 response.
+    if (
+      response.status === 204 ||
+      (method === 'POST' &&
+        response.status === 201 &&
+        /^\/repos\/[^/]+\/[^/]+\/actions\/runs\/\d+\/rerun$/.test(path))
+    )
+      return null;
     return response.json();
   }
 
