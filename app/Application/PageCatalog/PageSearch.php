@@ -56,9 +56,33 @@ final class PageSearch
 
     public function window(User $actor, PageSearchFilters $filters, int $pageNumber): PageSearchWindow
     {
-        $results = $this->results($actor, $filters, true, (max(1, $pageNumber) - 1) * 25, 26);
+        $offset = (max(1, $pageNumber) - 1) * 25;
+
+        // Coarse visibility is a superset of exact authority. For remote
+        // windows, one database probe can rule out an empty window
+        // without hydrating and authorizing every preceding page. Nearby
+        // windows retain the existing short-circuiting exact scan.
+        if ($offset >= 100 && !$this->hasCandidateAtOffset($actor, $filters, $offset)) {
+            return new PageSearchWindow([], false);
+        }
+
+        $results = $this->results($actor, $filters, true, $offset, 26);
 
         return new PageSearchWindow(array_slice($results, 0, 25), count($results) > 25);
+    }
+
+    private function hasCandidateAtOffset(User $actor, PageSearchFilters $filters, int $offset): bool
+    {
+        $query = Page::query();
+        $this->visibility->apply($query, $actor);
+        $this->applyFilters($query, $filters);
+
+        $search = $this->normalizedSearch($filters->query);
+        if ($search !== null) {
+            $query->whereRaw(self::SEARCH_MATCH_SQL, [$search]);
+        }
+
+        return $query->orderBy('pages.uid')->offset($offset)->limit(1)->toBase()->value('pages.uid') !== null;
     }
 
     /** @return list<PageSearchResult> */

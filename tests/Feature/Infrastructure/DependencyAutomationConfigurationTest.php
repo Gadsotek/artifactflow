@@ -42,12 +42,26 @@ final class DependencyAutomationConfigurationTest extends TestCase
         $this->assertSame(['dockerfile', 'docker-compose'], $nodeRule['matchManagers'] ?? null);
         $this->assertSame(['node'], $nodeRule['matchPackageNames'] ?? null);
         $this->assertSame('node container image', $nodeRule['groupName'] ?? null);
+    }
 
-        $cla = $this->projectFile('.github/workflows/cla.yml');
-        $this->assertStringContainsString(
-            'allowlist: Gadsotek,dependabot[bot],dependabot-preview[bot],renovate[bot]',
-            $cla,
-        );
+    public function test_cla_workflow_uses_trusted_base_checker_with_opener_scoped_allowlist(): void
+    {
+        $workflow = $this->projectFile('.github/workflows/cla.yml');
+        $checker = $this->projectFile('scripts/cla/check.mjs');
+
+        $this->assertStringContainsString("run-name: 'CLA PR #", $workflow);
+        $this->assertStringContainsString('ref: ${{ github.sha }}', $workflow);
+        $this->assertStringContainsString('persist-credentials: false', $workflow);
+        $this->assertStringContainsString('run: node scripts/cla/check.mjs', $workflow);
+        $this->assertSame(1, preg_match('/const ALLOWLIST = new Map\(\[(.*?)\]\);/s', $checker, $matches));
+        $this->assertSame(4, preg_match_all("/\['[^']+', [0-9]+\]/", $matches[1] ?? '', $entries));
+        $this->assertSame([
+            "['gadsotek', 14184492]",
+            "['dependabot[bot]', 49699333]",
+            "['dependabot-preview[bot]', 27856297]",
+            "['renovate[bot]', 29139614]",
+        ], $entries[0]);
+        $this->assertStringContainsString('id === trustedOpener.id && openerAllowlisted', $checker);
     }
 
     private function projectFile(string $path): string

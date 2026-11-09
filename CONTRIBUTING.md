@@ -90,6 +90,11 @@ Sign the one-time [CLA](CLA.md) when its bot prompts on your first PR, using:
 I have read the CLA Document and I hereby sign the CLA
 ```
 
+The PR opener and each credited human commit author or coauthor must sign from
+their own GitHub account. If a commit author is not linked to an account,
+associate the commit email with that account or ask a maintainer to review the
+attribution.
+
 The CLA grants licensing rights; you retain copyright. It supports the
 [AGPL-3.0-or-later](LICENSE) and separate [commercial licensing](COMMERCIAL.md)
 paths. Employer contributions may need an entity agreement with the owner.

@@ -69,7 +69,8 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           docker tag artifactflow-app:production "$IMAGE:$VERSION"
           docker push "$IMAGE:$VERSION"
-          REPO_DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:$VERSION")"
+          REPO_DIGEST="$(docker inspect --format='{{range .RepoDigests}}{{println .}}{{end}}' "$IMAGE:$VERSION" | awk -v prefix="$IMAGE@sha256:" 'index($0, prefix) == 1 { print; exit }')"
+          test -n "$REPO_DIGEST"
           echo "digest=$REPO_DIGEST" >> "$GITHUB_OUTPUT"
           echo "digest_only=${REPO_DIGEST#*@}" >> "$GITHUB_OUTPUT"
 
@@ -79,7 +80,8 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           docker tag artifactflow-pdf-processor-service:production "$PDF_PROCESSOR_IMAGE:$VERSION"
           docker push "$PDF_PROCESSOR_IMAGE:$VERSION"
-          REPO_DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "$PDF_PROCESSOR_IMAGE:$VERSION")"
+          REPO_DIGEST="$(docker inspect --format='{{range .RepoDigests}}{{println .}}{{end}}' "$PDF_PROCESSOR_IMAGE:$VERSION" | awk -v prefix="$PDF_PROCESSOR_IMAGE@sha256:" 'index($0, prefix) == 1 { print; exit }')"
+          test -n "$REPO_DIGEST"
           echo "digest=$REPO_DIGEST" >> "$GITHUB_OUTPUT"
           echo "digest_only=${REPO_DIGEST#*@}" >> "$GITHUB_OUTPUT"
 
@@ -89,7 +91,8 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           docker tag artifactflow-xlsx-processor-service:production "$XLSX_PROCESSOR_IMAGE:$VERSION"
           docker push "$XLSX_PROCESSOR_IMAGE:$VERSION"
-          REPO_DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "$XLSX_PROCESSOR_IMAGE:$VERSION")"
+          REPO_DIGEST="$(docker inspect --format='{{range .RepoDigests}}{{println .}}{{end}}' "$XLSX_PROCESSOR_IMAGE:$VERSION" | awk -v prefix="$XLSX_PROCESSOR_IMAGE@sha256:" 'index($0, prefix) == 1 { print; exit }')"
+          test -n "$REPO_DIGEST"
           echo "digest=$REPO_DIGEST" >> "$GITHUB_OUTPUT"
           echo "digest_only=${REPO_DIGEST#*@}" >> "$GITHUB_OUTPUT"
 
@@ -99,7 +102,8 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           docker tag artifactflow-docx-processor:production "$DOCX_PROCESSOR_REGISTRY_IMAGE:$VERSION"
           docker push "$DOCX_PROCESSOR_REGISTRY_IMAGE:$VERSION"
-          REPO_DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "$DOCX_PROCESSOR_REGISTRY_IMAGE:$VERSION")"
+          REPO_DIGEST="$(docker inspect --format='{{range .RepoDigests}}{{println .}}{{end}}' "$DOCX_PROCESSOR_REGISTRY_IMAGE:$VERSION" | awk -v prefix="$DOCX_PROCESSOR_REGISTRY_IMAGE@sha256:" 'index($0, prefix) == 1 { print; exit }')"
+          test -n "$REPO_DIGEST"
           echo "digest=$REPO_DIGEST" >> "$GITHUB_OUTPUT"
           echo "digest_only=${REPO_DIGEST#*@}" >> "$GITHUB_OUTPUT"
 
@@ -215,16 +219,20 @@ jobs:
             echo "${{ steps.push-docx-processor.outputs.digest }}"
             echo '```'
             echo
-            echo "Verify build provenance and SBOM before running any image (needs the GitHub CLI):"
+            echo "Verify release-workflow provenance and the CycloneDX SBOM for each image before running it (needs the GitHub CLI):"
             echo
             echo '```'
-            echo "gh attestation verify oci://${{ steps.push.outputs.digest }} --repo ${{ github.repository }}"
-            echo "gh attestation verify oci://${{ steps.push-pdf-processor.outputs.digest }} --repo ${{ github.repository }}"
-            echo "gh attestation verify oci://${{ steps.push-xlsx-processor.outputs.digest }} --repo ${{ github.repository }}"
-            echo "gh attestation verify oci://${{ steps.push-docx-processor.outputs.digest }} --repo ${{ github.repository }}"
+            echo "gh attestation verify oci://${{ steps.push.outputs.digest }} --repo ${{ github.repository }} --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml --predicate-type https://slsa.dev/provenance/v1"
+            echo "gh attestation verify oci://${{ steps.push.outputs.digest }} --repo ${{ github.repository }} --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml --predicate-type https://cyclonedx.org/bom"
+            echo "gh attestation verify oci://${{ steps.push-pdf-processor.outputs.digest }} --repo ${{ github.repository }} --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml --predicate-type https://slsa.dev/provenance/v1"
+            echo "gh attestation verify oci://${{ steps.push-pdf-processor.outputs.digest }} --repo ${{ github.repository }} --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml --predicate-type https://cyclonedx.org/bom"
+            echo "gh attestation verify oci://${{ steps.push-xlsx-processor.outputs.digest }} --repo ${{ github.repository }} --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml --predicate-type https://slsa.dev/provenance/v1"
+            echo "gh attestation verify oci://${{ steps.push-xlsx-processor.outputs.digest }} --repo ${{ github.repository }} --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml --predicate-type https://cyclonedx.org/bom"
+            echo "gh attestation verify oci://${{ steps.push-docx-processor.outputs.digest }} --repo ${{ github.repository }} --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml --predicate-type https://slsa.dev/provenance/v1"
+            echo "gh attestation verify oci://${{ steps.push-docx-processor.outputs.digest }} --repo ${{ github.repository }} --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml --predicate-type https://cyclonedx.org/bom"
             echo '```'
             echo
-            echo "SLSA build provenance and CycloneDX SBOMs are keyless-signed (Sigstore), attested to all four image digests, pushed alongside them in the registry, and attached to this release."
+            echo "Keyless-signed (Sigstore) SLSA provenance and CycloneDX SBOM attestations are pushed alongside all four image digests in the registry. The CycloneDX JSON SBOMs are attached to this release."
             echo "All four images were scanned with Trivy (vuln, secret, misconfig; HIGH/CRITICAL gate) before publishing."
             echo "Self-hosting docs: docs/OPERATIONS.md. AGPL Section 13 applies to network use; see COMMERCIAL.md for the commercial path."
           } > release-notes.md
