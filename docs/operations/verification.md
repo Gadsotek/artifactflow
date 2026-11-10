@@ -116,21 +116,60 @@ by deterministic feature tests. Production rejects those test credentials.
 
 Every `v*` tag runs the `Release` workflow, which builds and scans the application, PDF processor, XLSX processor, and DOCX processor images; pushes them to separate GHCR repositories; and publishes a GitHub Release whose notes carry all four immutable image digests. Always deploy by digest, not by tag. The `:latest` tag is moved only for a final `vMAJOR.MINOR.PATCH` release; a pre-release tag (for example `v1.2.0-rc1`) publishes its exact version tags but never becomes `:latest`, so pulling `:latest` cannot land on an unfinished build.
 
-Each published image carries two keyless-signed (Sigstore) attestations bound to its digest and pushed alongside it in the registry: SLSA build provenance and a CycloneDX SBOM. The release attaches `sbom.cdx.json`, `sbom.pdf-processor.cdx.json`, `sbom.xlsx-processor.cdx.json`, and `sbom.docx-processor.cdx.json`. Verify every deployed image before running it, using the digests from the release notes:
+The first v0.3.9 release notes showed local build names before the correct SHA-256 digests. The published notes have been corrected to full GHCR addresses. If you retained an older copy, keep each digest and map its name to the registry repository:
+
+| Earlier local name | GHCR repository |
+| --- | --- |
+| `artifactflow-app` | `ghcr.io/gadsotek/artifactflow` |
+| `artifactflow-pdf-processor-service` | `ghcr.io/gadsotek/artifactflow-pdf-processor` |
+| `artifactflow-xlsx-processor-service` | `ghcr.io/gadsotek/artifactflow-xlsx-processor` |
+| `artifactflow-docx-processor` | `ghcr.io/gadsotek/artifactflow-docx-processor` |
+
+The release workflow now emits the full GHCR repository names.
+
+Each published image carries two keyless-signed (Sigstore) attestations bound to its digest and pushed alongside it in the registry: SLSA build provenance and a CycloneDX SBOM. The release attaches `sbom.cdx.json`, `sbom.pdf-processor.cdx.json`, `sbom.xlsx-processor.cdx.json`, and `sbom.docx-processor.cdx.json`. Verify both predicates for every deployed image before running it, using the digests from the release notes:
 
 ```sh
 gh attestation verify \
   oci://ghcr.io/gadsotek/artifactflow@sha256:<digest> \
-  --repo Gadsotek/artifactflow
+  --repo Gadsotek/artifactflow \
+  --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml \
+  --predicate-type https://slsa.dev/provenance/v1
+gh attestation verify \
+  oci://ghcr.io/gadsotek/artifactflow@sha256:<digest> \
+  --repo Gadsotek/artifactflow \
+  --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml \
+  --predicate-type https://cyclonedx.org/bom
 gh attestation verify \
   oci://ghcr.io/gadsotek/artifactflow-pdf-processor@sha256:<digest> \
-  --repo Gadsotek/artifactflow
+  --repo Gadsotek/artifactflow \
+  --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml \
+  --predicate-type https://slsa.dev/provenance/v1
+gh attestation verify \
+  oci://ghcr.io/gadsotek/artifactflow-pdf-processor@sha256:<digest> \
+  --repo Gadsotek/artifactflow \
+  --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml \
+  --predicate-type https://cyclonedx.org/bom
 gh attestation verify \
   oci://ghcr.io/gadsotek/artifactflow-xlsx-processor@sha256:<digest> \
-  --repo Gadsotek/artifactflow
+  --repo Gadsotek/artifactflow \
+  --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml \
+  --predicate-type https://slsa.dev/provenance/v1
+gh attestation verify \
+  oci://ghcr.io/gadsotek/artifactflow-xlsx-processor@sha256:<digest> \
+  --repo Gadsotek/artifactflow \
+  --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml \
+  --predicate-type https://cyclonedx.org/bom
 gh attestation verify \
   oci://ghcr.io/gadsotek/artifactflow-docx-processor@sha256:<digest> \
-  --repo Gadsotek/artifactflow
+  --repo Gadsotek/artifactflow \
+  --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml \
+  --predicate-type https://slsa.dev/provenance/v1
+gh attestation verify \
+  oci://ghcr.io/gadsotek/artifactflow-docx-processor@sha256:<digest> \
+  --repo Gadsotek/artifactflow \
+  --signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml \
+  --predicate-type https://cyclonedx.org/bom
 ```
 
-A successful verification confirms the image was produced by this repository's release pipeline and was not tampered with after signing. If verification fails, do not deploy the image.
+The two commands for each digest independently verify the release workflow's provenance and its CycloneDX SBOM. A successful provenance check alone does not verify the SBOM. If either verification fails, do not deploy the image.

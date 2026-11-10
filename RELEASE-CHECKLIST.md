@@ -27,7 +27,7 @@ Set tester expectations explicitly:
 - Set `SESSION_ENCRYPT=true` in production.
 - Set `SESSION_HTTP_ONLY=true` in production.
 - Set `SESSION_SAME_SITE=lax` or `SESSION_SAME_SITE=strict` in production.
-- Do not set `SESSION_DOMAIN` to a parent domain that covers the artifact host.
+- Leave `SESSION_DOMAIN` unset or empty in production, even for an app-only domain; `__Host-` cookies must omit the `Domain` attribute entirely.
 - Set a dedicated `ARTIFACT_URL_SIGNING_KEY`; it must be present, high-entropy, generated per deployment, and different from `APP_KEY`.
 - If Reverb is enabled, keep `REVERB_APP_RATE_LIMITING_ENABLED=true`, set a bounded `REVERB_APP_MAX_CONNECTIONS`, and keep `REVERB_PUBLIC_URL`/`REVERB_ALLOWED_ORIGINS` on the app origin only.
 - Create the bootstrap System Admin without baking `ARTIFACTFLOW_ADMIN_PASSWORD` into a cached config artifact, then remove or rotate that temporary password after first login.

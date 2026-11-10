@@ -5,13 +5,19 @@ declare(strict_types=1);
 namespace Tests\Feature\PageCatalog;
 
 use App\Application\Identity\CreateSharedWorkspace;
+use App\Application\PageCatalog\PageSearch;
+use App\Application\PageCatalog\PageSearchFilters;
+use App\Application\PageCatalog\PageSearchSort;
+use App\Application\PageCatalog\PageSearchVectorUpdater;
 use App\Domain\Identity\WorkspaceRole;
 use App\Domain\PageCatalog\PageAccessMode;
 use App\Domain\PageCatalog\PageStatus;
 use App\Models\Page;
 use App\Models\User;
 use App\Models\WorkspaceMembership;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
@@ -39,6 +45,60 @@ final class PageLibraryPaginationTest extends TestCase
         $this->get($url . '&page[]=1')->assertSessionHasErrors('page');
     }
 
+    public function test_page_far_beyond_the_catalog_does_not_hydrate_every_candidate(): void
+    {
+        $user = User::factory()->create();
+        $workspace = app(CreateSharedWorkspace::class)->handle($user, 'Bounded pagination');
+        Page::factory()->count(106)->create([
+            'workspace_uid' => $workspace->uid,
+            'owner_user_uid' => $user->uid,
+        ]);
+
+        $pageReads = [];
+        DB::listen(static function (QueryExecuted $query) use (&$pageReads): void {
+            if (str_contains($query->sql, 'from "pages"')) {
+                $pageReads[] = $query->sql;
+            }
+        });
+
+        $window = app(PageSearch::class)->window($user, new PageSearchFilters(
+            query: null,
+            workspaceUid: $workspace->uid,
+            type: null,
+            statuses: PageSearchFilters::activeStatuses(),
+            categoryUids: [],
+            tagUids: [],
+            ownerUserUid: null,
+            sort: PageSearchSort::Title,
+        ), 10_000);
+
+        $this->assertSame([], $window->results);
+        $this->assertFalse($window->hasNext);
+        $this->assertCount(1, $pageReads);
+        $this->assertStringContainsString('offset 249975', strtolower($pageReads[0]));
+        $this->assertStringNotContainsString('pages.*', strtolower($pageReads[0]));
+    }
+
+    public function test_text_filtered_later_window_remains_reachable_and_far_window_is_empty(): void
+    {
+        $user = User::factory()->create();
+        $workspace = app(CreateSharedWorkspace::class)->handle($user, 'Filtered pagination');
+        for ($i = 0; $i < 27; ++$i) {
+            $page = Page::factory()->create([
+                'title' => sprintf('Atlas reference %03d', $i),
+                'workspace_uid' => $workspace->uid,
+                'owner_user_uid' => $user->uid,
+            ]);
+            app(PageSearchVectorUpdater::class)->refreshPage($page->uid);
+        }
+
+        $this->actingAs($user)->get("/pages?workspace_uid={$workspace->uid}&q=Atlas&sort=title&page=2")
+            ->assertOk()->assertSee('Atlas reference 025')->assertSee('Atlas reference 026')
+            ->assertDontSee('Atlas reference 024');
+        $this->get("/pages?workspace_uid={$workspace->uid}&q=Atlas&sort=title&page=10000")
+            ->assertOk()->assertDontSee('Atlas reference 000');
+    }
+
     public function test_unviewable_pages_do_not_create_a_next_page_or_disclose_titles(): void
     {
         $reader = User::factory()->create();
@@ -53,6 +113,8 @@ final class PageLibraryPaginationTest extends TestCase
             'workspace_uid' => $otherWorkspace->uid,
         ]);
         $this->actingAs($reader)->get('/pages?workspace_uid=all')->assertOk()
+            ->assertDontSee('Hidden pagination marker')->assertDontSee('Next pages');
+        $this->get('/pages?workspace_uid=all&page=2')->assertOk()
             ->assertDontSee('Hidden pagination marker')->assertDontSee('Next pages');
     }
 

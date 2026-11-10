@@ -186,4 +186,89 @@ if (process.argv[2] === 'fixture') {
     const name = result => result.state.calls.find(call => call.args[1] === 'create').args;
     assert.notDeepEqual(name(first), name(second));
   });
+
+  test('release notes verify provenance and CycloneDX for every published image', () => {
+    const workflow = readFileSync(join(root, '.github/workflows/release.yml'), 'utf8');
+    const commands = [...workflow.matchAll(/^\s*echo "(gh attestation verify oci:\/\/[^"\n]+)"$/gm)]
+      .map(match => match[1]);
+    const digestSteps = ['push', 'push-pdf-processor', 'push-xlsx-processor', 'push-docx-processor'];
+
+    assert.equal(commands.length, digestSteps.length * 2);
+    for (const step of digestSteps) {
+      const digest = 'oci://${{ steps.' + step + '.outputs.digest }}';
+      const subjectCommands = commands.filter(command => command.includes(digest));
+
+      assert.equal(subjectCommands.length, 2, `Missing attestation checks for ${step}`);
+      assert.ok(subjectCommands.every(command => command.includes('--repo ${{ github.repository }}')));
+      assert.ok(subjectCommands.every(command => command.includes(
+        '--signer-workflow Gadsotek/artifactflow/.github/workflows/release.yml',
+      )));
+      assert.deepEqual(
+        subjectCommands.map(command => command.match(/--predicate-type (\S+)/)?.[1]).sort(),
+        ['https://cyclonedx.org/bom', 'https://slsa.dev/provenance/v1'].sort(),
+      );
+    }
+  });
+
+  test('release push steps publish the pushed GHCR digest rather than a local build digest', () => {
+    const workflow = readFileSync(join(root, '.github/workflows/release.yml'), 'utf8');
+    const directory = mkdtempSync(join(tmpdir(), 'artifactflow-release-push-test-'));
+    const docker = join(directory, 'docker');
+    const digest = `sha256:${'b'.repeat(64)}`;
+    const localDigest = `sha256:${'a'.repeat(64)}`;
+    const images = new Map([
+      ['push', ['IMAGE', 'ghcr.io/gadsotek/artifactflow', 'artifactflow-app']],
+      ['push-pdf-processor', ['PDF_PROCESSOR_IMAGE', 'ghcr.io/gadsotek/artifactflow-pdf-processor', 'artifactflow-pdf-processor-service']],
+      ['push-xlsx-processor', ['XLSX_PROCESSOR_IMAGE', 'ghcr.io/gadsotek/artifactflow-xlsx-processor', 'artifactflow-xlsx-processor-service']],
+      ['push-docx-processor', ['DOCX_PROCESSOR_REGISTRY_IMAGE', 'ghcr.io/gadsotek/artifactflow-docx-processor', 'artifactflow-docx-processor']],
+    ]);
+
+    writeFileSync(docker, `#!/bin/sh
+set -eu
+case "$1" in
+  tag) test "$3" = "$EXPECTED_IMAGE:v0.3.9" ;;
+  push) test "$2" = "$EXPECTED_IMAGE:v0.3.9" ;;
+  inspect)
+    test "$3" = "$EXPECTED_IMAGE:v0.3.9"
+    case "$2" in
+      *index*) printf '%s\\n' "$FAKE_LOCAL_REF" ;;
+      *range*) printf '%s\\n%s\\n' "$FAKE_LOCAL_REF" "$FAKE_REMOTE_REF" ;;
+      *) exit 3 ;;
+    esac ;;
+  *) exit 4 ;;
+esac
+`, { mode: 0o755 });
+
+    try {
+      for (const [step, [variable, image, localImage]] of images) {
+        const match = workflow.match(new RegExp(`^        id: ${step}\\n        run: \\|\\n((?:^          .*\\n)+)`, 'm'));
+        assert.ok(match, `Missing release push step ${step}`);
+        const script = match[1].replace(/^          /gm, '');
+        const outputFile = join(directory, `${step}.output`);
+        writeFileSync(outputFile, '');
+        const result = spawnSync('bash', ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', script], {
+          cwd: root, encoding: 'utf8',
+          env: {
+            ...process.env, PATH: `${directory}:${process.env.PATH}`,
+            GITHUB_REF_NAME: 'v0.3.9', GITHUB_OUTPUT: outputFile,
+            EXPECTED_IMAGE: image, FAKE_LOCAL_REF: `${localImage}@${localDigest}`,
+            FAKE_REMOTE_REF: `${image}@${digest}`, [variable]: image,
+          },
+        });
+        assert.ifError(result.error);
+        assert.equal(result.status, 0, `${step}: ${result.stderr}`);
+        const outputs = Object.fromEntries(readFileSync(outputFile, 'utf8').trim().split('\n')
+          .map(line => line.split(/=(.*)/s).slice(0, 2)));
+        assert.equal(outputs.digest, `${image}@${digest}`, `${step} published the wrong image digest`);
+        assert.equal(outputs.digest_only, digest, `${step} published the wrong bare digest`);
+      }
+    } finally {
+      for (const step of images.keys()) {
+        const outputFile = join(directory, `${step}.output`);
+        try { unlinkSync(outputFile); } catch { /* A failed step may not have created this file. */ }
+      }
+      unlinkSync(docker);
+      rmdirSync(directory);
+    }
+  });
 }

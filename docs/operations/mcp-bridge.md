@@ -3,7 +3,7 @@
 [MCP setup](mcp.md)
 
 Claude's supported Desktop JSON path cannot supply ArtifactFlow's static
-bearer token directly. The connector therefore uses `mcp-remote@0.15.2` for
+bearer token directly. The connector therefore uses `mcp-remote@0.16.0` for
 all supported local clients, including Codex releases that need the stdio bridge.
 
 The [Claude Desktop extension](mcp-desktop.md) packages the same reviewed lock
@@ -104,7 +104,23 @@ built-in runtime. Update the extension version when its distributed contents
 change, including a reviewed bridge upgrade. The bundle does not install
 updates itself. Preserve the original bridge smoke and all existing gates.
 
-## Reviewed version
+## Reviewed version: 0.16.0
+
+The 0.16.0 review covers upstream commit
+`11984b0e78e74f655ed493dc382b33897180cf9d` and the
+[0.15.2 to 0.16.0 delta](https://github.com/punkpeye/mcp-remote/compare/v0.15.2...v0.16.0).
+It adds an optional `--bind-host` for the OAuth callback listener, separate
+from the advertised redirect hostname. Its default remains `127.0.0.1`.
+ArtifactFlow's connector does not pass `--bind-host`; its static bearer header,
+transport settings, and loopback callback binding are unchanged. The upstream
+runtime dependencies and CLI entrypoints are unchanged.
+
+The published tarball's independently checked SHA-512 is
+`sha512-LvEbfF8fEjDKPoD+9ELThgaBPAThiq/pEBUfUXmlAZ1oxRiduP+dJ3NQvsaiFbWSoNqfKFoan49i3x9HYvD27g==`.
+The current lock SHA-256 is
+`20cd6748657f35f7d2007c3f1652addb8b34b44fef09f5fd9221c3fa3b7cc506`.
+
+## Previous review: 0.15.2
 
 The 0.15.2 review covers upstream commit
 `373f7320f6afd1fdb00e0168826a3cea99102241` and the
@@ -157,10 +173,10 @@ declarations, Node.js engine range and BSD-3-Clause license. Its independently
 hashed tarball SHA-512 is
 `sha512-5Px6J7rfHBAGUhNQ3es4YzcOdBBw0SDcVtThJml4RdnKw4tKs2epA0kPZ+K8X+WiHktT93RHVcQ/3ym5aTCgtg==`.
 
-Only the `qs` entry changes in the dependency lock. The bridge remains 0.15.2,
-Undici remains 7.30.1, and the Node.js floor and `proxy-addr` 2.0.8 lock are
-unchanged. The Desktop extension advances to 1.0.8 for the changed bundled bytes.
-The current lock SHA-256 is
+At that `qs` update, only the `qs` entry changed in the dependency lock. The
+bridge remained 0.15.2, Undici remained 7.30.1, and the Node.js floor and
+`proxy-addr` 2.0.8 lock were unchanged. The Desktop extension advanced to 1.0.8
+for the changed bundled bytes. The lock SHA-256 for that state was
 `03751610ffd11515126d8787d751a220f14e7921fc983432f696c59c1b509ed0`.
 
 ## Previous review: 0.15.1
