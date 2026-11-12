@@ -3,7 +3,7 @@
 [MCP setup](mcp.md)
 
 Claude's supported Desktop JSON path cannot supply ArtifactFlow's static
-bearer token directly. The connector therefore uses `mcp-remote@0.16.0` for
+bearer token directly. The connector therefore uses `mcp-remote@0.16.5` for
 all supported local clients, including Codex releases that need the stdio bridge.
 
 The [Claude Desktop extension](mcp-desktop.md) packages the same reviewed lock
@@ -104,7 +104,31 @@ built-in runtime. Update the extension version when its distributed contents
 change, including a reviewed bridge upgrade. The bundle does not install
 updates itself. Preserve the original bridge smoke and all existing gates.
 
-## Reviewed version: 0.16.0
+## Reviewed version: 0.16.5
+
+The 0.16.5 review covers upstream commit
+`533159a925e964055b4b0cb3877285e33041a566` and the
+[0.16.0 to 0.16.5 delta](https://github.com/punkpeye/mcp-remote/compare/v0.16.0...v0.16.5).
+It preserves loopback binding for an empty `--bind-host`, aligns IPv6 callback
+URLs with the listener, and loads cached client registration before comparing
+requested OAuth scopes. Refresh-token requests after a 401 now share a host
+lease, and credential invalidation checks the refused token before deleting
+stored credentials. ArtifactFlow continues to supply its static bearer header
+without enabling those OAuth options.
+
+The published JavaScript bundle contains MCP SDK client/core/server 2.4.0 and
+Zod 4.6.7. Runtime dependency declarations and CLI entrypoints are unchanged.
+Only the root bridge requirement and `mcp-remote` package entry change in
+ArtifactFlow's lock; the other 80 registry packages, reviewed `qs` and `undici`
+overrides, and Node.js floor are unchanged. The Desktop extension advances to
+1.0.9 for the changed bundled bytes.
+
+The published tarball's independently checked SHA-512 is
+`sha512-HOvAySIYs9hojTHDWUJtKpx1RFi9OHLdJewdkwtOPuybq0uNmYrfeWGBH4mZ1rrIxwkFLJ+7823/96+KbC/4Og==`.
+The current lock SHA-256 is
+`db086bbd97b2a7612a69689ce176bae487aba6c8d386255c145ba28e024c789e`.
+
+## Previous review: 0.16.0
 
 The 0.16.0 review covers upstream commit
 `11984b0e78e74f655ed493dc382b33897180cf9d` and the
@@ -117,7 +141,7 @@ runtime dependencies and CLI entrypoints are unchanged.
 
 The published tarball's independently checked SHA-512 is
 `sha512-LvEbfF8fEjDKPoD+9ELThgaBPAThiq/pEBUfUXmlAZ1oxRiduP+dJ3NQvsaiFbWSoNqfKFoan49i3x9HYvD27g==`.
-The current lock SHA-256 is
+The lock SHA-256 at that review was
 `20cd6748657f35f7d2007c3f1652addb8b34b44fef09f5fd9221c3fa3b7cc506`.
 
 ## Previous review: 0.15.2
