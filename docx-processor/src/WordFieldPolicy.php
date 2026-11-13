@@ -11,6 +11,8 @@ use DOMXPath;
 /** Field instructions can span runs and nest; arguments are never command names. */
 final class WordFieldPolicy
 {
+    private const string MARKUP_COMPATIBILITY_NAMESPACE = 'http://schemas.openxmlformats.org/markup-compatibility/2006';
+
     private const array NAMESPACES = [
         'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
         'http://purl.oclc.org/ooxml/wordprocessingml/main',
@@ -32,9 +34,17 @@ final class WordFieldPolicy
         $xpath = new DOMXPath($document);
         $xpath->registerNamespace('w', self::NAMESPACES[0]);
         $xpath->registerNamespace('s', self::NAMESPACES[1]);
+        $xpath->registerNamespace('mc', self::MARKUP_COMPATIBILITY_NAMESPACE);
         $nodes = $xpath->query('//w:fldSimple | //s:fldSimple | //w:fldChar | //s:fldChar | //w:instrText | //s:instrText | //w:altChunk | //s:altChunk');
         if ($nodes === false) {
             throw new ProcessorRejection('The DOCX field document could not be inspected.');
+        }
+        $alternateContent = $xpath->query('//mc:AlternateContent');
+        if ($alternateContent === false) {
+            throw new ProcessorRejection('The DOCX field document could not be inspected.');
+        }
+        if ($nodes->length > 0 && $alternateContent->length > 0) {
+            throw new ProcessorRejection('The DOCX field markup is ambiguous.');
         }
         $frames = [];
         $remove = [];

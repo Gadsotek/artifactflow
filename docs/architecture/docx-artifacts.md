@@ -164,6 +164,8 @@ instructions split across runs. Only the command token determines whether a
 field is prohibited: bookmark names such as `Hidden` and `ClientLink` are ordinary
 arguments. DDE, DDEAUTO, INCLUDETEXT, INCLUDEPICTURE, DATABASE, and LINK commands
 remain rejected, as do unbalanced fields and dynamically assembled command names.
+Word XML parts containing fields reject `mc:AlternateContent`: the processor must
+not join instructions from branches that LibreOffice selects independently.
 HYPERLINK fields retain their cached display but lose instructions and field
 wrappers in the conversion copy. Original bytes remain exact. Other passive
 fields, including page numbers, cross-references, and table formulas, remain

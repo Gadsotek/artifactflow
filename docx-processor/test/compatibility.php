@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ArtifactFlow\DocxProcessor\DocxConversionSanitizer;
 use ArtifactFlow\DocxProcessor\DocxPackageInspector;
 use ArtifactFlow\DocxProcessor\ProcessorConfiguration;
+use ArtifactFlow\DocxProcessor\ProcessorRejection;
 
 function fieldDocument(string $body): string
 {
@@ -59,6 +60,41 @@ $compatibilityCases = [
         expectRejected(package(baseEntries(fieldDocument('<w:r><w:fldChar w:fldCharType="end"/></w:r>'))), 'Unbalanced field was accepted.');
         $dynamicCommand = str_replace('<w:instrText>REF Safe</w:instrText>', '<w:instrText>D</w:instrText></w:r>' . complexField('REF Name', 'DE') . '<w:r><w:instrText> "target"</w:instrText>', complexField('REF Safe'));
         expectRejected(package(baseEntries(fieldDocument($dynamicCommand))), 'Dynamically assembled command was accepted.');
+    },
+    'alternate content cannot hide active fields from the converter' => static function (): void {
+        $namespace = ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+            . ' xmlns:unsupported="urn:artifactflow:unsupported-review-probe"';
+        foreach (['DDE', 'DDEAUTO', 'INCLUDETEXT', 'INCLUDEPICTURE', 'DATABASE', 'LINK'] as $command) {
+            $field = '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+                . '<mc:AlternateContent><mc:Choice Requires="unsupported">'
+                . '<w:r><w:instrText xml:space="preserve">REF Safe </w:instrText></w:r>'
+                . '</mc:Choice><mc:Fallback><w:r><w:instrText xml:space="preserve">'
+                . htmlspecialchars($command . ' "/tmp/review-canary"', ENT_XML1)
+                . '</w:instrText></w:r></mc:Fallback></mc:AlternateContent>'
+                . '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+                . '<w:r><w:t>Cached result</w:t></w:r>'
+                . '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
+            $document = str_replace('<w:document xmlns:w=', '<w:document' . $namespace . ' xmlns:w=', fieldDocument($field));
+            $input = package(baseEntries($document));
+            expectRejected($input, 'Alternate content hid an active ' . $command . ' field from preflight.');
+            $aliased = str_replace(
+                ['xmlns:mc=', '<mc:', '</mc:'],
+                ['xmlns:compat=', '<compat:', '</compat:'],
+                $document,
+            );
+            expectRejected(package(baseEntries($aliased)), 'An aliased alternate-content prefix hid an active field.');
+            try {
+                (new DocxConversionSanitizer())->stripForConversion($input);
+            } catch (ProcessorRejection) {
+                continue;
+            }
+            throw new RuntimeException('Alternate content passed an active ' . $command . ' field to the converter.');
+        }
+
+        $ordinary = '<mc:AlternateContent><mc:Choice Requires="unsupported"><w:r><w:t>Choice</w:t></w:r>'
+            . '</mc:Choice><mc:Fallback><w:r><w:t>Fallback</w:t></w:r></mc:Fallback></mc:AlternateContent>';
+        $document = str_replace('<w:document xmlns:w=', '<w:document' . $namespace . ' xmlns:w=', fieldDocument($ordinary));
+        (new DocxPackageInspector())->inspect(package(baseEntries($document)));
     },
     'equivalent bounded internal relationships are accepted' => static function (): void {
         foreach (['Id="R1"', 'TargetMode="Internal" Id="rId1"', 'Id="rId1"'] as $id) {
