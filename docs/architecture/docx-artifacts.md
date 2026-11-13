@@ -104,7 +104,10 @@ authorized preview or external view
 ## Package and conversion profile
 
 The processor caps input and output at 16 MiB, expanded package bytes at 64 MiB,
-and ZIP entries at 2,000. The admitted relationship graph is limited to the main
+and ZIP entries at 2,000. Highly compressible content is admitted within those
+absolute limits; compression ratio alone is not a rejection reason. Entry sizes
+must still match their actual bounded reads, and XML, time, memory, CPU, and
+process limits remain enforced. The admitted relationship graph is limited to the main
 WordprocessingML document and bounded passive supporting Word/Open XML parts.
 Standard internal chart, diagram, drawing, comment, and related XML parts may be
 accepted when they use recognized Open XML or Microsoft Office relationship and
@@ -116,7 +119,11 @@ OLE/embedded packages, all other external non-hyperlink relationships,
 attacker-defined relationship namespaces, and unreferenced parts still fail
 closed. Each entry name, content type, namespace,
 relationship ID/type/target, aggregate count, media count, and XML structure must
-stay inside the profile. Embedded document media is
+stay inside the profile. Internal relationships may omit `TargetMode` or declare
+`Internal`, use bounded identifiers without an `rId` prefix, and resolve from
+the package root with a single leading slash. URI authorities, encoded path
+ambiguities, traversal above the root, and mismatched target ownership remain
+rejected. Embedded document media is
 limited to signature- and content-type-matched PNG/JPEG plus a narrow EMF
 vector profile. PNG/JPEG keep independent count, byte, dimension, and pixel
 ceilings. EMF requires the exact image relationship, `image/emf` or the legacy
@@ -152,6 +159,20 @@ sanitized ZIP is fully preflighted again before LibreOffice. Dynamic custom
 XML refresh, printer-specific fidelity, and external template attachment are
 therefore intentionally not part of preview behavior.
 
+Word fields are checked as separate simple or nested complex fields, including
+instructions split across runs. Only the command token determines whether a
+field is prohibited: bookmark names such as `Hidden` and `ClientLink` are ordinary
+arguments. DDE, DDEAUTO, INCLUDETEXT, INCLUDEPICTURE, DATABASE, and LINK commands
+remain rejected, as do unbalanced fields and dynamically assembled command names.
+Word XML parts containing fields reject `mc:AlternateContent`: the processor must
+not join instructions from branches that LibreOffice selects independently.
+Field detection for the conversion copy uses parsed Word XML, including UTF-16
+parts; encoded byte spelling must not determine whether HYPERLINK actions are stripped.
+HYPERLINK fields retain their cached display but lose instructions and field
+wrappers in the conversion copy. Original bytes remain exact. Other passive
+fields, including page numbers, cross-references, and table formulas, remain
+available to the converter under its existing disabled-update policy.
+
 LibreOffice receives a fresh private temporary home and output directory. Its
 environment is allowlisted, inherited caller state is removed, macro and update
 behavior is disabled, and success requires exactly one complete PDF within the
@@ -163,7 +184,9 @@ before package inspection or native conversion.
 The PDF processor receives only the generated PDF, not the DOCX or the DOCX
 processor's secret. Its profile accepts only bounded in-document `GoTo`
 destinations and rejects URI, JavaScript, launch, submit, remote-go-to, embedded-file,
-interactive-form, and other active PDF structures. Extracted text is untrusted,
+interactive-form, and other active PDF structures. Passive catalog initial-view
+destination arrays follow the same strict validation as [uploaded PDFs](pdf-artifacts.md).
+Extracted text is untrusted,
 escaped, bounded index material; it is not exposed as the authoritative document
 or evidence of redaction.
 

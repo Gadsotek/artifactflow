@@ -260,8 +260,7 @@ function inspectZipPackage(input, limits, fail) {
       declaredExpandedBytes > limits.maxExpandedBytes ||
       uncompressedSize > limits.maxExpandedBytes ||
       compressedSize > limits.maxInputBytes ||
-      (compressedSize === 0 && uncompressedSize !== 0) ||
-      (compressedSize > 0 && uncompressedSize / compressedSize > 200)
+      (compressedSize === 0 && uncompressedSize !== 0)
     ) {
       fail('expanded_size_limit_exceeded', 'The XLSX package exceeds expansion limits.');
     }

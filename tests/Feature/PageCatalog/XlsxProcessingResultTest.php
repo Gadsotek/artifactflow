@@ -10,6 +10,34 @@ use Tests\TestCase;
 
 final class XlsxProcessingResultTest extends TestCase
 {
+    public function test_it_accepts_bounded_hidden_metadata_independently_of_visible_preview_limits(): void
+    {
+        $input = 'xlsx bytes';
+        $response = $this->validResponseArray($input);
+        data_set($response, 'manifest.workbook.omittedHiddenSheetCount', 20);
+        data_set($response, 'manifest.sheets.0.omittedHiddenRowCount', 40_000);
+        data_set($response, 'manifest.sheets.0.omittedHiddenColumnCount', 16_128);
+        $result = XlsxProcessingResult::fromJson($this->encode($response), strlen($input), hash('sha256', $input));
+
+        $this->assertSame(1, $result->visibleSheetCount);
+        $this->assertSame(20, $result->omittedHiddenSheetCount);
+        $this->assertSame(40_000, $result->omittedHiddenRowCount);
+        $this->assertSame(16_128, $result->omittedHiddenColumnCount);
+        $this->assertSame(2, $result->cellCount);
+
+        foreach ([
+            'manifest.workbook.omittedHiddenSheetCount' => 2_000,
+            'manifest.sheets.0.omittedHiddenRowCount' => 1_048_577,
+            'manifest.sheets.0.omittedHiddenColumnCount' => 16_385,
+            'manifest.sheets.0.rowExtent' => 20_001,
+            'manifest.sheets.0.columnExtent' => 257,
+        ] as $path => $value) {
+            $invalid = $response;
+            data_set($invalid, $path, $value);
+            $this->assertRejected($this->encode($invalid), $input);
+        }
+    }
+
     public function test_it_accepts_and_canonicalizes_the_exact_bounded_manifest_schema(): void
     {
         $input = 'xlsx bytes';

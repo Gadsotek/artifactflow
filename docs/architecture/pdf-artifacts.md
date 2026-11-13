@@ -43,6 +43,38 @@ recursive structures, actions, and server/browser interpretation differences.
 Only explicitly supported passive link behavior is accepted. A material parser/
 browser disagreement fails closed until understood.
 
+The catalog may contain a passive `OpenAction` destination array that selects an
+initial page and view. It must reference a page in the same document, use one of
+the standard `XYZ`, `Fit`, `FitH`, `FitV`, `FitR`, `FitB`, `FitBH`, or `FitBV`
+view modes, and have exactly that mode's finite numeric or permitted null
+parameters. This is the destination form defined in the
+[PDF reference, sections 3.6.1 and 8.2.1](https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/pdfreference1.5_v6.pdf),
+not executable action support. Action dictionaries, named opening destinations,
+misplaced `OpenAction` entries, and malformed destinations remain rejected.
+The same initial-view rule applies to independently validated DOCX-derived PDFs.
+Every reachable object still undergoes the normal active-content and complexity
+checks; opening action dictionaries and JavaScript remain prohibited.
+
+Uploaded PDFs may contain user-selected link annotations and outline bookmarks.
+Local destinations, including bounded named destinations, must resolve to an
+actual page with a standard view mode and finite parameters. A `GoTo` action is
+accepted only when owned by a page link or outline item. Those same owners may
+use an absolute HTTP/HTTPS or email URI, bounded to 2,048 characters, without
+credentials, control characters, or ambiguous backslashes. Action chains,
+automatic/additional actions, remote-file jumps, launch actions, and all other
+action types remain prohibited. Navigation trees have independent depth/work
+budgets in addition to the existing graph, page, byte, time, and memory limits.
+
+This is an explicit native-PDF navigation exception. A user may follow a link
+out of the viewer or open a mail handler; the destination is untrusted and its
+requests are outside the parser cage. Loading the PDF must not follow links or
+navigate the parent automatically. Browser tests cover that invariant together
+with the separate origin, absent app cookies, restrictive CSP, and no-referrer
+policy. Released Safari/iOS checks must also exercise intentional link clicks.
+No HTML/image/XLSX sandbox permission is changed. The DOCX-derived PDF profile
+continues to reject external URI actions; Word hyperlink actions are stripped
+from the conversion copy while cached display text is preserved.
+
 The app authenticates the response nonce/input hash, schema, engine/profile,
 sizes, and completeness. Only fixed allowlisted rejection categories cross
 the boundary; diagnostics and document strings stay private. Authenticated

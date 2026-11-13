@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
-use ArtifactFlow\DocxProcessor\DocxPackageInspector;
+ini_set('display_errors', 'stderr');
+
 use ArtifactFlow\DocxProcessor\DocxConversionSanitizer;
+use ArtifactFlow\DocxProcessor\DocxPackageInspector;
 use ArtifactFlow\DocxProcessor\LibreOfficeConverter;
 use ArtifactFlow\DocxProcessor\ProcessorAuthenticationFailure;
 use ArtifactFlow\DocxProcessor\ProcessorConfiguration;
@@ -11,6 +13,7 @@ use ArtifactFlow\DocxProcessor\ProcessorHealthRequest;
 use ArtifactFlow\DocxProcessor\ProcessorRejection;
 use ArtifactFlow\DocxProcessor\ProcessorRequest;
 use ArtifactFlow\DocxProcessor\ProcessorUnavailable;
+
 require dirname(__DIR__) . '/src/DocxProcessor.php';
 
 /**
@@ -200,7 +203,8 @@ function testJpeg(): string
 /** @return non-empty-string */
 function testEmf(): string
 {
-    $header = pack('V*',
+    $header = pack(
+        'V*',
         1,
         88,
         0,
@@ -1131,5 +1135,7 @@ foreach ([1, 0] as $leaderExitCode) {
     }
     assertTrue(!$survived, 'A descendant survived DOCX converter exit ' . $leaderExitCode . '.');
 }
+
+require __DIR__ . '/compatibility.php';
 
 echo "DOCX processor contract tests passed\n";

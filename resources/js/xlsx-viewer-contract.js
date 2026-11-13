@@ -3,6 +3,9 @@ export const MAX_COLUMNS = 256;
 export const MAX_CELLS = 100_000;
 
 const MAX_SHEETS = 20;
+const MAX_TOTAL_SHEETS = 2_000;
+const MAX_HIDDEN_ROWS = 1_048_576;
+const MAX_HIDDEN_COLUMNS = 16_384;
 const MAX_FORMULA_BYTES = 8_192;
 const MAX_MERGES = 1_000;
 const MAX_STRING_BYTES = 1_048_576;
@@ -214,8 +217,8 @@ export function validatedManifest(candidate) {
     Array.isArray(workbook) ||
     Object.keys(workbook).some((key) => !WORKBOOK_KEYS.has(key)) ||
     workbook.visibleSheetCount !== candidate.sheets.length ||
-    !isBoundedInteger(workbook.omittedHiddenSheetCount, MAX_SHEETS) ||
-    candidate.sheets.length + workbook.omittedHiddenSheetCount > MAX_SHEETS ||
+    !isBoundedInteger(workbook.omittedHiddenSheetCount, MAX_TOTAL_SHEETS) ||
+    candidate.sheets.length + workbook.omittedHiddenSheetCount > MAX_TOTAL_SHEETS ||
     !isBoundedInteger(workbook.cellCount, MAX_CELLS) ||
     !isBoundedInteger(workbook.formulaCount, MAX_CELLS) ||
     !isBoundedInteger(workbook.formulasWithoutCachedResultCount, MAX_CELLS) ||
@@ -247,8 +250,8 @@ export function validatedManifest(candidate) {
       sheetsByName.has(sheet.name) ||
       !isBoundedInteger(sheet.rowExtent, MAX_ROWS) ||
       !isBoundedInteger(sheet.columnExtent, MAX_COLUMNS) ||
-      !isBoundedInteger(sheet.omittedHiddenRowCount, MAX_ROWS) ||
-      !isBoundedInteger(sheet.omittedHiddenColumnCount, MAX_COLUMNS) ||
+      !isBoundedInteger(sheet.omittedHiddenRowCount, MAX_HIDDEN_ROWS) ||
+      !isBoundedInteger(sheet.omittedHiddenColumnCount, MAX_HIDDEN_COLUMNS) ||
       !Array.isArray(sheet.cells) ||
       !Array.isArray(sheet.merges) ||
       sheet.merges.length > MAX_MERGES

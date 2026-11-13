@@ -49,6 +49,11 @@ PDF processor. Use each format's deployment checklist before enabling it.
 - **WebRTC blocking is browser-dependent.** Chromium and WebKit do not enforce
   `webrtc 'block'`. The maintained guard and parser corpus close known paths;
   they are not proof of a perfect network seal.
+- **PDF links are user-controlled destinations.** Accepted uploaded PDFs may
+  contain explicit web/email links and local navigation under the
+  [PDF navigation contract](docs/architecture/pdf-artifacts.md). Following a link
+  may leave the viewer or invoke a mail handler; parser network isolation does
+  not cover those user-initiated requests. Automatic actions remain rejected.
 - **Delivery cannot be undone.** Revocation stops future authorized loads. It
   cannot erase displayed content, saved PDFs, downloaded originals, or copied
   external-view credentials.

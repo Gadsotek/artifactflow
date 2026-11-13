@@ -8,9 +8,10 @@ use DOMDocument;
 use DOMElement;
 use DOMXPath;
 use RuntimeException;
-use Throwable;
 use XMLReader;
 use ZipArchive;
+
+require_once __DIR__ . '/WordFieldPolicy.php';
 
 final class ProcessorRejection extends RuntimeException
 {
@@ -22,8 +23,7 @@ final class ProcessorRejection extends RuntimeException
         string $message,
         string $context,
         string $publicReasonCode = 'invalid_document',
-    ): self
-    {
+    ): self {
         $exception = new self($message);
         $exception->diagnosticContextCode = substr(hash('sha256', $context), 0, 12);
         $exception->publicReasonCode = $publicReasonCode;
@@ -292,7 +292,7 @@ final readonly class ProcessorContainment
                 }
 
                 $operationalState = @file_get_contents($interfaceState);
-                if (! is_string($operationalState) || trim($operationalState) !== 'down') {
+                if (!is_string($operationalState) || trim($operationalState) !== 'down') {
                     throw new ProcessorUnavailable('DOCX processor network isolation is not active.');
                 }
             }
@@ -558,9 +558,6 @@ final readonly class DocxPackageInspector
             if ($compressedSize === 0 && $size !== 0) {
                 throw new ProcessorRejection('The DOCX ZIP directory contains an inconsistent compressed size.');
             }
-            if ($compressedSize > 0 && $size / $compressedSize > 200) {
-                throw new ProcessorRejection('The DOCX ZIP directory contains an excessive expansion ratio.');
-            }
 
             if ($isDirectory) {
                 if ($size !== 0) {
@@ -602,7 +599,7 @@ final readonly class DocxPackageInspector
             }
 
             if (str_starts_with($name, 'word/') && str_ends_with($name, '.xml')) {
-                $this->rejectActiveFields($content);
+                WordFieldPolicy::process($content);
             }
 
             if (str_ends_with($name, '.rels')) {
@@ -1176,7 +1173,7 @@ final readonly class DocxPackageInspector
             $relationshipKind = $this->relationshipKind($type);
 
             if (
-                preg_match('/\ArId[A-Za-z0-9_.-]{1,120}\z/', $id) !== 1
+                preg_match('/\A[A-Za-z_][A-Za-z0-9_.-]{0,123}\z/', $id) !== 1
                 || isset($ids[$id])
                 || $relationshipKind === null
                 || !$this->hasOnlyRelationshipAttributes($reader)
@@ -1201,7 +1198,7 @@ final readonly class DocxPackageInspector
                 }
                 $externalLinks++;
             } else {
-                $resolvedTarget = $mode === ''
+                $resolvedTarget = in_array($mode, ['', 'Internal'], true)
                     ? $this->internalRelationshipTarget($relationshipPart, $target, $packageParts)
                     : null;
                 if (
@@ -1386,7 +1383,7 @@ final readonly class DocxPackageInspector
             || str_contains($target, '?')
             || str_contains($target, '#')
             || str_contains($target, '%')
-            || str_starts_with($target, '/')
+            || str_starts_with($target, '//')
         ) {
             return null;
         }
@@ -1396,7 +1393,11 @@ final readonly class DocxPackageInspector
             return null;
         }
 
-        $sourceDirectory = $sourcePart === '' ? '' : dirname($sourcePart);
+        $rootRelative = str_starts_with($target, '/');
+        if ($rootRelative) {
+            $target = substr($target, 1);
+        }
+        $sourceDirectory = $rootRelative || $sourcePart === '' ? '' : dirname($sourcePart);
         $resolvedSegments = $sourceDirectory === '' || $sourceDirectory === '.'
             ? []
             : explode('/', $sourceDirectory);
@@ -1749,54 +1750,6 @@ final readonly class DocxPackageInspector
         $reader->close();
         throw new ProcessorRejection('The DOCX main document is empty.');
     }
-
-    private function rejectActiveFields(string $xml): void
-    {
-        $reader = new XMLReader();
-        if (!$reader->XML($xml, null, LIBXML_NONET | LIBXML_COMPACT)) {
-            throw new ProcessorRejection('The DOCX WordprocessingML part is malformed.');
-        }
-
-        $instructions = '';
-        while ($reader->read()) {
-            if (
-                $reader->nodeType !== XMLReader::ELEMENT
-                || !in_array($reader->namespaceURI, self::WORDPROCESSING_NAMESPACES, true)
-            ) {
-                continue;
-            }
-
-            if ($reader->localName === 'altChunk') {
-                $reader->close();
-                throw new ProcessorRejection('The DOCX package contains prohibited alternate content.');
-            }
-
-            if ($reader->localName === 'instrText') {
-                $instructions .= $reader->readString();
-            } elseif ($reader->localName === 'fldSimple') {
-                foreach (self::WORDPROCESSING_NAMESPACES as $namespace) {
-                    $instruction = $reader->getAttributeNs('instr', $namespace);
-                    if (is_string($instruction)) {
-                        $instructions .= $instruction;
-                    }
-                }
-            }
-
-            if (strlen($instructions) > 1_048_576) {
-                $reader->close();
-                throw new ProcessorRejection('The DOCX field instructions exceed their limit.');
-            }
-        }
-
-        $reader->close();
-        $normalized = preg_replace('/[\x00-\x20]+/', '', $instructions);
-        if (
-            !is_string($normalized)
-            || preg_match('/(?:DDE(?:AUTO)?|INCLUDETEXT|INCLUDEPICTURE|DATABASE|LINK)/i', $normalized) === 1
-        ) {
-            throw new ProcessorRejection('The DOCX package contains a prohibited active field.');
-        }
-    }
 }
 
 final readonly class DocxConversionSanitizer
@@ -1850,12 +1803,14 @@ final readonly class DocxConversionSanitizer
                 $stripCustomXml = $this->containsCustomXml($source);
                 $stripConversionMetadata = $this->containsConversionMetadata($source);
                 $stripAttachedTemplate = $this->containsAttachedTemplate($source);
+                $stripFields = $this->containsFields($source);
                 $externalHyperlinkRelationshipIds = $this->externalHyperlinkRelationshipIds($source);
                 if (
                     !$stripEmbeddedFonts
                     && !$stripCustomXml
                     && !$stripConversionMetadata
                     && !$stripAttachedTemplate
+                    && !$stripFields
                     && $externalHyperlinkRelationshipIds === []
                 ) {
                     return $docx;
@@ -1874,6 +1829,7 @@ final readonly class DocxConversionSanitizer
                         $stripCustomXml,
                         $stripConversionMetadata,
                         $stripAttachedTemplate,
+                        $stripFields,
                         $externalHyperlinkRelationshipIds,
                     );
                 } finally {
@@ -1909,6 +1865,24 @@ final readonly class DocxConversionSanitizer
                 unlink($outputPath);
             }
         }
+    }
+
+    private function containsFields(ZipArchive $archive): bool
+    {
+        for ($index = 0; $index < $archive->numFiles; $index++) {
+            $name = $archive->getNameIndex($index, ZipArchive::FL_UNCHANGED);
+            if (is_string($name) && str_starts_with($name, 'word/') && str_ends_with($name, '.xml')) {
+                $content = $archive->getFromIndex($index, ProcessorConfiguration::MAX_EXPANDED_BYTES + 1, ZipArchive::FL_UNCHANGED);
+                if (!is_string($content)) {
+                    throw new ProcessorRejection('The DOCX field part could not be read.');
+                }
+                if (WordFieldPolicy::containsFieldMarkup($content)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private function containsEmbeddedFont(ZipArchive $archive): bool
@@ -2048,6 +2022,7 @@ final readonly class DocxConversionSanitizer
         bool $stripCustomXml,
         bool $stripConversionMetadata,
         bool $stripAttachedTemplate,
+        bool $stripFields,
         array $externalHyperlinkRelationshipIds,
     ): void {
         for ($index = 0; $index < $source->numFiles; $index++) {
@@ -2114,6 +2089,9 @@ final readonly class DocxConversionSanitizer
             }
             if ($stripCustomXml && str_starts_with($name, 'word/') && str_ends_with($name, '.xml')) {
                 $bytes = $this->stripCustomXmlBindings($bytes);
+            }
+            if ($stripFields && str_starts_with($name, 'word/') && str_ends_with($name, '.xml')) {
+                $bytes = WordFieldPolicy::process($bytes, true);
             }
             $externalHyperlinkIds = $externalHyperlinkRelationshipIds[$name] ?? [];
             if ($externalHyperlinkIds !== [] && str_starts_with($name, 'word/') && str_ends_with($name, '.xml')) {

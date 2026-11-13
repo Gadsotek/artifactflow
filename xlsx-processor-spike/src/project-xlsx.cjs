@@ -66,7 +66,7 @@ function validatedSheetVisibility(workbook, limits) {
   if (
     !Array.isArray(names) ||
     names.length === 0 ||
-    names.length > limits.maxSheets ||
+    names.length > limits.maxEntries ||
     !Array.isArray(facts) ||
     facts.length !== names.length
   ) {
@@ -99,32 +99,31 @@ function validatedSheetVisibility(workbook, limits) {
   return visibility;
 }
 
-function hiddenIndexes(worksheet, limits) {
+function hiddenIndexes(worksheet) {
   const rows = new Set();
   const columns = new Set();
 
-  for (const [index, row] of (worksheet['!rows'] ?? []).entries()) {
+  for (const [key, row] of Object.entries(worksheet['!rows'] ?? [])) {
     if (row?.hidden !== true) {
       continue;
     }
 
-    if (index >= limits.maxRows) {
-      fail('worksheet_extent_limit_exceeded', 'Hidden worksheet rows exceed the preview profile.');
+    const index = Number(key);
+    if (!Number.isSafeInteger(index) || index < 0 || index > 1_048_575) {
+      fail('invalid_cell_coordinate', 'Hidden worksheet rows exceed the workbook format.');
     }
 
     rows.add(index);
   }
 
-  for (const [index, column] of (worksheet['!cols'] ?? []).entries()) {
+  for (const [key, column] of Object.entries(worksheet['!cols'] ?? [])) {
     if (column?.hidden !== true) {
       continue;
     }
 
-    if (index >= limits.maxColumns) {
-      fail(
-        'worksheet_extent_limit_exceeded',
-        'Hidden worksheet columns exceed the preview profile.',
-      );
+    const index = Number(key);
+    if (!Number.isSafeInteger(index) || index < 0 || index > 16_383) {
+      fail('invalid_cell_coordinate', 'Hidden worksheet columns exceed the workbook format.');
     }
 
     columns.add(index);
@@ -317,12 +316,12 @@ function projectXlsxWithFacts(input, limitOverrides = {}) {
   const visibilityBySheet = validatedSheetVisibility(workbook, limits);
   const visibleSheetNames = workbook.SheetNames.filter((name) => visibilityBySheet.get(name) === 0);
 
-  if (visibleSheetNames.length === 0) {
-    fail('unsupported_xlsx_profile', 'The workbook has no visible worksheet.');
+  if (visibleSheetNames.length === 0 || visibleSheetNames.length > limits.maxSheets) {
+    fail('unsupported_xlsx_profile', 'The workbook exceeds the visible worksheet profile.');
   }
 
   const hiddenIndexesBySheet = new Map(
-    visibleSheetNames.map((name) => [name, hiddenIndexes(workbook.Sheets[name] ?? {}, limits)]),
+    visibleSheetNames.map((name) => [name, hiddenIndexes(workbook.Sheets[name] ?? {})]),
   );
 
   const omittedHiddenSheetCount = workbook.SheetNames.length - visibleSheetNames.length;
@@ -333,6 +332,7 @@ function projectXlsxWithFacts(input, limitOverrides = {}) {
   let formulasWithoutCachedResultCount = 0;
   let linkCount = 0;
   let mergeCount = 0;
+  let sourceMergeCount = 0;
 
   for (const name of visibleSheetNames) {
     const worksheet = workbook.Sheets[name];
@@ -369,15 +369,15 @@ function projectXlsxWithFacts(input, limitOverrides = {}) {
         fail('invalid_cell_coordinate', 'The workbook contains an out-of-range cell coordinate.');
       }
 
+      if (hiddenRows.has(decoded.r) || hiddenColumns.has(decoded.c)) {
+        continue;
+      }
+
       if (decoded.r >= limits.maxRows || decoded.c >= limits.maxColumns) {
         fail(
           'worksheet_extent_limit_exceeded',
           'The workbook exceeds the supported preview row or column extent.',
         );
-      }
-
-      if (hiddenRows.has(decoded.r) || hiddenColumns.has(decoded.c)) {
-        continue;
       }
 
       visibleCellCount += 1;
@@ -451,6 +451,10 @@ function projectXlsxWithFacts(input, limitOverrides = {}) {
     if (!Array.isArray(mergeRanges) || mergeRanges.length > limits.maxMerges) {
       fail('merge_limit_exceeded', 'The workbook contains too many merged ranges.');
     }
+    sourceMergeCount += mergeRanges.length;
+    if (sourceMergeCount > limits.maxMerges) {
+      fail('merge_limit_exceeded', 'The workbook contains too many merged ranges.');
+    }
 
     mergeRanges.sort((left, right) =>
       left.s.r === right.s.r
@@ -471,16 +475,11 @@ function projectXlsxWithFacts(input, limitOverrides = {}) {
         range.s.r < 0 ||
         range.s.c < 0 ||
         range.e.r < range.s.r ||
-        range.e.c < range.s.c
+        range.e.c < range.s.c ||
+        range.e.r > 1_048_575 ||
+        range.e.c > 16_383
       ) {
         fail('unsupported_merged_range', 'The workbook contains an invalid merged range.');
-      }
-
-      if (range.e.r >= limits.maxRows || range.e.c >= limits.maxColumns) {
-        fail(
-          'worksheet_extent_limit_exceeded',
-          'A merged range exceeds the supported preview row or column extent.',
-        );
       }
 
       const intersectsHidden =
@@ -488,7 +487,15 @@ function projectXlsxWithFacts(input, limitOverrides = {}) {
         hasIndexInRange(hiddenColumns, range.s.c, range.e.c);
 
       if (intersectsHidden) {
-        fail('unsupported_merged_range', 'A merged range crosses hidden preview content.');
+        // Keep visible cells, but omit formatting that spans omitted content.
+        continue;
+      }
+
+      if (range.e.r >= limits.maxRows || range.e.c >= limits.maxColumns) {
+        fail(
+          'worksheet_extent_limit_exceeded',
+          'A merged range exceeds the supported preview row or column extent.',
+        );
       }
 
       for (const accepted of merges) {
