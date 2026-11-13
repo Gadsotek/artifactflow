@@ -50,6 +50,35 @@ $compatibilityCases = [
             }
         }
     },
+    'UTF-16 hyperlink fields retain cached display without converter actions' => static function (): void {
+        foreach (['UTF-16LE' => "\xFF\xFE", 'UTF-16BE' => "\xFE\xFF"] as $encoding => $bom) {
+            foreach ([
+                complexField('HYPERLINK "https://example.com/"'),
+                '<w:fldSimple w:instr="HYPERLINK &quot;https://example.com/&quot;"><w:r><w:t>Cached result</w:t></w:r></w:fldSimple>',
+            ] as $field) {
+                $xml = '<?xml version="1.0" encoding="UTF-16"?>' . fieldDocument($field);
+                $encoded = iconv('UTF-8', $encoding, $xml);
+                if (!is_string($encoded)) {
+                    throw new RuntimeException('UTF-16 test document could not be encoded.');
+                }
+
+                $input = package(baseEntries($bom . $encoded));
+                (new DocxPackageInspector())->inspect($input);
+                $copy = (new DocxConversionSanitizer())->stripForConversion($input);
+                (new DocxPackageInspector())->inspect($copy);
+                $document = new DOMDocument();
+                assertTrue(
+                    $document->loadXML(packageEntries($copy)['word/document.xml'], LIBXML_NONET),
+                    'The UTF-16 conversion copy is not valid XML.',
+                );
+                $xpath = new DOMXPath($document);
+                $xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
+                $fields = $xpath->query('//w:fldSimple | //w:fldChar | //w:instrText');
+                assertTrue($fields !== false && $fields->length === 0, 'A UTF-16 hyperlink action reached the converter.');
+                assertTrue(str_contains($document->textContent, 'Cached result'), 'The UTF-16 hyperlink display was lost.');
+            }
+        }
+    },
     'active commands remain rejected across split and nested fields' => static function (): void {
         foreach (['DDE', 'DDEAUTO', 'INCLUDETEXT', 'INCLUDEPICTURE', 'DATABASE', 'LINK'] as $command) {
             $field = complexField($command . ' "example"');

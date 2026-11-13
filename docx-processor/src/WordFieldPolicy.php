@@ -13,29 +13,29 @@ final class WordFieldPolicy
 {
     private const string MARKUP_COMPATIBILITY_NAMESPACE = 'http://schemas.openxmlformats.org/markup-compatibility/2006';
 
+    private const string FIELD_MARKUP_QUERY = '//w:fldSimple | //s:fldSimple | //w:fldChar | //s:fldChar | //w:instrText | //s:instrText';
+
     private const array NAMESPACES = [
         'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
         'http://purl.oclc.org/ooxml/wordprocessingml/main',
     ];
 
+    public static function containsFieldMarkup(string $xml): bool
+    {
+        $xpath = self::xpath(self::document($xml));
+        $nodes = $xpath->query(self::FIELD_MARKUP_QUERY);
+        if ($nodes === false) {
+            throw new ProcessorRejection('The DOCX field document could not be inspected.');
+        }
+
+        return $nodes->length > 0;
+    }
+
     public static function process(string $xml, bool $stripHyperlinks = false): string
     {
-        $document = new DOMDocument();
-        $previous = libxml_use_internal_errors(true);
-        try {
-            $loaded = $document->loadXML($xml, LIBXML_NONET | LIBXML_COMPACT);
-        } finally {
-            libxml_clear_errors();
-            libxml_use_internal_errors($previous);
-        }
-        if (!$loaded || $document->doctype !== null) {
-            throw new ProcessorRejection('The DOCX field document is malformed.');
-        }
-        $xpath = new DOMXPath($document);
-        $xpath->registerNamespace('w', self::NAMESPACES[0]);
-        $xpath->registerNamespace('s', self::NAMESPACES[1]);
-        $xpath->registerNamespace('mc', self::MARKUP_COMPATIBILITY_NAMESPACE);
-        $nodes = $xpath->query('//w:fldSimple | //s:fldSimple | //w:fldChar | //s:fldChar | //w:instrText | //s:instrText | //w:altChunk | //s:altChunk');
+        $document = self::document($xml);
+        $xpath = self::xpath($document);
+        $nodes = $xpath->query(self::FIELD_MARKUP_QUERY . ' | //w:altChunk | //s:altChunk');
         if ($nodes === false) {
             throw new ProcessorRejection('The DOCX field document could not be inspected.');
         }
@@ -129,6 +129,33 @@ final class WordFieldPolicy
         }
 
         return $result;
+    }
+
+    private static function document(string $xml): DOMDocument
+    {
+        $document = new DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        try {
+            $loaded = $document->loadXML($xml, LIBXML_NONET | LIBXML_COMPACT);
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+        if (!$loaded || $document->doctype !== null) {
+            throw new ProcessorRejection('The DOCX field document is malformed.');
+        }
+
+        return $document;
+    }
+
+    private static function xpath(DOMDocument $document): DOMXPath
+    {
+        $xpath = new DOMXPath($document);
+        $xpath->registerNamespace('w', self::NAMESPACES[0]);
+        $xpath->registerNamespace('s', self::NAMESPACES[1]);
+        $xpath->registerNamespace('mc', self::MARKUP_COMPATIBILITY_NAMESPACE);
+
+        return $xpath;
     }
 
     private static function attribute(DOMElement $element, string $name): string

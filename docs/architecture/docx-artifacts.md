@@ -166,6 +166,8 @@ arguments. DDE, DDEAUTO, INCLUDETEXT, INCLUDEPICTURE, DATABASE, and LINK command
 remain rejected, as do unbalanced fields and dynamically assembled command names.
 Word XML parts containing fields reject `mc:AlternateContent`: the processor must
 not join instructions from branches that LibreOffice selects independently.
+Field detection for the conversion copy uses parsed Word XML, including UTF-16
+parts; encoded byte spelling must not determine whether HYPERLINK actions are stripped.
 HYPERLINK fields retain their cached display but lose instructions and field
 wrappers in the conversion copy. Original bytes remain exact. Other passive
 fields, including page numbers, cross-references, and table formulas, remain

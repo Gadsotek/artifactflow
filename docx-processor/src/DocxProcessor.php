@@ -1876,7 +1876,7 @@ final readonly class DocxConversionSanitizer
                 if (!is_string($content)) {
                     throw new ProcessorRejection('The DOCX field part could not be read.');
                 }
-                if (str_contains($content, 'fldSimple') || str_contains($content, 'instrText') || str_contains($content, 'fldChar')) {
+                if (WordFieldPolicy::containsFieldMarkup($content)) {
                     return true;
                 }
             }
