@@ -1,6 +1,7 @@
 # Roadmap
 
-ArtifactFlow is a public alpha. Direction is not a release promise.
+Version 1.0 establishes the focused artifact workflow below. Future direction
+is not a release promise; default-off capabilities retain their enablement gates.
 
 | Status | Scope |
 | --- | --- |

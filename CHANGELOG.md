@@ -2,9 +2,89 @@
 
 All notable changes to ArtifactFlow will be documented here.
 
-This project is pre-1.0; expect breaking changes between alpha revisions.
+Review each release's upgrade notes before updating an installation.
 
-## Unreleased
+## v1.0.0 — Unreleased
+
+The first stable release of ArtifactFlow's existing artifact workflow: save,
+find, use, version, and share useful AI-generated work in a shared workspace.
+People can use the application without Git or development tooling; authorized
+MCP clients can retrieve and continue work across AI tools.
+
+### Changed
+
+- Remove current alpha status from the README, website, roadmap, security
+  policy, and wiki source. Keep the existing product positioning, visual design,
+  isolation boundaries, operator responsibilities, and independent-audit
+  disclosure. This milestone does not enable additional features by default.
+- Update the reviewed MCP bridge to `mcp-remote` 0.16.6 and the independently
+  versioned Claude Desktop extension to 1.0.10. Keep the integrity-locked
+  installation and Node.js 20.18.1 minimum for the bridge.
+- Refresh application dependencies and development tooling through the merged
+  Composer and npm maintenance updates since v0.3.9.
+
+### Security and release verification
+
+- Cover the MCP bridge's bounded same-origin authentication redirects and
+  rejection of cross-origin redirects with an authenticated transport smoke
+  test. Review the 0.16.6 HTTPS/loopback restrictions for device and client
+  credential endpoints without changing ArtifactFlow's static-token setup.
+- Reject ambiguous DOCX field alternate content and detect fields in UTF-16
+  XML before conversion, preserving the reviewed passive field profile.
+- Check CLA coverage for the PR opener and credited authors/coauthors against
+  trusted GitHub identities; retain the separate protected `cla` check.
+- Select each published container digest from its intended registry repository.
+  Verify both release-workflow provenance and CycloneDX SBOM attestations for
+  all four published images. Keep every existing release gate.
+
+### Fixed
+
+- Accept ordinary DOCX cross-reference names and cached hyperlink fields,
+  equivalent internal Office relationships, and XLSX workbooks with hidden
+  sheets or unused hidden rows/columns beyond the visible preview area.
+  Omit merges spanning hidden content without exposing hidden cells. Apply
+  the database migration and rebuild viewer assets when upgrading; downgrade
+  refuses to invalidate retained versions that need the expanded hidden limits.
+- Admit highly compressible XLSX/DOCX content within the existing absolute
+  expansion and execution limits. Permit validated, user-selected PDF local
+  navigation and HTTP/HTTPS/email links while rejecting automatic actions,
+  action chains, unsafe schemes, and remote-file actions. Rebuild the PDF,
+  XLSX, and DOCX processor images to apply these compatibility changes.
+- Accept passive PDF initial-page and zoom destinations instead of rejecting
+  every `OpenAction` entry as active content. Validate the destination's page,
+  view mode, and parameters while continuing to reject executable opening
+  actions. Rebuild and redeploy the PDF processor to apply this compatibility fix.
+- Avoid hydrating and authorizing every preceding page for out-of-range Library
+  pagination requests while preserving exact page authorization.
+
+The PDF/Office compatibility entries above were previously placed under v0.3.9
+on `main` after that release. They are first included in the 1.0.0 release;
+the v0.3.9 tag does not contain them or the XLSX migration.
+
+### Upgrade from v0.3.9
+
+- Back up and verify restoration before upgrading. Deploy the verified release
+  application image to the app, artifact-host, worker, and scheduler roles,
+  together with each enabled PDF, XLSX, and DOCX processor image. Verify each
+  image's own SBOM and provenance through the
+  [production operations guide](docs/operations/production.md).
+- Run `make migrate` through the configured deployment workflow before serving
+  the new image. This release adds
+  `2026_11_04_000001_separate_xlsx_hidden_content_limits.php`. It expands hidden
+  content accounting without increasing the visible workbook limits. A
+  downgrade refuses to narrow the constraint while retained versions exceed
+  the old profile.
+- Rebuild viewer assets when building a custom application image; deploy the
+  application, viewer, and enabled processors from the same release.
+- Re-run `./scripts/connect-mcp.sh` to select the reviewed bridge. Administrators
+  distributing the Desktop extension must build and install 1.0.10 separately;
+  existing bundles do not update themselves. Existing personal MCP tokens
+  remain valid.
+- External sharing, PDF, XLSX, and DOCX remain default-off. Preserve all
+  production-enablement checks, including the PDF prerequisite for DOCX and
+  the manual released-Safari/iOS checks. One-time sharing still means one
+  successful redemption without time-based expiry; it cannot be combined
+  with the expiring mode.
 
 ## v0.3.9 — 2026-11-08
 
@@ -52,21 +132,6 @@ and MCP clients, with refreshed application dependencies and build tooling.
 
 ### Fixed
 
-- Accept ordinary DOCX cross-reference names and cached hyperlink fields,
-  equivalent internal Office relationships, and XLSX workbooks with hidden
-  sheets or unused hidden rows/columns beyond the visible preview area.
-  Omit merges spanning hidden content without exposing hidden cells. Apply
-  the database migration and rebuild viewer assets when upgrading; downgrade
-  refuses to invalidate retained versions that need the expanded hidden limits.
-- Admit highly compressible XLSX/DOCX content within the existing absolute
-  expansion and execution limits. Permit validated, user-selected PDF local
-  navigation and HTTP/HTTPS/email links while rejecting automatic actions,
-  action chains, unsafe schemes, and remote-file actions. Rebuild the PDF,
-  XLSX, and DOCX processor images to apply these compatibility changes.
-- Accept passive PDF initial-page and zoom destinations instead of rejecting
-  every `OpenAction` entry as active content. Validate the destination's page,
-  view mode, and parameters while continuing to reject executable opening
-  actions. Rebuild and redeploy the PDF processor to apply this compatibility fix.
 - Keep the host-cookie HTTPS test fixture memory-only while making its
   OpenSSL input portable to Linux CI.
 - Leave `SESSION_DOMAIN` empty in the production environment example,

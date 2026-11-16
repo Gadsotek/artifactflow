@@ -32,11 +32,18 @@ a visual diff UI and simultaneous editing do not.
 
 ## Can I share with someone without an account?
 
-Yes, when enabled. Create a required-expiry reusable link or a one-time link
-consumed by explicit redemption. It presents the current version of one page,
-without workspace browsing, search, history, or editing. Revocation blocks
-future loads; recipients can keep delivered bytes. PDF/DOCX-PDF viewing is
-download-equivalent. No anonymous original Office download is added.
+Yes, after administrator enablement and with permission to share the page.
+External sharing is disabled by default. Expiring links allow multiple viewing
+sessions during their validity period; expiry blocks new access and subsequent
+loads. One-time links allow exactly one successful explicit redemption, not one
+page view, with no time-based expiry. The established viewer session continues
+while authorization remains valid. The two modes cannot be combined.
+
+Both modes present the current version of one page, without workspace browsing,
+search, history, or editing, and support manual revocation. A bearer link does
+not authenticate its recipient. Revocation blocks future loads; it cannot retract
+delivered content. PDF/DOCX-PDF viewing is download-equivalent. Original Office
+files are never shared.
 
 ## Can I run production with the bundled Compose file?
 
