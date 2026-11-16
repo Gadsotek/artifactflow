@@ -3,7 +3,7 @@
 [MCP setup](mcp.md)
 
 Claude's supported Desktop JSON path cannot supply ArtifactFlow's static
-bearer token directly. The connector therefore uses `mcp-remote@0.16.5` for
+bearer token directly. The connector therefore uses `mcp-remote@0.16.6` for
 all supported local clients, including Codex releases that need the stdio bridge.
 
 The [Claude Desktop extension](mcp-desktop.md) packages the same reviewed lock
@@ -104,7 +104,38 @@ built-in runtime. Update the extension version when its distributed contents
 change, including a reviewed bridge upgrade. The bundle does not install
 updates itself. Preserve the original bridge smoke and all existing gates.
 
-## Reviewed version: 0.16.5
+## Reviewed version: 0.16.6
+
+The 0.16.6 review covers upstream commit
+`e4dc3713b0d6a727cbeb21f38324d20a6692dc5f` and the
+[0.16.5 to 0.16.6 delta](https://github.com/punkpeye/mcp-remote/compare/v0.16.5...v0.16.6).
+Device authorization and token endpoints now require HTTPS, with an HTTP
+loopback exception. Client-credentials requests use the same endpoint policy.
+Credential-bearing grant requests and authentication probes follow redirects
+only within the selected origin, with a same-host HTTP-to-HTTPS exception on
+default ports. Redirects are bounded to five hops; POSTs follow only 307/308
+responses, preserving their method and body.
+
+The published JavaScript delta matches those source changes after accounting
+for version strings and generated chunk names. Runtime dependency declarations,
+CLI entrypoints, bundled SDK code, and the Node.js floor are unchanged.
+Only the root bridge requirement and `mcp-remote` package entry change in
+ArtifactFlow's lock; the other 80 registry packages and reviewed `qs` and
+`undici` overrides remain unchanged. The Desktop extension advances to 1.0.10
+for the changed bundled bytes.
+
+The installed smoke follows a same-origin authentication-probe redirect with
+its configured headers intact, rejects a subsequent cross-origin redirect,
+and completes the authenticated MCP exchange. This regression fails against
+0.16.5, whose probes reach the other origin. ArtifactFlow continues to supply
+its static bearer header without enabling OAuth grant options.
+
+The published tarball's independently checked SHA-512 is
+`sha512-QqlBqut/oeDUFwrB/Igs5vGikWSn6h5iM+7TCmiTGJAIuS3OJjzThWGjKLLtAz+NnLozvs2c2wGDkAXpzHepqw==`.
+The current lock SHA-256 is
+`3f0e690cd3f0323c048cc6f9bc227002c3c92908cedfdca56c46c9e35d54fc53`.
+
+## Previous review: 0.16.5
 
 The 0.16.5 review covers upstream commit
 `533159a925e964055b4b0cb3877285e33041a566` and the
@@ -125,7 +156,7 @@ overrides, and Node.js floor are unchanged. The Desktop extension advances to
 
 The published tarball's independently checked SHA-512 is
 `sha512-HOvAySIYs9hojTHDWUJtKpx1RFi9OHLdJewdkwtOPuybq0uNmYrfeWGBH4mZ1rrIxwkFLJ+7823/96+KbC/4Og==`.
-The current lock SHA-256 is
+The lock SHA-256 at that review was
 `db086bbd97b2a7612a69689ce176bae487aba6c8d386255c145ba28e024c789e`.
 
 ## Previous review: 0.16.0
