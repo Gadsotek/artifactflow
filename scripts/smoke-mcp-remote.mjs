@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-const BRIDGE_VERSION = '0.16.5';
+const BRIDGE_VERSION = '0.16.6';
 const BEARER_TOKEN = 'artifactflow-nightly-bridge-token';
 const AUTHORIZATION = `Bearer ${BEARER_TOKEN}`;
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -14,6 +14,8 @@ const bridgeDirectory = resolve(repositoryRoot, 'scripts/mcp-remote-bridge');
 const bridgeEntrypoint = resolve(bridgeDirectory, 'node_modules/mcp-remote/dist/proxy.js');
 const smokeWorkingDirectory = process.env.MCP_BRIDGE_SMOKE_CWD;
 let authorizedRequests = 0;
+let authorizedProbeRequests = 0;
+let crossOriginRequests = 0;
 const forwardedMethods = [];
 let forwardedClientName;
 
@@ -90,7 +92,38 @@ for (const trusted of [['::ffff:10.0.0.0/104'], ['::ffff:10.0.0.0/104', '2001:db
 assert.equal(proxyaddr.compile(['2001:db8::/32'])('2001:db8::1'), true);
 console.log('Bridge proxy-address trust regression passed.');
 
+// The bridge's authentication probes carry user-supplied headers. Follow a
+// redirect within the selected origin, but never send those headers elsewhere.
+const otherOrigin = createServer((_request, response) => {
+  crossOriginRequests += 1;
+  response.writeHead(200).end();
+});
+await new Promise((resolveListen, rejectListen) => {
+  otherOrigin.once('error', rejectListen);
+  otherOrigin.listen(0, '127.0.0.1', resolveListen);
+});
+const otherAddress = otherOrigin.address();
+if (!otherAddress || typeof otherAddress === 'string') {
+  throw new Error('MCP bridge redirect fixture did not bind a TCP port.');
+}
+
 const server = createServer((request, response) => {
+  if (request.method === 'GET' && request.url === '/mcp') {
+    response.writeHead(307, { Location: '/auth-probe' }).end();
+    return;
+  }
+  if (request.method === 'GET' && request.url === '/auth-probe') {
+    if (
+      request.headers.authorization === AUTHORIZATION &&
+      request.headers['x-artifactflow-smoke'] === AUTHORIZATION
+    ) {
+      authorizedProbeRequests += 1;
+    }
+    response.writeHead(307, {
+      Location: `http://127.0.0.1:${otherAddress.port}/unexpected`,
+    }).end();
+    return;
+  }
   if (request.url !== '/mcp' || request.method !== 'POST') {
     response.writeHead(404).end();
     return;
@@ -170,6 +203,8 @@ const child = spawn(
     'http-only',
     '--header',
     'Authorization:${AUTH_HEADER}',
+    '--header',
+    'X-ArtifactFlow-Smoke:${AUTH_HEADER}',
     '--silent',
   ],
   {
@@ -252,6 +287,8 @@ child.stdin.write(
 
 try {
   await completion;
+  assert.ok(authorizedProbeRequests > 0, 'Same-origin probes must retain configured headers.');
+  assert.equal(crossOriginRequests, 0, 'Authentication probes must not follow cross-origin redirects.');
   if (forwardedClientName !== 'artifactflow-nightly (via mcp-remote ' + BRIDGE_VERSION + ')') {
     throw new Error('The server did not observe the reviewed MCP bridge version.');
   }
@@ -274,5 +311,7 @@ try {
 } finally {
   lines.close();
   child.kill('SIGTERM');
-  await new Promise((resolveClose) => server.close(resolveClose));
+  await Promise.all([server, otherOrigin].map(
+    (fixture) => new Promise((resolveClose) => fixture.close(resolveClose)),
+  ));
 }
