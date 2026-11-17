@@ -4,7 +4,7 @@ All notable changes to ArtifactFlow will be documented here.
 
 Review each release's upgrade notes before updating an installation.
 
-## v1.0.0 — Unreleased
+## v1.0.0 — 2026-11-17
 
 The first stable release of ArtifactFlow's existing artifact workflow: save,
 find, use, version, and share useful AI-generated work in a shared workspace.
