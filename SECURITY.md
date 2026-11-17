@@ -71,8 +71,8 @@ and credential contents.
 
 ## Supported versions
 
-ArtifactFlow is pre-1.0. Security fixes target the latest `main`; tagged releases
-exist. Pin a reviewed revision or verified image digest and update forward.
+Security fixes target the latest `main`; tagged releases are available. Pin a
+reviewed release or verified image digest and update forward.
 Docker is the supported runtime: bundled Compose for local development,
 production images with separate roles for deployment. Bare-metal installs are
 not supported. No independent third-party security audit has been completed.

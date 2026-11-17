@@ -1,12 +1,12 @@
-# Alpha Release Checklist
+# Release Checklist
 
-Use this before enabling a live alpha environment. This checklist covers operator-dependent release gates that code and local tests cannot prove.
+Use this before publishing a release or enabling a live environment. This checklist covers operator-dependent release gates that code and local tests cannot prove. Stable release status does not replace any of these checks.
 
-## Alpha Framing
+## Release Scope
 
-This alpha validates the secure vault, sandboxed artifact preview, organization, versioning, search, workspace sharing, account security, and MCP loop for internal teams. MCP is in scope only through issued tokens (read-only or read-write, optionally bound to selected workspaces), normal page handlers, scanners, optimistic concurrency, and audit/domain-event traceability. There is no per-page AI-visibility approval gate: token scope plus ordinary page access is the boundary, as described in `THREAT-MODEL.md`.
+The 1.0 release covers the artifact workspace, isolated previews, organization, versioning, search, internal permissions, controlled external sharing, account security, and authorized MCP workflow. External sharing and PDF/XLSX/DOCX remain default-off with their documented enablement requirements. MCP is in scope only through issued tokens (read-only or read-write, optionally bound to selected workspaces), normal page handlers, scanners, optimistic concurrency, and audit/domain-event traceability. There is no per-page AI-visibility approval gate: token scope plus ordinary page access is the boundary, as described in `THREAT-MODEL.md`.
 
-Set tester expectations explicitly:
+Set user and operator expectations explicitly:
 
 - Workspace invitations require the invitee to sign in with the invited email address.
 - Version restore and source diffs against the current version both exist.
@@ -76,6 +76,6 @@ Set tester expectations explicitly:
 - Update `CHANGELOG.md` with a dated, versioned section for the release, then tag the release commit (`vMAJOR.MINOR.PATCH`) so the changelog and tags stay in lockstep.
 - Run `make publish-guard`.
 
-## Fine To Defer Past Alpha
+## Later Improvements
 
 - Additional search projection/index work once real data volume exists.

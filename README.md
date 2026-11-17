@@ -10,7 +10,7 @@ An open-source, self-hosted workspace to save, organize, preview, version, and s
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Commercial license](https://img.shields.io/badge/license-commercial_available-green.svg)](COMMERCIAL.md)
-[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
+[![Status: Stable](https://img.shields.io/badge/status-stable-brightgreen.svg)](#status)
 
 </div>
 
@@ -149,9 +149,10 @@ Report vulnerabilities through [SECURITY.md](SECURITY.md).
 
 ## Status
 
-**Public alpha.** Expect breaking changes and pin a revision. ArtifactFlow has
-internal AI-assisted adversarial review and automated security coverage, but
-has not received an independent third-party security audit.
+**1.0.0 is the first stable release.** Pin a release or verified image digest and
+review its upgrade notes. ArtifactFlow has internal AI-assisted adversarial
+review and automated security coverage, but has not received an independent
+third-party security audit.
 
 ## Contributing
 

@@ -1,7 +1,8 @@
 # Roadmap
 
 ArtifactFlow is an open-source, self-hosted workspace for AI-generated artifacts.
-This is direction, not a release promise. The product remains a public alpha.
+Version 1.0 establishes the focused artifact workflow below. Future direction
+is not a release promise; default-off capabilities retain their enablement gates.
 
 ## Available now
 

@@ -182,8 +182,8 @@
           <p>A sandboxed iframe can still navigate itself to another site. Browser CSP does not provide a shipped directive that fully prevents that self-navigation. The isolated frame cannot access the app's cookies or DOM. Its own content, data a viewer types into it, the viewer's IP address, and a view confirmation may still be exposed through navigation.</p>
           <p>Browser behavior is not perfectly uniform. Chromium, Firefox, and WebKit regression tests exercise the maintained security corpus; released Safari on macOS and iOS remains a documented manual release check. A legacy browser without modern sandbox protections is outside the intended trust envelope.</p>
           <div class="callout">
-            <strong>Alpha disclosure</strong>
-            <p>ArtifactFlow is a young 0.x internal-team tool. It has broad automated coverage and repeated AI-assisted adversarial review, but it has not received an independent third-party security audit. Pin a revision and read the full threat model before using it for important work.</p>
+            <strong>Security review disclosure</strong>
+            <p>ArtifactFlow has broad automated coverage and repeated AI-assisted adversarial review, but it has not received an independent third-party security audit. Stable release status does not replace deployment checks or eliminate the documented residual risks. Pin a release or verified image digest and read the full threat model before deployment.</p>
           </div>
         </section>
 

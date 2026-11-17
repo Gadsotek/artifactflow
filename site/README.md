@@ -24,8 +24,10 @@ means one successful redemption with no time expiry, not one page view. The
 established session continues only while authorized. Both modes are revocable;
 bearer possession is not recipient identity and revocation cannot retract
 delivered content. PDF/XLSX/DOCX remain default-off. Explain operator responsibilities
-and keep illustrative workflows distinct from adoption evidence. Preserve release
-gates and alpha status until the separate release process authorizes a change.
+and keep illustrative workflows distinct from adoption evidence. The 1.0 release
+removes the alpha label without changing feature defaults, security disclosures,
+or release gates. Website deployment and release publication remain separate
+maintainer actions.
 
 Canonical routes:
 
