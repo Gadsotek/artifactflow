@@ -21,7 +21,8 @@ MCP clients can retrieve and continue work across AI tools.
   versioned Claude Desktop extension to 1.0.10. Keep the integrity-locked
   installation and Node.js 20.18.1 minimum for the bridge.
 - Refresh application dependencies and development tooling through the merged
-  Composer and npm maintenance updates since v0.3.9.
+  Composer and npm maintenance updates since v0.3.9, including Playwright
+  1.65.1 and ESLint 10.15.0 from [#254](https://github.com/Gadsotek/artifactflow/pull/254).
 
 ### Security and release verification
 
