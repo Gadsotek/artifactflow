@@ -262,6 +262,12 @@
 @@ -9 +9 @@
 -	"github.com/go-jose/go-jose/v3"
 +	"github.com/go-jose/go-jose/v4"
+--- a/authority/provisioner/sshpop_test.go
++++ b/authority/provisioner/sshpop_test.go
+@@ -58,0 +59,3 @@
++	if len(cert.ValidPrincipals) == 0 {
++		cert.ValidPrincipals = []string{"test.smallstep.com"}
++	}
 --- a/authority/provisioner/utils_test.go
 +++ b/authority/provisioner/utils_test.go
 @@ -770 +770 @@

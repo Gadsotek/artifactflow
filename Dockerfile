@@ -13,14 +13,21 @@ WORKDIR /var/www/html
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         $PHPIZE_DEPS \
+        apt \
         ca-certificates \
         curl \
         git \
+        libapt-pkg7.0 \
+        libbrotli1 \
         libicu-dev \
         libpq-dev \
         libzip-dev \
+        linux-libc-dev \
         unzip \
         zip \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' apt)" ge 3.0.4 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge 1.1.0-2+deb13u1 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' linux-libc-dev)" ge 6.12.117-1 \
     && docker-php-ext-install -j"$(nproc)" \
         bcmath \
         intl \
@@ -66,10 +73,9 @@ RUN composer install \
         --no-interaction \
         --no-progress
 
-# Keep this digest in sync with the vite service in docker-compose.yml
-# (Dependabot only tracks this pin) so local dev and production assets build
-# on the same Node.
-FROM node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS frontend-build
+# Keep this digest synchronized with the Compose vite service and XLSX parser
+# so the supported upstream Node image is consistent across those builds.
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS frontend-build
 
 WORKDIR /app
 
@@ -178,7 +184,7 @@ CMD ["/srv/image-parser/start.sh"]
 
 # Keep the Go toolchain separate from the pinned PHP/FrankenPHP builder so
 # standard-library security updates do not require changing the PHP runtime.
-FROM golang:1.27.3-alpine3.24@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS go-toolchain
+FROM golang:1.27.4-alpine3.24@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS go-toolchain
 
 # FrankenPHP 1.13.2 requires Go 1.27. Rebuild with the patched compiler and
 # reviewed Smallstep migration to go-jose/v4.1.6; verify the compiled result.
@@ -193,7 +199,7 @@ ENV GOROOT=/opt/go \
 
 WORKDIR /go/src/app/caddy
 
-RUN go version | grep -E '^go version go1\.27\.3[[:space:]]' \
+RUN go version | grep -E '^go version go1\.27\.4[[:space:]]' \
     && sh /opt/artifactflow-frankenphp-security/prepare.sh
 
 WORKDIR /go/src/app/caddy/frankenphp
@@ -202,13 +208,13 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
         -ldflags "-w -s -extldflags '-Wl,-z,stack-size=0x80000' -X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP v1.13.2 PHP $PHP_VERSION Caddy' -X 'github.com/caddyserver/caddy/v2.CustomBinaryName=frankenphp' -X 'github.com/caddyserver/caddy/v2/modules/caddyhttp.ServerHeader=FrankenPHP Caddy'" \
         -buildvcs=true \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E '^/usr/local/bin/frankenphp: go1\.27\.3$' \
+        | grep -E '^/usr/local/bin/frankenphp: go1\.27\.4$' \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.84\.0' \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.151\.0' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.58\.0' \
+        | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.59\.0' \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'golang\.org/x/net[[:space:]]+v0\.62\.0' \
     && sh /opt/artifactflow-frankenphp-security/verify.sh /usr/local/bin/frankenphp
@@ -223,7 +229,7 @@ COPY --from=frankenphp-security-builder /opt/artifactflow-frankenphp-notices /us
 # minimum-version constraint below intentionally permits a later patched Alpine
 # revision, so this layer is not byte-for-byte reproducible from the base digest
 # alone; the release image digest, SBOM, and provenance identify the exact output.
-# The source-rebuilt binary uses Go 1.27.3 for CVE-2026-111943 and retains
+# The source-rebuilt binary uses Go 1.27.4, including CVE-2026-97054, and retains
 # upstream's newer x/net, x/crypto, gRPC, and kin-openapi security fixes.
 # Current apk minimums: c-ares CVE-2026-33630 is fixed in 1.34.8-r0;
 # OpenSSL CVE-2026-14456 is fixed in 3.5.8-r0; PostgreSQL client library

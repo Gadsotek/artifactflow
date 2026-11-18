@@ -344,6 +344,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $dockerfile = $this->readProjectFile('Dockerfile');
         $prepare = $this->readProjectFile('docx-processor/frankenphp-security/prepare.sh');
         $this->assertStringContainsString('go mod edit -require=golang.org/x/net@v0.62.0', $prepare);
+        $this->assertStringContainsString('go mod edit -require=golang.org/x/crypto@v0.59.0', $prepare);
 
         $this->assertStringContainsString(
             'COPY docx-processor/frankenphp-security /opt/artifactflow-frankenphp-security',
@@ -366,11 +367,11 @@ final class CiCoverageGateConfigurationTest extends TestCase
             $dockerfile,
         );
         $this->assertStringContainsString(
-            "go version | grep -E '^go version go1\\.27\\.3[[:space:]]'",
+            "go version | grep -E '^go version go1\\.27\\.4[[:space:]]'",
             $dockerfile,
         );
         $this->assertMatchesRegularExpression(
-            '/FROM golang:1\\.27\\.3-alpine3\\.24@sha256:[a-f0-9]{64} AS go-toolchain/',
+            '/FROM golang:1\\.27\\.4-alpine3\\.24@sha256:[a-f0-9]{64} AS go-toolchain/',
             $dockerfile,
         );
         $this->assertStringContainsString('COPY --from=go-toolchain /usr/local/go /opt/go', $dockerfile);
@@ -378,7 +379,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('GOTOOLCHAIN=local', $dockerfile);
         $this->assertStringContainsString('PATH="/opt/go/bin:${PATH}"', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E '^/usr/local/bin/frankenphp: go1\\.27\\.3$'",
+            "grep -E '^/usr/local/bin/frankenphp: go1\\.27\\.4$'",
             $dockerfile,
         );
         $this->assertStringNotContainsString('go get ', $dockerfile);
@@ -387,7 +388,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
             $dockerfile,
         );
         $this->assertStringContainsString(
-            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.58\\.0'",
+            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.59\\.0'",
             $dockerfile,
         );
         $this->assertStringContainsString(

@@ -1,7 +1,7 @@
 # FrankenPHP JOSE dependency migration
 
 The app and DOCX images rebuild their pinned FrankenPHP 1.13.2 sources with
-Go 1.27.3. This directory contains a temporary, build-only source migration for
+Go 1.27.4. This directory contains a temporary, build-only source migration for
 the Smallstep dependencies that still import unpatched go-jose/v3.0.5.
 CVE-2026-116587 / GHSA-mgcc-cww5-fp2q affects RSA JWK parsing; upstream lists
 no fixed v3 release. The resulting executable must use the official
@@ -32,6 +32,10 @@ dedicated build context.
   a literal singleton, preserving its existing match and rejection behavior.
   This does not assert compatibility for external callers of the Smallstep
   library's changed public API.
+  Its SSH proof-of-possession test helper also supplies an explicit principal
+  for fixtures testing JWT claims and certificate validity. This keeps those
+  fixtures valid under x/crypto 0.59.0 without changing Smallstep production
+  code or relaxing x/crypto's rejection of missing or empty principals.
 - `cli-utils.patch` updates the Smallstep cli-utils 0.12.2 token builder's
   serialization call to the v4 API.
 
@@ -40,7 +44,14 @@ metadata. Upstream module versions are never relabelled. Original licenses,
 input and patch hashes, this explanation, and compiled build information are
 retained at `/usr/local/share/licenses/artifactflow-frankenphp` in both images.
 These are modified Apache-2.0 Smallstep sources; the upstream licenses remain
-authoritative.
+authoritative. Module versions are not changed to conceal scanner findings.
+
+Go 1.27.4 includes the HTTP/1 `MaxBytesReader` concurrency fix
+[CVE-2026-97054](https://pkg.go.dev/vuln/GO-2026-6859).
+Both binaries select `golang.org/x/crypto` 0.59.0, which no longer includes
+the unmaintained OpenPGP package flagged by
+[GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932); the compiled-package check
+also rejects that old import path.
 
 The v4 dependency deliberately rejects malformed Ed25519 key pairs and
 undersized HMAC keys that v3 accepted. Fixtures now distinguish those invalid
@@ -51,9 +62,10 @@ keys from valid signing and encryption compatibility controls.
 Every image build runs the modified JOSE suite, token builder suite, ACME,
 provisioner and stepcas suites using the application's selected dependency
 versions, plus the upstream go-jose suite including its private randomness
-failure tests. Dependency unit tests use pure Go; the actual FrankenPHP binary
-retains upstream's normal CGO build. The added regression must first fail
-against the original sources:
+failure tests and the upstream x/crypto SSH suite, including rejection of
+missing and empty certificate principals. Dependency unit tests use pure Go;
+the actual FrankenPHP binary retains upstream's normal CGO build. The added
+regression must first fail against the original sources:
 it checks early rejection of an oversized synthetic RSA modulus, with normal
 RSA/EC/HMAC signatures, signed JSON byte preservation, singleton audiences,
 issuer/time validation and X25519 signing as compatibility controls.

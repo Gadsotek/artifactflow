@@ -45,6 +45,7 @@ RUN apk add --no-cache \
         "musl-utils>=1.2.6-r3" \
         openjdk21-jre-headless=21.0.13.0.3_p1-r0 \
         "openssl>=3.5.8-r0" \
+        "zlib>=1.4-r0" \
     && addgroup -S -g 10002 pdf-spike \
     && adduser -S -D -H -u 10002 -G pdf-spike -s /sbin/nologin pdf-spike
 
