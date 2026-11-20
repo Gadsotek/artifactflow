@@ -30,7 +30,7 @@ if [ "$mode" = red ]; then
         --mount "type=bind,source=$fixture/source,target=/work" \
         --workdir /work --env GOENV=off --env GOTOOLCHAIN=local \
         --env GOMODCACHE=/work/.module-cache --env GOCACHE=/work/.build-cache \
-        golang:1.27.3-alpine3.24@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd \
+        golang:1.27.4-alpine3.24@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 \
         go test -mod=mod -count=1 -timeout=2m -run '^TestArtifactFlowRejectsOversizedRSAJWKBeforeKeyOperations$' ./jose
 else
     docker run --rm --cap-drop=ALL --security-opt=no-new-privileges \
@@ -38,6 +38,6 @@ else
         --mount "type=bind,source=$fixture/source,target=/work" \
         --workdir /work --env GOENV=off --env GOTOOLCHAIN=local \
         --env GOMODCACHE=/work/.module-cache --env GOCACHE=/work/.build-cache \
-        golang:1.27.3-alpine3.24@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd \
+        golang:1.27.4-alpine3.24@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 \
         go test -mod=mod -count=1 -timeout=10m ./jose/...
 fi

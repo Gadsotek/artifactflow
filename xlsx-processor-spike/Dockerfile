@@ -1,6 +1,6 @@
 # Dedicated XLSX parser/projection image. It receives one bounded workbook over
 # a private Unix socket and has no application source, storage, or credentials.
-FROM node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS xlsx-processor-base
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS xlsx-processor-base
 
 ENV HOME=/tmp/home \
     NODE_ENV=production \

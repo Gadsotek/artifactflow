@@ -8,7 +8,7 @@ use Tests\TestCase;
 
 final class PdfProcessorSpikeContractTest extends TestCase
 {
-    private const string OPENJDK_VERSION = '21.0.13.0.3_p1-r0';
+    private const string OPENJDK_VERSION = '21.0.13.1_p2-r0';
 
     private const string PDFBOX_VERSION = '3.0.8';
 

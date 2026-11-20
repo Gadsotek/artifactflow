@@ -1,5 +1,5 @@
-# Match the app's PHP 8.5.12 base and patched Go 1.27.3 toolchain.
-FROM golang:1.27.3-alpine3.24@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS go-toolchain
+# Match the app's PHP 8.5.12 base and patched Go 1.27.4 toolchain.
+FROM golang:1.27.4-alpine3.24@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS go-toolchain
 
 FROM dunglas/frankenphp:builder-php8.5-alpine@sha256:3b672209c1201d4c980d4aa76b962171fdb063b47e0108c50d61331488d23d5f AS frankenphp-security-builder
 
@@ -13,8 +13,8 @@ ENV GOROOT=/opt/go \
 WORKDIR /go/src/app/caddy
 
 # FrankenPHP 1.13.2 requires Go 1.27. Apply the same reviewed go-jose migration
-# as the app while retaining its other fixed modules and Go 1.27.3 compiler.
-RUN go version | grep -E '^go version go1\.27\.3[[:space:]]' \
+# as the app while retaining its other fixed modules and Go 1.27.4 compiler.
+RUN go version | grep -E '^go version go1\.27\.4[[:space:]]' \
     && sh /opt/artifactflow-frankenphp-security/prepare.sh
 
 WORKDIR /go/src/app/caddy/frankenphp
@@ -23,13 +23,13 @@ RUN GOBIN=/usr/local/bin ../../go.sh install \
         -ldflags "-w -s -extldflags '-Wl,-z,stack-size=0x80000' -X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP v1.13.2 PHP $PHP_VERSION Caddy' -X 'github.com/caddyserver/caddy/v2.CustomBinaryName=frankenphp' -X 'github.com/caddyserver/caddy/v2/modules/caddyhttp.ServerHeader=FrankenPHP Caddy'" \
         -buildvcs=true \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E '^/usr/local/bin/frankenphp: go1\.27\.3$' \
+        | grep -E '^/usr/local/bin/frankenphp: go1\.27\.4$' \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'google\.golang\.org/grpc[[:space:]]+v1\.84\.0' \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'github\.com/getkin/kin-openapi[[:space:]]+v0\.151\.0' \
     && go version -m /usr/local/bin/frankenphp \
-        | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.58\.0' \
+        | grep -E 'golang\.org/x/crypto[[:space:]]+v0\.59\.0' \
     && go version -m /usr/local/bin/frankenphp \
         | grep -E 'golang\.org/x/net[[:space:]]+v0\.62\.0' \
     && sh /opt/artifactflow-frankenphp-security/verify.sh /usr/local/bin/frankenphp
