@@ -4,6 +4,73 @@ All notable changes to ArtifactFlow will be documented here.
 
 Review each release's upgrade notes before updating an installation.
 
+## v1.0.1 — 2026-11-20
+
+Security and maintenance update for the application runtimes, document processors,
+development stack, and PHP dependencies. Includes the merged repairs from
+[#257](https://github.com/Gadsotek/artifactflow/pull/257) and
+[#259](https://github.com/Gadsotek/artifactflow/pull/259).
+
+### Security
+
+- Rebuild the application and DOCX processor's FrankenPHP binaries with Go
+  1.27.4, including the HTTP/1 request-body/header concurrency fix for
+  [CVE-2026-97054](https://pkg.go.dev/vuln/GO-2026-6859).
+- Select `golang.org/x/crypto` 0.59.0 in both binaries and reject the removed,
+  unmaintained OpenPGP import path in the compiled dependency graph
+  ([GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932)). Preserve the reviewed
+  JOSE migration, source and patch hashes, licenses, and compatibility tests.
+- Require zlib 1.4-r0 or newer in the PDF runtime, incorporating upstream
+  [zlib security fixes](https://zlib.net/ChangeLog.txt), including CVE-2026-4738.
+- Update the development-only minimatch override to 11.0.9 for
+  [GHSA-cf2h-pxjq-68xw](https://github.com/isaacs/minimatch/security/advisories/GHSA-cf2h-pxjq-68xw).
+  Regression tests cover bounded compilation, complete expansion, and ordinary
+  file selection through both ESLint consumers.
+- Refresh the shared Node 26 image digest for frontend builds and the XLSX
+  processor. Require patched apt, Brotli, and Linux-header packages in the
+  Debian development image; container headers do not update the host kernel.
+
+### Fixed
+
+- Restore PDF image builds after Alpine replaced the previous exact OpenJDK
+  package revision. Pin both the build JDK and runtime JRE to
+  `21.0.13.1_p2-r0`, retaining PDFBox validation and processor containment.
+- Give the Smallstep SSH test fixtures explicit principals for x/crypto 0.59.0
+  compatibility. Keep upstream rejection of missing or empty principals and run
+  the SSH regression suite during both FrankenPHP builds.
+
+### Changed
+
+- Refresh the local Compose stack to digest-pinned PostgreSQL 17.12, Caddy
+  2.11.9, Adminer 6.3.0, and Mailpit 1.34.0 images. Compose remains local-only.
+- Update Laravel to 13.43.0, Reverb to 1.14.0, Guzzle to 8.5.2, and Monolog to
+  3.13.0, with the related locked PHP dependencies. Refresh Tinker to 3.2.0,
+  PHPStan to 2.3.7, and Rector to 2.8.5.
+
+### Dependency status
+
+- Picomatch's [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)
+  was withdrawn on November 18; no new picomatch patch or temporary audit
+  exception is included. The normal dependency-audit gates remain enabled.
+- Remaining upstream findings in supporting and development images are not
+  suppressed. Scan those images independently; the application and processor
+  release gates do not establish that every dependency is free of advisories.
+
+### Upgrade from v1.0.0
+
+- Back up the installation and update every application, artifact-host, worker,
+  and scheduler role, together with each enabled PDF, XLSX, and DOCX processor.
+  Pin release image digests and verify their SBOMs and provenance using the
+  [production operations guide](docs/operations/production.md).
+- Source-based deployments must rebuild their runtime images and frontend
+  assets from the same release. Rebuild the dedicated `image-parser` target
+  wherever used; the release does not publish a standalone image-parser image.
+- Review the local PostgreSQL 17.12 maintenance update and back up its data
+  before recreating development services. The database major version stays 17.
+- This release adds no database migrations or configuration requirements.
+  External sharing and PDF/XLSX/DOCX remain default-off, with all existing
+  isolation and production-enablement requirements unchanged.
+
 ## v1.0.0 — 2026-11-17
 
 The first stable release of ArtifactFlow's existing artifact workflow: save,
