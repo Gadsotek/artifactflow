@@ -9,7 +9,7 @@ RUN apk add --no-cache \
         build-base=0.5-r4 \
         ca-certificates=20261020-r0 \
         libseccomp-dev=2.6.1-r0 \
-        openjdk21-jdk=21.0.13.0.3_p1-r0 \
+        openjdk21-jdk=21.0.13.1_p2-r0 \
     && wget -q "https://downloads.apache.org/pdfbox/${PDFBOX_VERSION}/pdfbox-app-${PDFBOX_VERSION}.jar" -O /opt/pdfbox-app.jar \
     && echo "${PDFBOX_SHA512}  /opt/pdfbox-app.jar" | sha512sum -c -
 
@@ -43,7 +43,7 @@ RUN apk add --no-cache \
         "libssl3>=3.5.8-r0" \
         "musl>=1.2.6-r3" \
         "musl-utils>=1.2.6-r3" \
-        openjdk21-jre-headless=21.0.13.0.3_p1-r0 \
+        openjdk21-jre-headless=21.0.13.1_p2-r0 \
         "openssl>=3.5.8-r0" \
         "zlib>=1.4-r0" \
     && addgroup -S -g 10002 pdf-spike \
