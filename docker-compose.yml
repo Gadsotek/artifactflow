@@ -3,7 +3,7 @@
 # this file as a production deployment template.
 services:
   db:
-    image: postgres:17.2-alpine@sha256:7e5df973a74872482e320dcbdeb055e178d6f42de0558b083892c50cda833c96
+    image: postgres:17.12-alpine@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7
     environment:
       POSTGRES_DB: ${DB_DATABASE:-artifactflow}
       POSTGRES_USER: ${DB_SUPERUSER:-postgres}
@@ -27,7 +27,7 @@ services:
 
   db-test:
     profiles: ["test"]
-    image: postgres:17.2-alpine@sha256:7e5df973a74872482e320dcbdeb055e178d6f42de0558b083892c50cda833c96
+    image: postgres:17.12-alpine@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7
     environment:
       POSTGRES_DB: ${TEST_DB_DATABASE:-artifactflow_test}
       POSTGRES_USER: ${TEST_DB_SUPERUSER:-postgres}
@@ -715,7 +715,7 @@ services:
 
   e2e-edge:
     profiles: ["e2e"]
-    image: caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
+    image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     environment:
       APP_UPSTREAM: e2e-app:8000
       ARTIFACT_UPSTREAM: e2e-artifact-host:8000
@@ -880,7 +880,7 @@ services:
       - e2e-image-parser-socket:/socket
 
   artifact-gateway:
-    image: caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
+    image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     environment:
       ARTIFACT_UPSTREAM: artifact-host:8000
     ports:
@@ -898,7 +898,7 @@ services:
 
   e2e-artifact-gateway:
     profiles: ["e2e"]
-    image: caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
+    image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     environment:
       ARTIFACT_UPSTREAM: e2e-artifact-host:8000
     ports:
@@ -1043,10 +1043,8 @@ services:
 
   vite:
     profiles: ["frontend"]
-    # Must match the node digest of the Dockerfile frontend-build stage (Dependabot
-    # only tracks the Dockerfile pin) so local dev and production assets build on
-    # the same Node.
-    image: node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019
+    # Must match the Node digest used by the production frontend-build stage.
+    image: node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5
     working_dir: /var/www/html
     command: >
       sh -lc '
@@ -1070,7 +1068,7 @@ services:
 
   edge:
     profiles: ["edge"]
-    image: caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
+    image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     environment:
       APP_UPSTREAM: app:8000
       ARTIFACT_UPSTREAM: artifact-host:8000
@@ -1092,7 +1090,7 @@ services:
   # them on shared, staging, or production hosts.
   adminer:
     profiles: ["adminer"]
-    image: adminer:4.8.1-standalone@sha256:34d37131366c5aa84e1693dbed48593ed6f95fb450b576c1a7a59d3a9c9e8802
+    image: adminer:6.3.0-standalone@sha256:7605e298e5a2ac74d806283362fa253a4e0a42cfd881e8fa2c155f0631899f6c
     environment:
       ADMINER_DEFAULT_SERVER: ${ADMINER_DEFAULT_SERVER:-db}
       ADMINER_DESIGN: ${ADMINER_DESIGN:-dracula}
@@ -1104,7 +1102,7 @@ services:
 
   mailpit:
     profiles: ["mail"]
-    image: axllent/mailpit:v1.22@sha256:f7f7c31de4de59540ad6515a0ca057a77525bca2069b6e747d873ca66c10fe08
+    image: axllent/mailpit:v1.34.0@sha256:23a2ef85bc50853ab3093645d1d64679afd8887e89da5e48a88940c172591a4e
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: "1"
       MP_SMTP_AUTH_ALLOW_INSECURE: "1"

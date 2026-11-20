@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 
@@ -18,12 +19,53 @@ for (const [consumer, consumerRequire] of [
 ]) {
   const { Minimatch } = consumerRequire('minimatch');
 
-  test(`${consumer} minimatch bounds globstar-parent pattern expansion`, () => {
+  test(`${consumer} minimatch rejects incomplete globstar-parent pattern expansion`, () => {
     const pattern = Array(8).fill('**/../a/b').join('/');
-    const matcher = new Minimatch(pattern, { optimizationLevel: 2, braceExpandMax: 16 });
 
-    assert.ok(matcher.set.length > 0);
-    assert.ok(matcher.set.length <= 16);
+    assert.throws(
+      () => new Minimatch(pattern, { optimizationLevel: 2, braceExpandMax: 16 }),
+      RangeError,
+    );
+  });
+
+  test(`${consumer} minimatch preserves complete expansion within its limit`, () => {
+    const matcher = new Minimatch('**/../a/b/**/../c/d', {
+      optimizationLevel: 2,
+      braceExpandMax: 4,
+    });
+
+    assert.equal(matcher.set.length, 4);
+    assert.equal(matcher.match('../a/b/../c/d'), true);
+    assert.equal(matcher.match('x/a/b/y/c/d'), true);
+  });
+
+  // GHSA-cf2h-pxjq-68xw: compile both a long row and brace-expanded rows.
+  // Run in a child so a regression has a hard deadline and cannot hang CI.
+  test(`${consumer} minimatch compiles long wildcard patterns within a bounded budget`, () => {
+    const source = [
+      "const assert = require('node:assert/strict');",
+      'const { Minimatch } = require(process.argv[1]);',
+      "const stars = Array(16000).fill('*').join('/');",
+      "const words = Array.from({ length: 16 }, (_, i) => 'w' + i).join(',');",
+      "const patterns = [stars, '{' + words + '}*/' + stars.slice(0, 8000), '{' + words + '}/' + stars.slice(0, 8000)];",
+      'for (const pattern of patterns) {',
+      '  const matcher = new Minimatch(pattern);',
+      '  assert.ok(matcher.set.length > 0);',
+      '  assert.equal(matcher.set.length, matcher.globParts.length);',
+      '}',
+    ].join('\n');
+    const result = spawnSync(
+      process.execPath,
+      ['-e', source, consumerRequire.resolve('minimatch')],
+      {
+        encoding: 'utf8',
+        timeout: 5000,
+        maxBuffer: 64 * 1024,
+      },
+    );
+
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
   });
 
   test(`${consumer} minimatch preserves ordinary file selection`, () => {

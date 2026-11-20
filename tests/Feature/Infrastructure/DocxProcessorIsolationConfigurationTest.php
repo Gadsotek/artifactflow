@@ -39,9 +39,9 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
             'CustomVersion=FrankenPHP v1.13.2 PHP $PHP_VERSION Caddy',
             $dockerfile,
         );
-        $this->assertStringContainsString("go1\\.27\\.3[[:space:]]", $dockerfile);
+        $this->assertStringContainsString("go1\\.27\\.4[[:space:]]", $dockerfile);
         $this->assertMatchesRegularExpression(
-            '/FROM golang:1\\.27\\.3-alpine3\\.24@sha256:[a-f0-9]{64} AS go-toolchain/',
+            '/FROM golang:1\\.27\\.4-alpine3\\.24@sha256:[a-f0-9]{64} AS go-toolchain/',
             $dockerfile,
         );
         $this->assertStringContainsString('COPY --from=go-toolchain /usr/local/go /opt/go', $dockerfile);
@@ -49,7 +49,7 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('GOTOOLCHAIN=local', $dockerfile);
         $this->assertStringContainsString('PATH="/opt/go/bin:${PATH}"', $dockerfile);
         $this->assertStringContainsString(
-            "grep -E '^/usr/local/bin/frankenphp: go1\\.27\\.3$'",
+            "grep -E '^/usr/local/bin/frankenphp: go1\\.27\\.4$'",
             $dockerfile,
         );
         $this->assertStringNotContainsString('go get ', $dockerfile);
@@ -58,7 +58,7 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
             $dockerfile,
         );
         $this->assertStringContainsString(
-            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.58\\.0'",
+            "grep -E 'golang\\.org/x/crypto[[:space:]]+v0\\.59\\.0'",
             $dockerfile,
         );
         $this->assertStringContainsString(
