@@ -82,6 +82,7 @@ final class DocxProcessorIsolationConfigurationTest extends TestCase
         $runtimeStage = substr($dockerfile, $runtimeStagePosition);
         $this->assertStringContainsString('"curl>=8.23.0-r0"', $runtimeStage);
         $this->assertStringContainsString('"libcurl>=8.23.0-r0"', $runtimeStage);
+        $this->assertStringContainsString('"libxml2>=2.13.9-r3"', $runtimeStage);
         $this->assertStringContainsString('"libcrypto3>=3.5.8-r0"', $dockerfile);
         $this->assertStringContainsString('"libssl3>=3.5.8-r0"', $dockerfile);
         $this->assertStringContainsString('"openssl>=3.5.8-r0"', $dockerfile);

@@ -149,6 +149,7 @@ RUN apk add --no-cache --virtual .image-parser-build-deps \
         "c-ares>=1.34.8-r0" \
         "curl>=8.23.0-r0" \
         "libcurl>=8.23.0-r0" \
+        "libxml2>=2.13.9-r3" \
         libjpeg-turbo \
         libpng \
         "libcrypto3>=3.5.8-r0" \
@@ -235,7 +236,8 @@ COPY --from=frankenphp-security-builder /opt/artifactflow-frankenphp-notices /us
 # OpenSSL CVE-2026-14456 is fixed in 3.5.8-r0; PostgreSQL client library
 # findings reported against 18.4-r0 are fixed in 18.5-r0;
 # Brotli CVE-2026-111497 is fixed in 1.2.1-r0;
-# curl/libcurl CVE-2026-92392 is fixed in 8.23.0-r0.
+# curl/libcurl CVE-2026-92392 is fixed in 8.23.0-r0;
+# libxml2 CVE-2026-86144 is fixed in 2.13.9-r3.
 RUN setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp \
     && apk add --no-cache \
         "brotli-libs>=1.2.1-r0" \
@@ -246,6 +248,7 @@ RUN setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp \
         "libecpg>=18.5-r0" \
         "libpq>=18.5-r0" \
         "libssl3>=3.5.8-r0" \
+        "libxml2>=2.13.9-r3" \
         "musl>=1.2.6-r3" \
         "musl-utils>=1.2.6-r3" \
         "openssl>=3.5.8-r0"

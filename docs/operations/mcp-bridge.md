@@ -3,7 +3,7 @@
 [MCP setup](mcp.md)
 
 Claude's supported Desktop JSON path cannot supply ArtifactFlow's static
-bearer token directly. The connector therefore uses `mcp-remote@0.16.6` for
+bearer token directly. The connector therefore uses `mcp-remote@0.16.7` for
 all supported local clients, including Codex releases that need the stdio bridge.
 
 The [Claude Desktop extension](mcp-desktop.md) packages the same reviewed lock
@@ -104,7 +104,36 @@ built-in runtime. Update the extension version when its distributed contents
 change, including a reviewed bridge upgrade. The bundle does not install
 updates itself. Preserve the original bridge smoke and all existing gates.
 
-## Reviewed version: 0.16.6
+## Reviewed version: 0.16.7
+
+The 0.16.7 review covers upstream commit
+`aa0c219b19e9f299fba599fe14df88b14d1e21a8` and the
+[0.16.6 to 0.16.7 delta](https://github.com/punkpeye/mcp-remote/compare/v0.16.6...v0.16.7).
+Custom-header environment variables are expanded before calculating the
+credential-cache key. Different bearer tokens supplied through the same
+`AUTH_HEADER` placeholder now select distinct caches. Cached OAuth registrations
+may retain a portless loopback redirect URI when the host and path match;
+explicit ports and non-loopback callback hosts retain their exact-match rules.
+
+The published JavaScript delta matches those source changes after accounting
+for version strings and generated chunk names. Runtime dependency declarations,
+bundled dependency versions, CLI entrypoints, and the Node.js floor are unchanged.
+Only the root bridge requirement and `mcp-remote` package entry change in
+ArtifactFlow's lock; the other 80 registry packages and reviewed `qs` and
+`undici` overrides remain unchanged. The Desktop extension advances to 1.0.11
+for the changed bundled bytes.
+
+The installed smoke checks that different expanded bearer tokens use different
+credential-cache keys, while an equivalent literal header selects the same key.
+This regression fails against 0.16.6. The existing authenticated MCP exchange,
+redirect containment, and dependency security regressions remain required.
+
+The published tarball's independently checked SHA-512 is
+`sha512-mKYcD/mkD5yGlyc2fwU7zFkgGRxzEzBplPcLhoykgaqnQxW/IVC4ol6VHEqIhJkKDdmSNToI9MXiOXCsrsTjxA==`.
+The current lock SHA-256 is
+`26bee2131f6b53606280ec86f10447fa26c1bc3006fac082ed3853aa0fa878b9`.
+
+## Previous review: 0.16.6
 
 The 0.16.6 review covers upstream commit
 `e4dc3713b0d6a727cbeb21f38324d20a6692dc5f` and the
@@ -132,7 +161,7 @@ its static bearer header without enabling OAuth grant options.
 
 The published tarball's independently checked SHA-512 is
 `sha512-QqlBqut/oeDUFwrB/Igs5vGikWSn6h5iM+7TCmiTGJAIuS3OJjzThWGjKLLtAz+NnLozvs2c2wGDkAXpzHepqw==`.
-The current lock SHA-256 is
+The lock SHA-256 at that review was
 `3f0e690cd3f0323c048cc6f9bc227002c3c92908cedfdca56c46c9e35d54fc53`.
 
 ## Previous review: 0.16.5

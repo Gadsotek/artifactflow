@@ -1,8 +1,20 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "enabledManagers": ["dockerfile", "docker-compose"],
-  "dependencyDashboard": true,
+  "enabledManagers": ["dockerfile", "docker-compose", "custom.regex"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update the Trivy scanner used for image scans and release SBOMs",
+      "managerFilePatterns": ["docker/trivy-image.txt"],
+      "matchStrings": [
+        "^(?<depName>aquasec/trivy):(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)@(?<currentDigest>sha256:[0-9a-f]{64})"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    }
+  ],
+  "dependencyDashboard": { "enabled": true },
   "labels": ["dependencies", "docker"],
   "pinDigests": true,
   "automerge": false,

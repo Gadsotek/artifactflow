@@ -2,11 +2,12 @@ import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const BRIDGE_VERSION = '0.16.6';
+const BRIDGE_VERSION = '0.16.7';
 const BEARER_TOKEN = 'artifactflow-nightly-bridge-token';
 const AUTHORIZATION = `Bearer ${BEARER_TOKEN}`;
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -24,6 +25,51 @@ if (!smokeWorkingDirectory) {
 }
 
 const bridgeRequire = createRequire(resolve(bridgeDirectory, 'package.json'));
+
+// ArtifactFlow supplies Authorization through an environment placeholder. Two
+// tokens must select different credential caches, even with identical CLI args.
+const chunk = readFileSync(bridgeEntrypoint, 'utf8').match(/from "\.\/(chunk-[^"]+\.js)"/u)?.[1];
+assert.ok(chunk, 'The reviewed bridge must expose its shared CLI parser.');
+const { parseCommandLineArgs } = await import(
+  pathToFileURL(resolve(dirname(bridgeEntrypoint), chunk))
+);
+const priorHeader = process.env.AUTH_HEADER;
+try {
+  const parse = (header) =>
+    parseCommandLineArgs(
+      [
+        'https://artifactflow.example/mcp',
+        '--header',
+        header,
+        // Avoid reading any real OAuth registration while exercising cache keys.
+        '--static-oauth-client-info',
+        '{"client_id":"artifactflow-smoke"}',
+        '--silent',
+      ],
+      'ArtifactFlow bridge compatibility smoke',
+    );
+  process.env.AUTH_HEADER = 'Bearer artifactflow-smoke-token-a';
+  const first = await parse('Authorization:${AUTH_HEADER}');
+  process.env.AUTH_HEADER = 'Bearer artifactflow-smoke-token-b';
+  const second = await parse('Authorization:${AUTH_HEADER}');
+  const literal = await parse('Authorization:Bearer artifactflow-smoke-token-a');
+  assert.equal(first.headers.Authorization, 'Bearer artifactflow-smoke-token-a');
+  assert.equal(second.headers.Authorization, 'Bearer artifactflow-smoke-token-b');
+  assert.notEqual(
+    first.serverUrlHash,
+    second.serverUrlHash,
+    'Different expanded bearer tokens must use distinct credential caches.',
+  );
+  assert.equal(
+    first.serverUrlHash,
+    literal.serverUrlHash,
+    'Literal and environment-expanded headers must select the same credential cache.',
+  );
+} finally {
+  if (priorHeader === undefined) delete process.env.AUTH_HEADER;
+  else process.env.AUTH_HEADER = priorHeader;
+}
+console.log('Bridge expanded-header credential-cache isolation regression passed.');
 
 // GHSA-6pq8-jhm2-2vcw: comma serialization must tolerate JSON or parsed
 // objects without a callable toString. This is dependency coverage, not a
@@ -55,13 +101,26 @@ for (const encodeValuesOnly of [false, true]) {
   );
   assert.equal(qs.stringify({ items: [{ toString: () => 'custom' }] }, options), 'items=custom');
   assert.throws(
-    () => qs.stringify({ items: [{ toString() { throw new SyntaxError('fixture'); } }] }, options),
+    () =>
+      qs.stringify(
+        {
+          items: [
+            {
+              toString() {
+                throw new SyntaxError('fixture');
+              },
+            },
+          ],
+        },
+        options,
+      ),
     SyntaxError,
     'User-defined exceptions must not be swallowed by the security fix.',
   );
 }
 assert.deepEqual(qs.parse('name=example&tags[]=one&tags[]=two'), {
-  name: 'example', tags: ['one', 'two'],
+  name: 'example',
+  tags: ['one', 'two'],
 });
 console.log('Bridge qs comma serialization regression passed.');
 // GHSA-jqcg-44mw-7w3h: neither trust path may accept a forged forwarded address
@@ -119,9 +178,11 @@ const server = createServer((request, response) => {
     ) {
       authorizedProbeRequests += 1;
     }
-    response.writeHead(307, {
-      Location: `http://127.0.0.1:${otherAddress.port}/unexpected`,
-    }).end();
+    response
+      .writeHead(307, {
+        Location: `http://127.0.0.1:${otherAddress.port}/unexpected`,
+      })
+      .end();
     return;
   }
   if (request.url !== '/mcp' || request.method !== 'POST') {
@@ -288,7 +349,11 @@ child.stdin.write(
 try {
   await completion;
   assert.ok(authorizedProbeRequests > 0, 'Same-origin probes must retain configured headers.');
-  assert.equal(crossOriginRequests, 0, 'Authentication probes must not follow cross-origin redirects.');
+  assert.equal(
+    crossOriginRequests,
+    0,
+    'Authentication probes must not follow cross-origin redirects.',
+  );
   if (forwardedClientName !== 'artifactflow-nightly (via mcp-remote ' + BRIDGE_VERSION + ')') {
     throw new Error('The server did not observe the reviewed MCP bridge version.');
   }
@@ -311,7 +376,9 @@ try {
 } finally {
   lines.close();
   child.kill('SIGTERM');
-  await Promise.all([server, otherOrigin].map(
-    (fixture) => new Promise((resolveClose) => fixture.close(resolveClose)),
-  ));
+  await Promise.all(
+    [server, otherOrigin].map(
+      (fixture) => new Promise((resolveClose) => fixture.close(resolveClose)),
+    ),
+  );
 }

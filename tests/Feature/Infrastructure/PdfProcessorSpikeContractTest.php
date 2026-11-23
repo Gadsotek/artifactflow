@@ -36,6 +36,7 @@ final class PdfProcessorSpikeContractTest extends TestCase
         $this->assertStringContainsString('"brotli-libs>=1.2.1-r0"', $spikeStage);
         $this->assertStringContainsString('"curl>=8.23.0-r0"', $runtimeStage);
         $this->assertStringContainsString('"libcurl>=8.23.0-r0"', $runtimeStage);
+        $this->assertStringContainsString('"libxml2>=2.13.9-r3"', $runtimeStage);
         $this->assertStringContainsString('"libcrypto3>=3.5.8-r0"', $spikeStage);
         $this->assertStringContainsString('"libssl3>=3.5.8-r0"', $spikeStage);
         $this->assertStringContainsString('"openssl>=3.5.8-r0"', $spikeStage);

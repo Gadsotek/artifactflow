@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "d8cf18fd23bddbeac19a78a6746d8fe7",
+    "content-hash": "a501b232abaaf1a14e5fd3b5b753a331",
     "packages": [
         {
             "name": "bacon/bacon-qr-code",
@@ -8957,24 +8957,24 @@
         },
         {
             "name": "pestphp/pest-plugin-type-coverage",
-            "version": "v4.0.4",
+            "version": "v4.0.6",
             "source": {
                 "type": "git",
                 "url": "https://github.com/pestphp/pest-plugin-type-coverage.git",
-                "reference": "f485d40ec4e2081f9d3456c00f2c008f145d7896"
+                "reference": "8362fc1b039fb953d0d35907790364dd166c59fb"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/pestphp/pest-plugin-type-coverage/zipball/f485d40ec4e2081f9d3456c00f2c008f145d7896",
-                "reference": "f485d40ec4e2081f9d3456c00f2c008f145d7896",
+                "url": "https://api.github.com/repos/pestphp/pest-plugin-type-coverage/zipball/8362fc1b039fb953d0d35907790364dd166c59fb",
+                "reference": "8362fc1b039fb953d0d35907790364dd166c59fb",
                 "shasum": ""
             },
             "require": {
                 "nunomaduro/pokio": "^1.0.0",
                 "pestphp/pest-plugin": "^4.0.0",
                 "php": "^8.3",
-                "phpstan/phpstan": "^1.12.24|^2.1.46",
-                "tomasvotruba/type-coverage": "^1.0.0|^2.1.0"
+                "phpstan/phpstan": "^2.1.46",
+                "tomasvotruba/type-coverage": "^2.1.0"
             },
             "require-dev": {
                 "pestphp/pest": "^4.4.5",
@@ -9010,7 +9010,7 @@
                 "unit"
             ],
             "support": {
-                "source": "https://github.com/pestphp/pest-plugin-type-coverage/tree/v4.0.4"
+                "source": "https://github.com/pestphp/pest-plugin-type-coverage/tree/v4.0.6"
             },
             "funding": [
                 {
@@ -9022,7 +9022,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-04-06T14:00:30+00:00"
+            "time": "2026-11-19T13:29:08+00:00"
         },
         {
             "name": "phar-io/manifest",

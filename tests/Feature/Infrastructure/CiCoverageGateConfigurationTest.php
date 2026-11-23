@@ -258,7 +258,10 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('npm audit --audit-level=moderate', $makefile);
         $this->assertStringContainsString('npm audit --audit-level=moderate', $workflow);
         $this->assertStringContainsString('npm audit --audit-level=moderate', $nightly);
-        $this->assertStringContainsString('TRIVY_IMAGE ?= aquasec/trivy:0.72.0@sha256:', $makefile);
+        $this->assertStringContainsString('TRIVY_IMAGE ?= $(shell cat docker/trivy-image.txt)', $makefile);
+        $release = $this->readProjectFile('.github/workflows/release.yml');
+        $this->assertStringContainsString('trivy_image="$(cat docker/trivy-image.txt)"', $release);
+        $this->assertSame(4, substr_count($release, '"$trivy_image"'));
         $this->assertStringContainsString('FROM php:8.5.12-cli-trixie@sha256:', $dockerfile);
         $this->assertStringContainsString(
             'FROM php:8.5.12-cli-alpine3.24@sha256:eef5baa8671b37f2909d4b2f1849ea663df6ff4fe8936f102208ce54f1e32e01 AS image-parser',
@@ -284,6 +287,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
         $this->assertStringContainsString('"brotli-libs>=1.2.1-r0"', $productionStage);
         $this->assertStringContainsString('"curl>=8.23.0-r0"', $productionStage);
         $this->assertStringContainsString('"libcurl>=8.23.0-r0"', $productionStage);
+        $this->assertStringContainsString('"libxml2>=2.13.9-r3"', $productionStage);
         $this->assertStringContainsString('"libcrypto3>=3.5.8-r0"', $productionStage);
         $this->assertStringContainsString('"libssl3>=3.5.8-r0"', $productionStage);
         $this->assertStringContainsString('"openssl>=3.5.8-r0"', $productionStage);
@@ -610,7 +614,7 @@ final class CiCoverageGateConfigurationTest extends TestCase
             $this->fail('composer.json must define require-dev dependencies.');
         }
 
-        $this->assertSame('^4.0', $requireDev['pestphp/pest-plugin-type-coverage'] ?? null);
+        $this->assertSame('^4.0.6', $requireDev['pestphp/pest-plugin-type-coverage'] ?? null);
 
         $composerLock = $this->readProjectFile('composer.lock');
         $this->assertStringContainsString('"name": "pestphp/pest-plugin-type-coverage"', $composerLock);

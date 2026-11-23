@@ -15,7 +15,7 @@ use Tests\TestCase;
  */
 final class ConnectMcpNodeRuntimeGuardTest extends TestCase
 {
-    private const string LOCK_SHA256 = '3f0e690cd3f0323c048cc6f9bc227002c3c92908cedfdca56c46c9e35d54fc53';
+    private const string LOCK_SHA256 = '26bee2131f6b53606280ec86f10447fa26c1bc3006fac082ed3853aa0fa878b9';
 
     /**
      * @var list<string>
@@ -43,7 +43,7 @@ final class ConnectMcpNodeRuntimeGuardTest extends TestCase
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
         $config = file_get_contents($codexHome . '/config.toml');
         $this->assertIsString($config);
-        $bridgeEntrypoint = $home . '/.local/share/artifactflow/mcp-remote/0.16.6-'
+        $bridgeEntrypoint = $home . '/.local/share/artifactflow/mcp-remote/0.16.7-'
             . self::LOCK_SHA256 . '/node_modules/mcp-remote/dist/proxy.js';
 
         $this->assertStringContainsString('command = "' . $toolPath . '/node"', $config);
@@ -89,7 +89,7 @@ final class ConnectMcpNodeRuntimeGuardTest extends TestCase
         );
 
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
-        $bridgeHome = $home . '/.local/share/artifactflow/mcp-remote/0.16.6-' . self::LOCK_SHA256;
+        $bridgeHome = $home . '/.local/share/artifactflow/mcp-remote/0.16.7-' . self::LOCK_SHA256;
         $config = json_decode((string) file_get_contents($home . '/.claude.json'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertIsArray($config);
         $servers = $config['mcpServers'] ?? null;
@@ -116,9 +116,9 @@ final class ConnectMcpNodeRuntimeGuardTest extends TestCase
         $dependencies = $package['dependencies'] ?? null;
         $this->assertIsArray($dependencies);
         $lock = (string) file_get_contents($bridgeHome . '/package-lock.json');
-        $this->assertSame('0.16.6', $dependencies['mcp-remote'] ?? null);
+        $this->assertSame('0.16.7', $dependencies['mcp-remote'] ?? null);
         $this->assertStringContainsString(
-            'sha512-QqlBqut/oeDUFwrB/Igs5vGikWSn6h5iM+7TCmiTGJAIuS3OJjzThWGjKLLtAz+NnLozvs2c2wGDkAXpzHepqw==',
+            'sha512-mKYcD/mkD5yGlyc2fwU7zFkgGRxzEzBplPcLhoykgaqnQxW/IVC4ol6VHEqIhJkKDdmSNToI9MXiOXCsrsTjxA==',
             $lock,
         );
 
@@ -176,7 +176,7 @@ final class ConnectMcpNodeRuntimeGuardTest extends TestCase
     public function test_install_validation_is_derived_from_the_declared_bridge_version(): void
     {
         $script = $this->modifiedConnector([
-            'MCP_REMOTE_VERSION="0.16.6"' => 'MCP_REMOTE_VERSION="9.8.7"',
+            'MCP_REMOTE_VERSION="0.16.7"' => 'MCP_REMOTE_VERSION="9.8.7"',
         ]);
 
         [$process, $home, $codexHome] = $this->runConnect(
@@ -294,7 +294,7 @@ done
 mkdir -p "$prefix/node_modules/.bin" "$prefix/node_modules/mcp-remote/dist"
 printf '#!/bin/sh\nexit 0\n' > "$prefix/node_modules/.bin/mcp-remote"
 chmod 700 "$prefix/node_modules/.bin/mcp-remote"
-printf '{"name":"mcp-remote","version":"0.16.6"}\n' > "$prefix/node_modules/mcp-remote/package.json"
+printf '{"name":"mcp-remote","version":"0.16.7"}\n' > "$prefix/node_modules/mcp-remote/package.json"
 printf 'process.exit(0);\n' > "$prefix/node_modules/mcp-remote/dist/proxy.js"
 SH;
             file_put_contents($directory . '/npm', $npm);

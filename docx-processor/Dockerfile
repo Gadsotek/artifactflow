@@ -54,6 +54,7 @@ RUN apk add --no-cache \
         "libcurl>=8.23.0-r0" \
         libreoffice-writer=25.8.7.3-r0 \
         "libssl3>=3.5.8-r0" \
+        "libxml2>=2.13.9-r3" \
         "musl>=1.2.6-r3" \
         "musl-utils>=1.2.6-r3" \
         "openssl>=3.5.8-r0" \
