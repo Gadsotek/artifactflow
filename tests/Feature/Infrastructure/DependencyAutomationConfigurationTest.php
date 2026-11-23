@@ -27,7 +27,7 @@ final class DependencyAutomationConfigurationTest extends TestCase
         $config = json_decode($this->projectFile('renovate.json'), true, 512, JSON_THROW_ON_ERROR);
         $this->assertIsArray($config);
 
-        $this->assertSame(['dockerfile', 'docker-compose'], $config['enabledManagers'] ?? null);
+        $this->assertSame(['dockerfile', 'docker-compose', 'custom.regex'], $config['enabledManagers'] ?? null);
         $this->assertTrue($config['pinDigests'] ?? false);
         $this->assertFalse($config['automerge'] ?? true);
         $this->assertSame(
@@ -42,6 +42,31 @@ final class DependencyAutomationConfigurationTest extends TestCase
         $this->assertSame(['dockerfile', 'docker-compose'], $nodeRule['matchManagers'] ?? null);
         $this->assertSame(['node'], $nodeRule['matchPackageNames'] ?? null);
         $this->assertSame('node container image', $nodeRule['groupName'] ?? null);
+    }
+
+    public function test_renovate_extracts_the_scanner_tag_and_digest_from_the_shared_pin(): void
+    {
+        $config = json_decode($this->projectFile('renovate.json'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($config);
+        $managers = $config['customManagers'] ?? null;
+        $this->assertIsArray($managers);
+        $manager = $managers[0] ?? null;
+        $this->assertIsArray($manager);
+        $this->assertSame('regex', $manager['customType'] ?? null);
+        $this->assertSame(['docker/trivy-image.txt'], $manager['managerFilePatterns'] ?? null);
+        $this->assertSame('docker', $manager['datasourceTemplate'] ?? null);
+        $this->assertSame('docker', $manager['versioningTemplate'] ?? null);
+        $patterns = $manager['matchStrings'] ?? null;
+        $this->assertIsArray($patterns);
+        $pattern = $patterns[0] ?? null;
+        $this->assertIsString($pattern);
+
+        $pin = trim($this->projectFile('docker/trivy-image.txt'));
+        $this->assertSame(1, preg_match('~' . $pattern . '~', $pin, $matches));
+        $this->assertSame('aquasec/trivy', $matches['depName'] ?? null);
+        $this->assertMatchesRegularExpression('/^\d+\.\d+\.\d+$/D', $matches['currentValue'] ?? '');
+        $this->assertMatchesRegularExpression('/^sha256:[0-9a-f]{64}$/D', $matches['currentDigest'] ?? '');
+        $this->assertSame($pin, $matches[0]);
     }
 
     public function test_cla_workflow_uses_trusted_base_checker_with_opener_scoped_allowlist(): void

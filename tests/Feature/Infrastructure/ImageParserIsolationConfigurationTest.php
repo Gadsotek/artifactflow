@@ -55,6 +55,7 @@ final class ImageParserIsolationConfigurationTest extends TestCase
         $this->assertStringContainsString('"brotli-libs>=1.2.1-r0"', $this->beforeNeedle($parserStage, "\nFROM "));
         $this->assertStringContainsString('"curl>=8.23.0-r0"', $this->beforeNeedle($parserStage, "\nFROM "));
         $this->assertStringContainsString('"libcurl>=8.23.0-r0"', $this->beforeNeedle($parserStage, "\nFROM "));
+        $this->assertStringContainsString('"libxml2>=2.13.9-r3"', $this->beforeNeedle($parserStage, "\nFROM "));
         $this->assertStringContainsString('"libcrypto3>=3.5.8-r0"', $parserStage);
         $this->assertStringContainsString('"libssl3>=3.5.8-r0"', $parserStage);
         $this->assertStringContainsString('"openssl>=3.5.8-r0"', $parserStage);

@@ -109,25 +109,26 @@ jobs:
 
       - name: Generate SBOM (CycloneDX)
         run: |
+          trivy_image="$(cat docker/trivy-image.txt)"
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$HOME/.cache/trivy:/root/.cache/trivy" \
             -v "$PWD:/out" \
-            aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
+            "$trivy_image" \
             image --format cyclonedx --output /out/sbom.cdx.json artifactflow-app:production
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$HOME/.cache/trivy:/root/.cache/trivy" \
             -v "$PWD:/out" \
-            aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
+            "$trivy_image" \
             image --format cyclonedx --output /out/sbom.pdf-processor.cdx.json artifactflow-pdf-processor-service:production
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$HOME/.cache/trivy:/root/.cache/trivy" \
             -v "$PWD:/out" \
-            aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
+            "$trivy_image" \
             image --format cyclonedx --output /out/sbom.xlsx-processor.cdx.json artifactflow-xlsx-processor-service:production
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$HOME/.cache/trivy:/root/.cache/trivy" \
             -v "$PWD:/out" \
-            aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
+            "$trivy_image" \
             image --format cyclonedx --output /out/sbom.docx-processor.cdx.json artifactflow-docx-processor:production
 
       - name: Attest build provenance
