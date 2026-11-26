@@ -4,6 +4,47 @@ All notable changes to ArtifactFlow will be documented here.
 
 Review each release's upgrade notes before updating an installation.
 
+## v1.0.2 — 2026-11-26
+
+Security and maintenance update for the application, document processors, and
+MCP bridge.
+
+### Security
+
+- Update Symfony HTTP Foundation, HTTP Kernel, Mailer, and Routing to 8.1.12.
+  This addresses CVE-2026-133743, CVE-2026-133746, CVE-2026-133751,
+  CVE-2026-133754, and CVE-2026-133755.
+  [Symfony 8.1.12](https://github.com/symfony/symfony/releases/tag/v8.1.12) ·
+  [#269](https://github.com/Gadsotek/artifactflow/pull/269)
+- Require libxml2 2.13.9-r3 or newer for CVE-2026-86144 in the application, the
+  image parser build, and the PDF and DOCX processor images.
+  [#263](https://github.com/Gadsotek/artifactflow/pull/263)
+
+### Changed
+
+- Update the reviewed MCP bridge to `mcp-remote` 0.16.7 and the Claude Desktop
+  extension to 1.0.11. The bridge expands custom header variables before
+  computing its credential cache key, so different bearer tokens select
+  different caches.
+  [MCP bridge review](docs/operations/mcp-bridge.md#reviewed-version-0167)
+- Update Laravel MCP to 1.2.1, Guzzle to 8.6.0, and the Resend PHP client to
+  1.19.0. Refresh the PHP type-coverage plugin and Easy Coding Standard.
+  [#264](https://github.com/Gadsotek/artifactflow/pull/264) ·
+  [#266](https://github.com/Gadsotek/artifactflow/pull/266)
+- Use the same digest-pinned Trivy 0.76.2 image for vulnerability scanning and
+  release SBOM generation.
+  [#263](https://github.com/Gadsotek/artifactflow/pull/263)
+
+### Upgrade from v1.0.1
+
+- Back up the installation and update the application, artifact host, worker,
+  scheduler, and each enabled document processor together. Pin the image
+  digests from the release and verify their provenance and SBOMs.
+  [Production operations guide](docs/operations/production.md)
+- For source-based deployments, rebuild the runtime images and frontend assets
+  from this release. Rebuild the dedicated image parser wherever it is used.
+- This release requires no new database migrations or configuration changes.
+
 ## v1.0.1 — 2026-11-20
 
 Security and maintenance update for the application runtimes, document processors,
