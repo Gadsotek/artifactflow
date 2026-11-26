@@ -17,7 +17,7 @@ final class McpPassageResults implements McpWirePayload
     private array $results = [];
     private int $bytes = 14; // {"results":[]}
 
-    public function append(Page $page, PageVersion $version, IndexedPassage $passage, bool $limited): void
+    public function tryAppend(Page $page, PageVersion $version, IndexedPassage $passage, bool $limited): bool
     {
         $appUrl = config('app.url');
         if (!is_string($appUrl) || $appUrl === '') {
@@ -38,10 +38,13 @@ final class McpPassageResults implements McpWirePayload
         ];
         $bytes = strlen(json_encode($hit, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE))
             + ($this->results === [] ? 0 : 1);
-        if ($this->bytes + $bytes <= self::MAX_BYTES) {
-            $this->results[] = $hit;
-            $this->bytes += $bytes;
+        if ($this->bytes + $bytes > self::MAX_BYTES) {
+            return false;
         }
+        $this->results[] = $hit;
+        $this->bytes += $bytes;
+
+        return true;
     }
 
     public function count(): int

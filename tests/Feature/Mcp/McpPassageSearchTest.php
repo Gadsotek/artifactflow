@@ -191,14 +191,22 @@ final class McpPassageSearchTest extends McpTestCase
         $ids = [];
         $heading = str_repeat('広', 1100);
         $body = 'invoice ' . str_repeat('€', 1220);
-        for ($i = 0; $i < 10; $i++) {
+        for ($i = 0; $i < 12; $i++) {
             $ids[] = $this->createPageWithApprovedStatus($this->owner, $this->workspace, 'Guide ' . $i, "# $heading\n\n$body")->uid;
         }
         $default = $this->hits(['query' => 'invoice']);
         self::assertCount(5, $default);
         sort($ids, SORT_STRING);
         self::assertSame(array_slice($ids, 0, 5), array_column($default, 'page_uid'));
+        $reads = 0;
+        DB::connection()->beforeExecuting(static function (string $sql) use (&$reads): void {
+            if (str_starts_with($sql, 'select "uid", "page_uid", "version_number", "content_storage_path", "content_hash" from "page_versions"')) {
+                $reads++;
+            }
+        });
         $hits = $this->hits(['query' => 'invoice', 'limit' => 10]);
+        self::assertSame(array_slice($ids, 0, count($hits)), array_column($hits, 'page_uid'));
+        self::assertSame(count($hits) + 1, $reads);
         self::assertGreaterThanOrEqual(5, count($hits));
         self::assertLessThan(10, count($hits));
         self::assertLessThanOrEqual(65536, strlen(json_encode(['results' => $hits], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)));

@@ -51,6 +51,15 @@ final readonly class HtmlSourceDocument
         return $this->spans->offsetExists($node) ? $this->spans[$node] : null;
     }
 
+    public static function isBlock(Element $element): bool
+    {
+        return in_array($element->localName, [
+            'address', 'article', 'aside', 'blockquote', 'body', 'dd', 'details', 'div', 'dl', 'dt', 'fieldset',
+            'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hr', 'li',
+            'main', 'nav', 'ol', 'p', 'pre', 'section', 'summary', 'ul',
+        ], true);
+    }
+
     public static function excluded(Element $element): bool
     {
         return $element->namespaceURI !== 'http://www.w3.org/1999/xhtml'

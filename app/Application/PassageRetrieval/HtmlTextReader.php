@@ -52,6 +52,15 @@ final readonly class HtmlTextReader
                     return false;
                 }
                 [$value, $span] = $piece;
+                if ($text === '' || str_ends_with($text, ' ')) {
+                    $value = ltrim($value, ' ');
+                }
+                if ($span === null) {
+                    if (strlen($text) < PassageCollector::MAX_EXCERPT_BYTES) {
+                        $text .= $value;
+                    }
+                    continue;
+                }
                 if (strlen($text) + strlen($value) > PassageCollector::MAX_EXCERPT_BYTES || count($spans) >= $maxRanges) {
                     if (trim($text) !== '' && $spans !== []) {
                         yield new HtmlPassageText(trim($text), $spans);
@@ -60,9 +69,7 @@ final readonly class HtmlTextReader
                     $spans = [];
                 }
                 $text .= $value;
-                if ($span !== null) {
-                    $spans[] = $span;
-                }
+                $spans[] = $span;
             }
         }
 
@@ -104,8 +111,16 @@ final readonly class HtmlTextReader
             return;
         }
 
+        // Block boundaries are spacing in the excerpt, with no source span.
+        $block = HtmlSourceDocument::isBlock($node);
+        if ($block) {
+            yield [' ', null];
+        }
         foreach ($node->childNodes as $child) {
             yield from $this->pieces($child);
+        }
+        if ($block) {
+            yield [' ', null];
         }
     }
 

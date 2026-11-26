@@ -83,7 +83,9 @@ final readonly class PassageSearch
             $id = $candidate->getAttribute('passage_uid');
             if (is_string($id) && !isset($seen[$id]) && $this->access->canView($actor, $candidate)) {
                 $before = $results->count();
-                $this->collect($actor, $candidate, $id, $base, $results);
+                if (!$this->collectWithinBudget($actor, $candidate, $id, $base, $results)) {
+                    return McpToolResult::success($results);
+                }
                 if ($before !== $results->count()) {
                     $seen[$id] = true;
                 }
@@ -96,26 +98,29 @@ final readonly class PassageSearch
         return hrtime(true) >= $deadline ? $this->unavailable() : McpToolResult::success($results);
     }
 
-    /** @param Builder<Page> $base */
-    private function collect(User $actor, Page $candidate, string $id, Builder $base, McpPassageResults $results): void
+    /**
+     * @param Builder<Page> $base
+     * @return bool Whether to keep collecting candidates
+     */
+    private function collectWithinBudget(User $actor, Page $candidate, string $id, Builder $base, McpPassageResults $results): bool
     {
         // Read retained bytes only for exact-authorized candidates. A missing,
         // oversized or changed original cannot support a verifiable citation.
         $version = PageVersion::query()->whereKey($candidate->current_version_uid)->where('page_uid', $candidate->uid)
             ->first(['uid', 'page_uid', 'version_number', 'content_storage_path', 'content_hash']);
         if (!$version instanceof PageVersion) {
-            return;
+            return true;
         }
         $source = $this->reader->read($version->content_storage_path);
         if ($source === null || hash('sha256', $source) !== $version->content_hash) {
-            return;
+            return true;
         }
 
         $live = (clone $base)->where('p.uid', $id)->where('v.uid', $version->uid);
         $page = (clone $live)->first(['pages.uid', 'pages.workspace_uid', 'pages.owner_user_uid', 'pages.access_mode', 'pages.title', 'pages.type', 'pages.status', 'pages.metadata_revision', 'pages.preview_access_revision', 's.outcome']);
         $this->access->flushCache();
         if (!$page instanceof Page || !$this->access->canView($actor, $page)) {
-            return;
+            return true;
         }
 
         // Catalog and access mutations advance these revisions. If either commits
@@ -123,9 +128,8 @@ final readonly class PassageSearch
         $live->where('pages.preview_access_revision', $page->preview_access_revision)
             ->where('pages.metadata_revision', $page->metadata_revision);
         $passage = IndexedPassage::query()->whereIn('uid', $live->select('p.uid'))->first(['heading_path', 'source_locator', 'excerpt']);
-        if ($passage instanceof IndexedPassage) {
-            $results->append($page, $version, $passage, $page->getAttribute('outcome') === 'limited');
-        }
+        return !$passage instanceof IndexedPassage
+            || $results->tryAppend($page, $version, $passage, $page->getAttribute('outcome') === 'limited');
     }
 
     private function unavailable(): McpToolResult

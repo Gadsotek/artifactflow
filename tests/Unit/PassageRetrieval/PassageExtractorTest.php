@@ -94,6 +94,29 @@ final class PassageExtractorTest extends TestCase
         self::assertSame(strrpos($source, 'Hold'), $ranges[2]['start_byte']);
     }
 
+    public function test_table_blocks_separate_words_without_splitting_inline_text_or_inventing_source_ranges(): void
+    {
+        $source = '<table><tr><th>Check</th><th><div>Next</div><div> step</div></th></tr>'
+            . '<tr><th><p>Gross</p><p>total</p></th><td><p>Pay</p><p>only after re<b>view</b></p></td></tr></table>';
+        $result = app(PassageExtractor::class)->extract(PageType::HtmlArtifact, $source);
+
+        self::assertSame('complete', $result->outcome->value);
+        self::assertCount(1, $result->passages);
+        $passage = $result->passages[0];
+        self::assertSame('Gross total · Next step · Pay only after review', $passage->excerpt);
+        $locator = $passage->sourceLocator;
+        self::assertSame('html_source_ranges', $locator['kind']);
+        $pieces = [];
+        foreach ($locator['ranges'] as $range) {
+            $pieces[$range['role']][] = substr($source, $range['start_byte'], $range['end_byte'] - $range['start_byte']);
+        }
+        self::assertSame([
+            'row_header' => ['Gross', 'total'],
+            'column_header' => ['Next', ' step'],
+            'body' => ['Pay', 'only after re', 'view'],
+        ], $pieces);
+    }
+
     public function test_html_returns_only_authored_static_evidence_and_keeps_heading_and_inline_ranges(): void
     {
         $source = '<!doctype html><html><head><title>omit-title</title></head><body><h1>Billing</h1>'

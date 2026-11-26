@@ -86,11 +86,7 @@ final class HtmlPassages
 
             return;
         }
-        $block = in_array($element->localName, [
-            'address', 'article', 'aside', 'blockquote', 'body', 'dd', 'details', 'div', 'dl', 'dt', 'fieldset',
-            'figcaption', 'figure', 'footer', 'form', 'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'pre',
-            'section', 'summary', 'ul',
-        ], true);
+        $block = HtmlSourceDocument::isBlock($element);
         $section = in_array($element->localName, ['section', 'article'], true);
         $parentHeadings = $this->headings;
         if ($block) {
