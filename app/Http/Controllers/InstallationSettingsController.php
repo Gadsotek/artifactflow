@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Application\Administration\InstallationLimitPresenter;
 use App\Application\Administration\InstallationUsageOverview;
+use App\Application\Administration\PassageIndexProgress;
 use App\Application\Administration\UpdateInstallationLimits;
 use App\Domain\DomainRuleViolation;
 use App\Http\Requests\Administration\UpdateInstallationLimitsRequest;
@@ -32,6 +33,7 @@ final class InstallationSettingsController
             'limitItems' => $limits->viewItems(),
             'limitValues' => $limits->currentValues(),
             'usage' => $usage->overview($user),
+            'progress' => PassageIndexProgress::current(),
         ]);
     }
 

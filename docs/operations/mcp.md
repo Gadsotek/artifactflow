@@ -121,6 +121,16 @@ does not authenticate the recipient, and revocation cannot retract delivered
 content. Keep returned share URLs out of artifact content, prompts, traces,
 and logs. See the [sharing contract](../architecture/external-sharing.md).
 
+## Passage retrieval
+
+A System Admin can enable **Passage retrieval for MCP** in Administration → Installation settings after applying the migrations. It is off by default. Enabling it indexes current Markdown and static HTML in PostgreSQL. New saves can appear immediately, and the worker backfills existing versions. The settings screen shows coverage and pending cleanup.
+
+With the setting enabled, refresh `tools/list` to discover `search_passages`. Calls require both `mcp:search` and `mcp:read`. A query such as `{"query":"gross total","status":"approved","limit":5}` returns up to five authorized excerpts. The default limit is five and the maximum is ten. Short terms that appear in the source work best. Filters include workspace, page, type, status, category, tags and owner. Request `"status":"archived"` to search archived pages.
+
+Each hit includes the exact version, heading path, excerpt, source coordinates and a citation URL on the application origin. Markdown coordinates use one-based inclusive lines and zero-based, end-exclusive UTF-8 byte offsets. Static HTML uses byte ranges with roles for evidence and labels. Titles, headings and excerpts use the ordinary MCP untrusted-data envelope. A hit with `index_limited` indicates partial extraction. For an empty result, use authorized catalog search and `read` if you need to check the full source.
+
+Disabling retrieval immediately removes the tool from discovery and rejects new calls. The worker removes the retired index. A citation continues to open its original version for an authorized reader until retention or deletion removes that version. Re-enabling the feature rebuilds the index from current content.
+
 ## Reads and writes
 
 - `read.include` omitted returns content and provenance; `[]` returns core

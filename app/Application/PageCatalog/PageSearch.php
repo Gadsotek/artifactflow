@@ -143,7 +143,7 @@ final class PageSearch
     /**
      * @param Builder<Page> $query
      */
-    private function applyFilters(Builder $query, PageSearchFilters $filters): void
+    public function applyFilters(Builder $query, PageSearchFilters $filters): void
     {
         if ($filters->workspaceUid !== null && $filters->workspaceUid !== PageSearchFilters::ALL_WORKSPACES) {
             $query->where('workspace_uid', $filters->workspaceUid);

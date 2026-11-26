@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\PageCatalog;
 
+use App\Application\PassageRetrieval\PreparedVersionPassages;
+
 final readonly class PreparedPageContent
 {
     public function __construct(
@@ -17,6 +19,7 @@ final readonly class PreparedPageContent
         public ?PreparedArtifactDerivative $derivative = null,
         public bool $requiresPrivateStaging = false,
         public ?StagedArtifactContent $stagedContent = null,
+        public ?PreparedVersionPassages $passages = null,
     ) {
     }
 
@@ -33,6 +36,7 @@ final readonly class PreparedPageContent
             derivative: $this->derivative,
             requiresPrivateStaging: $this->requiresPrivateStaging,
             stagedContent: $stagedContent,
+            passages: $this->passages,
         );
     }
 
@@ -49,6 +53,7 @@ final readonly class PreparedPageContent
             derivative: $derivative,
             requiresPrivateStaging: $this->requiresPrivateStaging,
             stagedContent: $this->stagedContent,
+            passages: $this->passages,
         );
     }
 

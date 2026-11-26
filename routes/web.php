@@ -37,6 +37,7 @@ use App\Http\Controllers\PagePresenceController;
 use App\Http\Controllers\PageVersionController;
 use App\Http\Controllers\PageVersionInspectionController;
 use App\Http\Controllers\PageWorkspaceController;
+use App\Http\Controllers\PassageRetrievalSettingsController;
 use App\Http\Controllers\PasswordConfirmationController;
 use App\Http\Controllers\PdfArtifactController;
 use App\Http\Controllers\PdfDownloadController;
@@ -472,6 +473,8 @@ Route::middleware(RejectArtifactHostRuntime::class)->group(function (): void {
                     ->name('admin.settings.edit');
                 Route::put('/admin/settings', [InstallationSettingsController::class, 'update'])
                     ->name('admin.settings.update');
+                Route::put('/admin/settings/passage-retrieval', PassageRetrievalSettingsController::class)
+                    ->name('admin.settings.passage-retrieval');
             });
         });
         Route::post('/settings/theme', ThemePreferenceController::class)->name('settings.theme');

@@ -203,7 +203,7 @@ final readonly class CreatePage
                     changeSummary: $changeSummary,
                 );
                 $storagePaths = $this->versionStorage->paths($version);
-                $page->forceFill(['current_version_uid' => $version->uid])->save();
+                $this->versionWriter->makeCurrent($page, $version, $prepared);
                 $this->tags->sync($page, $command->tagNames, $actorUid);
                 $this->searchVectors->refreshPage($page->uid);
 

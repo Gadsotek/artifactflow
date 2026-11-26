@@ -151,7 +151,7 @@ final readonly class PageVersionAppender
                 lineage: $lineage,
                 changeSummary: $changeSummary,
             );
-            $page->forceFill(['current_version_uid' => $version->uid])->save();
+            $this->versionWriter->makeCurrent($page, $version, $prepared);
             $this->returnContentChangedPageToDraft($actor, $page);
             $this->searchVectors->refreshPage($page->uid);
 

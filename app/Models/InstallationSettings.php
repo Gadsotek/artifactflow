@@ -19,6 +19,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $max_tags_per_page
  * @property bool $two_factor_required_for_system_admins
  * @property bool $two_factor_required_for_all_users
+ * @property bool $passage_retrieval_enabled
+ * @property int $passage_retrieval_generation
+ * @property int|null $passage_retrieval_extractor_revision
  * @property bool $realtime_enabled
  * @property bool $external_sharing_enabled
  * @property bool $external_share_acknowledgement_required
@@ -58,6 +61,9 @@ final class InstallationSettings extends Model
             'max_tags_per_page' => 'integer',
             'two_factor_required_for_system_admins' => 'boolean',
             'two_factor_required_for_all_users' => 'boolean',
+            'passage_retrieval_enabled' => 'boolean',
+            'passage_retrieval_generation' => 'integer',
+            'passage_retrieval_extractor_revision' => 'integer',
             'realtime_enabled' => 'boolean',
             'external_sharing_enabled' => 'boolean',
             'external_share_acknowledgement_required' => 'boolean',

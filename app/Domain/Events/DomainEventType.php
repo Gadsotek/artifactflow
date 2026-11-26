@@ -12,6 +12,7 @@ namespace App\Domain\Events;
 enum DomainEventType: string
 {
     case CategoryCreated = 'category.created';
+    case InstallationPassageRetrievalUpdated = 'installation.passage_retrieval.updated';
     case InstallationLimitsUpdated = 'installation.limits.updated';
     case InstallationTwoFactorEnforcementOperatorDisabled = 'installation.two_factor_enforcement.operator_disabled';
     case McpTokenCreated = 'mcp_token.created';

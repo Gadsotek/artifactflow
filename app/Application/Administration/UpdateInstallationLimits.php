@@ -20,6 +20,7 @@ final readonly class UpdateInstallationLimits
         private AuditLogger $audit,
         private InstallationLimitSettings $limits,
         private RealtimeConfiguration $realtime,
+        private InstallationSettingsWriter $writer,
     ) {
     }
 
@@ -37,11 +38,7 @@ final readonly class UpdateInstallationLimits
         }
 
         $settings = DB::transaction(function () use ($actor, $values): InstallationSettings {
-            $settings = InstallationSettings::query()
-                ->where('scope', InstallationSettings::SCOPE_INSTALLATION)
-                ->lockForUpdate()
-                ->orderBy('created_at')
-                ->first();
+            $settings = $this->writer->locked();
 
             if (!$settings instanceof InstallationSettings) {
                 $settings = new InstallationSettings();
