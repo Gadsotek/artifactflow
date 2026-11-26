@@ -36,7 +36,11 @@ final readonly class ArtifactContentReader
             }
 
             try {
-                $content = stream_get_contents($stream);
+                // Storage metadata can race a replacement between size() and readStream().
+                $content = stream_get_contents($stream, $maxBytes);
+                if (is_string($content) && strlen($content) === $maxBytes && fgetc($stream) !== false) {
+                    return null;
+                }
             } finally {
                 fclose($stream);
             }

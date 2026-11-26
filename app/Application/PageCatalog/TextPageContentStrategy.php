@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\PageCatalog;
 
 use App\Application\Administration\InstallationLimitSettings;
+use App\Application\PassageRetrieval\PagePassageIndex;
 use App\Domain\DomainRuleViolation;
 use App\Domain\PageCatalog\PageType;
 use App\Domain\PageCatalog\PageVersionSource;
@@ -18,6 +19,7 @@ final readonly class TextPageContentStrategy implements PageContentStrategy
         private PageContentScanner $scanner,
         private PageTextExtractor $textExtractor,
         private MarkdownRenderComplexity $markdownComplexity,
+        private PagePassageIndex $passageIndex,
     ) {
     }
 
@@ -91,6 +93,7 @@ final readonly class TextPageContentStrategy implements PageContentStrategy
                 default => throw new LogicException('Unsupported textual page type.'),
             },
             textProjection: $this->textProjection($type, $content),
+            passages: $this->passageIndex->prepare($type, $content),
         );
     }
 

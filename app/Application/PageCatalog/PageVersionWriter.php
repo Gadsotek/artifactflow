@@ -7,6 +7,7 @@ namespace App\Application\PageCatalog;
 use App\Application\Audit\AuditLogger;
 use App\Application\Events\DomainEventRecorder;
 use App\Application\Mcp\McpRequestContext;
+use App\Application\PassageRetrieval\PagePassageIndex;
 use App\Application\Provenance\RecordPageVersionProvenance;
 use App\Application\Provenance\VersionLineage;
 use App\Application\Provenance\VersionProvenanceInput;
@@ -40,6 +41,7 @@ final readonly class PageVersionWriter
         private VersionProvenanceRules $provenanceRules,
         private PageVersionChangeSummaryRules $changeSummaryRules,
         private PdfExtractionPersistence $pdfExtractionPersistence,
+        private PagePassageIndex $passageIndex,
     ) {
     }
 
@@ -87,6 +89,14 @@ final readonly class PageVersionWriter
             lineage: $lineage,
             changeSummary: $changeSummary,
         );
+    }
+
+    public function makeCurrent(Page $page, PageVersion $version, PreparedPageContent $prepared): void
+    {
+        $page->forceFill(['current_version_uid' => $version->uid])->save();
+        if ($prepared->passages !== null) {
+            $this->passageIndex->publish($page->uid, $version->uid, $prepared->passages);
+        }
     }
 
     private function write(

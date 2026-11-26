@@ -8,6 +8,10 @@ Schedule::command('artifactflow:dispatch-domain-events')
     ->everyMinute()
     ->withoutOverlapping();
 
+Schedule::command('artifactflow:reconcile-passages')
+    ->everyMinute()
+    ->withoutOverlapping();
+
 Schedule::command('artifactflow:prune-domain-events')
     ->dailyAt('03:10')
     ->withoutOverlapping();

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Mcp\Servers;
 
+use App\Mcp\PassageAwareCallTool;
 use App\Mcp\Tools\CreateCategoryTool;
 use App\Mcp\Tools\CreateDocxTool;
 use App\Mcp\Tools\CreateExternalShareTool;
@@ -21,6 +22,7 @@ use App\Mcp\Tools\ReplaceImageTool;
 use App\Mcp\Tools\ReplacePdfTool;
 use App\Mcp\Tools\ReplaceXlsxTool;
 use App\Mcp\Tools\RevertTool;
+use App\Mcp\Tools\SearchPassagesTool;
 use App\Mcp\Tools\SearchTool;
 use App\Mcp\Tools\UpdateDescriptionTool;
 use App\Mcp\Tools\UpdateTool;
@@ -67,5 +69,11 @@ final class ArtifactFlowServer extends Server
         ReplaceDocxTool::class,
         UpdateDescriptionTool::class,
         RevertTool::class,
+        SearchPassagesTool::class,
     ];
+
+    protected function boot(): void
+    {
+        $this->methods['tools/call'] = PassageAwareCallTool::class;
+    }
 }

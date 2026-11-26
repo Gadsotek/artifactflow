@@ -217,6 +217,25 @@ final class McpToolArguments
         return $strings;
     }
 
+    /** @return list<string> */
+    public function boundedUidList(string $key, int $maximum): array
+    {
+        if (!$this->has($key)) {
+            return [];
+        }
+        $values = $this->arguments[$key];
+        if (!is_array($values) || !array_is_list($values) || count($values) > $maximum) {
+            throw new DomainRuleViolation(sprintf('Argument [%s] must be a list of at most %d UIDs.', $key, $maximum));
+        }
+        foreach ($values as $uid) {
+            if (!is_string($uid) || !\Illuminate\Support\Str::isUlid($uid)) {
+                throw new DomainRuleViolation(sprintf('Argument [%s] must contain only ULIDs.', $key));
+            }
+        }
+
+        return array_values(array_unique($values));
+    }
+
     public function requiredPageType(string $key): PageType
     {
         $type = $this->pageType($key);

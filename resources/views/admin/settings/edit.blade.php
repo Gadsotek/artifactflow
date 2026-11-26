@@ -240,6 +240,7 @@
                     </form>
                 </aside>
             </section>
+            @include('admin.settings.passage-retrieval')
         </main>
     </div>
 </x-layouts.app>
